@@ -494,7 +494,88 @@ async function analyzePhoto(input) {
   reader.readAsDataURL(file);
 }
 
-async function startBarcode() { alert('סריקת ברקוד זמינה בטלפון.'); }
+async function startBarcode() {
+  // Show scanner overlay
+  const overlay = document.getElementById('barcode-overlay');
+  if (!overlay) { alert('סריקת ברקוד לא זמינה בדפדפן זה.'); return; }
+  overlay.classList.remove('hidden');
+  document.getElementById('barcode-status').textContent = 'מכוון את המצלמה לברקוד...';
+
+  // Load Quagga if needed
+  if (typeof Quagga === 'undefined') {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  Quagga.init({
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target: document.getElementById('barcode-video'),
+      constraints: { facingMode: 'environment', width: { min: 640 }, height: { min: 480 } }
+    },
+    decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader'] },
+    locate: true
+  }, function(err) {
+    if (err) {
+      closeBarcode();
+      alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
+      return;
+    }
+    Quagga.start();
+  });
+
+  let detected = false;
+  Quagga.onDetected(async function(result) {
+    if (detected) return;
+    detected = true;
+    const code = result.codeResult.code;
+    document.getElementById('barcode-status').textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
+    Quagga.stop();
+    await lookupBarcode(code);
+  });
+}
+
+function closeBarcode() {
+  try { Quagga.stop(); } catch(e) {}
+  const overlay = document.getElementById('barcode-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+async function lookupBarcode(code) {
+  try {
+    const res = await fetch('https://world.openfoodfacts.org/api/v0/product/' + code + '.json');
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) {
+      closeBarcode();
+      alert('מוצר לא נמצא במסד הנתונים. נסה להקליד ידנית.');
+      return;
+    }
+    const p = data.product;
+    const nutriments = p.nutriments || {};
+    const per100 = nutriments['energy-kcal_100g'] || nutriments['energy_100g'] || 0;
+    const servingSize = p.serving_size ? parseFloat(p.serving_size) : 100;
+    const factor = isNaN(servingSize) ? 1 : servingSize / 100;
+    const food = {
+      name: p.product_name || p.product_name_he || 'מוצר לא ידוע',
+      kcal: Math.round((nutriments['energy-kcal_100g'] || 0) * factor),
+      protein: Math.round((nutriments['proteins_100g'] || 0) * factor * 10) / 10,
+      carbs: Math.round((nutriments['carbohydrates_100g'] || 0) * factor * 10) / 10,
+      fat: Math.round((nutriments['fat_100g'] || 0) * factor * 10) / 10,
+      confidence: 'high',
+      note: 'מקור: Open Food Facts · ' + (p.serving_size ? 'לפי מנה (' + p.serving_size + ')' : 'לפי 100 גרם')
+    };
+    closeBarcode();
+    showFoodResult(food);
+  } catch(e) {
+    closeBarcode();
+    alert('שגיאה בחיפוש המוצר. בדוק חיבור לאינטרנט.');
+  }
+}
 
 function showFoodResult(food) {
   pendingFood = food;
