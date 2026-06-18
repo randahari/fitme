@@ -1127,3 +1127,35 @@ body.dark .q-opt-btn:active { background: #2a2660; color: #AFA9EC; border-color:
 .navbar { padding: 6px 0 max(6px, env(safe-area-inset-bottom)); }
 .nav-btn { font-size: 9px; }
 .nav-btn svg { width: 20px; height: 20px; }
+
+/* ── HEALTH CARD ── */
+.health-card {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 14px;
+  margin-bottom: 10px;
+}
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 14px;
+}
+.health-row:last-child { border-bottom: none; }
+.health-label { color: var(--text-2); }
+.health-val { font-weight: 500; color: var(--text); }
+
+/* ── STAR BUTTON ── */
+.meal-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.meal-star:active { transform: scale(1.3); }

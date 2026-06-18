@@ -580,9 +580,25 @@ function cancelFood() {
 function renderFoodMeals() {
   const list = document.getElementById('food-meals-list');
   if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות עדיין</div>'; return; }
-  list.innerHTML = '<div class="meals-card">' + todayData.meals.map((m,i) =>
-    `<div class="meal-row"><div><div class="meal-name">${m.name}</div><div class="meal-time">${m.time}</div></div><div style="display:flex;align-items:center;gap:8px"><div class="meal-kcal">${m.kcal} קל'</div><button onclick="deleteMeal(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px">×</button></div></div>`
-  ).join('') + '</div>';
+  list.innerHTML = '<div class="meals-card">' + todayData.meals.map((m,i) => {
+    const isFav = favoriteMeals.some(f => f.name === m.name);
+    return `<div class="meal-row"><div><div class="meal-name">${m.name}</div><div class="meal-time">${m.time}</div></div><div style="display:flex;align-items:center;gap:4px"><div class="meal-kcal">${m.kcal} קל'</div><button onclick="toggleMealFavorite(${i}, this)" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px">${isFav ? '⭐' : '☆'}</button><button onclick="deleteMeal(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;padding:2px">×</button></div></div>`;
+  }).join('') + '</div>';
+}
+
+async function toggleMealFavorite(idx, btn) {
+  const meal = todayData.meals[idx];
+  if (!meal) return;
+  const existsIdx = favoriteMeals.findIndex(f => f.name === meal.name);
+  if (existsIdx >= 0) {
+    favoriteMeals.splice(existsIdx, 1);
+    btn.textContent = '☆';
+  } else {
+    favoriteMeals.push({ ...meal, savedAt: new Date().toISOString() });
+    btn.textContent = '⭐';
+  }
+  await saveFavorites();
+  renderFavoritesList();
 }
 
 async function deleteMeal(idx) {
@@ -832,31 +848,90 @@ function switchPlanTab(tab) {
 }
 
 // ── PROFILE ──
+function calcBMI(weight, height) {
+  const h = height / 100;
+  return Math.round((weight / (h * h)) * 10) / 10;
+}
+
+function getBMICategory(bmi) {
+  if (bmi < 18.5) return { label: 'תת משקל', color: '#378ADD' };
+  if (bmi < 25) return { label: 'תקין', color: '#1D9E75' };
+  if (bmi < 30) return { label: 'עודף משקל', color: '#BA7517' };
+  return { label: 'השמנה', color: '#E24B4A' };
+}
+
+function calcBodyFat(weight, height, age, gender) {
+  const bmi = calcBMI(weight, height);
+  if (gender === 'male') return Math.round((1.20 * bmi) + (0.23 * age) - 16.2);
+  return Math.round((1.20 * bmi) + (0.23 * age) - 5.4);
+}
+
+function getAvatarSVG(bmi, gender) {
+  const isMale = gender !== 'female';
+  let bodyWidth = bmi < 18.5 ? 28 : bmi < 25 ? 36 : bmi < 30 ? 44 : 52;
+  let color = bmi < 18.5 ? '#AFA9EC' : bmi < 25 ? '#534AB7' : bmi < 30 ? '#BA7517' : '#E24B4A';
+  return `<svg viewBox="0 0 80 120" width="80" height="120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="40" cy="20" r="14" fill="${color}" opacity="0.9"/>
+    <rect x="${40 - bodyWidth/2}" y="36" width="${bodyWidth}" height="48" rx="${bodyWidth/4}" fill="${color}" opacity="0.8"/>
+    <rect x="${40 - bodyWidth/2 - 8}" y="38" width="10" height="36" rx="5" fill="${color}" opacity="0.7"/>
+    <rect x="${40 + bodyWidth/2 - 2}" y="38" width="10" height="36" rx="5" fill="${color}" opacity="0.7"/>
+    <rect x="${40 - bodyWidth/4 - 4}" y="84" width="12" height="32" rx="6" fill="${color}" opacity="0.7"/>
+    <rect x="${40 + bodyWidth/4 - 8}" y="84" width="12" height="32" rx="6" fill="${color}" opacity="0.7"/>
+  </svg>`;
+}
+
 async function renderProfile() {
   if (!userProfile) return;
   const history = await getHistoryData();
 
-  // Stats
+  const weight = userProfile.currentWeight || userProfile.weight;
+  const height = userProfile.height;
+  const age = userProfile.age;
+  const gender = userProfile.gender;
+
+  const bmi = calcBMI(weight, height);
+  const bmiCat = getBMICategory(bmi);
+  const bodyFat = calcBodyFat(weight, height, age, gender);
+  const bmr = gender === 'male'
+    ? Math.round(88.36 + (13.4*weight) + (4.8*height) - (5.7*age))
+    : Math.round(447.6 + (9.2*weight) + (3.1*height) - (4.3*age));
+  const tdee = userProfile.goalKcal;
+  const idealWeight = gender === 'male' ? Math.round(22.5 * (height/100) * (height/100)) : Math.round(21 * (height/100) * (height/100));
+  const toGoal = Math.round((weight - idealWeight) * 10) / 10;
   const totalKcalBurned = Object.values(history).reduce((s,d)=>s+(d.burned||0),0) + (todayData.burned||0);
-  const startWeight = userProfile.weight;
-  const currentWeight = userProfile.currentWeight || userProfile.weight;
-  const weightChange = Math.round((currentWeight - startWeight) * 10) / 10;
+
+  // Avatar
+  const avatarEl = document.getElementById('prof-avatar-svg');
+  if (avatarEl) avatarEl.innerHTML = getAvatarSVG(bmi, gender);
 
   document.getElementById('prof-name').textContent = userProfile.name;
   document.getElementById('prof-goal').textContent = GOAL_LABELS[userProfile.goal] || '';
+
+  // Health data
+  const healthEl = document.getElementById('health-data');
+  if (healthEl) {
+    const progressPct = idealWeight > 0 ? Math.min(100, Math.max(0, 100 - Math.abs(toGoal/idealWeight*100))) : 100;
+    healthEl.innerHTML = `
+      <div class="health-row"><span class="health-label">משקל נוכחי</span><span class="health-val">${weight} ק"ג</span></div>
+      <div class="health-row"><span class="health-label">BMI</span><span class="health-val" style="color:${bmiCat.color}">${bmi} — ${bmiCat.label}</span></div>
+      <div class="health-row"><span class="health-label">% שומן משוער</span><span class="health-val">${bodyFat}%</span></div>
+      <div class="health-row"><span class="health-label">BMR (מנוחה)</span><span class="health-val">${bmr.toLocaleString()} קל'</span></div>
+      <div class="health-row"><span class="health-label">TDEE (יומי)</span><span class="health-val">${tdee.toLocaleString()} קל'</span></div>
+      <div class="health-row"><span class="health-label">משקל אידיאלי</span><span class="health-val">${idealWeight} ק"ג</span></div>
+      <div class="health-row"><span class="health-label">${toGoal > 0 ? 'עודף' : 'חסר'} ממשקל אידיאלי</span><span class="health-val">${Math.abs(toGoal)} ק"ג</span></div>
+      <div style="margin-top:8px">
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">התקדמות למשקל יעד</div>
+        <div style="height:6px;background:var(--bg-3);border-radius:3px"><div style="height:6px;background:#1D9E75;border-radius:3px;width:${progressPct}%"></div></div>
+      </div>`;
+  }
+
+  // Stats
   document.getElementById('stat-burned').textContent = totalKcalBurned.toLocaleString();
-  document.getElementById('stat-weight-change').textContent = (weightChange > 0 ? '+' : '') + weightChange + ' ק"ג';
   document.getElementById('stat-workouts').textContent = userProfile.totalWorkouts || 0;
   document.getElementById('stat-streak-best').textContent = Math.max(userProfile.streak||0, userProfile.bestStreak||0);
+  document.getElementById('stat-streak-cur').textContent = userProfile.streak || 0;
 
-  // Weight chart
-  renderWeightChart(history);
-
-  // Achievements
   renderAchievements();
-
-  // Weekly letter
-  document.getElementById('weekly-letter').textContent = '';
 }
 
 function renderWeightChart(history) {
