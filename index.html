@@ -246,11 +246,22 @@
             <div class="result-note hidden" id="result-note"></div>
             <div class="result-actions">
               <button class="btn-primary" onclick="addMeal()">הוסף לרשימה ✓</button>
+              <button class="btn-ghost" onclick="addMealAndFavorite()">⭐ שמור כמועדף</button>
               <button class="btn-ghost" onclick="cancelFood()">בטל</button>
             </div>
           </div>
-          <div class="section-header"><span>ארוחות היום</span></div>
-          <div id="food-meals-list"><div class="empty-state">לא נרשמו ארוחות עדיין</div></div>
+          <div class="food-tabs">
+            <button class="food-tab active" id="ftab-today" onclick="switchFoodTab('today')">היום</button>
+            <button class="food-tab" id="ftab-favorites" onclick="switchFoodTab('favorites')">⭐ מועדפים</button>
+          </div>
+          <div id="food-tab-today">
+            <div class="section-header"><span>ארוחות היום</span></div>
+            <div id="food-meals-list"><div class="empty-state">לא נרשמו ארוחות עדיין</div></div>
+          </div>
+          <div id="food-tab-favorites" class="hidden">
+            <div class="section-header"><span>ארוחות מועדפות</span><small style="color:var(--text-3);font-size:11px">לחץ + להוספה מהירה</small></div>
+            <div id="favorites-list"><div class="empty-state">אין עדיין מועדפים</div></div>
+          </div>
         </div>
       </section>
 
@@ -327,6 +338,16 @@
           <div id="weekly-summary-loading" class="ai-loading hidden"><div class="spinner"></div><span>Claude מכין סיכום...</span></div>
           <div class="ai-bubble" id="weekly-summary">לחץ על הכפתור לקבלת סיכום שבועי אישי</div>
           <button class="btn-primary" onclick="getWeeklySummary()" style="margin-top:8px">קבל סיכום שבועי ↗</button>
+          <div class="section-header"><span>הקוד שלי לקבוצה</span></div>
+          <div class="share-card" style="margin-bottom:10px">
+            <div style="font-size:24px;font-weight:700;color:#534AB7;letter-spacing:4px" id="my-group-code">------</div>
+            <button class="btn-small" onclick="shareApp()">שתף</button>
+          </div>
+          <div class="section-header"><span>הצטרף לקבוצה</span></div>
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <input type="text" id="join-code-input" placeholder="הכנס קוד חבר..." style="flex:1;text-transform:uppercase">
+            <button class="btn-small" onclick="joinGroup()">הצטרף</button>
+          </div>
           <div class="section-header"><span>שתף עם חברים</span></div>
           <div class="share-card">
             <div class="share-url" id="share-url">fitme.app</div>
@@ -360,6 +381,33 @@
         </div>
       </section>
 
+
+      <!-- PROFILE -->
+      <section class="screen" id="screen-profile">
+        <div class="topbar"><div class="topbar-title">הפרופיל שלי</div></div>
+        <div class="scroll-content">
+          <div class="profile-hero">
+            <div class="profile-big-avatar" id="prof-avatar-big"></div>
+            <div class="prof-name" id="prof-name"></div>
+            <div class="prof-goal" id="prof-goal"></div>
+          </div>
+          <div class="section-header"><span>סטטיסטיקות</span></div>
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-val" id="stat-burned">0</div><div class="stat-label">קל' נשרפו</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-weight-change">--</div><div class="stat-label">שינוי משקל</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-workouts">0</div><div class="stat-label">אימונים</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-streak-best">0</div><div class="stat-label">סטריק שיא</div></div>
+          </div>
+          <div class="section-header"><span>גרף משקל</span></div>
+          <div id="weight-chart" style="margin-bottom:16px"></div>
+          <div class="section-header"><span>הישגים</span></div>
+          <div id="achievements-list" class="achievements-grid"></div>
+          <div class="section-header"><span>מכתב שבועי מ-Claude</span></div>
+          <div class="ai-bubble" id="weekly-letter">לחץ לקבלת מכתב אישי מ-Claude</div>
+          <button class="btn-primary" onclick="getWeeklyLetter()" style="margin-top:8px">קבל מכתב שבועי ✉️</button>
+        </div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="screen" id="screen-settings">
         <div class="topbar"><div class="topbar-title">הגדרות</div></div>
@@ -381,6 +429,8 @@
           </div>
           <div class="section-header"><span>המאכלים האהובים שלי</span></div>
           <div class="food-tags-wrap" id="fav-foods-display"></div>
+          <div class="section-header"><span>קוד הקבוצה שלי</span></div>
+          <div class="settings-row"><span>קוד לשיתוף עם חברים</span><span class="settings-val" id="settings-group-code" style="letter-spacing:2px;font-size:16px">--</span></div>
           <div class="section-header"><span>מפתח Claude API</span></div>
           <div class="ob-form">
             <input type="password" id="api-key-input" placeholder="sk-ant-...">
@@ -413,6 +463,10 @@
       <button class="nav-btn" id="nav-plan" onclick="goToScreen('plan')">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         תוכנית
+      </button>
+      <button class="nav-btn" id="nav-profile" onclick="goToScreen('profile')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        פרופיל
       </button>
       <button class="nav-btn" id="nav-settings" onclick="goToScreen('settings')">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
