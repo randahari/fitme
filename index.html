@@ -231,6 +231,7 @@
           </div>
           <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" onchange="analyzePhoto(this)">
           <div id="food-loading" class="ai-loading hidden"><div class="spinner"></div><span>Claude מנתח...</span></div>
+          <div id="food-questionnaire" class="hidden"></div>
           <div id="food-result" class="food-result hidden">
             <div class="result-header">
               <div class="result-name" id="result-name"></div>
@@ -242,6 +243,7 @@
               <div class="result-macro amber"><div class="rm-label">פחמימות</div><div class="rm-val" id="r-carbs">0g</div></div>
               <div class="result-macro red"><div class="rm-label">שומן</div><div class="rm-val" id="r-fat">0g</div></div>
             </div>
+            <div class="result-note hidden" id="result-note"></div>
             <div class="result-actions">
               <button class="btn-primary" onclick="addMeal()">הוסף לרשימה ✓</button>
               <button class="btn-ghost" onclick="cancelFood()">בטל</button>

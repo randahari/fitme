@@ -335,21 +335,152 @@ function goToScreen(name) {
   if (name === 'group') renderGroup();
 }
 
+// ── FOOD SMART QUESTIONNAIRE ──
+let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
+
 async function analyzeFood() {
   const input = document.getElementById('food-input').value.trim();
   if (!input) return;
-  await callFoodAI({ type: 'text', content: input });
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('נא להוסיף מפתח API בהגדרות'); goToScreen('settings'); return; }
+
+  foodSession = { originalInput: input, answers: [], questions: [], currentQ: 0 };
+
+  document.getElementById('food-loading').classList.remove('hidden');
+  document.getElementById('food-result').classList.add('hidden');
+  document.getElementById('food-questionnaire').classList.add('hidden');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: `המשתמש רשם את המאכל: "${input}".
+צור שאלון קצר כדי לחשב קלוריות מדויק. החזר JSON בלבד בפורמט:
+{
+  "questions": [
+    { "q": "שאלה בעברית", "options": ["אפשרות 1", "אפשרות 2", "אפשרות 3"] },
+    { "q": "שאלה שנייה", "options": ["אפשרות א", "אפשרות ב"] }
+  ]
+}
+כללים:
+- עד 3 שאלות מקסימום
+- כל שאלה עם 3-5 אפשרויות
+- שאל על: סוג/חלק (אם רלוונטי), שיטת בישול, כמות/גודל מנה
+- תמיד כלול אפשרות "אחר" בשאלה על סוג
+- אל תוסיף טקסט מחוץ ל-JSON` }]
+      })
+    });
+    const data = await res.json();
+    const parsed = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    foodSession.questions = parsed.questions;
+    showNextQuestion();
+  } catch(e) {
+    alert('שגיאה. בדוק את מפתח ה-API.');
+  } finally {
+    document.getElementById('food-loading').classList.add('hidden');
+  }
+}
+
+function showNextQuestion() {
+  const q = foodSession.questions[foodSession.currentQ];
+  if (!q) { calculateFoodResult(); return; }
+
+  const total = foodSession.questions.length;
+  const current = foodSession.currentQ + 1;
+
+  const dots = Array.from({length: total}, (_, i) => {
+    const cls = i < foodSession.currentQ ? 'done' : i === foodSession.currentQ ? 'active' : '';
+    return `<div class="q-dot ${cls}"></div>`;
+  }).join('');
+
+  const opts = q.options.map(opt =>
+    `<button class="q-opt-btn" onclick="answerQuestion('${opt.replace(/'/g,"\\'")}')"><span class="q-opt-text">${opt}</span><span class="q-opt-arrow">›</span></button>`
+  ).join('');
+
+  document.getElementById('food-questionnaire').innerHTML = `
+    <div class="q-progress">${dots}<span class="q-counter">${current}/${total}</span></div>
+    <div class="q-title">${q.q}</div>
+    <div class="q-opts">${opts}</div>
+    <button class="q-skip" onclick="answerQuestion('לא ידוע')">דלג על שאלה זו</button>
+  `;
+  document.getElementById('food-questionnaire').classList.remove('hidden');
+}
+
+function answerQuestion(answer) {
+  const q = foodSession.questions[foodSession.currentQ];
+  foodSession.answers.push({ q: q.q, a: answer });
+  foodSession.currentQ++;
+
+  document.querySelectorAll('.q-opt-btn').forEach(b => b.style.opacity = '0.5');
+
+  setTimeout(() => showNextQuestion(), 200);
+}
+
+async function calculateFoodResult() {
+  const apiKey = getApiKey();
+  document.getElementById('food-questionnaire').classList.add('hidden');
+  document.getElementById('food-loading').classList.remove('hidden');
+
+  const answersText = foodSession.answers.map(a => `${a.q}: ${a.a}`).join(', ');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: `חשב קלוריות מדויק עבור:
+מאכל: "${foodSession.originalInput}"
+פרטים: ${answersText}
+
+החזר JSON בלבד:
+{"name":"שם מלא בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high","note":"הערה קצרה על מה נכלל בחישוב"}
+אל תוסיף טקסט נוסף.` }]
+      })
+    });
+    const data = await res.json();
+    const food = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    showFoodResult(food);
+  } catch(e) {
+    alert('שגיאה בחישוב. נסה שוב.');
+  } finally {
+    document.getElementById('food-loading').classList.add('hidden');
+  }
 }
 
 function startCamera() { document.getElementById('camera-input').click(); }
 
 async function analyzePhoto(input) {
   const file = input.files[0];
-  if (!file) return;
+  if (!input) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('נא להוסיף מפתח API בהגדרות'); goToScreen('settings'); return; }
+
+  document.getElementById('food-loading').classList.remove('hidden');
   const reader = new FileReader();
   reader.onload = async (e) => {
     const b64 = e.target.result.split(',')[1];
-    await callFoodAI({ type: 'image', b64, mediaType: file.type });
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6', max_tokens: 400,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },
+            { type: 'text', text: 'זהה את המאכל בתמונה והחזר JSON בלבד: {"name":"שם בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high","note":"מה כלול"}' }
+          ]}]
+        })
+      });
+      const data = await res.json();
+      const food = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+      showFoodResult(food);
+    } catch(e) { alert('שגיאה בזיהוי התמונה.'); }
+    finally { document.getElementById('food-loading').classList.add('hidden'); }
   };
   reader.readAsDataURL(file);
 }
@@ -358,57 +489,20 @@ async function startBarcode() {
   alert('סריקת ברקוד זמינה בטלפון לאחר העלאה ל-GitHub Pages.');
 }
 
-async function callFoodAI({ type, content, b64, mediaType }) {
-  const apiKey = getApiKey();
-  if (!apiKey) { alert('נא להוסיף מפתח API בהגדרות'); goToScreen('settings'); return; }
-
-  document.getElementById('food-loading').classList.remove('hidden');
-  document.getElementById('food-result').classList.add('hidden');
-
-  const clarifyPrompt = type === 'image'
-    ? [
-        { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
-        { type: 'text', text: 'זהה את המאכל בתמונה. אם חסרים פרטים חשובים לחישוב קלוריות מדויק, שאל שאלה קצרה אחת בעברית. אחרת החזר JSON בלבד: {name, kcal, protein, carbs, fat, confidence:"high"/"mid"/"low"}' }
-      ]
-    : `המשתמש רשם: "${content}". אם חסרים פרטים חשובים (גודל מנה, שיטת בישול, תוספות, כמות), שאל שאלה קצרה אחת בעברית. אחרת החזר JSON בלבד: {"name":"שם בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high"}. אל תוסיף טקסט נוסף מחוץ ל-JSON.`;
-
-  try {
-    const res1 = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 200, messages: [{ role: 'user', content: clarifyPrompt }] })
-    });
-    const data1 = await res1.json();
-    const reply = data1.content[0].text.trim();
-    const isJson = reply.startsWith('{') || reply.includes('"kcal"');
-
-    if (!isJson) {
-      document.getElementById('food-loading').classList.add('hidden');
-      const answer = prompt(reply);
-      if (!answer) return;
-      document.getElementById('food-loading').classList.remove('hidden');
-
-      const fullContent = type === 'image'
-        ? [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } }, { type: 'text', text: `שאלת: "${reply}". תשובה: "${answer}". החזר JSON בלבד: {"name":"שם בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high"}` }]
-        : `מאכל: "${content}". שאלת: "${reply}". תשובה: "${answer}". החזר JSON בלבד: {"name":"שם בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high"}`;
-
-      const res2 = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: fullContent }] })
-      });
-      const data2 = await res2.json();
-      const food = JSON.parse(data2.content[0].text.replace(/```json|```/g,'').trim());
-      showFoodResult(food);
-    } else {
-      const food = JSON.parse(reply.replace(/```json|```/g,'').trim());
-      showFoodResult(food);
-    }
-  } catch(e) {
-    alert('שגיאה בניתוח המאכל. בדוק את מפתח ה-API.');
-  } finally {
-    document.getElementById('food-loading').classList.add('hidden');
-  }
+function showFoodResult(food) {
+  pendingFood = food;
+  document.getElementById('result-name').textContent = food.name;
+  document.getElementById('r-kcal').textContent = food.kcal;
+  document.getElementById('r-protein').textContent = Math.round(food.protein) + 'g';
+  document.getElementById('r-carbs').textContent = Math.round(food.carbs) + 'g';
+  document.getElementById('r-fat').textContent = Math.round(food.fat) + 'g';
+  const cb = document.getElementById('confidence-badge');
+  cb.className = 'confidence-badge ' + (food.confidence || 'high');
+  cb.textContent = food.confidence === 'high' ? 'ביטחון גבוה ✓' : food.confidence === 'mid' ? 'ביטחון בינוני ⚠' : 'ביטחון נמוך ✕';
+  const noteEl = document.getElementById('result-note');
+  if (noteEl && food.note) { noteEl.textContent = '💡 ' + food.note; noteEl.classList.remove('hidden'); }
+  else if (noteEl) { noteEl.classList.add('hidden'); }
+  document.getElementById('food-result').classList.remove('hidden');
 }
 
 function showFoodResult(food) {
