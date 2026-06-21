@@ -1,10 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="he" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<script>
-  window.location.replace('https://randahari.github.io/fitme/');
-</script>
+  <meta charset="UTF-8">
+  <script>
+    // שומר את הנתיב המקורי ומעביר לאפליקציה
+    const path = window.location.pathname;
+    const query = window.location.search;
+    const hash = window.location.hash;
+    const base = '/fitme/';
+    
+    // אם כבר בתוך fitme אל תעשה לופ
+    if (path.startsWith(base)) {
+      sessionStorage.setItem('fitme_redirect', path + query + hash);
+    }
+    window.location.replace(base);
+  </script>
 </head>
 <body></body>
 </html>
