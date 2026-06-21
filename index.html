@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FitMe">
-  <meta name="theme-color" content="#1A1A18">
+  <meta name="theme-color" content="#FAF7F2">
   <link rel="apple-touch-icon" href="/fitme/assets/icon-192.png">
-  <link rel="apple-touch-startup-image" href="/fitme/assets/icon-512.png">
   <title>FitMe</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/app.css">
-  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -33,9 +32,9 @@
     </div>
     <button class="btn-google" onclick="signInWithGoogle()">
       <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-      התחבר עם Google
+      המשך עם Google
     </button>
-    <p class="login-sub">ההתחברות מאובטחת. הנתונים שלך פרטיים.</p>
+    <p class="login-sub">הנתונים שלך מוצפנים ופרטיים</p>
   </div>
 
   <!-- ONBOARDING -->
@@ -47,7 +46,7 @@
         <p>כמה שאלות קצרות ונתחיל</p>
       </div>
       <div class="ob-form">
-        <label>השם שלך</label>
+        <label>שם</label>
         <input type="text" id="ob-name" placeholder="למשל: רן" autocomplete="off">
         <label>גיל</label>
         <input type="number" id="ob-age" placeholder="30" min="10" max="99">
@@ -71,10 +70,10 @@
         <input type="number" id="ob-weight" placeholder="80" min="30" max="250">
         <label>גובה (ס"מ)</label>
         <input type="number" id="ob-height" placeholder="178" min="100" max="230">
-        <label>כמה ימי אימון בשבוע?</label>
+        <label>ימי אימון בשבוע</label>
         <div class="seg-ctrl">
-          <button class="seg-btn active" data-val="2" onclick="selectSeg(this,'days')">2-3</button>
-          <button class="seg-btn" data-val="4" onclick="selectSeg(this,'days')">4-5</button>
+          <button class="seg-btn active" data-val="2" onclick="selectSeg(this,'days')">2–3</button>
+          <button class="seg-btn" data-val="4" onclick="selectSeg(this,'days')">4–5</button>
           <button class="seg-btn" data-val="6" onclick="selectSeg(this,'days')">6+</button>
         </div>
       </div>
@@ -91,24 +90,15 @@
       <div class="goal-cards">
         <div class="goal-card" data-goal="cut" onclick="selectGoal(this)">
           <div class="goal-icon">🔥</div>
-          <div>
-            <div class="goal-title">חיטוב</div>
-            <div class="goal-sub">ירידה בשומן, שמירת שריר</div>
-          </div>
+          <div><div class="goal-title">חיטוב</div><div class="goal-sub">ירידה בשומן, שמירת שריר</div></div>
         </div>
         <div class="goal-card" data-goal="bulk" onclick="selectGoal(this)">
           <div class="goal-icon">💪</div>
-          <div>
-            <div class="goal-title">מסה</div>
-            <div class="goal-sub">בניית שריר ועלייה במשקל</div>
-          </div>
+          <div><div class="goal-title">מסה</div><div class="goal-sub">בניית שריר ועלייה במשקל</div></div>
         </div>
         <div class="goal-card" data-goal="maintain" onclick="selectGoal(this)">
           <div class="goal-icon">⚖️</div>
-          <div>
-            <div class="goal-title">שימור</div>
-            <div class="goal-sub">שמירה על המשקל הנוכחי</div>
-          </div>
+          <div><div class="goal-title">שימור</div><div class="goal-sub">שמירה על המשקל הנוכחי</div></div>
         </div>
       </div>
       <button class="btn-primary" onclick="obNext(3)">המשך</button>
@@ -146,7 +136,7 @@
           <button class="btn-small" onclick="addCustomFood()">הוסף</button>
         </div>
       </div>
-      <button class="btn-primary" onclick="finishOnboarding()">בואו נתחיל! 🚀</button>
+      <button class="btn-primary" onclick="finishOnboarding()">בואו נתחיל 🚀</button>
       <button class="btn-ghost" onclick="obBack(4)">חזור</button>
     </div>
   </div>
@@ -163,59 +153,82 @@
             <div class="topbar-title" id="today-date"></div>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
-            <div class="streak-badge"><span>🔥</span><span id="streak-num">0</span></div>
+            <div class="streak-badge"><span id="streak-num">0</span> ימים</div>
             <button class="icon-btn" onclick="toggleDark()" id="dark-toggle-btn">🌙</button>
           </div>
         </div>
         <div class="scroll-content">
-          <div class="kcal-card">
-            <div class="kcal-top">
-              <div>
-                <div class="kcal-label">קלוריות היום</div>
-                <div class="kcal-val"><span id="kcal-consumed">0</span><span class="kcal-unit"> קל'</span></div>
+
+          <!-- RING CARD -->
+          <div class="home-top-card">
+            <div class="ring-wrap">
+              <svg width="110" height="110" viewBox="0 0 110 110">
+                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--bg-3)" stroke-width="10"/>
+                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--gold)" stroke-width="10"
+                  stroke-dasharray="289" stroke-linecap="round" transform="rotate(-90 55 55)"
+                  id="ring-arc" style="transition:stroke-dasharray 0.5s ease"/>
+              </svg>
+              <div class="ring-center">
+                <div class="ring-pct" id="ring-pct">0%</div>
+                <div class="ring-pct-lbl">יעד</div>
               </div>
-              <div style="text-align:left">
-                <div class="kcal-label">יעד</div>
-                <div class="kcal-target" id="kcal-target">--</div>
+            </div>
+            <div class="ring-side">
+              <div class="ring-kcal"><span id="kcal-consumed">0</span></div>
+              <div class="ring-kcal-of">מתוך <span id="kcal-target">--</span> קל׳</div>
+              <div class="ring-kcal-rem" id="kcal-remain">טוען...</div>
+              <div class="ring-macros">
+                <div class="ring-mac">
+                  <div class="ring-mac-row"><span class="ring-mac-lbl">חלבון</span><span class="ring-mac-val" id="m-protein">0g</span></div>
+                  <div class="ring-mac-bar"><div class="ring-mac-fill" id="bar-protein" style="width:0%"></div></div>
+                </div>
+                <div class="ring-mac">
+                  <div class="ring-mac-row"><span class="ring-mac-lbl">פחמימות</span><span class="ring-mac-val" id="m-carbs">0g</span></div>
+                  <div class="ring-mac-bar"><div class="ring-mac-fill" id="bar-carbs" style="width:0%;background:var(--gold-2)"></div></div>
+                </div>
+                <div class="ring-mac">
+                  <div class="ring-mac-row"><span class="ring-mac-lbl">שומן</span><span class="ring-mac-val" id="m-fat">0g</span></div>
+                  <div class="ring-mac-bar"><div class="ring-mac-fill" id="bar-fat" style="width:0%;background:var(--gold-3)"></div></div>
+                </div>
               </div>
             </div>
-            <div class="progress-bar"><div class="progress-fill" id="kcal-bar" style="width:0%"></div></div>
-            <div class="kcal-remain" id="kcal-remain">טוען...</div>
           </div>
-          <div class="macro-row">
-            <div class="macro-pill purple"><div class="macro-label">חלבון</div><div class="macro-val" id="m-protein">0g</div></div>
-            <div class="macro-pill green"><div class="macro-label">פחמימות</div><div class="macro-val" id="m-carbs">0g</div></div>
-            <div class="macro-pill amber"><div class="macro-label">שומן</div><div class="macro-val" id="m-fat">0g</div></div>
-          </div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-icon">👟</div>
-              <div class="metric-info"><div class="metric-label">צעדים</div><div class="metric-val" id="steps-val">0</div><div class="metric-sub">מתוך <span id="steps-goal">10,000</span></div></div>
+
+          <!-- STATS ROW -->
+          <div class="stats-row">
+            <div class="stat-item">
+              <div class="stat-v" id="steps-val">0</div>
+              <div class="stat-l">צעדים</div>
             </div>
-            <div class="metric-card">
-              <div class="metric-icon">🔥</div>
-              <div class="metric-info"><div class="metric-label">נשרף</div><div class="metric-val" id="burned-val">0</div><div class="metric-sub">קל' באימון</div></div>
+            <div class="stat-item">
+              <div class="stat-v" id="burned-val">0</div>
+              <div class="stat-l">נשרף</div>
             </div>
-            <div class="metric-card">
-              <div class="metric-icon">⚖️</div>
-              <div class="metric-info"><div class="metric-label">משקל</div><div class="metric-val" id="weight-val">--</div><div class="metric-sub">ק"ג</div></div>
-            </div>
-            <div class="metric-card" onclick="goToScreen('food')" style="cursor:pointer">
-              <div class="metric-icon">➕</div>
-              <div class="metric-info"><div class="metric-label">הוסף</div><div class="metric-val" style="font-size:14px">אוכל</div></div>
+            <div class="stat-item">
+              <div class="stat-v" id="weight-val">--</div>
+              <div class="stat-l">משקל</div>
             </div>
           </div>
-          <div class="section-header"><span>מים 💧</span><span id="water-text">0 / 8</span></div>
+
+          <!-- WATER -->
+          <div class="section-header"><span>מים</span><span id="water-text" style="font-size:12px;color:var(--gold)">0 / 8</span></div>
           <div class="water-row" id="water-cups"></div>
+
+          <!-- WEEK -->
           <div class="section-header"><span>שבוע זה</span></div>
           <div class="week-chart" id="week-chart"></div>
+
+          <!-- MEALS -->
           <div class="section-header"><span>ארוחות היום</span><button class="link-btn" onclick="goToScreen('food')">הוסף +</button></div>
           <div id="meals-list"><div class="empty-state">לא נרשמו ארוחות עדיין</div></div>
+
+          <!-- WEIGHT -->
           <div class="section-header"><span>משקל גוף</span></div>
-          <div style="display:flex;gap:8px;margin-bottom:16px">
+          <div style="display:flex;gap:8px;margin-bottom:24px">
             <input type="number" id="weight-input" placeholder='משקל היום בק"ג' step="0.1" style="flex:1">
             <button class="btn-small" onclick="logWeight()">שמור</button>
           </div>
+
         </div>
       </section>
 
@@ -225,8 +238,8 @@
         <div class="scroll-content">
           <div class="input-group">
             <input type="text" id="food-input" placeholder="למשל: חביתה עם שתי ביצים..." autocomplete="off">
-            <button class="send-btn" onclick="analyzeFood()" aria-label="שלח">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <button class="send-btn" onclick="analyzeFood()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
           <div class="method-row">
@@ -234,7 +247,7 @@
             <button class="method-btn" onclick="startBarcode()">📊 סרוק ברקוד</button>
           </div>
           <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" onchange="analyzePhoto(this)">
-          <div id="food-loading" class="ai-loading hidden"><div class="spinner"></div><span>Claude מנתח...</span></div>
+          <div id="food-loading" class="ai-loading hidden"><div class="spinner"></div><span>מנתח...</span></div>
           <div id="food-questionnaire" class="hidden"></div>
           <div id="food-result" class="food-result hidden">
             <div class="result-header">
@@ -242,28 +255,26 @@
               <div class="confidence-badge" id="confidence-badge"></div>
             </div>
             <div class="result-macros">
-              <div class="result-macro purple"><div class="rm-label">קלוריות</div><div class="rm-val" id="r-kcal">0</div></div>
-              <div class="result-macro green"><div class="rm-label">חלבון</div><div class="rm-val" id="r-protein">0g</div></div>
-              <div class="result-macro amber"><div class="rm-label">פחמימות</div><div class="rm-val" id="r-carbs">0g</div></div>
-              <div class="result-macro red"><div class="rm-label">שומן</div><div class="rm-val" id="r-fat">0g</div></div>
+              <div class="result-macro"><div class="rm-label">קלוריות</div><div class="rm-val" id="r-kcal">0</div></div>
+              <div class="result-macro"><div class="rm-label">חלבון</div><div class="rm-val" id="r-protein">0g</div></div>
+              <div class="result-macro"><div class="rm-label">פחמימות</div><div class="rm-val" id="r-carbs">0g</div></div>
+              <div class="result-macro"><div class="rm-label">שומן</div><div class="rm-val" id="r-fat">0g</div></div>
             </div>
             <div class="result-note hidden" id="result-note"></div>
             <div class="result-actions">
-              <button class="btn-primary" onclick="addMeal()">הוסף לרשימה ✓</button>
+              <button class="btn-primary" onclick="addMeal()">הוסף ✓</button>
               <button class="btn-ghost" onclick="addMealAndFavorite()">⭐ שמור כמועדף</button>
               <button class="btn-ghost" onclick="cancelFood()">בטל</button>
             </div>
           </div>
           <div class="food-tabs">
             <button class="food-tab active" id="ftab-today" onclick="switchFoodTab('today')">היום</button>
-            <button class="food-tab" id="ftab-favorites" onclick="switchFoodTab('favorites')">⭐ מועדפים</button>
+            <button class="food-tab" id="ftab-favorites" onclick="switchFoodTab('favorites')">מועדפים</button>
           </div>
           <div id="food-tab-today">
-            <div class="section-header"><span>ארוחות היום</span></div>
             <div id="food-meals-list"><div class="empty-state">לא נרשמו ארוחות עדיין</div></div>
           </div>
           <div id="food-tab-favorites" class="hidden">
-            <div class="section-header"><span>ארוחות מועדפות</span><small style="color:var(--text-3);font-size:11px">לחץ + להוספה מהירה</small></div>
             <div id="favorites-list"><div class="empty-state">אין עדיין מועדפים</div></div>
           </div>
         </div>
@@ -276,15 +287,15 @@
           <div class="section-header"><span>סוג אימון</span></div>
           <div class="workout-opts">
             <div class="workout-opt" id="wo-cardio" onclick="selectWorkout('cardio')">
-              <div class="wo-icon purple">🏃</div>
+              <div class="wo-icon">🏃</div>
               <div><div class="wo-name">ריצה / הליכה</div><div class="wo-sub">קרדיו</div></div>
             </div>
             <div class="workout-opt" id="wo-strength" onclick="selectWorkout('strength')">
-              <div class="wo-icon teal">🏋️</div>
+              <div class="wo-icon">🏋️</div>
               <div><div class="wo-name">אימון כוח</div><div class="wo-sub">חדר כושר</div></div>
             </div>
             <div class="workout-opt" id="wo-calisthenics" onclick="selectWorkout('calisthenics')">
-              <div class="wo-icon coral">🤸</div>
+              <div class="wo-icon">🤸</div>
               <div><div class="wo-name">קליסטניקס</div><div class="wo-sub">משקל גוף</div></div>
             </div>
           </div>
@@ -309,7 +320,7 @@
           <div class="section-header"><span>משך האימון</span></div>
           <div class="slider-row">
             <input type="range" min="10" max="120" value="45" step="5" id="duration-slider" oninput="updateWorkout()">
-            <span class="slider-val" id="duration-val">45 דק'</span>
+            <span class="slider-val" id="duration-val">45 דק׳</span>
           </div>
           <div class="burn-card">
             <div class="burn-label">שריפה משוערת</div>
@@ -322,69 +333,9 @@
             <button class="btn-small" onclick="logSteps()">שמור</button>
           </div>
           <button class="btn-primary" id="save-workout-btn" onclick="saveWorkout()" disabled>שמור אימון ✓</button>
+          <div style="margin-bottom:24px"></div>
         </div>
       </section>
-
-      <!-- GROUP -->
-      <section class="screen" id="screen-group">
-        <div class="topbar">
-          <div class="topbar-title">הקבוצה שלי</div>
-          <button class="icon-btn" onclick="shareApp()">📤</button>
-        </div>
-        <div class="scroll-content">
-          <div class="group-summary">
-            <div class="gs-card purple"><div class="gs-val" id="gs-met">--</div><div class="gs-label">עמדו ביעד</div></div>
-            <div class="gs-card teal"><div class="gs-val" id="gs-streak">--</div><div class="gs-label">סטריק ממוצע</div></div>
-          </div>
-          <div class="section-header"><span>לוח תוצאות</span></div>
-          <div id="leaderboard"><div class="empty-state">טוען נתוני קבוצה...</div></div>
-          <div class="section-header"><span>סיכום שבועי של Claude</span></div>
-          <div id="weekly-summary-loading" class="ai-loading hidden"><div class="spinner"></div><span>Claude מכין סיכום...</span></div>
-          <div class="ai-bubble" id="weekly-summary">לחץ על הכפתור לקבלת סיכום שבועי אישי</div>
-          <button class="btn-primary" onclick="getWeeklySummary()" style="margin-top:8px">קבל סיכום שבועי ↗</button>
-          <div class="section-header"><span>הקוד שלי לקבוצה</span></div>
-          <div class="share-card" style="margin-bottom:10px">
-            <div style="font-size:24px;font-weight:700;color:#534AB7;letter-spacing:4px" id="my-group-code">------</div>
-            <button class="btn-small" onclick="shareApp()">שתף</button>
-          </div>
-          <div class="section-header"><span>הצטרף לקבוצה</span></div>
-          <div style="display:flex;gap:8px;margin-bottom:16px">
-            <input type="text" id="join-code-input" placeholder="הכנס קוד חבר..." style="flex:1;text-transform:uppercase">
-            <button class="btn-small" onclick="joinGroup()">הצטרף</button>
-          </div>
-          <div class="section-header"><span>שתף עם חברים</span></div>
-          <div class="share-card">
-            <div class="share-url" id="share-url">fitme.app</div>
-            <button class="btn-small" onclick="shareApp()">שתף</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- PLAN -->
-      <section class="screen" id="screen-plan">
-        <div class="topbar"><div class="topbar-title">התוכנית שלי</div></div>
-        <div class="scroll-content">
-          <div class="goal-banner" id="goal-banner"></div>
-          <div class="plan-tabs">
-            <button class="plan-tab active" id="tab-nutrition" onclick="switchPlanTab('nutrition')">תזונה</button>
-            <button class="plan-tab" id="tab-workout" onclick="switchPlanTab('workout')">אימונים</button>
-          </div>
-          <div id="plan-loading" class="ai-loading hidden"><div class="spinner"></div><span>Claude בונה תוכנית...</span></div>
-          <div id="plan-nutrition">
-            <div class="section-header"><span>יעדים יומיים</span></div>
-            <div class="plan-targets" id="plan-targets"></div>
-            <div class="section-header"><span>תפריט מוצע לשבוע</span></div>
-            <div id="weekly-menu"><div class="empty-state">לחץ על "רענן תוכנית" לקבלת תפריט שבועי</div></div>
-            <button class="btn-primary" onclick="generatePlan()" style="margin-top:8px">רענן תוכנית ↗</button>
-          </div>
-          <div id="plan-workout-tab" class="hidden">
-            <div class="section-header"><span>תוכנית אימונים שבועית</span></div>
-            <div id="workout-plan"><div class="empty-state">לחץ על "רענן תוכנית" לקבלת תוכנית אימונים</div></div>
-            <button class="btn-primary" onclick="generateWorkoutPlan()" style="margin-top:8px">רענן תוכנית ↗</button>
-          </div>
-        </div>
-      </section>
-
 
       <!-- PROFILE -->
       <section class="screen" id="screen-profile">
@@ -399,7 +350,7 @@
           <div class="health-card" id="health-data"></div>
           <div class="section-header"><span>סטטיסטיקות</span></div>
           <div class="stats-grid">
-            <div class="stat-card"><div class="stat-val" id="stat-burned">0</div><div class="stat-label">קל' נשרפו</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-burned">0</div><div class="stat-label">קל׳ נשרפו</div></div>
             <div class="stat-card"><div class="stat-val" id="stat-workouts">0</div><div class="stat-label">אימונים</div></div>
             <div class="stat-card"><div class="stat-val" id="stat-streak-cur">0</div><div class="stat-label">סטריק נוכחי</div></div>
             <div class="stat-card"><div class="stat-val" id="stat-streak-best">0</div><div class="stat-label">סטריק שיא</div></div>
@@ -408,7 +359,8 @@
           <div id="achievements-list" class="achievements-grid"></div>
           <div class="section-header"><span>מכתב שבועי מ-Claude</span></div>
           <div class="ai-bubble" id="weekly-letter">לחץ לקבלת מכתב אישי מ-Claude</div>
-          <button class="btn-primary" onclick="getWeeklyLetter()" style="margin-top:8px">קבל מכתב שבועי ✉️</button>
+          <button class="btn-primary" onclick="getWeeklyLetter()" style="margin-top:8px">קבל מכתב שבועי</button>
+          <div style="margin-bottom:24px"></div>
         </div>
       </section>
 
@@ -434,47 +386,45 @@
           <div class="section-header"><span>המאכלים האהובים שלי</span></div>
           <div class="food-tags-wrap" id="fav-foods-display"></div>
           <div class="section-header"><span>קוד הקבוצה שלי</span></div>
-          <div class="settings-row"><span>קוד לשיתוף עם חברים</span><span class="settings-val" id="settings-group-code" style="letter-spacing:2px;font-size:16px">--</span></div>
+          <div class="settings-row"><span>שתף עם חברים</span><span class="settings-val" id="settings-group-code">--</span></div>
           <div class="section-header"><span>מפתח Claude API</span></div>
           <div class="ob-form">
             <input type="password" id="api-key-input" placeholder="sk-ant-...">
             <button class="btn-small" onclick="saveApiKey()" style="margin-top:8px;width:100%">שמור מפתח</button>
           </div>
-          <button class="btn-danger" onclick="signOut()" style="margin-top:16px">התנתק</button>
-          <button class="btn-danger" onclick="resetApp()" style="margin-top:8px">איפוס נתונים</button>
+          <div class="section-header"><span>תוכנית תזונה</span></div>
+          <div id="plan-targets-settings" style="margin-bottom:8px"></div>
+          <button class="btn-primary" onclick="generatePlanFromSettings()">צור תפריט שבועי</button>
+          <div id="weekly-menu-settings" style="margin-top:10px"></div>
+
+          <button class="btn-danger" onclick="signOut()" style="margin-top:20px">התנתק</button>
+          <button class="btn-danger" onclick="resetApp()" style="margin-top:8px;margin-bottom:32px">איפוס נתונים</button>
         </div>
       </section>
 
     </main>
 
+    <!-- NAVBAR — 4 buttons only -->
     <nav class="navbar">
       <button class="nav-btn active" id="nav-home" onclick="goToScreen('home')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <div class="nav-btn-line"></div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         בית
       </button>
       <button class="nav-btn" id="nav-food" onclick="goToScreen('food')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        <div class="nav-btn-line"></div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
         תזונה
       </button>
       <button class="nav-btn" id="nav-workout" onclick="goToScreen('workout')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M2 12h4M18 12h4M12 2v4M12 18v4"/></svg>
+        <div class="nav-btn-line"></div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M2 12h4M18 12h4M12 2v4M12 18v4"/></svg>
         כושר
       </button>
-      <button class="nav-btn" id="nav-group" onclick="goToScreen('group')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        קבוצה
-      </button>
-      <button class="nav-btn" id="nav-plan" onclick="goToScreen('plan')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        תוכנית
-      </button>
       <button class="nav-btn" id="nav-profile" onclick="goToScreen('profile')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <div class="nav-btn-line"></div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         פרופיל
-      </button>
-      <button class="nav-btn" id="nav-settings" onclick="goToScreen('settings')">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        הגדרות
       </button>
     </nav>
   </div>
@@ -486,13 +436,11 @@
       <button onclick="closeBarcode()" class="barcode-close">✕</button>
     </div>
     <div id="barcode-video" class="barcode-video"></div>
-    <div class="barcode-frame">
-      <div class="barcode-line"></div>
-    </div>
+    <div class="barcode-frame"><div class="barcode-line"></div></div>
     <div id="barcode-status" class="barcode-status">מאתחל מצלמה...</div>
   </div>
 
-  <!-- Firebase SDKs -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>

@@ -400,13 +400,13 @@ function goToScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
-  document.getElementById('nav-'+name).classList.add('active');
+  
   if (name==='home') renderHome();
   if (name==='food') { renderFoodMeals(); renderFavoritesList(); }
-  if (name==='plan') renderPlan();
-  if (name==='group') renderGroup();
+  
+  
   if (name==='profile') renderProfile();
-  if (name==='settings') renderSettings();
+  
 }
 
 async function analyzeFood() {
@@ -1106,3 +1106,96 @@ function switchFoodTab(tab) {
   document.getElementById('food-tab-today').classList.toggle('hidden', tab !== 'today');
   document.getElementById('food-tab-favorites').classList.toggle('hidden', tab !== 'favorites');
 }
+
+// ── OVERRIDE: goToScreen (4-tab version) ──
+goToScreen = function(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const screen = document.getElementById('screen-'+name);
+  if (screen) screen.classList.add('active');
+  const nav = document.getElementById('nav-'+name);
+  if (nav) nav.classList.add('active');
+  if (name==='home') renderHome();
+  if (name==='food') { renderFoodMeals(); renderFavoritesList(); }
+  if (name==='profile') renderProfile();
+  if (name==='settings') renderSettings();
+  if (name==='workout') updateWorkout();
+};
+
+// ── OVERRIDE: renderHome with ring ──
+renderHome = function() {
+  if (!userProfile) return;
+  document.getElementById('greeting').textContent = 'שלום, ' + userProfile.name;
+  setTodayDate();
+  const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
+  const target = userProfile.goalKcal || 2000;
+  const pct = Math.min(100, Math.round(consumed/target*100));
+
+  // Ring arc — circumference of r=46 is ~289
+  const circ = 2 * Math.PI * 46;
+  const fill = (pct / 100) * circ;
+  const arc = document.getElementById('ring-arc');
+  if (arc) arc.style.strokeDasharray = fill + ' ' + circ;
+
+  const pctEl = document.getElementById('ring-pct');
+  if (pctEl) pctEl.textContent = pct + '%';
+  document.getElementById('kcal-consumed').textContent = consumed.toLocaleString();
+  document.getElementById('kcal-target').textContent = target.toLocaleString();
+  document.getElementById('kcal-remain').textContent = 'נותרו ' + Math.max(0,target-consumed).toLocaleString() + ' קל׳';
+
+  const protein = todayData.meals.reduce((s,m)=>s+(m.protein||0),0);
+  const carbs = todayData.meals.reduce((s,m)=>s+(m.carbs||0),0);
+  const fat = todayData.meals.reduce((s,m)=>s+(m.fat||0),0);
+  document.getElementById('m-protein').textContent = Math.round(protein)+'g';
+  document.getElementById('m-carbs').textContent = Math.round(carbs)+'g';
+  document.getElementById('m-fat').textContent = Math.round(fat)+'g';
+
+  const tP = Math.round((userProfile.weight||75)*1.8);
+  const tC = Math.round((target - tP*4 - Math.round(target*0.25/9)*9)/4);
+  const tF = Math.round(target*0.25/9);
+  const bp = document.getElementById('bar-protein');
+  const bc = document.getElementById('bar-carbs');
+  const bf = document.getElementById('bar-fat');
+  if (bp) bp.style.width = Math.min(100,Math.round(protein/tP*100))+'%';
+  if (bc) bc.style.width = Math.min(100,Math.round(carbs/Math.max(tC,1)*100))+'%';
+  if (bf) bf.style.width = Math.min(100,Math.round(fat/Math.max(tF,1)*100))+'%';
+
+  document.getElementById('burned-val').textContent = (todayData.burned||0).toLocaleString();
+  document.getElementById('steps-val').textContent = (todayData.steps||0).toLocaleString();
+  document.getElementById('weight-val').textContent = userProfile.currentWeight || userProfile.weight || '--';
+  document.getElementById('streak-num').textContent = userProfile.streak || 0;
+
+  renderMealsInHome();
+  buildWater();
+  buildWeekChart();
+};
+
+// ── Settings: plan section ──
+function generatePlanFromSettings() {
+  generatePlan().then(() => {
+    if (userProfile && userProfile.weeklyMenu) {
+      const el = document.getElementById('weekly-menu-settings');
+      if (el) el.innerHTML = userProfile.weeklyMenu.map(d =>
+        `<div class="menu-day"><div class="menu-day-title">${d.day}</div><div class="menu-meal"><span class="menu-meal-label">בוקר: </span>${d.breakfast}</div><div class="menu-meal"><span class="menu-meal-label">צהריים: </span>${d.lunch}</div><div class="menu-meal"><span class="menu-meal-label">ערב: </span>${d.dinner}</div><div class="menu-meal"><span class="menu-meal-label">חטיף: </span>${d.snack}</div></div>`
+      ).join('');
+    }
+  });
+}
+
+// Plan targets in settings
+const _origRenderSettings = renderSettings;
+renderSettings = function() {
+  _origRenderSettings();
+  if (!userProfile) return;
+  const p = Math.round(userProfile.weight*(userProfile.goal==='bulk'?2:userProfile.goal==='cut'?2.2:1.8));
+  const f = Math.round(userProfile.goalKcal*0.25/9);
+  const c = Math.round((userProfile.goalKcal-p*4-f*9)/4);
+  const el = document.getElementById('plan-targets-settings');
+  if (el) el.innerHTML = `<div class="stats-row"><div class="stat-item"><div class="stat-v">${userProfile.goalKcal}</div><div class="stat-l">קל׳</div></div><div class="stat-item"><div class="stat-v">${p}g</div><div class="stat-l">חלבון</div></div><div class="stat-item"><div class="stat-v">${c}g</div><div class="stat-l">פחמ׳</div></div><div class="stat-item"><div class="stat-v">${f}g</div><div class="stat-l">שומן</div></div></div>`;
+  if (userProfile.weeklyMenu) {
+    const wm = document.getElementById('weekly-menu-settings');
+    if (wm) wm.innerHTML = userProfile.weeklyMenu.map(d =>
+      `<div class="menu-day"><div class="menu-day-title">${d.day}</div><div class="menu-meal"><span class="menu-meal-label">בוקר: </span>${d.breakfast}</div><div class="menu-meal"><span class="menu-meal-label">צהריים: </span>${d.lunch}</div><div class="menu-meal"><span class="menu-meal-label">ערב: </span>${d.dinner}</div><div class="menu-meal"><span class="menu-meal-label">חטיף: </span>${d.snack}</div></div>`
+    ).join('');
+  }
+};
