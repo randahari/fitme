@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/fitme/assets/icon-192.png">
   <title>FitMe</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="app.css">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -159,20 +159,8 @@
         </div>
         <div class="scroll-content">
 
-          <!-- RING CARD -->
+          <!-- RING CARD — טקסט ימין, טבעת שמאל -->
           <div class="home-top-card">
-            <div class="ring-wrap">
-              <svg width="110" height="110" viewBox="0 0 110 110">
-                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--bg-3)" stroke-width="10"/>
-                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--gold)" stroke-width="10"
-                  stroke-dasharray="289" stroke-linecap="round" transform="rotate(-90 55 55)"
-                  id="ring-arc" style="transition:stroke-dasharray 0.5s ease"/>
-              </svg>
-              <div class="ring-center">
-                <div class="ring-pct" id="ring-pct">0%</div>
-                <div class="ring-pct-lbl">יעד</div>
-              </div>
-            </div>
             <div class="ring-side">
               <div class="ring-kcal"><span id="kcal-consumed">0</span></div>
               <div class="ring-kcal-of">מתוך <span id="kcal-target">--</span> קל׳</div>
@@ -190,6 +178,18 @@
                   <div class="ring-mac-row"><span class="ring-mac-lbl">שומן</span><span class="ring-mac-val" id="m-fat">0g</span></div>
                   <div class="ring-mac-bar"><div class="ring-mac-fill" id="bar-fat" style="width:0%;background:var(--gold-3)"></div></div>
                 </div>
+              </div>
+            </div>
+            <div class="ring-wrap">
+              <svg width="110" height="110" viewBox="0 0 110 110">
+                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--bg-3)" stroke-width="10"/>
+                <circle cx="55" cy="55" r="46" fill="none" stroke="var(--gold)" stroke-width="10"
+                  stroke-dasharray="0 289" stroke-linecap="round" transform="rotate(-90 55 55)"
+                  id="ring-arc" style="transition:stroke-dasharray 0.5s ease"/>
+              </svg>
+              <div class="ring-center">
+                <div class="ring-pct" id="ring-pct">0%</div>
+                <div class="ring-pct-lbl">יעד</div>
               </div>
             </div>
           </div>
@@ -444,7 +444,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js"></script>
-  <script src="js/app.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

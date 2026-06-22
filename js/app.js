@@ -359,6 +359,7 @@ function buildWater() {
   }
   const txt = document.getElementById('water-text');
   if (txt) txt.textContent = waterCount + ' / 8';
+
 }
 
 // ── WEEK CHART ──
@@ -368,6 +369,7 @@ async function buildWeekChart() {
   el.innerHTML = '';
   const history = await getHistoryData();
   const today = new Date();
+  // בדיוק 7 ימים
   for (let i=6; i>=0; i--) {
     const d = new Date(today); d.setDate(today.getDate()-i);
     const key = d.toISOString().slice(0,10);
