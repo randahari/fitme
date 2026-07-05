@@ -17,7 +17,8 @@ let waterCount = 0;
 let darkMode = false;
 let workoutType = null;
 let workoutInt = 'med';
-let pendingFood = null;
+let pendingMeal = null; // { name, note, items:[{name,amount,unit,kcal,protein,carbs,fat,fiber,sugar,sodium,qty}], suggestions:[...] }
+let photoMode = 'plate'; // 'plate' = צילום צלחת, 'label' = צילום תווית תזונתית
 let obData = { gender: 'male', days: '2', goal: null };
 let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
 let favoriteMeals = [];
@@ -68,10 +69,7 @@ function showApp() {
   buildWeekChart();
 }
 
-async function signInWithGoogle() {
-  try { await auth.signInWithPopup(googleProvider); }
-  catch(e) { alert('שגיאה בהתחברות. נסה שוב.'); }
-}
+// signInWithGoogle מוגדר ב-firebase-config.js (redirect באייפון/PWA, popup בדסקטופ)
 
 async function signOut() {
   if (confirm('להתנתק?')) await auth.signOut();
@@ -153,7 +151,8 @@ async function getGroupMembers() {
   } catch(e) { return []; }
 }
 
-function getTodayKey() { return new Date().toISOString().slice(0,10); }
+function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function getTodayKey() { return dateKey(new Date()); }
 function getApiKey() { return localStorage.getItem('fitme_api_key') || ''; }
 function generateGroupCode() { return Math.random().toString(36).substr(2,6).toUpperCase(); }
 
@@ -176,7 +175,7 @@ async function requestNotificationPermission() {
 function sendLocalNotification(title, body) {
   if (Notification.permission !== 'granted') return;
   navigator.serviceWorker.ready.then(sw => {
-    sw.showNotification(title, { body, icon: '/fitme/assets/icon-192.png', dir: 'rtl', lang: 'he', vibrate: [200,100,200] });
+    sw.showNotification(title, { body, icon: '/fitme/icon192.png', dir: 'rtl', lang: 'he', vibrate: [200,100,200] });
   });
 }
 
@@ -372,7 +371,7 @@ async function buildWeekChart() {
   // בדיוק 7 ימים
   for (let i=6; i>=0; i--) {
     const d = new Date(today); d.setDate(today.getDate()-i);
-    const key = d.toISOString().slice(0,10);
+    const key = dateKey(d);
     const isToday = i===0;
     const dayData = isToday ? todayData : (history[key]||null);
     const kcal = dayData ? (dayData.meals||[]).reduce((s,m)=>s+(m.kcal||0),0) : 0;
@@ -424,9 +423,13 @@ async function analyzeFood() {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 600, messages: [{ role: 'user', content: `המשתמש רשם: "${input}". צור שאלון קצר לחישוב קלוריות מדויק. החזר JSON בלבד:
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 600, messages: [{ role: 'user', content: `המשתמש רשם: "${input}". צור שאלון קצר לחישוב תזונתי מדויק. החזר JSON בלבד:
 {"questions":[{"q":"שאלה בעברית","options":["אפשרות 1","אפשרות 2","אפשרות 3"]}]}
-כללים: עד 3 שאלות, שאל על סוג/חלק, שיטת בישול, כמות. תמיד כלול "אחר" בשאלת הסוג. אל תוסיף טקסט נוסף.` }] })
+כללים חשובים:
+- אם זו מנה מורכבת מכמה רכיבים (כמו פסטה ברוטב, אורז עם עוף, כריך) — השאלות חייבות לברר את הכמות של כל רכיב מרכזי בנפרד (למשל: "כמה ספגטי?" ו"כמה רוטב בשר?"), לא רק "גודל מנה" כללי.
+- אפשרויות הכמות חייבות להיות מוחשיות: גרמים, כפות, כוסות, יחידות ("צלחת קטנה ~150 גרם").
+- אם רלוונטי, שאל על סוג (בשר בקר/הודו) או שיטת בישול (מטוגן/אפוי).
+- עד 3 שאלות. אל תשאל על מה שכבר ברור מהטקסט. אל תוסיף טקסט מחוץ ל-JSON.` }] })
     });
     const data = await res.json();
     const parsed = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
@@ -454,6 +457,8 @@ function answerQuestion(answer) {
   setTimeout(()=>showNextQuestion(), 200);
 }
 
+const ITEMS_JSON_SPEC = `{"name":"שם המנה בעברית","items":[{"name":"רכיב","amount":150,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"suggestions":[{"name":"תוספת","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"note":"הערה קצרה על בסיס ההערכה"}`;
+
 async function calculateFoodResult() {
   const apiKey = getApiKey();
   document.getElementById('food-questionnaire').classList.add('hidden');
@@ -463,22 +468,34 @@ async function calculateFoodResult() {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, messages: [{ role: 'user', content: `חשב קלוריות: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}. החזר JSON בלבד: {"name":"שם מלא בעברית","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high","note":"הערה קצרה"}` }] })
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: `חשב ערכים תזונתיים: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}.
+פרק את המנה לרכיבים נפרדים (כל רכיב בשורה משלו עם כמות וערכים משלו). ב-suggestions כלול 2-4 "קלוריות נסתרות" אופייניות למנה כזו שהמשתמש אולי שכח (שמן בבישול, גבינה מגוררת, לחם ליד, רוטב) — עם ערכים לכמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד במבנה: ${ITEMS_JSON_SPEC}` }] })
     });
     const data = await res.json();
-    const food = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
-    showFoodResult(food);
+    const meal = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    showMealEditor(meal);
   } catch(e) { alert('שגיאה בחישוב.'); }
   finally { document.getElementById('food-loading').classList.add('hidden'); }
 }
 
-function startCamera() { document.getElementById('camera-input').click(); }
+function startCamera() { photoMode = 'plate'; document.getElementById('camera-input').click(); }
+function startLabelCamera() { photoMode = 'label'; document.getElementById('camera-input').click(); }
+
+const PLATE_PROMPT = `זהה כל פריט מאכל בצלחת בנפרד — כל רכיב בשורה משלו עם הערכת כמות (גרם/יחידות/כפות) וערכים תזונתיים משלו. אל תאחד הכל לשורה אחת.
+ב-suggestions כלול 2-4 "קלוריות נסתרות" שהמצלמה לא רואה אבל אופייניות למנה כזו (שמן בבישול/בטיגון, גבינה מגוררת, רוטב, חמאה) — עם ערכים לכמות טיפוסית.
+sodium במ"ג, השאר בגרם. אם התמונה לא ברורה ציין זאת ב-note. החזר JSON בלבד במבנה: `;
+
+const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של מוצר. קרא את הטבלה בדיוק.
+צור פריט אחד: name = שם המוצר (אם מופיע, אחרת "מוצר מהתווית"), amount ו-unit לפי בסיס הטבלה (100 גרם או מנה — ציין ב-note איזה בסיס), והערכים כפי שכתובים בתווית. sodium במ"ג. suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. החזר JSON בלבד במבנה: `;
 
 async function analyzePhoto(input) {
   const file = input.files[0]; if (!file) return;
+  input.value = '';
   const apiKey = getApiKey();
   if (!apiKey) { alert('נא להוסיף מפתח API'); goToScreen('settings'); return; }
   document.getElementById('food-loading').classList.remove('hidden');
+  document.getElementById('food-result').classList.add('hidden');
+  const mode = photoMode; photoMode = 'plate';
   const reader = new FileReader();
   reader.onload = async (e) => {
     const b64 = e.target.result.split(',')[1];
@@ -486,11 +503,13 @@ async function analyzePhoto(input) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },{ type: 'text', text: 'זהה מאכל וחשב קלוריות. JSON בלבד: {"name":"שם","kcal":0,"protein":0,"carbs":0,"fat":0,"confidence":"high","note":"הערה"}' }] }] })
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },{ type: 'text', text: (mode==='label' ? LABEL_PROMPT : PLATE_PROMPT) + ITEMS_JSON_SPEC }] }] })
       });
       const data = await res.json();
-      showFoodResult(JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim()));
-    } catch(e) { alert('שגיאה.'); }
+      const meal = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+      if (meal.error) { alert('לא הצלחתי לקרוא את התווית. נסה לצלם שוב מקרוב, באור טוב.'); return; }
+      showMealEditor(meal);
+    } catch(e) { alert('שגיאה בניתוח התמונה.'); }
     finally { document.getElementById('food-loading').classList.add('hidden'); }
   };
   reader.readAsDataURL(file);
@@ -554,53 +573,170 @@ async function lookupBarcode(code) {
     const data = await res.json();
     if (data.status !== 1 || !data.product) {
       closeBarcode();
-      alert('מוצר לא נמצא במסד הנתונים. נסה להקליד ידנית.');
+      if (confirm('המוצר לא נמצא במאגר.\nלצלם את תווית הערכים התזונתיים שעל האריזה? Claude יקרא אותה.')) {
+        startLabelCamera();
+      }
       return;
     }
     const p = data.product;
-    const nutriments = p.nutriments || {};
-    const per100 = nutriments['energy-kcal_100g'] || nutriments['energy_100g'] || 0;
-    const servingSize = p.serving_size ? parseFloat(p.serving_size) : 100;
-    const factor = isNaN(servingSize) ? 1 : servingSize / 100;
-    const food = {
-      name: p.product_name || p.product_name_he || 'מוצר לא ידוע',
-      kcal: Math.round((nutriments['energy-kcal_100g'] || 0) * factor),
-      protein: Math.round((nutriments['proteins_100g'] || 0) * factor * 10) / 10,
-      carbs: Math.round((nutriments['carbohydrates_100g'] || 0) * factor * 10) / 10,
-      fat: Math.round((nutriments['fat_100g'] || 0) * factor * 10) / 10,
-      confidence: 'high',
-      note: 'מקור: Open Food Facts · ' + (p.serving_size ? 'לפי מנה (' + p.serving_size + ')' : 'לפי 100 גרם')
+    const n = p.nutriments || {};
+    const servingSize = p.serving_size ? parseFloat(p.serving_size) : NaN;
+    const grams = isNaN(servingSize) ? 100 : servingSize;
+    const factor = grams / 100;
+    const r1 = v => Math.round((v || 0) * factor * 10) / 10;
+    const item = {
+      name: p.product_name_he || p.product_name || 'מוצר לא ידוע',
+      amount: grams, unit: 'גרם',
+      kcal: Math.round((n['energy-kcal_100g'] || n['energy_100g'] || 0) * factor),
+      protein: r1(n['proteins_100g']), carbs: r1(n['carbohydrates_100g']), fat: r1(n['fat_100g']),
+      fiber: r1(n['fiber_100g']), sugar: r1(n['sugars_100g']),
+      sodium: Math.round((n['sodium_100g'] || 0) * factor * 1000)
     };
     closeBarcode();
-    showFoodResult(food);
+    showMealEditor({
+      name: item.name,
+      items: [item],
+      suggestions: [],
+      note: 'מקור: Open Food Facts · ' + (isNaN(servingSize) ? 'לפי 100 גרם — התאם כמות עם +/-' : 'לפי מנה (' + p.serving_size + ')')
+    });
   } catch(e) {
     closeBarcode();
     alert('שגיאה בחיפוש המוצר. בדוק חיבור לאינטרנט.');
   }
 }
 
-function showFoodResult(food) {
-  pendingFood = food;
-  document.getElementById('result-name').textContent = food.name;
-  document.getElementById('r-kcal').textContent = food.kcal;
-  document.getElementById('r-protein').textContent = Math.round(food.protein)+'g';
-  document.getElementById('r-carbs').textContent = Math.round(food.carbs)+'g';
-  document.getElementById('r-fat').textContent = Math.round(food.fat)+'g';
-  const cb = document.getElementById('confidence-badge');
-  cb.className = 'confidence-badge '+(food.confidence||'high');
-  cb.textContent = food.confidence==='high'?'ביטחון גבוה ✓':food.confidence==='mid'?'ביטחון בינוני ⚠':'ביטחון נמוך ✕';
-  const noteEl = document.getElementById('result-note');
-  if (noteEl && food.note) { noteEl.textContent = '💡 '+food.note; noteEl.classList.remove('hidden'); }
-  else if (noteEl) noteEl.classList.add('hidden');
+// ── מסך עריכה אחיד (תמונה / ברקוד / הקלדה) ──
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+function normalizeItem(it) {
+  return { name: it.name||'פריט', amount: num(it.amount), unit: it.unit||'', kcal: num(it.kcal),
+    protein: num(it.protein), carbs: num(it.carbs), fat: num(it.fat),
+    fiber: num(it.fiber), sugar: num(it.sugar), sodium: num(it.sodium), qty: it.qty || 1 };
+}
+
+function showMealEditor(meal) {
+  pendingMeal = {
+    name: meal.name || 'ארוחה',
+    note: meal.note || '',
+    items: (meal.items||[]).map(normalizeItem),
+    suggestions: (meal.suggestions||[]).map(normalizeItem)
+  };
+  renderEditor();
   document.getElementById('food-result').classList.remove('hidden');
 }
 
-async function addMeal() {
-  if (!pendingFood) return;
+function mealTotals() {
+  const t = { kcal:0, protein:0, carbs:0, fat:0, fiber:0, sugar:0, sodium:0 };
+  if (!pendingMeal) return t;
+  pendingMeal.items.forEach(it => {
+    t.kcal += it.kcal*it.qty; t.protein += it.protein*it.qty; t.carbs += it.carbs*it.qty;
+    t.fat += it.fat*it.qty; t.fiber += it.fiber*it.qty; t.sugar += it.sugar*it.qty; t.sodium += it.sodium*it.qty;
+  });
+  return t;
+}
+
+function fmtQty(q) { return (q % 1 === 0 ? q : q.toFixed(2).replace(/0$/,'')); }
+
+function renderEditor() {
+  const box = document.getElementById('food-result');
+  if (!box || !pendingMeal) return;
+  const t = mealTotals();
+  const rows = pendingMeal.items.map((it, i) => {
+    const amountTxt = it.amount ? `${fmtQty(Math.round(it.amount*it.qty*10)/10)} ${esc(it.unit)}` : '';
+    return `<div class="ed-item">
+      <button class="ed-del" onclick="editorDelete(${i})" aria-label="הסר פריט">×</button>
+      <div class="ed-info">
+        <div class="ed-name">${esc(it.name)}</div>
+        <div class="ed-sub">${amountTxt}${amountTxt?' · ':''}${Math.round(it.kcal*it.qty)} קל' · ${Math.round(it.protein*it.qty)}g חלבון</div>
+      </div>
+      <div class="ed-qty">
+        <button onclick="editorQty(${i},-1)" aria-label="הפחת כמות">−</button>
+        <span>×${fmtQty(it.qty)}</span>
+        <button onclick="editorQty(${i},1)" aria-label="הגדל כמות">+</button>
+      </div>
+    </div>`;
+  }).join('');
+  const suggs = pendingMeal.suggestions.length
+    ? `<div class="ed-sugg-title">אולי היה גם?</div><div class="ed-suggs">` +
+      pendingMeal.suggestions.map((s,i)=>`<button class="ed-sugg" onclick="editorAddSuggestion(${i})">+ ${esc(s.name)} <span>(${Math.round(s.kcal)})</span></button>`).join('') + `</div>`
+    : '';
+  box.innerHTML = `
+    <div class="result-header"><div class="result-name">${esc(pendingMeal.name)}</div></div>
+    <div class="ed-items">${rows || '<div class="empty-state">אין פריטים — הוסף למטה</div>'}</div>
+    ${suggs}
+    <div class="ed-add-row">
+      <input type="text" id="ed-add-input" placeholder="הוסף פריט (למשל: כף טחינה)">
+      <button class="btn-small" id="ed-add-btn" onclick="editorAddCustom()">הוסף</button>
+    </div>
+    <div class="ed-total">
+      <div class="ed-total-kcal">${Math.round(t.kcal)} <span>קל'</span></div>
+      <div class="ed-total-macros">חלבון ${Math.round(t.protein)}g · פחמ' ${Math.round(t.carbs)}g · שומן ${Math.round(t.fat)}g<br><span>סיבים ${Math.round(t.fiber)}g · סוכר ${Math.round(t.sugar)}g · נתרן ${Math.round(t.sodium)}mg</span></div>
+    </div>
+    ${pendingMeal.note ? `<div class="result-note">${esc(pendingMeal.note)}</div>` : ''}
+    <div class="result-actions">
+      <button class="btn-primary" onclick="addMeal()">הוסף ליום ✓</button>
+      <button class="btn-ghost" onclick="addMealAndFavorite()">הוסף ושמור כמועדף</button>
+      <button class="btn-ghost" onclick="cancelFood()">בטל</button>
+    </div>`;
+}
+
+function editorQty(i, dir) {
+  const it = pendingMeal.items[i]; if (!it) return;
+  const step = 0.25;
+  it.qty = Math.max(step, Math.round((it.qty + dir*step)*100)/100);
+  renderEditor();
+}
+
+function editorDelete(i) {
+  pendingMeal.items.splice(i, 1);
+  renderEditor();
+}
+
+function editorAddSuggestion(i) {
+  const s = pendingMeal.suggestions[i]; if (!s) return;
+  pendingMeal.items.push({ ...s, qty: 1 });
+  pendingMeal.suggestions.splice(i, 1);
+  renderEditor();
+}
+
+async function editorAddCustom() {
+  const input = document.getElementById('ed-add-input');
+  const val = input.value.trim(); if (!val) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('נא להוסיף מפתח API בהגדרות'); return; }
+  const btn = document.getElementById('ed-add-btn');
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: `הערך תזונתית פריט בודד: "${val}". אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: {"name":"שם","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] })
+    });
+    const data = await res.json();
+    const it = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    pendingMeal.items.push(normalizeItem(it));
+    renderEditor();
+  } catch(e) { alert('שגיאה בהוספת הפריט.'); btn.disabled = false; btn.textContent = 'הוסף'; }
+}
+
+function buildMealFromEditor() {
+  const t = mealTotals();
   const now = new Date();
-  const meal = { ...pendingFood, time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0') };
-  todayData.meals.push(meal);
-  pendingFood = null;
+  return {
+    name: pendingMeal.name,
+    kcal: Math.round(t.kcal),
+    protein: Math.round(t.protein*10)/10, carbs: Math.round(t.carbs*10)/10, fat: Math.round(t.fat*10)/10,
+    fiber: Math.round(t.fiber*10)/10, sugar: Math.round(t.sugar*10)/10, sodium: Math.round(t.sodium),
+    items: pendingMeal.items.map(it => ({ ...it })),
+    time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')
+  };
+}
+
+async function addMeal() {
+  if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
+  todayData.meals.push(buildMealFromEditor());
+  pendingMeal = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
   await saveTodayData();
@@ -610,16 +746,18 @@ async function addMeal() {
 }
 
 async function addMealAndFavorite() {
-  if (!pendingFood) return;
+  if (!pendingMeal || !pendingMeal.items.length) return;
   await saveFavoriteFromPending();
   await addMeal();
 }
 
 async function saveFavoriteFromPending() {
-  if (!pendingFood) return;
-  const exists = favoriteMeals.find(f => f.name === pendingFood.name);
+  if (!pendingMeal) return;
+  const exists = favoriteMeals.find(f => f.name === pendingMeal.name);
   if (!exists) {
-    favoriteMeals.push({ ...pendingFood, savedAt: new Date().toISOString() });
+    const m = buildMealFromEditor();
+    delete m.time;
+    favoriteMeals.push({ ...m, savedAt: new Date().toISOString() });
     await saveFavorites();
     renderFavoritesList();
   }
@@ -655,7 +793,7 @@ function renderFavoritesList() {
 }
 
 function cancelFood() {
-  pendingFood = null;
+  pendingMeal = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
 }
@@ -759,7 +897,7 @@ async function updateStreak() {
   let streak = 0;
   const d = new Date();
   for (let i=0; i<365; i++) {
-    const key = d.toISOString().slice(0,10);
+    const key = dateKey(d);
     const isToday = i===0;
     const dayData = isToday ? todayData : (history[key]||null);
     if (!dayData||!dayData.meals||!dayData.meals.length) break;
@@ -870,7 +1008,6 @@ function renderPlan() {
     <div class="plan-target"><div class="pt-label">פחמימות</div><div class="pt-val">${c}g</div></div>
     <div class="plan-target"><div class="pt-label">שומן</div><div class="pt-val">${f}g</div></div>`;
   if (userProfile.weeklyMenu) renderWeeklyMenu(userProfile.weeklyMenu);
-  if (userProfile.workoutPlan) renderWorkoutPlan(userProfile.workoutPlan);
 }
 
 async function generatePlan() {
@@ -898,37 +1035,7 @@ function renderWeeklyMenu(menu) {
   ).join('');
 }
 
-async function generateWorkoutPlan() {
-  const apiKey = getApiKey();
-  if (!apiKey) { alert('נא להוסיף מפתח API'); goToScreen('settings'); return; }
-  document.getElementById('plan-loading').classList.remove('hidden');
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: `תוכנית אימונים שבועית: מטרה=${GOAL_LABELS[userProfile.goal]}, ימים=${userProfile.days}. JSON בלבד: מערך 7: {day:"יום א'",name:"",description:"",isRest:false}` }] })
-    });
-    const data = await res.json();
-    const plan = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
-    userProfile.workoutPlan = plan;
-    await saveProfile();
-    renderWorkoutPlan(plan);
-  } catch(e) { alert('שגיאה.'); }
-  finally { document.getElementById('plan-loading').classList.add('hidden'); }
-}
-
-function renderWorkoutPlan(plan) {
-  document.getElementById('workout-plan').innerHTML = plan.map(d=>
-    `<div class="workout-day"><div class="wd-day">${d.day}</div><div><div class="wd-name">${d.name}</div><div class="wd-desc">${d.description||''}</div></div><div class="wd-badge ${d.isRest?'rest':'train'}">${d.isRest?'מנוחה':'אימון'}</div></div>`
-  ).join('');
-}
-
-function switchPlanTab(tab) {
-  document.querySelectorAll('.plan-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('tab-'+tab).classList.add('active');
-  document.getElementById('plan-nutrition').classList.toggle('hidden', tab!=='nutrition');
-  document.getElementById('plan-workout-tab').classList.toggle('hidden', tab!=='workout');
-}
+// תוכנית אימונים הוסרה לבקשת המשתמש — תוכנית תזונה בלבד
 
 // ── PROFILE ──
 function calcBMI(weight, height) {
