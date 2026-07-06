@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 const GOAL_LABELS = { cut: 'חיטוב 🔥', bulk: 'מסה 💪', maintain: 'שימור ⚖️' };
 const DAYS_HE = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
 const ACHIEVEMENTS = [
@@ -20,6 +20,7 @@ let workoutType = null;
 let workoutInt = 'med';
 let pendingMeal = null; // { name, note, items:[{name,amount,unit,kcal,protein,carbs,fat,fiber,sugar,sodium,qty}], suggestions:[...] }
 let photoMode = 'plate'; // 'plate' = צילום צלחת, 'label' = צילום תווית תזונתית
+let pendingBarcode = null; // הברקוד שצילום התווית הבא ישויך אליו במאגר הקבוצה
 let obData = { gender: 'male', days: '2', goal: null };
 let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
 let favoriteMeals = [];
@@ -568,13 +569,61 @@ function closeBarcode() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// ── מאגר ברקוד משותף לקבוצה ──
+function getSharedBarcodeGroup() {
+  if (!userProfile) return null;
+  return userProfile.groupId || userProfile.groupCode || null;
+}
+
+async function lookupBarcodeInCache(code) {
+  const groupKey = getSharedBarcodeGroup();
+  if (!groupKey) return null;
+  try {
+    const doc = await db.collection('groupBarcodes').doc(groupKey).collection('products').doc(code).get();
+    return doc.exists ? doc.data() : null;
+  } catch(e) { console.warn('barcode cache read failed:', e.code || e.message); return null; }
+}
+
+async function saveBarcodeToCache(code, item) {
+  const groupKey = getSharedBarcodeGroup();
+  if (!groupKey || !code || !item) return;
+  try {
+    await db.collection('groupBarcodes').doc(groupKey).collection('products').doc(code).set({
+      barcode: code,
+      name: item.name, amount: item.amount, unit: item.unit,
+      kcal: item.kcal, protein: item.protein, carbs: item.carbs, fat: item.fat,
+      fiber: item.fiber, sugar: item.sugar, sodium: item.sodium,
+      addedByName: userProfile ? userProfile.name : '',
+      addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) { console.warn('barcode cache save failed:', e.code || e.message); }
+}
+
 async function lookupBarcode(code) {
+  // 1. מאגר הקבוצה — הכי מהיר, ידני, מדויק
+  const cached = await lookupBarcodeInCache(code);
+  if (cached) {
+    closeBarcode();
+    const item = {
+      name: cached.name, amount: cached.amount, unit: cached.unit,
+      kcal: cached.kcal, protein: cached.protein, carbs: cached.carbs, fat: cached.fat,
+      fiber: cached.fiber, sugar: cached.sugar, sodium: cached.sodium
+    };
+    showMealEditor({
+      name: cached.name, items: [item], suggestions: [],
+      note: 'מהמאגר של הקבוצה' + (cached.addedByName ? ' · הוסף ע"י ' + cached.addedByName : '')
+    });
+    return;
+  }
+
+  // 2. Open Food Facts — מאגר עולמי חינמי
   try {
     const res = await fetch('https://world.openfoodfacts.org/api/v0/product/' + code + '.json');
     const data = await res.json();
     if (data.status !== 1 || !data.product) {
       closeBarcode();
-      if (confirm('המוצר לא נמצא במאגר.\nלצלם את תווית הערכים התזונתיים שעל האריזה? Claude יקרא אותה.')) {
+      if (confirm('המוצר לא נמצא במאגר.\nלצלם את תווית הערכים התזונתיים? Claude יקרא אותה וישמור למאגר הקבוצה — פעם הבאה תזוהה מיד.')) {
+        pendingBarcode = code;
         startLabelCamera();
       }
       return;
@@ -593,11 +642,11 @@ async function lookupBarcode(code) {
       fiber: r1(n['fiber_100g']), sugar: r1(n['sugars_100g']),
       sodium: Math.round((n['sodium_100g'] || 0) * factor * 1000)
     };
+    // 3. שמירה מיידית למאגר הקבוצה — מקור אמין, אין סיבה לחכות לאישור המשתמש
+    saveBarcodeToCache(code, item);
     closeBarcode();
     showMealEditor({
-      name: item.name,
-      items: [item],
-      suggestions: [],
+      name: item.name, items: [item], suggestions: [],
       note: 'מקור: Open Food Facts · ' + (isNaN(servingSize) ? 'לפי 100 גרם — התאם כמות עם +/-' : 'לפי מנה (' + p.serving_size + ')')
     });
   } catch(e) {
@@ -736,6 +785,11 @@ function buildMealFromEditor() {
 
 async function addMeal() {
   if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
+  // שמירה למאגר הקבוצה — רק אחרי אישור המשתמש שהמידע מהתווית נכון
+  if (pendingBarcode && pendingMeal.items[0]) {
+    saveBarcodeToCache(pendingBarcode, pendingMeal.items[0]);
+    pendingBarcode = null;
+  }
   todayData.meals.push(buildMealFromEditor());
   pendingMeal = null;
   document.getElementById('food-result').classList.add('hidden');
@@ -795,6 +849,7 @@ function renderFavoritesList() {
 
 function cancelFood() {
   pendingMeal = null;
+  pendingBarcode = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
 }
