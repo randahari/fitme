@@ -63,7 +63,7 @@ exports.anthropicProxy = onRequest(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY.value(),
+          'x-api-key': ANTHROPIC_API_KEY.value().trim().replace(/[^\x00-\x7F]/g, ''),
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify(body)
