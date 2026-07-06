@@ -13,31 +13,40 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
-// iOS PWA: redirect במקום popup
-function signInWithGoogle() {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isPWA = window.navigator.standalone === true;
+// שמירת סשן ב-IndexedDB — המשתמש נשאר מחובר בין פתיחות
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn('persistence:', e));
 
-  if (isIOS || isPWA) {
-    auth.signInWithRedirect(googleProvider);
-  } else {
-    auth.signInWithPopup(googleProvider).catch(err => {
-      // fallback לredirect אם popup נחסם
-      if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
-        auth.signInWithRedirect(googleProvider);
-      } else {
-        alert('שגיאה בהתחברות. נסה שוב.');
-      }
-    });
-  }
+// התחברות עם Google:
+// popup קודם (עובד גם ב-iOS PWA מודרני ובדסקטופ). redirect נשמר כגיבוי בלבד,
+// כי ב-PWA מותקן ב-iOS ה-redirect מאבד את המצב במעבר מספארי לאפליקציה.
+function signInWithGoogle() {
+  auth.signInWithPopup(googleProvider).catch(err => {
+    const code = err && err.code ? err.code : '';
+    console.warn('sign-in popup failed:', code, err && err.message);
+    const fallbackCodes = [
+      'auth/popup-blocked',
+      'auth/popup-closed-by-user',
+      'auth/cancelled-popup-request',
+      'auth/operation-not-supported-in-this-environment'
+    ];
+    if (fallbackCodes.includes(code)) {
+      auth.signInWithRedirect(googleProvider).catch(e => {
+        alert('שגיאה בהתחברות: ' + (e.code || e.message || 'לא ידוע'));
+      });
+    } else if (code === 'auth/network-request-failed') {
+      alert('אין חיבור לאינטרנט. נסה שוב.');
+    } else if (code) {
+      alert('שגיאה בהתחברות: ' + code);
+    }
+    // אם המשתמש סגר את החלון בעצמו (לחיצה על X) — אל תראה שגיאה, פשוט לא עשה כלום
+  });
 }
 
-// טיפול בחזרה מ-redirect
-auth.getRedirectResult().then(result => {
-  // המשתמש חזר מ-Google — auth.onAuthStateChanged יטפל בשאר
-}).catch(err => {
-  if (err.code !== 'auth/no-auth-event') {
-    console.error('Redirect error:', err);
+// טיפול בחזרה מ-redirect (רק אם ה-fallback הופעל)
+auth.getRedirectResult().catch(err => {
+  const code = err && err.code;
+  if (code && code !== 'auth/no-auth-event') {
+    console.error('Redirect error:', code, err.message);
   }
 });
 

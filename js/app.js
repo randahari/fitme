@@ -1,4 +1,5 @@
 // ── GLOBALS ──
+const APP_VERSION = '2.3.0';
 const GOAL_LABELS = { cut: 'חיטוב 🔥', bulk: 'מסה 💪', maintain: 'שימור ⚖️' };
 const DAYS_HE = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
 const ACHIEVEMENTS = [
@@ -1306,5 +1307,20 @@ renderSettings = function() {
     if (wm) wm.innerHTML = userProfile.weeklyMenu.map(d =>
       `<div class="menu-day"><div class="menu-day-title">${d.day}</div><div class="menu-meal"><span class="menu-meal-label">בוקר: </span>${d.breakfast}</div><div class="menu-meal"><span class="menu-meal-label">צהריים: </span>${d.lunch}</div><div class="menu-meal"><span class="menu-meal-label">ערב: </span>${d.dinner}</div><div class="menu-meal"><span class="menu-meal-label">חטיף: </span>${d.snack}</div></div>`
     ).join('');
+  }
+
+  // ── תווית גרסה (לאבחון) ──
+  const settingsScreen = document.getElementById('screen-settings');
+  if (settingsScreen && !document.getElementById('fitme-version-tag')) {
+    const scroll = settingsScreen.querySelector('.scroll-content');
+    if (scroll) {
+      const tag = document.createElement('div');
+      tag.id = 'fitme-version-tag';
+      tag.style.cssText = 'text-align:center;padding:16px 0 8px;color:var(--text-3);font-size:11px;letter-spacing:2px;opacity:0.7';
+      tag.textContent = 'FitMe · v' + APP_VERSION;
+      scroll.appendChild(tag);
+    }
+  } else if (document.getElementById('fitme-version-tag')) {
+    document.getElementById('fitme-version-tag').textContent = 'FitMe · v' + APP_VERSION;
   }
 };
