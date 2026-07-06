@@ -10,15 +10,6 @@
   <meta name="theme-color" content="#FAF7F2">
   <link rel="apple-touch-icon" href="/fitme/icon192.png">
   <title>FitMe</title>
-  <script>
-    // משחזר נתיב מקורי שנשמר ע"י 404.html (קישורים עמוקים ב-GitHub Pages)
-    (function(){
-      try {
-        var p = sessionStorage.getItem('fitme_redirect');
-        if (p) { sessionStorage.removeItem('fitme_redirect'); history.replaceState(null, '', p); }
-      } catch(e) {}
-    })();
-  </script>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/app.css">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -258,7 +249,24 @@
           <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" onchange="analyzePhoto(this)">
           <div id="food-loading" class="ai-loading hidden"><div class="spinner"></div><span>מנתח...</span></div>
           <div id="food-questionnaire" class="hidden"></div>
-          <div id="food-result" class="food-result hidden"></div>
+          <div id="food-result" class="food-result hidden">
+            <div class="result-header">
+              <div class="result-name" id="result-name"></div>
+              <div class="confidence-badge" id="confidence-badge"></div>
+            </div>
+            <div class="result-macros">
+              <div class="result-macro"><div class="rm-label">קלוריות</div><div class="rm-val" id="r-kcal">0</div></div>
+              <div class="result-macro"><div class="rm-label">חלבון</div><div class="rm-val" id="r-protein">0g</div></div>
+              <div class="result-macro"><div class="rm-label">פחמימות</div><div class="rm-val" id="r-carbs">0g</div></div>
+              <div class="result-macro"><div class="rm-label">שומן</div><div class="rm-val" id="r-fat">0g</div></div>
+            </div>
+            <div class="result-note hidden" id="result-note"></div>
+            <div class="result-actions">
+              <button class="btn-primary" onclick="addMeal()">הוסף ✓</button>
+              <button class="btn-ghost" onclick="addMealAndFavorite()">⭐ שמור כמועדף</button>
+              <button class="btn-ghost" onclick="cancelFood()">בטל</button>
+            </div>
+          </div>
           <div class="food-tabs">
             <button class="food-tab active" id="ftab-today" onclick="switchFoodTab('today')">היום</button>
             <button class="food-tab" id="ftab-favorites" onclick="switchFoodTab('favorites')">מועדפים</button>
@@ -331,7 +339,7 @@
 
       <!-- PROFILE -->
       <section class="screen" id="screen-profile">
-        <div class="topbar"><div class="topbar-title">הפרופיל שלי</div><button class="icon-btn" onclick="goToScreen('settings')" aria-label="הגדרות"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
+        <div class="topbar"><div class="topbar-title">הפרופיל שלי</div></div>
         <div class="scroll-content">
           <div class="profile-hero">
             <div id="prof-avatar-svg" style="margin:0 auto 12px;width:80px;height:120px"></div>
@@ -358,7 +366,7 @@
 
       <!-- SETTINGS -->
       <section class="screen" id="screen-settings">
-        <div class="topbar"><div class="topbar-title">הגדרות</div><button class="icon-btn" onclick="goToScreen('profile')" aria-label="חזרה לפרופיל"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button></div>
+        <div class="topbar"><div class="topbar-title">הגדרות</div></div>
         <div class="scroll-content">
           <div class="profile-card">
             <div class="avatar" id="profile-avatar"></div>
@@ -379,11 +387,6 @@
           <div class="food-tags-wrap" id="fav-foods-display"></div>
           <div class="section-header"><span>קוד הקבוצה שלי</span></div>
           <div class="settings-row"><span>שתף עם חברים</span><span class="settings-val" id="settings-group-code">--</span></div>
-          <div class="section-header"><span>מפתח Claude API</span></div>
-          <div class="ob-form">
-            <input type="password" id="api-key-input" placeholder="sk-ant-...">
-            <button class="btn-small" onclick="saveApiKey()" style="margin-top:8px;width:100%">שמור מפתח</button>
-          </div>
           <div class="section-header"><span>תוכנית תזונה</span></div>
           <div id="plan-targets-settings" style="margin-bottom:8px"></div>
           <button class="btn-primary" onclick="generatePlanFromSettings()">צור תפריט שבועי</button>
