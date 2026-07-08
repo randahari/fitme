@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.7.4';
+const APP_VERSION = '2.7.5';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -763,6 +763,9 @@ async function lookupBarcodeInCache(code) {
 async function saveBarcodeToCache(code, item, existingAddedByName) {
   const groupKey = getSharedBarcodeGroup();
   if (!groupKey || !code || !item) return;
+  // אל תשמור רשומה ריקה (בלי ערכים) — היא רק תזהם את המאגר
+  const hasData = (item.kcal||0) > 0 || (item.protein||0) > 0 || (item.carbs||0) > 0 || (item.fat||0) > 0;
+  if (!hasData) return;
   // שמור את שם מי שהוסיף במקור; אם זה מוצר חדש — המשתמש הנוכחי
   const addedByName = existingAddedByName || (userProfile ? userProfile.name : '');
   try {
@@ -779,9 +782,10 @@ async function saveBarcodeToCache(code, item, existingAddedByName) {
 }
 
 async function lookupBarcode(code) {
-  // 1. מאגר הקבוצה — הכי מהיר, ידני, מדויק
+  // 1. מאגר הקבוצה — הכי מהיר, ידני, מדויק. אבל רק אם יש בו ערכים אמיתיים.
   const cached = await lookupBarcodeInCache(code);
-  if (cached) {
+  const cachedHasData = cached && ((cached.kcal||0) > 0 || (cached.protein||0) > 0 || (cached.carbs||0) > 0 || (cached.fat||0) > 0);
+  if (cachedHasData) {
     closeBarcode();
     const item = {
       name: cached.name, amount: cached.amount, unit: cached.unit,
