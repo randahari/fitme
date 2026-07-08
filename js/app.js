@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.7.3';
+const APP_VERSION = '2.7.4';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -624,11 +624,10 @@ async function analyzePhoto(input) {
   reader.readAsDataURL(file);
 }
 
-let zxingReader = null;
+// ── BARCODE SCANNER (html5-qrcode — מנוע ZXing + גלאי native, יציב באייפון) ──
+let h5qr = null;
 let barcodeLastCode = null;
-let barcodeConfirm = 0;
-let barcodeStream = null;
-let barcodeRAF = null;
+let barcodeHintTimer = null;
 
 async function startBarcode() {
   const overlay = document.getElementById('barcode-overlay');
@@ -637,121 +636,76 @@ async function startBarcode() {
   const statusEl = document.getElementById('barcode-status');
   statusEl.textContent = 'מכוון את המצלמה לברקוד...';
   barcodeLastCode = null;
-  barcodeConfirm = 0;
 
-  // מנוע 1 (מועדף): BarcodeDetector המובנה — המנוע ה-native של המכשיר (אנדרואיד/כרום)
-  const nativeOK = 'BarcodeDetector' in window;
-  if (nativeOK) {
-    try {
-      const formats = await window.BarcodeDetector.getSupportedFormats();
-      const want = ['ean_13','ean_8','upc_a','upc_e'].filter(f => formats.includes(f));
-      if (want.length) { await startNativeBarcode(want, statusEl); return; }
-    } catch(e) { /* ניפול ל-ZXing */ }
-  }
-
-  // מנוע 2 (גיבוי): ZXing — עובד בכל מקום כולל Safari באייפון
-  await startZxingBarcode(statusEl);
-}
-
-// אישור כפול משותף לשני המנועים
-function onBarcodeCandidate(code, statusEl, stopFn) {
-  if (!code) return;
-  if (code === barcodeLastCode) { barcodeConfirm++; }
-  else { barcodeLastCode = code; barcodeConfirm = 1; }
-  if (barcodeConfirm >= 2) {
-    statusEl.textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
-    const found = code;
-    stopFn();
-    lookupBarcode(found);
-  }
-}
-
-async function getBackCameraStream() {
-  return await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-  });
-}
-
-async function startNativeBarcode(formats, statusEl) {
-  const video = document.getElementById('barcode-vid');
-  try {
-    barcodeStream = await getBackCameraStream();
-    video.srcObject = barcodeStream;
-    await video.play();
-  } catch(e) { closeBarcode(); alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות.'); return; }
-
-  armBarcodeHint(statusEl);
-  const detector = new window.BarcodeDetector({ formats });
-  const scan = async () => {
-    if (!barcodeStream) return; // נעצר
-    try {
-      const codes = await detector.detect(video);
-      if (codes && codes.length) onBarcodeCandidate(codes[0].rawValue, statusEl, stopBarcodeReader);
-    } catch(e) { /* פריים בעייתי — ממשיכים */ }
-    if (barcodeStream) barcodeRAF = requestAnimationFrame(scan);
-  };
-  barcodeRAF = requestAnimationFrame(scan);
-}
-
-async function startZxingBarcode(statusEl) {
-  if (typeof ZXing === 'undefined') {
+  // טעינת html5-qrcode לפי הצורך (גרסה מקובעת — לא latest)
+  if (typeof Html5Qrcode === 'undefined') {
     try {
       await new Promise((res, rej) => {
         const s = document.createElement('script');
-        s.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+        s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
         s.onload = res; s.onerror = rej;
         document.head.appendChild(s);
       });
     } catch(e) { closeBarcode(); alert('טעינת הסורק נכשלה. בדוק חיבור לאינטרנט.'); return; }
   }
-  const video = document.getElementById('barcode-vid');
 
-  // משיגים את המצלמה האחורית בעצמנו — יציב יותר מ-decodeFromConstraints
+  const fmts = [
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E
+  ];
+
   try {
-    barcodeStream = await getBackCameraStream();
-  } catch(e) { closeBarcode(); alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.'); return; }
+    h5qr = new Html5Qrcode('barcode-reader', { formatsToSupport: fmts, verbose: false });
+  } catch(e) { closeBarcode(); alert('שגיאה באתחול הסורק.'); return; }
 
-  const hints = new Map();
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
-  ]);
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 200);
+  const config = {
+    fps: 10,
+    qrbox: (vw) => { const w = Math.min(300, Math.round(vw * 0.85)); return { width: w, height: Math.round(w * 0.55) }; },
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+  };
 
   armBarcodeHint(statusEl);
   try {
-    zxingReader.decodeFromStream(barcodeStream, video, (result) => {
-      if (result) onBarcodeCandidate(result.getText(), statusEl, stopBarcodeReader);
-    });
+    await h5qr.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText) => onBarcodeDetected(decodedText, statusEl)
+    );
   } catch(e) {
     closeBarcode();
-    alert('שגיאה בהפעלת הסורק. נסה לצלם תווית במקום.');
+    alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
   }
 }
 
-// רמז אחרי 20 שניות אם עוד לא זוהה כלום
-let barcodeHintTimer = null;
+function onBarcodeDetected(code, statusEl) {
+  if (!code || barcodeLastCode) return; // כבר נתפס — מתעלמים מכפילויות
+  barcodeLastCode = code;
+  if (statusEl) statusEl.textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
+  stopBarcodeReader();
+  lookupBarcode(code);
+}
+
 function armBarcodeHint(statusEl) {
   clearTimeout(barcodeHintTimer);
   barcodeHintTimer = setTimeout(() => {
-    if (barcodeConfirm < 2) statusEl.innerHTML = 'לא מזהה? קרב את הברקוד, ודא תאורה טובה — או <button onclick="barcodeToLabel()" style="background:none;border:none;color:var(--gold);text-decoration:underline;font-size:14px;cursor:pointer;font-family:Heebo,sans-serif">צלם תווית במקום</button>';
+    if (!barcodeLastCode) statusEl.innerHTML = 'לא מזהה? קרב מעט את הברקוד וודא תאורה — או <button onclick="barcodeToLabel()" style="background:none;border:none;color:var(--gold);text-decoration:underline;font-size:14px;cursor:pointer;font-family:Heebo,sans-serif">צלם תווית במקום</button>';
   }, 20000);
 }
 
 function barcodeToLabel() {
-  const code = barcodeLastCode || ('manual-' + Date.now());
   closeBarcode();
-  showLabelPrompt(code);
+  showLabelPrompt('manual-' + Date.now());
 }
 
 function stopBarcodeReader() {
   clearTimeout(barcodeHintTimer);
-  if (barcodeRAF) { cancelAnimationFrame(barcodeRAF); barcodeRAF = null; }
-  if (zxingReader) { try { zxingReader.reset(); } catch(e) {} zxingReader = null; }
-  if (barcodeStream) { try { barcodeStream.getTracks().forEach(t => t.stop()); } catch(e) {} barcodeStream = null; }
-  const video = document.getElementById('barcode-vid');
-  if (video) { try { video.srcObject = null; } catch(e) {} }
+  if (!h5qr) return;
+  const r = h5qr; h5qr = null;
+  try {
+    r.stop().then(() => { try { r.clear(); } catch(e) {} }).catch(() => { try { r.clear(); } catch(e) {} });
+  } catch(e) { try { r.clear(); } catch(e2) {} }
 }
 
 function closeBarcode() {
