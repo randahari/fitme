@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.2';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -624,54 +624,109 @@ async function analyzePhoto(input) {
   reader.readAsDataURL(file);
 }
 
+let zxingReader = null;
+let barcodeLastCode = null;
+let barcodeConfirm = 0;
+let barcodeStream = null;
+let barcodeRAF = null;
+
 async function startBarcode() {
-  // Show scanner overlay
   const overlay = document.getElementById('barcode-overlay');
   if (!overlay) { alert('סריקת ברקוד לא זמינה בדפדפן זה.'); return; }
   overlay.classList.remove('hidden');
-  document.getElementById('barcode-status').textContent = 'מכוון את המצלמה לברקוד...';
+  const statusEl = document.getElementById('barcode-status');
+  statusEl.textContent = 'מכוון את המצלמה לברקוד...';
+  barcodeLastCode = null;
+  barcodeConfirm = 0;
 
-  // Load Quagga if needed
-  if (typeof Quagga === 'undefined') {
-    await new Promise((res, rej) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js';
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
+  // מנוע 1 (מועדף): BarcodeDetector המובנה — המנוע ה-native של המכשיר (אנדרואיד/כרום)
+  const nativeOK = 'BarcodeDetector' in window;
+  if (nativeOK) {
+    try {
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+      const want = ['ean_13','ean_8','upc_a','upc_e'].filter(f => formats.includes(f));
+      if (want.length) { await startNativeBarcode(want, statusEl); return; }
+    } catch(e) { /* ניפול ל-ZXing */ }
   }
 
-  Quagga.init({
-    inputStream: {
-      name: 'Live',
-      type: 'LiveStream',
-      target: document.getElementById('barcode-video'),
-      constraints: { facingMode: 'environment', width: { min: 640 }, height: { min: 480 } }
-    },
-    decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader'] },
-    locate: true
-  }, function(err) {
-    if (err) {
-      closeBarcode();
-      alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
-      return;
-    }
-    Quagga.start();
-  });
+  // מנוע 2 (גיבוי): ZXing — עובד בכל מקום כולל Safari באייפון
+  await startZxingBarcode(statusEl);
+}
 
-  let detected = false;
-  Quagga.onDetected(async function(result) {
-    if (detected) return;
-    detected = true;
-    const code = result.codeResult.code;
-    document.getElementById('barcode-status').textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
-    Quagga.stop();
-    await lookupBarcode(code);
-  });
+// אישור כפול משותף לשני המנועים
+function onBarcodeCandidate(code, statusEl, stopFn) {
+  if (!code) return;
+  if (code === barcodeLastCode) { barcodeConfirm++; }
+  else { barcodeLastCode = code; barcodeConfirm = 1; }
+  if (barcodeConfirm >= 2) {
+    statusEl.textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
+    const found = code;
+    stopFn();
+    lookupBarcode(found);
+  }
+}
+
+async function startNativeBarcode(formats, statusEl) {
+  const video = document.getElementById('barcode-vid');
+  try {
+    barcodeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+    video.srcObject = barcodeStream;
+    await video.play();
+  } catch(e) { closeBarcode(); alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות.'); return; }
+
+  const detector = new window.BarcodeDetector({ formats });
+  const scan = async () => {
+    if (!barcodeStream) return; // נעצר
+    try {
+      const codes = await detector.detect(video);
+      if (codes && codes.length) onBarcodeCandidate(codes[0].rawValue, statusEl, stopBarcodeReader);
+    } catch(e) { /* פריים בעייתי — ממשיכים */ }
+    if (barcodeStream) barcodeRAF = requestAnimationFrame(scan);
+  };
+  barcodeRAF = requestAnimationFrame(scan);
+}
+
+async function startZxingBarcode(statusEl) {
+  if (typeof ZXing === 'undefined') {
+    try {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    } catch(e) { closeBarcode(); alert('טעינת הסורק נכשלה. בדוק חיבור לאינטרנט.'); return; }
+  }
+  const video = document.getElementById('barcode-vid');
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
+  ]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+  try {
+    await zxingReader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      video,
+      (result) => { if (result) onBarcodeCandidate(result.getText(), statusEl, stopBarcodeReader); }
+    );
+  } catch(e) {
+    closeBarcode();
+    alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
+  }
+}
+
+function stopBarcodeReader() {
+  if (barcodeRAF) { cancelAnimationFrame(barcodeRAF); barcodeRAF = null; }
+  if (zxingReader) { try { zxingReader.reset(); } catch(e) {} zxingReader = null; }
+  if (barcodeStream) { try { barcodeStream.getTracks().forEach(t => t.stop()); } catch(e) {} barcodeStream = null; }
+  const video = document.getElementById('barcode-vid');
+  if (video) { try { video.srcObject = null; } catch(e) {} }
 }
 
 function closeBarcode() {
-  try { Quagga.stop(); } catch(e) {}
+  stopBarcodeReader();
   const overlay = document.getElementById('barcode-overlay');
   if (overlay) overlay.classList.add('hidden');
 }
@@ -781,6 +836,13 @@ async function lookupBarcode(code) {
       fiber: r1(n['fiber_100g']), sugar: r1(n['sugars_100g']),
       sodium: Math.round((n['sodium_100g'] || 0) * factor * 1000)
     };
+    // אם למאגר העולמי יש שם אך אין ערכים תזונתיים אמיתיים — התייחס כלא-נמצא ועבור לצילום תווית
+    const hasData = item.kcal > 0 || item.protein > 0 || item.carbs > 0 || item.fat > 0;
+    if (!hasData) {
+      closeBarcode();
+      showLabelPrompt(code);
+      return;
+    }
     // הערכים יישמרו למאגר הקבוצה בעת ההוספה ליום (עם הערכים הסופיים, אחרי עריכה אם הייתה)
     closeBarcode();
     showMealEditor({
