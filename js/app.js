@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.5.1';
+const APP_VERSION = '2.5.2';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -688,7 +688,9 @@ function normalizeItem(it) {
     fiber: num(it.fiber), sugar: num(it.sugar), sodium: num(it.sodium), qty: it.qty || 1 };
 }
 
+let editingItemIdx = null;
 function showMealEditor(meal) {
+  editingItemIdx = null;
   pendingMeal = {
     name: meal.name || 'ארוחה',
     note: meal.note || '',
@@ -715,12 +717,33 @@ function renderEditor() {
   const box = document.getElementById('food-result');
   if (!box || !pendingMeal) return;
   const t = mealTotals();
+  const fld = (lbl, id, val, type) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-3)">${lbl}<input id="${id}" ${type==='text'?'type="text"':'type="number" inputmode="decimal"'} value="${esc(val)}"></label>`;
   const rows = pendingMeal.items.map((it, i) => {
+    if (editingItemIdx === i) {
+      return `<div class="ed-item" style="flex-direction:column;align-items:stretch;gap:8px">
+        ${fld('שם','edit-name',it.name,'text')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${fld('כמות','edit-amount',it.amount)}
+          ${fld('יחידה','edit-unit',it.unit,'text')}
+          ${fld("קלוריות",'edit-kcal',it.kcal)}
+          ${fld('חלבון (g)','edit-protein',it.protein)}
+          ${fld('פחמימות (g)','edit-carbs',it.carbs)}
+          ${fld('שומן (g)','edit-fat',it.fat)}
+          ${fld('סיבים (g)','edit-fiber',it.fiber)}
+          ${fld('סוכר (g)','edit-sugar',it.sugar)}
+          ${fld('נתרן (mg)','edit-sodium',it.sodium)}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-small" style="flex:1" onclick="editorSaveEdit(${i})">שמור ✓</button>
+          <button class="btn-ghost" style="flex:1;margin-top:0;padding:8px" onclick="editorCancelEdit()">בטל</button>
+        </div>
+      </div>`;
+    }
     const amountTxt = it.amount ? `${fmtQty(Math.round(it.amount*it.qty*10)/10)} ${esc(it.unit)}` : '';
     return `<div class="ed-item">
       <button class="ed-del" onclick="editorDelete(${i})" aria-label="הסר פריט">×</button>
-      <div class="ed-info">
-        <div class="ed-name">${esc(it.name)}</div>
+      <div class="ed-info" onclick="editorEdit(${i})" style="cursor:pointer">
+        <div class="ed-name">${esc(it.name)} <span style="font-size:12px;color:var(--gold)">✏️</span></div>
         <div class="ed-sub">${amountTxt}${amountTxt?' · ':''}${Math.round(it.kcal*it.qty)} קל' · ${Math.round(it.protein*it.qty)}g חלבון</div>
       </div>
       <div class="ed-qty">
@@ -758,6 +781,33 @@ function editorQty(i, dir) {
   const it = pendingMeal.items[i]; if (!it) return;
   const step = 0.25;
   it.qty = Math.max(step, Math.round((it.qty + dir*step)*100)/100);
+  renderEditor();
+}
+
+function editorEdit(i) {
+  editingItemIdx = i;
+  renderEditor();
+}
+
+function editorCancelEdit() {
+  editingItemIdx = null;
+  renderEditor();
+}
+
+function editorSaveEdit(i) {
+  const it = pendingMeal.items[i]; if (!it) return;
+  const g = id => document.getElementById(id);
+  it.name = (g('edit-name').value || 'פריט').trim();
+  it.amount = num(g('edit-amount').value);
+  it.unit = g('edit-unit').value.trim();
+  it.kcal = num(g('edit-kcal').value);
+  it.protein = num(g('edit-protein').value);
+  it.carbs = num(g('edit-carbs').value);
+  it.fat = num(g('edit-fat').value);
+  it.fiber = num(g('edit-fiber').value);
+  it.sugar = num(g('edit-sugar').value);
+  it.sodium = num(g('edit-sodium').value);
+  editingItemIdx = null;
   renderEditor();
 }
 
