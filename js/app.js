@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.5.1';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -564,6 +564,37 @@ function closeBarcode() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// ── בקשת צילום תווית (במקום confirm — כדי שהמצלמה תיפתח באייפון) ──
+function showLabelPrompt(code) {
+  pendingBarcode = code;
+  let el = document.getElementById('label-prompt');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'label-prompt';
+    el.style.cssText = 'position:fixed;inset:0;z-index:350;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Heebo,sans-serif;direction:rtl';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;padding:22px;max-width:340px;width:100%;text-align:center;border:0.5px solid var(--border-2)">
+      <div style="font-size:34px;margin-bottom:8px">🏷️</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">המוצר לא נמצא במאגר</div>
+      <div style="font-size:13px;color:var(--text-3);line-height:1.5;margin-bottom:16px">צלם את תווית הערכים התזונתיים. Claude יקרא אותה וישמור למאגר הקבוצה — פעם הבאה תזוהה מיד.</div>
+      <button onclick="labelPromptCapture()" style="width:100%;padding:14px;background:var(--gold);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;font-family:Heebo,sans-serif;cursor:pointer">📷 צלם תווית</button>
+      <button onclick="closeLabelPrompt()" style="width:100%;padding:12px;background:none;color:var(--text-2);border:none;font-size:14px;font-family:Heebo,sans-serif;cursor:pointer;margin-top:6px">ביטול</button>
+    </div>`;
+  el.style.display = 'flex';
+}
+
+function labelPromptCapture() {
+  closeLabelPrompt();
+  startLabelCamera();
+}
+
+function closeLabelPrompt() {
+  const el = document.getElementById('label-prompt');
+  if (el) el.style.display = 'none';
+}
+
 // ── מאגר ברקוד משותף לקבוצה ──
 function getSharedBarcodeGroup() {
   if (!userProfile) return null;
@@ -617,10 +648,7 @@ async function lookupBarcode(code) {
     const data = await res.json();
     if (data.status !== 1 || !data.product) {
       closeBarcode();
-      if (confirm('המוצר לא נמצא במאגר.\nלצלם את תווית הערכים התזונתיים? Claude יקרא אותה וישמור למאגר הקבוצה — פעם הבאה תזוהה מיד.')) {
-        pendingBarcode = code;
-        startLabelCamera();
-      }
+      showLabelPrompt(code);
       return;
     }
     const p = data.product;
