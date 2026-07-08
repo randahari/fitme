@@ -451,3 +451,46 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
 .ed-total-kcal span { font-size: 12px; font-weight: 500; }
 .ed-total-macros { font-size: 12px; color: var(--text-2); text-align: left; line-height: 1.5; }
 .ed-total-macros span { font-size: 10px; color: var(--text-3); }
+
+/* ── COACH (המאמן) ── */
+.seg-wrap { flex-wrap: wrap; }
+.seg-wrap .seg-btn { flex: 1 1 40%; min-width: 0; font-size: 13px; padding: 8px 4px; }
+
+.coach-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--gold-light);
+  border: 0.5px solid rgba(139,94,26,0.15);
+  border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.coach-card.hidden { display: none; }
+.coach-card-icon { font-size: 18px; line-height: 1.5; flex-shrink: 0; }
+.coach-card-text { font-size: 13px; color: var(--gold); line-height: 1.6; }
+
+/* ── QUICK LOG (רישום מהיר) ── */
+.quick-section { margin-bottom: 12px; }
+.quick-section.hidden { display: none; }
+.quick-head { display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 500; color: var(--text-3); letter-spacing: 1.5px; text-transform: uppercase; margin: 4px 0 8px; }
+.quick-strip { display: flex; flex-wrap: wrap; gap: 7px; }
+.quick-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border: 0.5px solid var(--border-2);
+  border-radius: 20px; background: var(--bg); color: var(--text);
+  font-size: 13px; cursor: pointer; font-family: 'Heebo', sans-serif;
+  transition: all 0.15s; white-space: nowrap;
+}
+.quick-chip:active { background: var(--gold-light); border-color: var(--gold); }
+.quick-chip span { font-size: 11px; color: var(--text-3); font-weight: 600; }
+.quick-chip[disabled] { background: var(--teal-light); border-color: var(--teal); color: var(--teal); }
+.quick-chip.manage { background: var(--bg-2); cursor: default; padding: 6px 8px 6px 12px; }
+.quick-pin, .quick-del { background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; opacity: 0.5; }
+.quick-pin.on { opacity: 1; }
+.quick-del { color: var(--red); font-size: 16px; }
+
+.quick-learn {
+  background: var(--bg); border: 0.5px solid var(--gold-2);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+}
+.quick-learn.hidden { display: none; }
+.quick-learn-head { font-size: 14px; font-weight: 600; color: var(--gold); margin-bottom: 4px; }
+.quick-learn-sub { font-size: 12px; color: var(--text-3); margin-bottom: 10px; line-height: 1.5; }

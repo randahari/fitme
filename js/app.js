@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -18,6 +18,21 @@ async function callClaude(body) {
 
 const GOAL_LABELS = { cut: 'חיטוב 🔥', bulk: 'מסה 💪', maintain: 'שימור ⚖️' };
 const DAYS_HE = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+
+// ── COACH (המאמן) ──
+const COACH_STYLE_LABELS = { friendly: 'חברי', supportive: 'תומך', professional: 'מקצועי', mixed: 'מעורב' };
+const COACH_CHATTER_LABELS = { minimal: 'קצר ולעניין', balanced: 'מאוזן', gentle: 'עדין' };
+const COACH_STYLE_GUIDE = {
+  friendly: 'דבר בטון חם, יומיומי וקליל, כמו חבר טוב. מותר הומור עדין.',
+  supportive: 'דבר בטון תומך, מעודד ורגיש. שים דגש על חיזוק והבנה.',
+  professional: 'דבר בטון ענייני, מדויק וממוקד. בלי סלנג, בלי קישוטים מיותרים.',
+  mixed: 'שלב חום ידידותי עם דיוק ענייני — נעים אבל לא מתחנחן.'
+};
+const COACH_CHATTER_GUIDE = {
+  minimal: 'משפט אחד קצר בלבד. בלי פתיח, בלי סיכום. רק העיקר.',
+  balanced: 'עד 2 משפטים. נעים וקולע.',
+  gentle: '2–3 משפטים חמים ומלווים, עם מילת עידוד אמיתית.'
+};
 const ACHIEVEMENTS = [
   { id: 'streak7', icon: '🔥', title: '7 ימים ברצף', check: p => (p.streak||0) >= 7 },
   { id: 'streak30', icon: '🏆', title: '30 ימים ברצף', check: p => (p.streak||0) >= 30 },
@@ -37,7 +52,9 @@ let workoutInt = 'med';
 let pendingMeal = null; // { name, note, items:[{name,amount,unit,kcal,protein,carbs,fat,fiber,sugar,sodium,qty}], suggestions:[...] }
 let photoMode = 'plate'; // 'plate' = צילום צלחת, 'label' = צילום תווית תזונתית
 let pendingBarcode = null; // הברקוד שצילום התווית הבא ישויך אליו במאגר הקבוצה
-let obData = { gender: 'male', days: '2', goal: null };
+let obData = { gender: 'male', days: '2', goal: null, coachStyle: 'mixed', coachChatter: 'balanced' };
+let quickItems = [];        // מנה 3 — רישום מהיר חכם
+let coachCardShown = false; // כדי לא לייצר הודעת מאמן פעמיים באותה פתיחה
 let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
 let favoriteMeals = [];
 
@@ -115,6 +132,8 @@ async function loadUserData() {
     // Load favorites
     const favDoc = await db.collection('users').doc(currentUser.uid).collection('data').doc('favorites').get();
     favoriteMeals = favDoc.exists ? (favDoc.data().meals || []) : [];
+    // Load quick-log items (מנה 3)
+    quickItems = (userProfile && Array.isArray(userProfile.quickItems)) ? userProfile.quickItems : [];
   } catch(e) { console.error('loadUserData:', e); }
 }
 
@@ -203,7 +222,7 @@ function scheduleLocalNotifications() {
   const name = userProfile.name;
 
   // Morning 7:00
-  if (hour < 7) scheduleAt(7, 0, () => sendLocalNotification('בוקר טוב ' + name + '! ☀️', 'יום חדש, התחלה חדשה. היעד שלך היום: ' + userProfile.goalKcal + ' קל\''));
+  if (hour < 7) scheduleAt(7, 0, () => sendLocalNotification('בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: userProfile.goalKcal })));
 
   // Water reminders every 2 hours
   [9,11,13,15,17].forEach(h => {
@@ -222,20 +241,20 @@ function scheduleLocalNotifications() {
   if (hour < 17) scheduleAt(17, 0, () => {
     const protein = todayData.meals.reduce((s,m)=>s+(m.protein||0),0);
     const targetProtein = Math.round((userProfile.weight||75) * 1.8);
-    if (protein < targetProtein * 0.6) sendLocalNotification('📊 בדיקת תזונה', 'חסר לך חלבון היום! אכלת ' + Math.round(protein) + 'g מתוך ' + targetProtein + 'g. תאכל ביצים, עוף או קוטג\'.');
+    if (protein < targetProtein * 0.6) sendLocalNotification('📊 בדיקת תזונה', coachLine('protein', { have: Math.round(protein), target: targetProtein }));
   });
 
   // Evening push 20:00
   if (hour < 20) scheduleAt(20, 0, () => {
     const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
     const remain = userProfile.goalKcal - consumed;
-    if (remain > 200) sendLocalNotification('⚡ ' + name + ', תספיק!', 'נותרו לך ' + remain + ' קל\' להיום. יש לך עוד שעתיים!');
+    if (remain > 200) sendLocalNotification('⚡ ' + coachName(), coachLine('evening', { remain }));
   });
 
   // Streak protection 21:00
   if (hour < 21) scheduleAt(21, 0, () => {
     const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-    if (consumed < 100 && (userProfile.streak||0) > 2) sendLocalNotification('🔥 אל תשבור את הסטריק!', 'סטריק של ' + userProfile.streak + ' ימים בסכנה! רשום מה אכלת היום.');
+    if (consumed < 100 && (userProfile.streak||0) > 2) sendLocalNotification('🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
   });
 }
 
@@ -245,6 +264,72 @@ function scheduleAt(hour, min, callback) {
   target.setHours(hour, min, 0, 0);
   const diff = target - now;
   if (diff > 0) setTimeout(callback, diff);
+}
+
+// ── COACH ENGINE (המאמן) ──
+function coachName() {
+  return (userProfile && userProfile.coachName) || (userProfile && userProfile.name) || 'חבר';
+}
+function coachStyle() { return (userProfile && userProfile.coachStyle) || 'mixed'; }
+function coachChatter() { return (userProfile && userProfile.coachChatter) || 'balanced'; }
+
+// הוראת מערכת קצרה שמרכיבה את הדמות מההעדפות — כדי שהמאמן עקבי בכל האפליקציה
+function buildCoachSystemPrompt() {
+  return [
+    'אתה "המאמן" — נוכחות אישית באפליקציית תזונה וכושר בשם FitMe.',
+    'אתה מדבר עברית בלבד, בגוף ראשון, ופונה למשתמש בשם: ' + coachName() + '.',
+    'אופי: ' + (COACH_STYLE_GUIDE[coachStyle()] || COACH_STYLE_GUIDE.mixed),
+    'אורך: ' + (COACH_CHATTER_GUIDE[coachChatter()] || COACH_CHATTER_GUIDE.balanced),
+    'לעולם אל תמציא נתונים שלא נמסרו לך. אל תשתמש בכותרות, רשימות או Markdown — טקסט רץ בלבד.',
+    'אל תפתח ב"שלום" חוזר בכל הודעה. היה טבעי.'
+  ].join(' ');
+}
+
+// מייצר הודעת מאמן דרך ה-proxy. context = תיאור מצב קצר בעברית.
+async function coachMessage(context) {
+  const data = await callClaude({
+    model: 'claude-sonnet-4-6',
+    max_tokens: coachChatter() === 'gentle' ? 220 : 120,
+    system: buildCoachSystemPrompt(),
+    messages: [{ role: 'user', content: 'המצב כרגע: ' + context + '\nכתוב הודעת מאמן אחת בהתאם לאופי ולאורך שהוגדרו.' }]
+  });
+  return (data.content && data.content[0] && data.content[0].text || '').trim();
+}
+
+// כרטיס המאמן במסך הבית — הודעה חכמה לפי מצב היום (פעם אחת לפתיחה)
+async function refreshCoachCard() {
+  if (coachCardShown || !userProfile) return;
+  coachCardShown = true;
+  const card = document.getElementById('coach-card');
+  const textEl = document.getElementById('coach-card-text');
+  if (!card || !textEl) return;
+  const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
+  const protein = Math.round(todayData.meals.reduce((s,m)=>s+(m.protein||0),0));
+  const targetProtein = Math.round((userProfile.weight||75)*1.8);
+  const remain = Math.max(0, userProfile.goalKcal - consumed);
+  const hour = new Date().getHours();
+  const partOfDay = hour < 11 ? 'בוקר' : hour < 17 ? 'צהריים' : 'ערב';
+  const ctx = `עכשיו ${partOfDay}. ${coachName()} פתח את מסך הבית. צרך ${consumed} קל׳ מתוך ${userProfile.goalKcal} (נותרו ${remain}). חלבון ${protein}g מתוך ${targetProtein}g. סטריק ${userProfile.streak||0} ימים. מטרה: ${GOAL_LABELS[userProfile.goal]}. תן משפט מלווה שמתאים לשעה ולמצב — עידוד או טיפ קטן.`;
+  try {
+    const msg = await coachMessage(ctx);
+    if (msg) { textEl.textContent = msg; card.classList.remove('hidden'); }
+  } catch(e) { /* שקט — אם אין רשת פשוט לא מציגים כרטיס */ }
+}
+
+// טקסט מקומי (בלי רשת) לפי אופי — לתזכורות מיידיות/התראות, לאמינות ומהירות
+function coachLine(kind, d) {
+  const n = coachName();
+  const warm = coachChatter() === 'gentle';
+  const pro = coachStyle() === 'professional' || coachChatter() === 'minimal';
+  const T = {
+    morning:   pro ? `בוקר טוב. יעד היום: ${d.goal} קל׳.` : warm ? `בוקר טוב ${n} ☀️ יום חדש, הזדמנות חדשה. היעד שלך היום: ${d.goal} קל׳.` : `בוקר טוב ${n}! היעד שלך היום: ${d.goal} קל׳.`,
+    protein:   pro ? `חלבון: ${d.have}g מתוך ${d.target}g.` : warm ? `${n}, שים לב לחלבון — ${d.have}g מתוך ${d.target}g. ביצה, עוף או קוטג׳ יסגרו את הפער יפה.` : `חסר קצת חלבון: ${d.have}g מתוך ${d.target}g. אולי ביצים או קוטג׳?`,
+    evening:   pro ? `נותרו ${d.remain} קל׳ להיום.` : warm ? `${n}, יש לך עוד זמן — נותרו ${d.remain} קל׳ להיום, אתה בכיוון טוב.` : `${n}, נותרו ${d.remain} קל׳ להיום. תספיק!`,
+    streak:    pro ? `סטריק ${d.streak} ימים — טרם נרשמה ארוחה היום.` : warm ? `${n}, הסטריק היפה שלך (${d.streak} ימים) מחכה — רישום קטן אחד וזה נשמר 🔥` : `אל תשבור את הסטריק! ${d.streak} ימים בסכנה — רשום משהו 🔥`,
+    achieve:   pro ? `הישג חדש: ${d.title}.` : warm ? `${n}, כל הכבוד! פתחת הישג: ${d.title} ${d.icon}` : `הישג חדש ${d.icon} — ${d.title}!`,
+    workout:   pro ? `אימון נשמר. ${d.burn} קל׳.` : warm ? `${n}, אלוף! אימון נשמר ושרפת ${d.burn} קל׳ 💪` : `אימון נשמר! שרפת ${d.burn} קל׳ 💪`
+  };
+  return T[kind] || '';
 }
 
 // ── ONBOARDING ──
@@ -288,6 +373,14 @@ function obNext(step) {
     obData.weight = parseFloat(w); obData.height = parseFloat(h);
   }
   if (step === 3) { if (!obData.goal) { alert('נא לבחור מטרה'); return; } }
+  if (step === 4) {
+    const foods = [...document.querySelectorAll('.food-tag.selected')].map(t => t.textContent);
+    if (!foods.length) { alert('בחר לפחות מאכל אחד'); return; }
+    obData.foods = foods;
+    // מילוי אוטומטי של שם הפנייה מהשם שהוזן
+    const cn = document.getElementById('ob-coach-name');
+    if (cn && !cn.value.trim()) cn.value = obData.name || '';
+  }
   document.getElementById('ob-' + step).classList.remove('active');
   document.getElementById('ob-' + (step + 1)).classList.add('active');
 }
@@ -298,8 +391,9 @@ function obBack(step) {
 }
 
 async function finishOnboarding() {
-  const foods = [...document.querySelectorAll('.food-tag.selected')].map(t => t.textContent);
+  const foods = obData.foods || [...document.querySelectorAll('.food-tag.selected')].map(t => t.textContent);
   if (!foods.length) { alert('בחר לפחות מאכל אחד'); return; }
+  const coachNameVal = (document.getElementById('ob-coach-name')?.value || '').trim() || obData.name;
   const bmr = obData.gender === 'male'
     ? 88.36 + (13.4*obData.weight) + (4.8*obData.height) - (5.7*obData.age)
     : 447.6 + (9.2*obData.weight) + (3.1*obData.height) - (4.3*obData.age);
@@ -312,8 +406,11 @@ async function finishOnboarding() {
     height: obData.height, days: obData.days, goal: obData.goal, foods, tdee, goalKcal,
     stepsGoal: 10000, streak: 0, darkMode: false, groupCode, groupId: null,
     totalWorkouts: 0, perfectWaterDays: 0, perfectNutritionDays: 0,
+    coachName: coachNameVal, coachStyle: obData.coachStyle || 'mixed', coachChatter: obData.coachChatter || 'balanced',
+    quickItems: [], quickOnboarded: false,
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   };
+  quickItems = [];
   await saveProfile();
   await db.collection('groups').doc(groupCode).collection('members').doc(currentUser.uid).set({ joinedAt: firebase.firestore.FieldValue.serverTimestamp() });
   todayData = { meals: [], burned: 0, steps: 0 }; waterCount = 0;
@@ -891,13 +988,17 @@ async function addMeal() {
   if (pendingMeal.barcode && pendingMeal.items[0]) {
     saveBarcodeToCache(pendingMeal.barcode, pendingMeal.items[0], pendingMeal.addedByName);
   }
-  todayData.meals.push(buildMealFromEditor());
+  const finalMeal = buildMealFromEditor();
+  todayData.meals.push(finalMeal);
+  learnQuickItems(finalMeal);
   pendingMeal = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
   await saveTodayData();
+  await saveProfile();
   await updateStreak();
   renderFoodMeals();
+  renderQuickStrip();
   renderHome();
 }
 
@@ -953,6 +1054,144 @@ function cancelFood() {
   pendingBarcode = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
+}
+
+// ── QUICK LOG (מנה 3 — רישום מהיר חכם) ──
+let quickManage = false;
+function r1(x) { return Math.round((+x || 0) * 10) / 10; }
+function qval(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+// לומד כל פריט בארוחה כאטום לרישום מהיר (ערכים אפקטיביים לאחר qty)
+function learnQuickItems(meal) {
+  if (!meal || !Array.isArray(meal.items)) return;
+  const now = Date.now(), hr = new Date().getHours();
+  meal.items.forEach(it => {
+    const name = (it.name || '').trim();
+    if (!name) return;
+    const q = it.qty || 1;
+    const eff = {
+      amount: r1((it.amount || 0) * q), unit: it.unit || '',
+      kcal: Math.round((it.kcal || 0) * q), protein: r1((it.protein || 0) * q), carbs: r1((it.carbs || 0) * q),
+      fat: r1((it.fat || 0) * q), fiber: r1((it.fiber || 0) * q), sugar: r1((it.sugar || 0) * q), sodium: Math.round((it.sodium || 0) * q)
+    };
+    let e = quickItems.find(x => x.name === name);
+    if (e) { e.count = (e.count || 0) + 1; e.lastUsed = now; e.lastHour = hr; Object.assign(e, eff); }
+    else { quickItems.push({ name, ...eff, count: 1, lastUsed: now, lastHour: hr, pinned: false }); }
+  });
+  capQuick();
+  if (userProfile) userProfile.quickItems = quickItems;
+}
+
+function capQuick() {
+  if (quickItems.length <= 40) return;
+  quickItems.sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || (b.count||0)-(a.count||0));
+  quickItems = quickItems.slice(0, 40);
+}
+
+// ניקוד חכם: תדירות + התאמה לשעה + טריות + נעיצה
+function scoreQuick(q) {
+  const nowHr = new Date().getHours();
+  let s = (q.count || 0) * 3;
+  if (q.lastHour != null && Math.abs(q.lastHour - nowHr) <= 2) s += 8;
+  if (q.lastUsed) { const days = (Date.now() - q.lastUsed) / 86400000; if (days < 2) s += 4; else if (days < 7) s += 2; }
+  if (q.pinned) s += 1000;
+  return s;
+}
+
+function renderQuickStrip() {
+  const sec = document.getElementById('quick-section');
+  const wrap = document.getElementById('quick-strip');
+  if (!sec || !wrap) return;
+  if (!quickItems.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  const sorted = [...quickItems].sort((a,b) => scoreQuick(b) - scoreQuick(a));
+  const list = quickManage ? sorted : sorted.slice(0, 10);
+  wrap.innerHTML = list.map(q => {
+    const gi = quickItems.indexOf(q);
+    if (quickManage) {
+      return `<div class="quick-chip manage"><span>${esc(q.name)}</span>
+        <button class="quick-pin ${q.pinned?'on':''}" onclick="pinQuick(${gi})" title="נעץ">📌</button>
+        <button class="quick-del" onclick="removeQuick(${gi})" title="הסר">×</button></div>`;
+    }
+    return `<button class="quick-chip" onclick="logQuick(${gi}, this)">${q.pinned?'📌 ':''}${esc(q.name)} <span>${q.kcal}</span></button>`;
+  }).join('');
+}
+
+function toggleQuickManage() {
+  quickManage = !quickManage;
+  const btn = document.getElementById('quick-manage-btn');
+  if (btn) btn.textContent = quickManage ? 'סיום' : 'ערוך';
+  renderQuickStrip();
+}
+
+async function logQuick(gi, btn) {
+  const q = quickItems[gi]; if (!q) return;
+  const now = new Date();
+  const item = { name:q.name, amount:q.amount, unit:q.unit, kcal:q.kcal, protein:q.protein, carbs:q.carbs, fat:q.fat, fiber:q.fiber, sugar:q.sugar, sodium:q.sodium, qty:1 };
+  todayData.meals.push({
+    name: q.name, kcal: q.kcal, protein: q.protein, carbs: q.carbs, fat: q.fat, fiber: q.fiber, sugar: q.sugar, sodium: q.sodium,
+    items: [item], time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')
+  });
+  q.count = (q.count||0)+1; q.lastUsed = Date.now(); q.lastHour = now.getHours();
+  if (userProfile) userProfile.quickItems = quickItems;
+  if (btn) { const o = btn.innerHTML; btn.innerHTML = '✓ נוסף'; btn.disabled = true; setTimeout(()=>{ btn.innerHTML = o; btn.disabled = false; }, 1200); }
+  await saveTodayData();
+  await saveProfile();
+  await updateStreak();
+  renderFoodMeals();
+  renderHome();
+}
+
+async function pinQuick(gi) {
+  const q = quickItems[gi]; if (!q) return;
+  q.pinned = !q.pinned;
+  if (userProfile) userProfile.quickItems = quickItems;
+  await saveProfile();
+  renderQuickStrip();
+}
+
+async function removeQuick(gi) {
+  quickItems.splice(gi, 1);
+  if (userProfile) userProfile.quickItems = quickItems;
+  await saveProfile();
+  renderQuickStrip();
+}
+
+// שיחת למידה התחלתית — פעם אחת
+function maybeShowQuickLearn() {
+  const card = document.getElementById('quick-learn');
+  if (!card || !userProfile) return;
+  const show = !userProfile.quickOnboarded && quickItems.length === 0;
+  card.classList.toggle('hidden', !show);
+}
+
+async function submitQuickLearn() {
+  const a1 = qval('ql-morning'), a2 = qval('ql-breakfast'), a3 = qval('ql-snack');
+  if (!a1 && !a2 && !a3) { dismissQuickLearn(); return; }
+  document.getElementById('ql-loading').classList.remove('hidden');
+  try {
+    const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content:
+      `הערך תזונתית עד 5 פריטים שהמשתמש צורך בקביעות. תשובות המשתמש — משקה בוקר: "${a1}"; ארוחת בוקר: "${a2}"; חטיף נפוץ: "${a3}". פצל לפריטים בודדים הגיוניים (למשל "קפה עם חלב" → פריט אחד). אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: מערך של {"name":"שם בעברית","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
+    const arr = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const now = Date.now();
+    (Array.isArray(arr) ? arr : []).forEach(it => {
+      if (!it || !it.name) return;
+      quickItems.push({ name: String(it.name).trim(), amount: r1(it.amount), unit: it.unit||'', kcal: Math.round(+it.kcal||0),
+        protein: r1(it.protein), carbs: r1(it.carbs), fat: r1(it.fat), fiber: r1(it.fiber), sugar: r1(it.sugar), sodium: Math.round(+it.sodium||0),
+        count: 2, lastUsed: now, lastHour: null, pinned: false });
+    });
+    if (userProfile) { userProfile.quickItems = quickItems; userProfile.quickOnboarded = true; }
+    await saveProfile();
+    dismissQuickLearn();
+    renderQuickStrip();
+  } catch(e) { alert('שגיאה בבניית הרשימה. נסה שוב.'); }
+  finally { document.getElementById('ql-loading').classList.add('hidden'); }
+}
+
+async function dismissQuickLearn() {
+  if (userProfile) { userProfile.quickOnboarded = true; await saveProfile(); }
+  const card = document.getElementById('quick-learn');
+  if (card) card.classList.add('hidden');
 }
 
 function renderFoodMeals() {
@@ -1042,7 +1281,7 @@ async function saveWorkout() {
   await saveProfile();
   await updateStreak();
   checkAchievements();
-  sendLocalNotification('אימון נשמר! 💪', 'שרפת '+burn.toLocaleString()+' קלוריות. כל הכבוד!');
+  sendLocalNotification('אימון נשמר! 💪', coachLine('workout', { burn: burn.toLocaleString() }));
   alert('האימון נשמר! שרפת '+burn.toLocaleString()+' קלוריות 💪');
   goToScreen('home');
 }
@@ -1074,7 +1313,7 @@ function checkAchievements() {
   newOnes.forEach(async a => {
     userProfile['ach_'+a.id] = true;
     await saveProfile();
-    sendLocalNotification('הישג חדש! '+a.icon, 'השגת: '+a.title);
+    sendLocalNotification('הישג חדש! '+a.icon, coachLine('achieve', { title: a.title, icon: a.icon }));
   });
 }
 
@@ -1318,6 +1557,52 @@ function renderSettings() {
   if (darkMode) { const dt = document.getElementById('dark-toggle'); if (dt) dt.classList.add('on'); }
   const gc = document.getElementById('settings-group-code');
   if (gc) gc.textContent = userProfile.groupCode || '--';
+  renderCoachSettings();
+}
+
+// ── COACH SETTINGS ──
+function renderCoachSettings() {
+  if (!userProfile) return;
+  const nameEl = document.getElementById('set-coach-name');
+  if (nameEl) nameEl.value = userProfile.coachName || userProfile.name || '';
+  const st = userProfile.coachStyle || 'mixed';
+  const ch = userProfile.coachChatter || 'balanced';
+  document.querySelectorAll('#set-coach-style .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === st));
+  document.querySelectorAll('#set-coach-chatter .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === ch));
+}
+
+async function saveCoachSettings() {
+  if (!userProfile) return;
+  const nameEl = document.getElementById('set-coach-name');
+  if (nameEl) userProfile.coachName = nameEl.value.trim() || userProfile.name;
+  await saveProfile();
+}
+
+async function setCoachStyle(v) {
+  if (!userProfile) return;
+  userProfile.coachStyle = v;
+  document.querySelectorAll('#set-coach-style .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
+  await saveProfile();
+}
+
+async function setCoachChatter(v) {
+  if (!userProfile) return;
+  userProfile.coachChatter = v;
+  document.querySelectorAll('#set-coach-chatter .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
+  await saveProfile();
+}
+
+async function testCoachMessage() {
+  await saveCoachSettings();
+  const out = document.getElementById('coach-test-out');
+  if (!out) return;
+  out.classList.remove('hidden');
+  out.textContent = 'המאמן כותב...';
+  try {
+    const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
+    const msg = await coachMessage(`${coachName()} פתח את מסך ההגדרות. היום צרך ${consumed} קל׳ מתוך ${userProfile.goalKcal}, סטריק ${userProfile.streak||0} ימים. תגיד שלום קצר שמדגים את האופי שלך.`);
+    out.textContent = msg || 'לא התקבלה תשובה.';
+  } catch(e) { out.textContent = 'שגיאה: ' + e.message; }
 }
 
 // saveApiKey — הוסר: המפתח יושב עכשיו בענן, המשתמשים לא צריכים להזין כלום
@@ -1355,7 +1640,7 @@ goToScreen = function(name) {
   const nav = document.getElementById('nav-'+name);
   if (nav) nav.classList.add('active');
   if (name==='home') renderHome();
-  if (name==='food') { renderFoodMeals(); renderFavoritesList(); }
+  if (name==='food') { renderFoodMeals(); renderFavoritesList(); renderQuickStrip(); maybeShowQuickLearn(); }
   if (name==='profile') renderProfile();
   if (name==='settings') renderSettings();
   if (name==='workout') updateWorkout();
@@ -1407,6 +1692,7 @@ renderHome = function() {
   renderMealsInHome();
   buildWater();
   buildWeekChart();
+  refreshCoachCard();
 };
 
 // ── Settings: plan section ──

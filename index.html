@@ -136,8 +136,35 @@
           <button class="btn-small" onclick="addCustomFood()">הוסף</button>
         </div>
       </div>
-      <button class="btn-primary" onclick="finishOnboarding()">בואו נתחיל 🚀</button>
+      <button class="btn-primary" onclick="obNext(4)">המשך</button>
       <button class="btn-ghost" onclick="obBack(4)">חזור</button>
+    </div>
+
+    <div class="ob-screen" id="ob-5">
+      <div class="ob-hero">
+        <div class="ob-emoji">🧭</div>
+        <h1>המאמן שלך</h1>
+        <p>נוכחות שתלווה, תעודד ותתאים את עצמה אליך</p>
+      </div>
+      <div class="ob-form">
+        <label>איך שנפנה אליך?</label>
+        <input type="text" id="ob-coach-name" placeholder="השם או כינוי" autocomplete="off">
+        <label style="margin-top:12px">אופי המאמן</label>
+        <div class="seg-ctrl seg-wrap">
+          <button class="seg-btn active" data-val="mixed" onclick="selectSeg(this,'coachStyle')">מעורב</button>
+          <button class="seg-btn" data-val="friendly" onclick="selectSeg(this,'coachStyle')">חברי</button>
+          <button class="seg-btn" data-val="supportive" onclick="selectSeg(this,'coachStyle')">תומך</button>
+          <button class="seg-btn" data-val="professional" onclick="selectSeg(this,'coachStyle')">מקצועי</button>
+        </div>
+        <label style="margin-top:12px">כמות תקשורת</label>
+        <div class="seg-ctrl">
+          <button class="seg-btn" data-val="minimal" onclick="selectSeg(this,'coachChatter')">קצר ולעניין</button>
+          <button class="seg-btn active" data-val="balanced" onclick="selectSeg(this,'coachChatter')">מאוזן</button>
+          <button class="seg-btn" data-val="gentle" onclick="selectSeg(this,'coachChatter')">עדין</button>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="finishOnboarding()">בואו נתחיל 🚀</button>
+      <button class="btn-ghost" onclick="obBack(5)">חזור</button>
     </div>
   </div>
 
@@ -158,6 +185,12 @@
           </div>
         </div>
         <div class="scroll-content">
+
+          <!-- COACH CARD (המאמן) -->
+          <div id="coach-card" class="coach-card hidden">
+            <div class="coach-card-icon">🧭</div>
+            <div class="coach-card-text" id="coach-card-text"></div>
+          </div>
 
           <!-- RING CARD — טקסט ימין, טבעת שמאל -->
           <div class="home-top-card">
@@ -267,6 +300,26 @@
               <button class="btn-ghost" onclick="cancelFood()">בטל</button>
             </div>
           </div>
+          <!-- QUICK LOG LEARN CARD (מנה 3) -->
+          <div id="quick-learn" class="quick-learn hidden">
+            <div class="quick-learn-head">🧭 בוא נלמד את הקבועים שלך</div>
+            <p class="quick-learn-sub">כמה שאלות קצרות והמאמן יכין לך רישום בלחיצה אחת.</p>
+            <input type="text" id="ql-morning" placeholder="מה אתה שותה בבוקר? (קפה עם חלב...)">
+            <input type="text" id="ql-breakfast" placeholder="ארוחת בוקר טיפוסית?" style="margin-top:6px">
+            <input type="text" id="ql-snack" placeholder="חטיף שאתה אוהב?" style="margin-top:6px">
+            <div id="ql-loading" class="ai-loading hidden"><div class="spinner"></div><span>המאמן בונה...</span></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn-primary" onclick="submitQuickLearn()">בנה לי רשימה</button>
+              <button class="btn-ghost" onclick="dismissQuickLearn()" style="margin-top:0">דלג</button>
+            </div>
+          </div>
+
+          <!-- QUICK LOG STRIP (מנה 3) -->
+          <div id="quick-section" class="quick-section hidden">
+            <div class="quick-head"><span>רישום מהיר ⚡</span><button class="link-btn" id="quick-manage-btn" onclick="toggleQuickManage()">ערוך</button></div>
+            <div id="quick-strip" class="quick-strip"></div>
+          </div>
+
           <div class="food-tabs">
             <button class="food-tab active" id="ftab-today" onclick="switchFoodTab('today')">היום</button>
             <button class="food-tab" id="ftab-favorites" onclick="switchFoodTab('favorites')">מועדפים</button>
@@ -387,6 +440,26 @@
           <div class="settings-row">
             <span>מצב כהה</span>
             <div class="toggle" id="dark-toggle" onclick="toggleDark()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="section-header"><span>המאמן שלי 🧭</span></div>
+          <div class="ob-form" style="gap:4px">
+            <label>איך שנפנה אליך?</label>
+            <input type="text" id="set-coach-name" placeholder="השם או כינוי" autocomplete="off" onchange="saveCoachSettings()">
+            <label style="margin-top:10px">אופי המאמן</label>
+            <div class="seg-ctrl seg-wrap" id="set-coach-style">
+              <button class="seg-btn" data-val="mixed" onclick="setCoachStyle('mixed')">מעורב</button>
+              <button class="seg-btn" data-val="friendly" onclick="setCoachStyle('friendly')">חברי</button>
+              <button class="seg-btn" data-val="supportive" onclick="setCoachStyle('supportive')">תומך</button>
+              <button class="seg-btn" data-val="professional" onclick="setCoachStyle('professional')">מקצועי</button>
+            </div>
+            <label style="margin-top:10px">כמות תקשורת</label>
+            <div class="seg-ctrl" id="set-coach-chatter">
+              <button class="seg-btn" data-val="minimal" onclick="setCoachChatter('minimal')">קצר ולעניין</button>
+              <button class="seg-btn" data-val="balanced" onclick="setCoachChatter('balanced')">מאוזן</button>
+              <button class="seg-btn" data-val="gentle" onclick="setCoachChatter('gentle')">עדין</button>
+            </div>
+            <button class="btn-ghost" onclick="testCoachMessage()" style="margin-top:10px">בדוק הודעת מאמן</button>
+            <div id="coach-test-out" class="ai-bubble hidden" style="margin-top:8px"></div>
           </div>
           <div class="section-header"><span>המאכלים האהובים שלי</span></div>
           <div class="food-tags-wrap" id="fav-foods-display"></div>
