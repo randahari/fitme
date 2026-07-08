@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.7.5';
+const APP_VERSION = '2.8.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -275,14 +275,28 @@ function coachChatter() { return (userProfile && userProfile.coachChatter) || 'b
 
 // הוראת מערכת קצרה שמרכיבה את הדמות מההעדפות — כדי שהמאמן עקבי בכל האפליקציה
 function buildCoachSystemPrompt() {
+  const p = userProfile || {};
+  const f = [];
+  if (p.gender) f.push('מין: ' + (p.gender === 'male' ? 'זכר' : 'נקבה'));
+  if (p.age) f.push('גיל: ' + p.age);
+  const w = p.currentWeight || p.weight;
+  if (w) f.push('משקל: ' + w + ' ק"ג');
+  if (p.height) f.push('גובה: ' + p.height + ' ס"מ');
+  if (p.goal) f.push('מטרה: ' + (GOAL_LABELS[p.goal] || p.goal));
+  if (p.goalKcal) f.push('יעד קלוריות יומי: ' + p.goalKcal);
+  if (p.days) { const dm = { '2': '2-3', '4': '4-5', '6': '6+' }; f.push('ימי אימון בשבוע: ' + (dm[p.days] || p.days)); }
+  if (p.workoutType) f.push('סוג אימון מועדף: ' + p.workoutType);
+  if (Array.isArray(p.foods) && p.foods.length) f.push('מאכלים אהובים: ' + p.foods.join(', '));
+  if (p.streak) f.push('סטריק נוכחי: ' + p.streak + ' ימים');
   return [
     'אתה "המאמן" — נוכחות אישית באפליקציית תזונה וכושר בשם FitMe.',
     'אתה מדבר עברית בלבד, בגוף ראשון, ופונה למשתמש בשם: ' + coachName() + '.',
+    f.length ? ('הכר את מי שאתה מלווה — ' + f.join(' · ') + '. התאם את דבריך למצב ולמטרה שלו, אך אל תדקלם את הנתונים אלא אם הם רלוונטיים להודעה.') : '',
     'אופי: ' + (COACH_STYLE_GUIDE[coachStyle()] || COACH_STYLE_GUIDE.mixed),
     'אורך: ' + (COACH_CHATTER_GUIDE[coachChatter()] || COACH_CHATTER_GUIDE.balanced),
     'לעולם אל תמציא נתונים שלא נמסרו לך. אל תשתמש בכותרות, רשימות או Markdown — טקסט רץ בלבד.',
     'אל תפתח ב"שלום" חוזר בכל הודעה. היה טבעי.'
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 }
 
 // מייצר הודעת מאמן דרך ה-proxy. context = תיאור מצב קצר בעברית.
