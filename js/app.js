@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.8.0';
+const APP_VERSION = '2.9.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -1801,4 +1801,469 @@ renderSettings = function() {
   } else if (document.getElementById('fitme-version-tag')) {
     document.getElementById('fitme-version-tag').textContent = 'FitMe · v' + APP_VERSION;
   }
+};
+
+
+// ══════════════════════════════════════════════════════════════════
+// ── STAGE 4: יעד קלוריות מסתגל (Adaptive TDEE) ──
+// מנוע מנותק מה-UI ככל האפשר: פונקציות חישוב טהורות למעלה,
+// שכבת תצוגה דקה (hooks) למטה. עוצב פונקציונלית בלבד — יעוצב מחדש בהמשך.
+// ══════════════════════════════════════════════════════════════════
+
+// ── קונפיגורציית קצב (המשתמש בוחר) ──
+// step = כמה מעמיקים את הגירעון בכל שבוע מוצלח.
+// target = הגירעון/עודף הסופי שאליו זוחלים.
+const ADAPT_RATES = {
+  gentle:     { label: 'עדין',     step: 100, cutTarget: -250, bulkTarget: 200 },
+  balanced:   { label: 'מאוזן',    step: 150, cutTarget: -400, bulkTarget: 300 },
+  aggressive: { label: 'אגרסיבי',  step: 200, cutTarget: -500, bulkTarget: 400 }
+};
+const KCAL_PER_KG = 7700;      // ק"ג משקל גוף בקלוריות
+const ADAPT_WINDOW_DAYS = 14;  // חלון מתגלגל
+const ADAPT_MIN_DAYS = 7;      // מינימום ימי צריכה מאושרים בחלון
+const ADAPT_MIN_WEIGHTS = 3;   // מינימום שקילות
+const ADAPT_MIN_SPAN = 10;     // השקילות חייבות להתפרס על לפחות כך ימים
+const ADAPT_CADENCE_DAYS = 7;  // כל כמה זמן מציעים עדכון
+const ADAPT_MAX_STEP = 250;    // ריכוך: שינוי TDEE מקסימלי לשבוע
+const PARTIAL_FRACTION = 0.5;  // יום מתחת ל-50% מהיעד נחשד כרישום חלקי
+
+function adaptRate() {
+  const r = (userProfile && userProfile.rate) || 'balanced';
+  return ADAPT_RATES[r] ? r : 'balanced';
+}
+function adaptEnabled() {
+  return !userProfile || userProfile.adaptiveEnabled !== false; // ברירת מחדל: פעיל
+}
+
+// ── עזר: הפרש ימים בין שני מפתחות תאריך (YYYY-MM-DD) ──
+function daysBetween(k1, k2) {
+  return Math.round((new Date(k1 + 'T00:00:00') - new Date(k2 + 'T00:00:00')) / 86400000);
+}
+
+// ── רגרסיה לינארית (least squares). points: [{x, y}] → שיפוע ──
+function linearSlope(points) {
+  const n = points.length;
+  if (n < 2) return 0;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (const p of points) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; }
+  const denom = n * sxx - sx * sx;
+  if (denom === 0) return 0;
+  return (n * sxy - sx * sy) / denom;
+}
+
+// ── סכימת קלוריות ליום בודד ──
+function dayKcal(dayData) {
+  return (dayData && dayData.meals || []).reduce((s, m) => s + (m.kcal || 0), 0);
+}
+
+// ── בונה מפת ימים בחלון (כולל היום מ-todayData) ──
+function daysInWindow(history, windowDays) {
+  const out = [];
+  const today = new Date();
+  for (let i = 0; i < windowDays; i++) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    const key = dateKey(d);
+    const data = (i === 0) ? todayData : (history[key] || null);
+    out.push({ key, kcal: dayKcal(data), hasMeals: !!(data && data.meals && data.meals.length) });
+  }
+  return out; // מהיום אחורה
+}
+
+// ── סיווג יום: full / light-confirmed / partial-suspect / empty ──
+function classifyDay(day, goalKcal, confirmedLight) {
+  if (!day.hasMeals || day.kcal <= 0) return 'empty';
+  if (day.kcal >= goalKcal * PARTIAL_FRACTION) return 'full';
+  if (confirmedLight && confirmedLight.indexOf(day.key) >= 0) return 'light';
+  return 'partial'; // חשוד — נחסום מהחישוב עד שהמשתמש יטפל
+}
+
+// ── ימים חשודים כרישום חלקי (לפניית המאמן) ──
+function pendingPartialDays() {
+  if (!userProfile) return [];
+  const history = window._adaptHistoryCache || {};
+  const goal = userProfile.goalKcal || 2000;
+  const confirmed = userProfile.confirmedLightDays || [];
+  const days = daysInWindow(history, ADAPT_WINDOW_DAYS);
+  return days.filter(d => classifyDay(d, goal, confirmed) === 'partial');
+}
+
+// ══ הליבה: חישוב TDEE אמיתי מהנתונים ══
+// מחזיר אובייקט תיאור מלא (בלי לגעת בפרופיל).
+function computeAdaptiveTdee(history) {
+  const p = userProfile || {};
+  const goal = p.goalKcal || 2000;
+  const confirmed = p.confirmedLightDays || [];
+
+  // 1) צריכה — רק ימים מאושרים (full / light)
+  const days = daysInWindow(history, ADAPT_WINDOW_DAYS);
+  const counted = days.filter(d => {
+    const c = classifyDay(d, goal, confirmed);
+    return c === 'full' || c === 'light';
+  });
+  const nDays = counted.length;
+  const avgIntake = nDays ? Math.round(counted.reduce((s, d) => s + d.kcal, 0) / nDays) : 0;
+
+  // 2) מגמת משקל — רגרסיה על שקילות בחלון
+  const wh = (p.weightHistory || []).filter(w => w && w.date && typeof w.weight === 'number');
+  const cutoff = dateKey(new Date(Date.now() - ADAPT_WINDOW_DAYS * 86400000));
+  const winW = wh.filter(w => w.date >= cutoff);
+  const nWeights = winW.length;
+  let slopeKgPerDay = 0, spanDays = 0;
+  if (nWeights >= 2) {
+    const base = winW[0].date;
+    const pts = winW.map(w => ({ x: daysBetween(w.date, base), y: w.weight }));
+    slopeKgPerDay = linearSlope(pts);
+    spanDays = daysBetween(winW[nWeights - 1].date, winW[0].date);
+  }
+
+  // 3) בדיקת מספיק נתונים
+  const enoughDays = nDays >= ADAPT_MIN_DAYS;
+  const enoughWeights = nWeights >= ADAPT_MIN_WEIGHTS && spanDays >= ADAPT_MIN_SPAN;
+  const enoughData = enoughDays && enoughWeights;
+
+  // 4) TDEE = צריכה − (שיפוע ק"ג/יום × 7700)
+  let tdee = avgIntake - slopeKgPerDay * KCAL_PER_KG;
+
+  // 5) ריכוך מול הערך הקודם (±250)
+  const prev = p.adaptiveTdee || p.tdee || null;
+  if (prev) tdee = Math.max(prev - ADAPT_MAX_STEP, Math.min(prev + ADAPT_MAX_STEP, tdee));
+  tdee = Math.round(Math.max(1200, Math.min(5000, tdee)));
+
+  return {
+    enoughData, enoughDays, enoughWeights,
+    nDays, nWeights, spanDays, avgIntake,
+    slopeKgPerDay, slopeKgPerWeek: slopeKgPerDay * 7,
+    tdee,
+    need: { days: Math.max(0, ADAPT_MIN_DAYS - nDays), weights: Math.max(0, ADAPT_MIN_WEIGHTS - nWeights) }
+  };
+}
+
+// ══ ניתוח היקפים ══
+// measurementHistory: [{date, waist, arm, chest}] — waist חובה, השאר אופציונלי.
+function analyzeMeasurements() {
+  const p = userProfile || {};
+  const mh = (p.measurementHistory || []).filter(m => m && m.date);
+  const cutoff = dateKey(new Date(Date.now() - 28 * 86400000)); // חודש אחורה להיקפים
+  const recent = mh.filter(m => m.date >= cutoff);
+  function trend(field) {
+    const pts = recent.filter(m => typeof m[field] === 'number');
+    if (pts.length < 2) return null;
+    const base = pts[0].date;
+    const slope = linearSlope(pts.map(m => ({ x: daysBetween(m.date, base), y: m[field] })));
+    return slope * 7; // ס"מ לשבוע
+  }
+  return { waist: trend('waist'), arm: trend('arm'), chest: trend('chest'), count: recent.length };
+}
+
+// ══ שילוב שלושת האותות → תרחיש + הסבר אנושי ══
+// עקרון מפתח: היקפים מנצחים משקל.
+function buildWeeklySignals(calc, meas) {
+  const goal = userProfile.goal;
+  const wkg = userProfile.currentWeight || userProfile.weight || 75;
+  const slopePctWeek = (calc.slopeKgPerWeek / wkg) * 100; // אחוז ממשקל הגוף לשבוע
+
+  const waistDown = meas.waist != null && meas.waist < -0.2;
+  const waistUp   = meas.waist != null && meas.waist > 0.2;
+  const armDown   = meas.arm != null && meas.arm < -0.2;
+  const armUp     = meas.arm != null && meas.arm > 0.2;
+  const weightDown = calc.slopeKgPerWeek < -0.1;
+  const weightUp   = calc.slopeKgPerWeek > 0.1;
+  const weightFlat = Math.abs(calc.slopeKgPerWeek) <= 0.1;
+
+  let scenario = 'steady', redFlag = false;
+  if (goal === 'cut') {
+    if (slopePctWeek < -1.2 && armDown) { scenario = 'losing-muscle'; redFlag = true; }
+    else if (waistDown && !armDown)     { scenario = 'clean-cut'; }
+    else if (weightFlat && waistDown)   { scenario = 'recomp'; }     // משקל תקוע, מותן יורד = הצלחה
+    else if (weightFlat && !waistDown)  { scenario = 'stalled'; }
+    else if (weightDown)                { scenario = 'progress'; }
+  } else if (goal === 'bulk') {
+    if (weightUp && waistUp && !armUp)  { scenario = 'dirty-bulk'; redFlag = true; }
+    else if (armUp && !waistUp)         { scenario = 'clean-bulk'; }
+    else if (weightFlat)                { scenario = 'stalled-bulk'; }
+    else if (weightUp)                  { scenario = 'gaining'; }
+  } else { // maintain
+    if (Math.abs(slopePctWeek) > 0.8) scenario = 'drift';
+    else scenario = 'holding';
+  }
+  return { scenario, redFlag, slopePctWeek, waistDown, waistUp, armDown, armUp, weightFlat };
+}
+
+// ══ חישוב הגירעון הבא (הזחילה ההדרגתית) ══
+function computeNextDeficit(signals) {
+  const p = userProfile;
+  const rate = ADAPT_RATES[adaptRate()];
+  const goal = p.goal;
+  const target = goal === 'cut' ? rate.cutTarget : goal === 'bulk' ? rate.bulkTarget : 0;
+  let cur = (typeof p.currentDeficit === 'number') ? p.currentDeficit : 0;
+
+  if (goal === 'maintain') return 0;
+
+  // דגל אדום → מרככים (מקטינים גירעון / מאטים עודף)
+  if (signals.redFlag) {
+    if (goal === 'cut')  cur = Math.min(0, cur + 100);   // פחות גירעון
+    else                 cur = Math.max(0, cur - 100);   // פחות עודף
+    return cur;
+  }
+
+  // תקיעות → מעמיקים צעד נוסף לכיוון היעד
+  // התקדמות תקינה → זוחלים צעד לכיוון היעד עד שמגיעים אליו
+  if (goal === 'cut') {
+    cur = Math.max(target, cur - rate.step); // גירעון שלילי, זוחל למטה
+  } else {
+    cur = Math.min(target, cur + rate.step); // עודף חיובי, זוחל למעלה
+  }
+  return cur;
+}
+
+// ══ בונה הצעת עדכון מלאה (בלי להחיל) ══
+function buildAdaptiveProposal(history) {
+  const calc = computeAdaptiveTdee(history);
+  if (!calc.enoughData) return { ready: false, calc };
+  const meas = analyzeMeasurements();
+  const signals = buildWeeklySignals(calc, meas);
+  const nextDeficit = computeNextDeficit(signals);
+  const newGoal = Math.round(Math.max(1200, Math.min(5000, calc.tdee + nextDeficit)));
+  const oldGoal = userProfile.goalKcal;
+  return {
+    ready: true, calc, meas, signals,
+    nextDeficit, newGoal, oldGoal,
+    delta: newGoal - oldGoal
+  };
+}
+
+// ── הסבר קצר מקומי (fallback אם אין רשת למאמן) ──
+function adaptiveLocalExplain(prop) {
+  const s = prop.signals.scenario;
+  const map = {
+    'clean-cut': 'המשקל יורד, המותן קטֵן והזרוע נשמרת — בדיוק מה שרצינו.',
+    'recomp': 'המשקל כמעט לא זז אבל המותן יורד — זה שריר שמחליף שומן. הצלחה.',
+    'progress': 'המשקל יורד בקצב יפה. ממשיכים.',
+    'stalled': 'המשקל נתקע — הגוף הסתגל, מורידים עוד קצת.',
+    'losing-muscle': 'יורד מהר מדי והזרוע קטֵנה — מוסיפים קצת קלוריות ומאטים כדי לשמור על השריר.',
+    'clean-bulk': 'הזרוע גדלה והמותן יציב — עלייה נקייה. ממשיכים לבנות.',
+    'dirty-bulk': 'המשקל והמותן עולים מהר — מרככים קצת את העודף.',
+    'stalled-bulk': 'העלייה נתקעה — מוסיפים עוד קצת דלק.',
+    'gaining': 'עולה יפה במשקל. בכיוון.',
+    'drift': 'יש סטייה קלה מהמשקל — מיישרים את היעד.',
+    'holding': 'שומר יפה על המשקל. מכוונים מדויק.',
+    'steady': 'לומד את הקצב שלך ומכייל את היעד.'
+  };
+  const dir = prop.delta > 0 ? 'מעלה' : prop.delta < 0 ? 'מוריד' : 'משאיר';
+  return `${map[s] || map.steady} השבוע אני ${dir} את היעד ל-${prop.newGoal} קל׳. נראה איך המשקל וההיקפים מגיבים ונתקדם.`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── שכבת UI (דקה) — hooks על פונקציות קיימות ──
+// ══════════════════════════════════════════════════════════════════
+
+let _adaptProposal = null; // ההצעה הממתינה לאישור
+
+// נקרא בטעינת האפליקציה
+async function runAdaptiveCheck() {
+  if (!userProfile || !adaptEnabled()) { renderAdaptiveCard(); renderPartialPrompt(); return; }
+  const history = await getHistoryData();
+  window._adaptHistoryCache = history; // לשימוש פניית המאמן על ימים חלקיים
+
+  // בדיקת קצב זמן — מציעים רק אם עברו ≥7 ימים
+  const last = userProfile.lastTdeeUpdate;
+  const dueByTime = !last || daysBetween(getTodayKey(), last) >= ADAPT_CADENCE_DAYS;
+
+  if (dueByTime) {
+    const prop = buildAdaptiveProposal(history);
+    if (prop.ready && prop.delta !== 0) _adaptProposal = prop;
+  }
+  renderAdaptiveCard();
+  renderPartialPrompt();
+}
+
+// כרטיס ההצעה במסך הבית
+async function renderAdaptiveCard() {
+  const card = document.getElementById('adaptive-card');
+  if (!card) return;
+  if (!_adaptProposal) { card.classList.add('hidden'); return; }
+  const p = _adaptProposal;
+  const arrow = p.delta > 0 ? '↑' : '↓';
+  const textEl = document.getElementById('adaptive-card-text');
+  const metaEl = document.getElementById('adaptive-card-meta');
+  if (metaEl) metaEl.textContent =
+    `${p.oldGoal.toLocaleString()} → ${p.newGoal.toLocaleString()} קל׳ ${arrow} · TDEE נלמד: ${p.calc.tdee.toLocaleString()} · על סמך ${p.calc.nDays} ימי רישום ו-${p.calc.nWeights} שקילות`;
+  if (textEl) {
+    textEl.textContent = adaptiveLocalExplain(p); // מיידי
+    try { const msg = await coachAdaptiveMessage(p); if (msg) textEl.textContent = msg; } catch(e) {}
+  }
+  card.classList.remove('hidden');
+}
+
+// המאמן מבשר על העדכון בקול/אופי שלו
+async function coachAdaptiveMessage(p) {
+  const s = p.signals;
+  const measTxt = [
+    s.waistDown ? 'המותן יורד' : s.waistUp ? 'המותן עולה' : null,
+    s.armDown ? 'הזרוע קטֵנה' : s.armUp ? 'הזרוע גדלה' : null
+  ].filter(Boolean).join(', ') || 'אין עדיין מספיק היקפים';
+  const ctx = `סיכום שבועי של המנוע המסתגל עבור ${coachName()}: מטרה ${GOAL_LABELS[userProfile.goal]}. `
+    + `TDEE אמיתי שנלמד מהנתונים: ${p.calc.tdee} קל׳ (ממוצע צריכה ${p.calc.avgIntake}, שינוי משקל ${p.calc.slopeKgPerWeek.toFixed(2)} ק"ג/שבוע). `
+    + `היקפים: ${measTxt}. היעד עובר מ-${p.oldGoal} ל-${p.newGoal} קל׳. `
+    + `הסבר בקצרה למה השינוי הזה נכון עכשיו, בגובה העיניים, בלי לדקלם מספרים מיותרים. עודד להמשיך.`;
+  return await coachMessage(ctx);
+}
+
+async function applyAdaptiveUpdate() {
+  if (!_adaptProposal || !userProfile) return;
+  const p = _adaptProposal;
+  userProfile.adaptiveTdee = p.calc.tdee;
+  userProfile.goalKcal = p.newGoal;
+  userProfile.currentDeficit = p.nextDeficit;
+  userProfile.lastTdeeUpdate = getTodayKey();
+  if (!Array.isArray(userProfile.tdeeHistory)) userProfile.tdeeHistory = [];
+  userProfile.tdeeHistory.push({ date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit });
+  await saveProfile();
+  _adaptProposal = null;
+  renderAdaptiveCard();
+  renderHome();
+  renderSettings();
+  alert('היעד עודכן ל-' + p.newGoal.toLocaleString() + ' קל׳ ✓');
+}
+
+async function dismissAdaptiveUpdate() {
+  if (!userProfile) return;
+  // דוחים לשבוע — מסמנים שבדקנו היום כדי שלא ינדנד שוב מיד
+  userProfile.lastTdeeUpdate = getTodayKey();
+  await saveProfile();
+  _adaptProposal = null;
+  renderAdaptiveCard();
+}
+
+// ── פניית המאמן על ימים חלקיים ──
+function renderPartialPrompt() {
+  const el = document.getElementById('partial-prompt');
+  if (!el) return;
+  const suspects = pendingPartialDays();
+  if (!suspects.length) { el.classList.add('hidden'); return; }
+  const list = suspects.map(d => {
+    const dt = new Date(d.key + 'T00:00:00');
+    const label = DAYS_HE[dt.getDay()] + ' ' + dt.getDate() + '/' + (dt.getMonth() + 1);
+    return `<div class="partial-row">
+      <span>${label} — נרשמו רק ${d.kcal} קל׳</span>
+      <span style="display:flex;gap:6px">
+        <button class="btn-small" onclick="goToScreen('food')">השלם</button>
+        <button class="btn-ghost" style="width:auto;padding:6px 10px;margin:0" onclick="confirmDayLight('${d.key}')">אכלתי קליל</button>
+      </span>
+    </div>`;
+  }).join('');
+  const txtEl = document.getElementById('partial-prompt-text');
+  if (txtEl) txtEl.textContent = 'ראיתי ימים עם מעט מאוד רישום. עדכן אותי כדי שאדייק לך את היעד:';
+  const listEl = document.getElementById('partial-prompt-list');
+  if (listEl) listEl.innerHTML = list;
+  el.classList.remove('hidden');
+}
+
+async function confirmDayLight(key) {
+  if (!userProfile) return;
+  if (!Array.isArray(userProfile.confirmedLightDays)) userProfile.confirmedLightDays = [];
+  if (userProfile.confirmedLightDays.indexOf(key) < 0) userProfile.confirmedLightDays.push(key);
+  await saveProfile();
+  renderPartialPrompt();
+  await runAdaptiveCheck();
+}
+
+// ── רישום היקפים ──
+async function logMeasurements() {
+  if (!userProfile) return;
+  const waist = parseFloat(document.getElementById('meas-waist')?.value);
+  const arm   = parseFloat(document.getElementById('meas-arm')?.value);
+  const chest = parseFloat(document.getElementById('meas-chest')?.value);
+  if (!waist || waist < 30 || waist > 200) { alert('הכנס היקף מותן תקין (ס"מ)'); return; }
+  const entry = { date: getTodayKey(), waist };
+  if (arm && arm > 10 && arm < 80) entry.arm = arm;
+  if (chest && chest > 40 && chest < 200) entry.chest = chest;
+  if (!Array.isArray(userProfile.measurementHistory)) userProfile.measurementHistory = [];
+  // דריסה אם כבר נרשם היום
+  userProfile.measurementHistory = userProfile.measurementHistory.filter(m => m.date !== entry.date);
+  userProfile.measurementHistory.push(entry);
+  ['meas-waist','meas-arm','meas-chest'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  await saveProfile();
+  renderMeasurements();
+  alert('ההיקפים נשמרו ✓');
+}
+
+function renderMeasurements() {
+  const el = document.getElementById('measurements-data');
+  if (!el || !userProfile) return;
+  const mh = userProfile.measurementHistory || [];
+  if (!mh.length) { el.innerHTML = '<div class="empty-state">רשום היקף מותן שבועי כדי שהמאמן יוכל לוודא שהחיטוב בריא</div>'; return; }
+  const last = mh[mh.length - 1];
+  const meas = analyzeMeasurements();
+  function trendTxt(v, goodDown) {
+    if (v == null) return '';
+    const dir = v < -0.05 ? '↓' : v > 0.05 ? '↑' : '=';
+    const good = goodDown ? v < 0 : v > 0;
+    const col = Math.abs(v) < 0.05 ? 'var(--text-3)' : good ? '#1D9E75' : '#BA7517';
+    return `<span style="color:${col};font-size:11px"> ${dir} ${Math.abs(v).toFixed(1)} ס"מ/שבוע</span>`;
+  }
+  const goalCut = userProfile.goal === 'cut';
+  el.innerHTML =
+    `<div class="health-row"><span class="health-label">מותן</span><span class="health-val">${last.waist} ס"מ${trendTxt(meas.waist, goalCut)}</span></div>` +
+    (last.arm != null ? `<div class="health-row"><span class="health-label">זרוע</span><span class="health-val">${last.arm} ס"מ${trendTxt(meas.arm, false)}</span></div>` : '') +
+    (last.chest != null ? `<div class="health-row"><span class="health-label">חזה/ירך</span><span class="health-val">${last.chest} ס"מ${trendTxt(meas.chest, false)}</span></div>` : '');
+}
+
+// ── הגדרות: קטע יעד מסתגל ──
+function renderAdaptiveSettings() {
+  if (!userProfile) return;
+  const r = adaptRate();
+  document.querySelectorAll('#set-adapt-rate .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === r));
+  const tog = document.getElementById('adapt-toggle');
+  if (tog) tog.classList.toggle('on', adaptEnabled());
+  const info = document.getElementById('adapt-info');
+  if (info) {
+    const t = userProfile.adaptiveTdee;
+    const last = userProfile.lastTdeeUpdate;
+    info.innerHTML =
+      `<div class="settings-row"><span>TDEE נלמד</span><span class="settings-val">${t ? t.toLocaleString() + ' קל׳' : 'לומד...'}</span></div>` +
+      `<div class="settings-row"><span>עודכן לאחרונה</span><span class="settings-val">${last ? 'לפני ' + daysBetween(getTodayKey(), last) + ' ימים' : '—'}</span></div>`;
+  }
+}
+
+async function setAdaptiveRate(v) {
+  if (!userProfile || !ADAPT_RATES[v]) return;
+  userProfile.rate = v;
+  document.querySelectorAll('#set-adapt-rate .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
+  await saveProfile();
+  await runAdaptiveCheck();
+}
+
+async function toggleAdaptive() {
+  if (!userProfile) return;
+  userProfile.adaptiveEnabled = !adaptEnabled();
+  const tog = document.getElementById('adapt-toggle');
+  if (tog) tog.classList.toggle('on', userProfile.adaptiveEnabled);
+  await saveProfile();
+  await runAdaptiveCheck();
+}
+
+// ══ Hooks: עטיפת פונקציות קיימות (הן כבר עברו override קודם — עוטפים את הסופיות) ══
+const _s4_showApp = showApp;
+showApp = function() {
+  _s4_showApp();
+  runAdaptiveCheck();
+};
+
+const _s4_logWeight = logWeight;
+logWeight = async function() {
+  await _s4_logWeight();
+  await runAdaptiveCheck(); // שקילה חדשה עשויה להפעיל הצעה
+};
+
+const _s4_renderProfile = renderProfile;
+renderProfile = async function() {
+  await _s4_renderProfile();
+  renderMeasurements();
+};
+
+const _s4_renderSettings = renderSettings;
+renderSettings = function() {
+  _s4_renderSettings();
+  renderAdaptiveSettings();
 };

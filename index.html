@@ -193,6 +193,24 @@
             <div class="coach-card-text" id="coach-card-text"></div>
           </div>
 
+          <!-- ADAPTIVE TARGET CARD (שלב 4) — הצעת עדכון יעד -->
+          <div id="adaptive-card" class="adaptive-card hidden">
+            <div class="adaptive-card-head">🎯 עדכון יעד שבועי</div>
+            <div class="adaptive-card-text" id="adaptive-card-text"></div>
+            <div class="adaptive-card-meta" id="adaptive-card-meta"></div>
+            <div class="adaptive-card-actions">
+              <button class="btn-small" onclick="applyAdaptiveUpdate()">אשר עדכון ✓</button>
+              <button class="btn-ghost" style="width:auto;padding:8px 12px;margin:0" onclick="dismissAdaptiveUpdate()">השאר כפי שהוא</button>
+            </div>
+          </div>
+
+          <!-- PARTIAL DAYS PROMPT (שלב 4) — פניית המאמן על רישום חלקי -->
+          <div id="partial-prompt" class="adaptive-card hidden">
+            <div class="adaptive-card-head">📝 עזור לי לדייק</div>
+            <div class="adaptive-card-text" id="partial-prompt-text"></div>
+            <div id="partial-prompt-list" style="margin-top:8px;display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+
           <!-- RING CARD — טקסט ימין, טבעת שמאל -->
           <div class="home-top-card">
             <div class="ring-side">
@@ -258,10 +276,19 @@
 
           <!-- WEIGHT -->
           <div class="section-header"><span>משקל גוף</span></div>
-          <div style="display:flex;gap:8px;margin-bottom:24px">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
             <input type="number" id="weight-input" placeholder='משקל היום בק"ג' step="0.1" style="flex:1">
             <button class="btn-small" onclick="logWeight()">שמור</button>
           </div>
+
+          <!-- MEASUREMENTS (שלב 4) — היקפים שבועיים -->
+          <div class="section-header"><span>היקפים שבועיים (ס"מ)</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+            <input type="number" id="meas-waist" placeholder="מותן *" step="0.5">
+            <input type="number" id="meas-arm" placeholder="זרוע" step="0.5">
+            <input type="number" id="meas-chest" placeholder="חזה/ירך" step="0.5">
+          </div>
+          <button class="btn-small" onclick="logMeasurements()" style="width:100%;margin-bottom:24px">שמור היקפים</button>
 
         </div>
       </section>
@@ -407,6 +434,8 @@
           </div>
           <div class="section-header"><span>נתוני בריאות</span></div>
           <div class="health-card" id="health-data"></div>
+          <div class="section-header"><span>היקפים ומגמה</span></div>
+          <div class="health-card" id="measurements-data"></div>
           <div class="section-header"><span>סטטיסטיקות</span></div>
           <div class="stats-grid">
             <div class="stat-card"><div class="stat-val" id="stat-burned">0</div><div class="stat-label">קל׳ נשרפו</div></div>
@@ -437,6 +466,22 @@
           <div class="section-header"><span>יעדים</span></div>
           <div class="settings-row"><span>יעד קלוריות יומי</span><span class="settings-val" id="s-kcal"></span></div>
           <div class="settings-row"><span>יעד צעדים</span><span class="settings-val">10,000</span></div>
+
+          <!-- ADAPTIVE TARGET (שלב 4) -->
+          <div class="section-header"><span>יעד קלוריות מסתגל 🎯</span></div>
+          <div class="settings-row">
+            <span>עדכון יעד אוטומטי לפי נתונים</span>
+            <div class="toggle" id="adapt-toggle" onclick="toggleAdaptive()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="ob-form" style="gap:4px">
+            <label style="margin-top:8px">קצב ההתקדמות</label>
+            <div class="seg-ctrl" id="set-adapt-rate">
+              <button class="seg-btn" data-val="gentle" onclick="setAdaptiveRate('gentle')">עדין</button>
+              <button class="seg-btn" data-val="balanced" onclick="setAdaptiveRate('balanced')">מאוזן</button>
+              <button class="seg-btn" data-val="aggressive" onclick="setAdaptiveRate('aggressive')">אגרסיבי</button>
+            </div>
+          </div>
+          <div id="adapt-info" style="margin-top:8px"></div>
           <div class="section-header"><span>העדפות</span></div>
           <div class="settings-row">
             <span>מצב כהה</span>
