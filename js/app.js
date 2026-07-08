@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.7.2';
+const APP_VERSION = '2.7.3';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -666,14 +666,21 @@ function onBarcodeCandidate(code, statusEl, stopFn) {
   }
 }
 
+async function getBackCameraStream() {
+  return await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+  });
+}
+
 async function startNativeBarcode(formats, statusEl) {
   const video = document.getElementById('barcode-vid');
   try {
-    barcodeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+    barcodeStream = await getBackCameraStream();
     video.srcObject = barcodeStream;
     await video.play();
   } catch(e) { closeBarcode(); alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות.'); return; }
 
+  armBarcodeHint(statusEl);
   const detector = new window.BarcodeDetector({ formats });
   const scan = async () => {
     if (!barcodeStream) return; // נעצר
@@ -698,26 +705,48 @@ async function startZxingBarcode(statusEl) {
     } catch(e) { closeBarcode(); alert('טעינת הסורק נכשלה. בדוק חיבור לאינטרנט.'); return; }
   }
   const video = document.getElementById('barcode-vid');
+
+  // משיגים את המצלמה האחורית בעצמנו — יציב יותר מ-decodeFromConstraints
+  try {
+    barcodeStream = await getBackCameraStream();
+  } catch(e) { closeBarcode(); alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.'); return; }
+
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
     ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
     ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
   ]);
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 200);
+
+  armBarcodeHint(statusEl);
   try {
-    await zxingReader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' } } },
-      video,
-      (result) => { if (result) onBarcodeCandidate(result.getText(), statusEl, stopBarcodeReader); }
-    );
+    zxingReader.decodeFromStream(barcodeStream, video, (result) => {
+      if (result) onBarcodeCandidate(result.getText(), statusEl, stopBarcodeReader);
+    });
   } catch(e) {
     closeBarcode();
-    alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
+    alert('שגיאה בהפעלת הסורק. נסה לצלם תווית במקום.');
   }
 }
 
+// רמז אחרי 20 שניות אם עוד לא זוהה כלום
+let barcodeHintTimer = null;
+function armBarcodeHint(statusEl) {
+  clearTimeout(barcodeHintTimer);
+  barcodeHintTimer = setTimeout(() => {
+    if (barcodeConfirm < 2) statusEl.innerHTML = 'לא מזהה? קרב את הברקוד, ודא תאורה טובה — או <button onclick="barcodeToLabel()" style="background:none;border:none;color:var(--gold);text-decoration:underline;font-size:14px;cursor:pointer;font-family:Heebo,sans-serif">צלם תווית במקום</button>';
+  }, 20000);
+}
+
+function barcodeToLabel() {
+  const code = barcodeLastCode || ('manual-' + Date.now());
+  closeBarcode();
+  showLabelPrompt(code);
+}
+
 function stopBarcodeReader() {
+  clearTimeout(barcodeHintTimer);
   if (barcodeRAF) { cancelAnimationFrame(barcodeRAF); barcodeRAF = null; }
   if (zxingReader) { try { zxingReader.reset(); } catch(e) {} zxingReader = null; }
   if (barcodeStream) { try { barcodeStream.getTracks().forEach(t => t.stop()); } catch(e) {} barcodeStream = null; }
