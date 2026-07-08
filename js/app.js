@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.5.2';
+const APP_VERSION = '2.6.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -489,8 +489,15 @@ const PLATE_PROMPT = `זהה כל פריט מאכל בצלחת בנפרד — כ
 ב-suggestions כלול 2-4 "קלוריות נסתרות" שהמצלמה לא רואה אבל אופייניות למנה כזו (שמן בבישול/בטיגון, גבינה מגוררת, רוטב, חמאה) — עם ערכים לכמות טיפוסית.
 sodium במ"ג, השאר בגרם. אם התמונה לא ברורה ציין זאת ב-note. החזר JSON בלבד במבנה: `;
 
-const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של מוצר. קרא את הטבלה בדיוק.
-צור פריט אחד: name = שם המוצר (אם מופיע, אחרת "מוצר מהתווית"), amount ו-unit לפי בסיס הטבלה (100 גרם או מנה — ציין ב-note איזה בסיס), והערכים כפי שכתובים בתווית. sodium במ"ג. suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. החזר JSON בלבד במבנה: `;
+const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של מוצר מזון. קרא את הטבלה בזהירות והחזר פריט אחד מדויק.
+כללים מחייבים:
+1. קרא קודם את משקל הנטו של המוצר (מופיע כ"משקל נטו" / "תכולה"). זו הכמות של מנה שלמה.
+2. בטבלה יש לרוב שתי עמודות: "ל-100 גרם" ו"למנה"/"ליחידה". קח את כל הערכים מ*אותה עמודה בלבד* — אל תערבב בין העמודות. העדף את עמודת המנה (לפי משקל הנטו). אם קיימת רק עמודת 100 גרם — השתמש בה וציין זאת ב-note.
+3. amount = הכמות בגרם של הבסיס שבחרת (למשל משקל הנטו), unit = "גרם". name = שם המוצר אם מופיע, אחרת "מוצר מהתווית".
+4. sodium במ"ג. אם רשום רק מלח: נתרן(מ"ג) = מלח(גרם) ÷ 2.5 × 1000.
+5. בדיקה עצמית לפני החזרה: חומצות שומן רוויות ≤ שומן כולל; סוכר ≤ פחמימות; והקלוריות בערך שוות ל: חלבון×4 + פחמימות×4 + שומן×9. אם משהו לא מסתדר — קרא שוב את הטבלה ותקן.
+6. ב-note ציין על איזה בסיס חושבו הערכים (כמה גרם).
+suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. החזר JSON בלבד במבנה: `;
 
 async function analyzePhoto(input) {
   const file = input.files[0]; if (!file) return;
@@ -505,6 +512,14 @@ async function analyzePhoto(input) {
       const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },{ type: 'text', text: (mode==='label' ? LABEL_PROMPT : PLATE_PROMPT) + ITEMS_JSON_SPEC }] }] });
       const meal = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
       if (meal.error) { alert('לא הצלחתי לקרוא את התווית. נסה לצלם שוב מקרוב, באור טוב.'); return; }
+      if (mode === 'label') {
+        // צילום תווית שהגיע ממסלול ברקוד — נשייך את הברקוד כדי שהתיקון יישמר למאגר הקבוצה
+        meal.source = 'label';
+        meal.barcode = pendingBarcode;
+        pendingBarcode = null;
+      } else {
+        meal.source = 'plate';
+      }
       showMealEditor(meal);
     } catch(e) { alert('שגיאה בניתוח התמונה: ' + e.message); }
     finally { document.getElementById('food-loading').classList.add('hidden'); }
@@ -610,18 +625,21 @@ async function lookupBarcodeInCache(code) {
   } catch(e) { console.warn('barcode cache read failed:', e.code || e.message); return null; }
 }
 
-async function saveBarcodeToCache(code, item) {
+async function saveBarcodeToCache(code, item, existingAddedByName) {
   const groupKey = getSharedBarcodeGroup();
   if (!groupKey || !code || !item) return;
+  // שמור את שם מי שהוסיף במקור; אם זה מוצר חדש — המשתמש הנוכחי
+  const addedByName = existingAddedByName || (userProfile ? userProfile.name : '');
   try {
     await db.collection('groupBarcodes').doc(groupKey).collection('products').doc(code).set({
       barcode: code,
       name: item.name, amount: item.amount, unit: item.unit,
       kcal: item.kcal, protein: item.protein, carbs: item.carbs, fat: item.fat,
       fiber: item.fiber, sugar: item.sugar, sodium: item.sodium,
-      addedByName: userProfile ? userProfile.name : '',
-      addedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+      addedByName: addedByName,
+      updatedByName: userProfile ? userProfile.name : '',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
   } catch(e) { console.warn('barcode cache save failed:', e.code || e.message); }
 }
 
@@ -637,7 +655,8 @@ async function lookupBarcode(code) {
     };
     showMealEditor({
       name: cached.name, items: [item], suggestions: [],
-      note: 'מהמאגר של הקבוצה' + (cached.addedByName ? ' · הוסף ע"י ' + cached.addedByName : '')
+      source: 'group', barcode: code, addedByName: cached.addedByName || '',
+      note: ''
     });
     return;
   }
@@ -665,12 +684,12 @@ async function lookupBarcode(code) {
       fiber: r1(n['fiber_100g']), sugar: r1(n['sugars_100g']),
       sodium: Math.round((n['sodium_100g'] || 0) * factor * 1000)
     };
-    // 3. שמירה מיידית למאגר הקבוצה — מקור אמין, אין סיבה לחכות לאישור המשתמש
-    saveBarcodeToCache(code, item);
+    // הערכים יישמרו למאגר הקבוצה בעת ההוספה ליום (עם הערכים הסופיים, אחרי עריכה אם הייתה)
     closeBarcode();
     showMealEditor({
       name: item.name, items: [item], suggestions: [],
-      note: 'מקור: Open Food Facts · ' + (isNaN(servingSize) ? 'לפי 100 גרם — התאם כמות עם +/-' : 'לפי מנה (' + p.serving_size + ')')
+      source: 'off', barcode: code,
+      note: isNaN(servingSize) ? 'לפי 100 גרם — התאם כמות עם +/-' : 'לפי מנה (' + p.serving_size + ')'
     });
   } catch(e) {
     closeBarcode();
@@ -694,11 +713,27 @@ function showMealEditor(meal) {
   pendingMeal = {
     name: meal.name || 'ארוחה',
     note: meal.note || '',
+    source: meal.source || null,        // 'off' | 'label' | 'group' | 'plate' | null
+    barcode: meal.barcode || null,      // אם מלא — שמירה למאגר הקבוצה בעת ההוספה
+    addedByName: meal.addedByName || '',
     items: (meal.items||[]).map(normalizeItem),
     suggestions: (meal.suggestions||[]).map(normalizeItem)
   };
   renderEditor();
   document.getElementById('food-result').classList.remove('hidden');
+}
+
+// ── תג מקור המידע (מאגר עולמי / תווית / מאגר קבוצה) ──
+function sourceBadge() {
+  if (!pendingMeal || !pendingMeal.source) return '';
+  const map = {
+    off:   { icon: '🌐', text: 'מאגר עולמי (Open Food Facts)', bg: 'var(--teal-light)', fg: 'var(--teal)' },
+    label: { icon: '📷', text: 'נקרא מהתווית ע"י Claude',       bg: 'var(--gold-light)', fg: 'var(--gold)' },
+    group: { icon: '👥', text: 'מהמאגר של הקבוצה' + (pendingMeal.addedByName ? ' · הוסף ע"י ' + pendingMeal.addedByName : ''), bg: 'var(--gold-light)', fg: 'var(--gold)' }
+  };
+  const s = map[pendingMeal.source];
+  if (!s) return '';
+  return `<div style="display:inline-flex;align-items:center;gap:6px;background:${s.bg};color:${s.fg};border-radius:20px;padding:5px 12px;font-size:12px;font-weight:500;margin-bottom:10px">${s.icon} ${esc(s.text)}</div>`;
 }
 
 function mealTotals() {
@@ -759,6 +794,7 @@ function renderEditor() {
     : '';
   box.innerHTML = `
     <div class="result-header"><div class="result-name">${esc(pendingMeal.name)}</div></div>
+    ${sourceBadge()}
     <div class="ed-items">${rows || '<div class="empty-state">אין פריטים — הוסף למטה</div>'}</div>
     ${suggs}
     <div class="ed-add-row">
@@ -851,10 +887,9 @@ function buildMealFromEditor() {
 
 async function addMeal() {
   if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
-  // שמירה למאגר הקבוצה — רק אחרי אישור המשתמש שהמידע מהתווית נכון
-  if (pendingBarcode && pendingMeal.items[0]) {
-    saveBarcodeToCache(pendingBarcode, pendingMeal.items[0]);
-    pendingBarcode = null;
+  // שמירה/עדכון מאגר הקבוצה — עם הערכים הסופיים (כולל תיקונים ידניים). חל על כל מסלול ברקוד.
+  if (pendingMeal.barcode && pendingMeal.items[0]) {
+    saveBarcodeToCache(pendingMeal.barcode, pendingMeal.items[0], pendingMeal.addedByName);
   }
   todayData.meals.push(buildMealFromEditor());
   pendingMeal = null;
