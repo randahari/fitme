@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// ══════════════════════════════════════════════════════════════════
+// FitMe — חוקי אבטחה ל-Firestore
+// עיקרון: כל משתמש בעל-בית על הנתונים שלו. חברי אותה קבוצה יכולים
+// לקרוא זה את הפרופיל ומסמך היום של זה (לצורך לוח המובילים) — אך לא לכתוב.
+// זהות הקבוצה מבוססת על שדה יחיד: users/{uid}.groupId
+// ══════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── עוזרים ──
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    // האם המשתמש המחובר חבר בקבוצה gid (קיים מסמך חברות עם ה-uid שלו)
+    function isMemberOf(gid) {
+      return isSignedIn() && gid != null &&
+        exists(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid));
+    }
+    // ה-groupId של משתמש יעד (לפי הפרופיל שלו)
+    function targetGroupId(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.groupId;
+    }
+
+    // ── פרופיל המשתמש ──
+    match /users/{uid} {
+      // קריאה: הבעלים, או חבר באותה קבוצה (ללוח המובילים)
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid ||
+        isMemberOf(resource.data.groupId)
+      );
+      // כתיבה: הבעלים בלבד
+      allow write: if isSignedIn() && request.auth.uid == uid;
+
+      // ── ימים (ארוחות/מים/צעדים) ──
+      match /days/{day} {
+        // קריאה: הבעלים, או חבר באותה קבוצה של בעל המסמך
+        allow read: if isSignedIn() && (
+          request.auth.uid == uid ||
+          isMemberOf(targetGroupId(uid))
+        );
+        // כתיבה: הבעלים בלבד
+        allow write: if isSignedIn() && request.auth.uid == uid;
+      }
+
+      // ── מועדפים וכל data פרטי אחר: הבעלים בלבד ──
+      match /data/{doc} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // ── קבוצות ──
+    match /groups/{gid} {
+      // קריאה של מסמך הקבוצה: כל משתמש מחובר (לבדיקת קיום בעת הצטרפות)
+      allow read: if isSignedIn();
+      // אין כתיבה ישירה למסמך הקבוצה עצמו
+      allow write: if false;
+
+      match /members/{memberUid} {
+        // קריאה: כל משתמש מחובר (נדרש לבדיקת קיום קבוצה בעת הצטרפות
+        // וכדי למנות חברים ללוח). קודים אקראיים בני 6 תווים — סיכון חשיפה נמוך.
+        allow read: if isSignedIn();
+        // הצטרפות: משתמש יכול ליצור/למחוק רק את מסמך החברות של עצמו
+        allow create, delete: if isSignedIn() && request.auth.uid == memberUid;
+        allow update: if false;
+      }
+    }
+
+    // ── מאגר ברקוד משותף לקבוצה ──
+    match /groupBarcodes/{gid}/products/{code} {
+      // קריאה+כתיבה: רק חברי הקבוצה
+      allow read, write: if isMemberOf(gid);
+    }
+
+    // ── מונה שימוש: נכתב רק ע"י ה-Cloud Function (admin עוקף חוקים). ──
+    // הלקוח יכול לקרוא את שלו בלבד; לא יכול לכתוב.
+    match /usage/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ── ברירת מחדל: הכל חסום ──
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

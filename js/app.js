@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.11.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -118,6 +118,12 @@ async function loadUserData() {
     if (profileDoc.exists) {
       userProfile = profileDoc.data();
       darkMode = userProfile.darkMode || false;
+      // מיגרציה חד-פעמית: מאחדים את זהות הקבוצה לשדה יחיד (groupId).
+      // משתמשים ותיקים שיש להם רק groupCode — מעתיקים אותו ל-groupId.
+      if (!userProfile.groupId && userProfile.groupCode) {
+        userProfile.groupId = userProfile.groupCode;
+        await saveProfile();
+      }
     }
     const todayKey = getTodayKey();
     const todayDoc = await db.collection('users').doc(currentUser.uid).collection('days').doc(todayKey).get();
@@ -418,7 +424,7 @@ async function finishOnboarding() {
   userProfile = {
     name: obData.name, age: obData.age, gender: obData.gender, weight: obData.weight,
     height: obData.height, days: obData.days, goal: obData.goal, foods, tdee, goalKcal,
-    stepsGoal: 10000, streak: 0, darkMode: false, groupCode, groupId: null,
+    stepsGoal: 10000, streak: 0, darkMode: false, groupCode, groupId: groupCode,
     totalWorkouts: 0, perfectWaterDays: 0, perfectNutritionDays: 0,
     coachName: coachNameVal, coachStyle: obData.coachStyle || 'mixed', coachChatter: obData.coachChatter || 'balanced',
     quickItems: [], quickOnboarded: false,
@@ -762,7 +768,7 @@ function closeLabelPrompt() {
 // ── מאגר ברקוד משותף לקבוצה ──
 function getSharedBarcodeGroup() {
   if (!userProfile) return null;
-  return userProfile.groupId || userProfile.groupCode || null;
+  return userProfile.groupId || null;
 }
 
 async function lookupBarcodeInCache(code) {
@@ -1402,7 +1408,7 @@ async function renderGroup() {
 
   // Show group code
   const codeEl = document.getElementById('my-group-code');
-  if (codeEl && userProfile.groupCode) codeEl.textContent = userProfile.groupCode;
+  if (codeEl && userProfile.groupId) codeEl.textContent = userProfile.groupId;
 }
 
 async function joinGroup() {
@@ -1434,7 +1440,7 @@ async function getWeeklySummary() {
 
 function shareApp() {
   const url = 'https://randahari.github.io/fitme';
-  const text = 'הצטרף אלי ל-FitMe! קוד הקבוצה שלי: ' + (userProfile?.groupCode || '');
+  const text = 'הצטרף אלי ל-FitMe! קוד הקבוצה שלי: ' + (userProfile?.groupId || '');
   if (navigator.share) { navigator.share({ title: 'FitMe', text, url }); }
   else { navigator.clipboard.writeText(url+'\n'+text).then(()=>alert('הלינק הועתק!')); }
 }
@@ -1619,7 +1625,7 @@ function renderSettings() {
   if (favEl&&userProfile.foods) favEl.innerHTML = userProfile.foods.map(f=>`<span class="fav-tag">${f}</span>`).join('');
   if (darkMode) { const dt = document.getElementById('dark-toggle'); if (dt) dt.classList.add('on'); }
   const gc = document.getElementById('settings-group-code');
-  if (gc) gc.textContent = userProfile.groupCode || '--';
+  if (gc) gc.textContent = userProfile.groupId || '--';
   renderCoachSettings();
 }
 
