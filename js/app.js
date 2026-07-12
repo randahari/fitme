@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.10.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -2266,4 +2266,368 @@ const _s4_renderSettings = renderSettings;
 renderSettings = function() {
   _s4_renderSettings();
   renderAdaptiveSettings();
+};
+
+
+// ══════════════════════════════════════════════════════════════════
+// ── STAGE 5 (v2.10.0): מנוע טריגרים + תשתית זיכרון + מונה שימוש ──
+// המאמן מגיב לאירועים אמיתיים, לא לשעון. מנותק מ-UI ככל האפשר.
+// עוצב פונקציונלית בלבד — יעוצב מחדש בשלב העיצוב.
+// ══════════════════════════════════════════════════════════════════
+
+const COACH_DAILY_BUDGET = 3;   // מקסימום טריגרים ביום (בריאותי פורץ)
+const COACH_EVENTS_CAP = 200;   // גודל יומן האירועים
+const PRIO = { health: 3, opportunity: 2, encouragement: 1 };
+
+// ── תשתית זיכרון: מבטיח שהמבנה קיים (נזרע ריק, ימולא בשלב הבא) ──
+function ensureCoachMemory() {
+  if (!userProfile) return;
+  if (!userProfile.coachMemory) {
+    userProfile.coachMemory = { observations: [], preferences: {}, lastUpdated: null };
+  }
+  if (!Array.isArray(userProfile.coachEvents)) userProfile.coachEvents = [];
+}
+
+// ── יומן אירועים: חומר הגלם שממנו שכבת הזיכרון תסיק דפוסים בעתיד ──
+async function logCoachEvent(type, meta) {
+  if (!userProfile) return;
+  ensureCoachMemory();
+  userProfile.coachEvents.push({ type, date: getTodayKey(), ts: Date.now(), meta: meta || {} });
+  if (userProfile.coachEvents.length > COACH_EVENTS_CAP) {
+    userProfile.coachEvents = userProfile.coachEvents.slice(-COACH_EVENTS_CAP);
+  }
+  await saveProfile();
+}
+
+// ── ניסוח קצר של הזיכרון לתוך הוראת המערכת (ריק כרגע → יתמלא בשלב הבא) ──
+function coachMemoryPromptFragment() {
+  const m = userProfile && userProfile.coachMemory;
+  if (!m) return '';
+  const parts = [];
+  if (Array.isArray(m.observations) && m.observations.length) {
+    const obs = m.observations.slice(-8).map(o => (o && o.text) || o).filter(Boolean);
+    if (obs.length) parts.push('מה שלמדתי עליו עד כה: ' + obs.join('; ') + '.');
+  }
+  if (m.preferences && Object.keys(m.preferences).length) {
+    const pref = Object.entries(m.preferences).map(([k, v]) => `${k}: ${v}`).join('; ');
+    if (pref) parts.push('העדפות שנלמדו: ' + pref + '.');
+  }
+  return parts.join(' ');
+}
+
+// ── תקציב הטון: מעקב יומי (מתאפס בכל יום) ──
+function coachDay() {
+  ensureCoachMemory();
+  const today = getTodayKey();
+  if (!userProfile.coachDay || userProfile.coachDay.date !== today) {
+    userProfile.coachDay = { date: today, fired: [], count: 0 };
+  }
+  return userProfile.coachDay;
+}
+function canFire(type, priority) {
+  const cd = coachDay();
+  if (cd.fired.indexOf(type) >= 0) return false;          // בלי כפילות באותו יום
+  if (priority < PRIO.health && cd.count >= COACH_DAILY_BUDGET) return false; // תקציב מוצה
+  return true;
+}
+async function markFired(type) {
+  const cd = coachDay();
+  if (cd.fired.indexOf(type) < 0) cd.fired.push(type);
+  cd.count++;
+  await saveProfile();
+}
+
+// ══ הערכת טריגרים — פונקציות תנאי טהורות ══
+// כל אחת מחזירה אובייקט טריגר {type, priority, live, kind, data} או null.
+
+function todayConsumed() { return todayData.meals.reduce((s, m) => s + (m.kcal || 0), 0); }
+function todayProtein() { return Math.round(todayData.meals.reduce((s, m) => s + (m.protein || 0), 0)); }
+function proteinTarget() { return Math.round((userProfile.weight || 75) * 1.8); }
+
+// מאכל חלבוני מהרשימה של המשתמש (אחרת ברירת מחדל)
+function proteinFoodHint() {
+  const foods = (userProfile && userProfile.foods) || [];
+  const rich = ['עוף','ביצים','דג','קוטג\'','יוגורט','בשר','טונה','גבינה','חלבון','שניצל'];
+  const hit = foods.find(f => rich.some(r => f.includes(r)));
+  return hit || 'ביצה, קוטג׳ או עוף';
+}
+
+// 🔴 דגל אדום בריאותי — מהמנוע המסתגל (שלב 4)
+function evalRedFlag(history) {
+  if (typeof computeAdaptiveTdee !== 'function') return null;
+  try {
+    const calc = computeAdaptiveTdee(history);
+    if (!calc.enoughData) return null;
+    const meas = analyzeMeasurements();
+    const sig = buildWeeklySignals(calc, meas);
+    if (sig.redFlag) return { type: 'redflag', priority: PRIO.health, live: true, data: { sig, calc } };
+  } catch (e) {}
+  return null;
+}
+
+// 🟡 שכחת לאכול — 14:00–19:00 ופחות מ-400 קל׳
+function evalForgotToEat() {
+  const h = new Date().getHours();
+  if (h >= 14 && h < 20 && todayConsumed() < 400) {
+    return { type: 'forgot-eat', priority: PRIO.opportunity, live: false, data: { have: todayConsumed() } };
+  }
+  return null;
+}
+
+// 🟡 חלבון נמוך יומיים ברצף
+function evalLowProtein(history) {
+  const target = proteinTarget();
+  const todayP = todayProtein();
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const yData = history[dateKey(y)];
+  if (!yData) return null;
+  const yP = Math.round((yData.meals || []).reduce((s, m) => s + (m.protein || 0), 0));
+  if (todayConsumed() > 500 && todayP < target * 0.6 && yP < target * 0.6) {
+    return { type: 'low-protein', priority: PRIO.opportunity, live: false, data: { have: todayP, target } };
+  }
+  return null;
+}
+
+// 🟡 לא התאמנת כבר כמה ימים (לפי תדירות היעד)
+function evalNoWorkout(history) {
+  if (!userProfile.totalWorkouts) return null; // משתמש חדש — לא מנדנדים
+  const gap = userProfile.days === '6' ? 2 : userProfile.days === '4' ? 3 : 4;
+  const d = new Date();
+  let since = 0;
+  for (let i = 0; i < 14; i++) {
+    const key = dateKey(d);
+    const dd = (i === 0) ? todayData : history[key];
+    if (dd && (dd.burned || 0) > 0) break;
+    since++; d.setDate(d.getDate() - 1);
+  }
+  if (since > gap) return { type: 'no-workout', priority: PRIO.opportunity, live: false, data: { since } };
+  return null;
+}
+
+// 🟡 קרוב מאוד ליעד בערב
+function evalCloseToGoal() {
+  const h = new Date().getHours();
+  const remain = userProfile.goalKcal - todayConsumed();
+  if (h >= 19 && remain >= 100 && remain <= 300) {
+    return { type: 'close-goal', priority: PRIO.opportunity, live: false, data: { remain } };
+  }
+  return null;
+}
+
+// 🟢 אבן דרך בסטריק
+function evalStreakMilestone() {
+  const s = userProfile.streak || 0;
+  if ([7, 14, 30, 60, 100].indexOf(s) >= 0) {
+    return { type: 'streak-' + s, priority: PRIO.encouragement, live: s >= 30, data: { streak: s } };
+  }
+  return null;
+}
+
+// ── טקסט מקומי לכל טריגר (חינם) ──
+function triggerLocalText(t) {
+  const n = coachName();
+  const warm = coachChatter() === 'gentle';
+  switch (t.type) {
+    case 'forgot-eat':
+      return warm ? `${n}, עוד לא ראיתי הרבה רישום היום — מה אכלת עד עכשיו? בוא נעדכן.` : `לא שכחת לרשום? עד עכשיו רק ${t.data.have} קל׳. מה אכלת היום?`;
+    case 'low-protein':
+      return `${n}, יומיים שהחלבון נמוך (${t.data.have}g מתוך ${t.data.target}g). ${proteinFoodHint()} יסגור את הפער יפה.`;
+    case 'no-workout':
+      return warm ? `${n}, כבר ${t.data.since} ימים בלי אימון — הגוף שלך מוכן, גם 20 דקות זה ניצחון.` : `${t.data.since} ימים בלי אימון. מה דעתך על אימון קצר היום?`;
+    case 'close-goal':
+      return `${n}, נותרו רק ${t.data.remain} קל׳ ליעד — עוד ארוחה קטנה וסגרת יום מושלם.`;
+    default:
+      if (t.type.indexOf('streak-') === 0) return `${n}, ${t.data.streak} ימים ברצף! 🔥 אתה במומנטום מעולה.`;
+      return '';
+  }
+}
+
+// ── בקשת טקסט חי מהמאמן לטריגר (רגעים גדולים) ──
+async function triggerLiveText(t) {
+  let ctx = '';
+  if (t.type === 'redflag') {
+    ctx = `דגל אדום מהמנוע המסתגל: ${coachName()} יורד במשקל מהר מדי והזרוע מצטמקת — סימן לאובדן שריר. הרגע אותו, הסבר בקצרה שנאט את הקצב ונוסיף קצת קלוריות כדי לשמור על השריר. טון תומך.`;
+  } else if (t.type.indexOf('streak-') === 0) {
+    ctx = `${coachName()} הגיע ל-${t.data.streak} ימים ברצף באפליקציה. חגוג את זה איתו בחום, משפט קצר.`;
+  } else {
+    ctx = `אירוע: ${t.type}. תגיב בקצרה בהתאם לאופי.`;
+  }
+  try { return await coachMessage(ctx); } catch (e) { return triggerLocalText(t); }
+}
+
+// ══ הרצת המנוע בכניסה — בוחר טריגר אחד (הכי גבוה בעדיפות) ══
+async function runCoachTriggers() {
+  if (!userProfile) return;
+  ensureCoachMemory();
+  const card = document.getElementById('trigger-card');
+  if (!card) return;
+  const history = await getHistoryData();
+
+  const candidates = [
+    evalRedFlag(history),
+    evalForgotToEat(),
+    evalLowProtein(history),
+    evalNoWorkout(history),
+    evalCloseToGoal(),
+    evalStreakMilestone()
+  ].filter(Boolean).filter(t => canFire(t.type, t.priority));
+
+  if (!candidates.length) { card.classList.add('hidden'); return; }
+  candidates.sort((a, b) => b.priority - a.priority);
+  const t = candidates[0];
+
+  const textEl = document.getElementById('trigger-card-text');
+  if (textEl) textEl.textContent = triggerLocalText(t) || '...';
+  card.classList.remove('hidden');
+  await markFired(t.type);
+  await logCoachEvent(t.type, t.data);
+
+  if (t.live && textEl) {
+    try { const msg = await triggerLiveText(t); if (msg) textEl.textContent = msg; } catch (e) {}
+  }
+}
+
+// ── טריגר מיידי אחרי אימון (תגובה ישירה לפעולת המשתמש) ──
+async function fireWorkoutTrigger(burn) {
+  await logCoachEvent('workout-logged', { burn });
+  const card = document.getElementById('trigger-card');
+  const textEl = document.getElementById('trigger-card-text');
+  if (!card || !textEl) return;
+  textEl.textContent = coachLine('workout', { burn: (burn || 0).toLocaleString() });
+  card.classList.remove('hidden');
+  try {
+    const ctx = `${coachName()} בדיוק סיים אימון ושרף ${burn} קל׳ (מטרה: ${GOAL_LABELS[userProfile.goal]}). תן לו קרדיט קצר שמחבר את האימון למטרה שלו.`;
+    const msg = await coachMessage(ctx);
+    if (msg) textEl.textContent = msg;
+  } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── מונה שימוש (שקיפות עלויות) ──
+// דליים: 'photo' (תמונות — היקר), 'coach' (הודעות מאמן), 'text' (שאלון/תפריט/מכתב)
+// ══════════════════════════════════════════════════════════════════
+const USAGE_LABELS = { photo: 'תמונות (צלחת/תווית)', coach: 'הודעות מאמן', text: 'טקסט (שאלון/תפריט)' };
+
+function usageMonthKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function ensureUsage() {
+  if (!userProfile) return;
+  const mk = usageMonthKey();
+  if (!userProfile.usage || userProfile.usage.month !== mk) {
+    userProfile.usage = { month: mk, byType: { photo: 0, coach: 0, text: 0 } };
+  }
+}
+function classifyCall(body) {
+  try {
+    const msgs = body.messages || [];
+    for (const m of msgs) {
+      if (Array.isArray(m.content) && m.content.some(c => c && c.type === 'image')) return 'photo';
+    }
+  } catch (e) {}
+  if (body && body.system) return 'coach'; // הודעות מאמן נושאות system prompt
+  return 'text';
+}
+async function trackUsage(body) {
+  if (!userProfile) return;
+  ensureUsage();
+  const t = classifyCall(body);
+  userProfile.usage.byType[t] = (userProfile.usage.byType[t] || 0) + 1;
+  // שמירה עדינה — לא חוסמת את הקריאה עצמה
+  saveProfile();
+}
+
+function renderUsage() {
+  const el = document.getElementById('usage-info');
+  if (!el || !userProfile) return;
+  ensureUsage();
+  const u = userProfile.usage.byType;
+  const total = (u.photo || 0) + (u.coach || 0) + (u.text || 0);
+  el.innerHTML =
+    `<div class="settings-row"><span>סה"כ קריאות החודש</span><span class="settings-val">${total}</span></div>` +
+    Object.keys(USAGE_LABELS).map(k =>
+      `<div class="settings-row"><span>${USAGE_LABELS[k]}</span><span class="settings-val">${u[k] || 0}</span></div>`
+    ).join('') +
+    `<div style="font-size:11px;color:var(--text-3);padding:8px 0 0;line-height:1.5">💡 התמונות הן העלות המשמעותית. טקסט והודעות מאמן זולים מאוד.</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── Hooks: עטיפת פונקציות קיימות (override על הסופיות) ──
+// ══════════════════════════════════════════════════════════════════
+
+// callClaude → מונה שימוש (מנסה לספור, לעולם לא חוסם)
+const _s5_callClaude = callClaude;
+callClaude = async function(body) {
+  try { trackUsage(body); } catch (e) {}
+  return await _s5_callClaude(body);
+};
+
+// buildCoachSystemPrompt → מזריק את הזיכרון (ריק כרגע, יתמלא בשלב הבא)
+const _s5_buildCoachSystemPrompt = buildCoachSystemPrompt;
+buildCoachSystemPrompt = function() {
+  const base = _s5_buildCoachSystemPrompt();
+  const mem = coachMemoryPromptFragment();
+  return mem ? (base + ' ' + mem) : base;
+};
+
+// showApp → מריץ את מנוע הטריגרים בכניסה
+const _s5_showApp = showApp;
+showApp = function() {
+  _s5_showApp();
+  runCoachTriggers();
+};
+
+// saveWorkout → טריגר מיידי אחרי אימון
+const _s5_saveWorkout = saveWorkout;
+saveWorkout = async function() {
+  const before = todayData.burned || 0;
+  await _s5_saveWorkout();
+  const burn = (todayData.burned || 0) - before;
+  await fireWorkoutTrigger(burn);
+};
+
+// renderSettings → מציג את מונה השימוש
+const _s5_renderSettings_u = renderSettings;
+renderSettings = function() {
+  _s5_renderSettings_u();
+  renderUsage();
+};
+
+// scheduleLocalNotifications → גרסה מודעת-תקציב (מחליפה את הקודמת)
+// התראות מתוזמנות מכבדות את אותו תקציב טון ואי-כפילות כמו הכרטיסים.
+scheduleLocalNotifications = function() {
+  if (Notification.permission !== 'granted' || !userProfile) return;
+  const now = new Date();
+  const hour = now.getHours();
+
+  async function push(type, priority, title, body) {
+    if (!canFire(type, priority)) return;
+    sendLocalNotification(title, body);
+    await markFired(type);
+    await logCoachEvent(type, { via: 'notification' });
+  }
+
+  // בוקר (עידוד)
+  if (hour < 7) scheduleAt(7, 0, () => push('morning', PRIO.encouragement, 'בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: userProfile.goalKcal })));
+
+  // שכחת לאכול (הזדמנות)
+  if (hour < 14) scheduleAt(14, 0, () => {
+    if (todayConsumed() < 400) push('forgot-eat', PRIO.opportunity, '🍽️ לא שכחת לאכול?', triggerLocalText({ type: 'forgot-eat', data: { have: todayConsumed() } }));
+  });
+
+  // חלבון (הזדמנות)
+  if (hour < 17) scheduleAt(17, 0, () => {
+    const p = todayProtein(), tgt = proteinTarget();
+    if (p < tgt * 0.6) push('protein', PRIO.opportunity, '📊 בדיקת תזונה', coachLine('protein', { have: p, target: tgt }));
+  });
+
+  // ערב — קרוב ליעד (הזדמנות)
+  if (hour < 20) scheduleAt(20, 0, () => {
+    const remain = userProfile.goalKcal - todayConsumed();
+    if (remain >= 100 && remain <= 300) push('close-goal', PRIO.opportunity, '⚡ ' + coachName(), triggerLocalText({ type: 'close-goal', data: { remain } }));
+    else if (remain > 300) push('evening', PRIO.opportunity, '⚡ ' + coachName(), coachLine('evening', { remain }));
+  });
+
+  // הגנת סטריק (בריאותי-רך — פורץ תקציב כי חשוב)
+  if (hour < 21) scheduleAt(21, 0, () => {
+    if (todayConsumed() < 100 && (userProfile.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
+  });
 };

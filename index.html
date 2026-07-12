@@ -187,6 +187,12 @@
         </div>
         <div class="scroll-content">
 
+          <!-- TRIGGER CARD (שלב 5) — תגובת המאמן לאירוע -->
+          <div id="trigger-card" class="coach-card hidden">
+            <div class="coach-card-icon">💬</div>
+            <div class="coach-card-text" id="trigger-card-text"></div>
+          </div>
+
           <!-- COACH CARD (המאמן) -->
           <div id="coach-card" class="coach-card hidden">
             <div class="coach-card-icon">🧭</div>
@@ -507,6 +513,8 @@
             <button class="btn-ghost" onclick="testCoachMessage()" style="margin-top:10px">בדוק הודעת מאמן</button>
             <div id="coach-test-out" class="ai-bubble hidden" style="margin-top:8px"></div>
           </div>
+          <div class="section-header"><span>שימוש ב-Claude החודש</span></div>
+          <div id="usage-info"></div>
           <div class="section-header"><span>המאכלים האהובים שלי</span></div>
           <div class="food-tags-wrap" id="fav-foods-display"></div>
           <div class="section-header"><span>קוד הקבוצה שלי</span></div>
