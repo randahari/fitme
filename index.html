@@ -276,13 +276,15 @@
           <div class="water-row" id="water-cups"></div>
 
           <!-- WEEK -->
-          <div class="section-header"><span>שבוע זה</span></div>
+          <div class="section-header" id="week-header"><span>שבוע זה</span></div>
           <div class="week-chart" id="week-chart"></div>
 
           <!-- MEALS -->
-          <div class="section-header"><span>ארוחות היום</span><button class="link-btn" onclick="goToScreen('food')">הוסף +</button></div>
+          <div class="section-header"><span id="meals-title">ארוחות היום</span><button class="link-btn" onclick="goToScreen('food')">הוסף +</button></div>
           <div id="meals-list"><div class="empty-state">לא נרשמו ארוחות עדיין</div></div>
 
+          <!-- WEIGHT + MEASUREMENTS — נתוני גוף של היום בלבד -->
+          <div id="body-metrics-section">
           <!-- WEIGHT -->
           <div class="section-header"><span>משקל גוף</span></div>
           <div style="display:flex;gap:8px;margin-bottom:16px">
@@ -298,6 +300,7 @@
             <input type="number" id="meas-chest" placeholder="חזה/ירך" step="0.5">
           </div>
           <button class="btn-small" onclick="logMeasurements()" style="width:100%;margin-bottom:24px">שמור היקפים</button>
+          </div>
 
         </div>
       </section>

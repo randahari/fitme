@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.12.0';
+const APP_VERSION = '2.13.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -46,6 +46,12 @@ let currentUser = null;
 let userProfile = null;
 let todayData = { meals: [], burned: 0, steps: 0 };
 let waterCount = 0;
+// ── ניווט תאריך (שלב 2) ──
+// currentDayKey = היום שמסך הבית מציג כרגע. todayData/waterCount מחזיקים את הנתונים שלו.
+// realTodayData/realWaterCount שומרים תמיד את נתוני *היום האמיתי*, גם כשצופים ביום עבר.
+let currentDayKey = getTodayKey();
+let realTodayData = todayData;
+let realWaterCount = 0;
 let darkMode = false;
 let workoutType = null;
 let workoutInt = 'med';
@@ -152,7 +158,7 @@ async function saveProfile() {
 async function saveTodayData() {
   if (!currentUser) return;
   try {
-    await db.collection('users').doc(currentUser.uid).collection('days').doc(getTodayKey()).set({
+    await db.collection('users').doc(currentUser.uid).collection('days').doc(currentDayKey).set({
       meals: todayData.meals, burned: todayData.burned, steps: todayData.steps, water: waterCount,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -509,7 +515,7 @@ async function buildWeekChart() {
     const d = new Date(today); d.setDate(today.getDate()-i);
     const key = dateKey(d);
     const isToday = i===0;
-    const dayData = isToday ? todayData : (history[key]||null);
+    const dayData = isToday ? realTodayData : (history[key]||null);
     const kcal = dayData ? (dayData.meals||[]).reduce((s,m)=>s+(m.kcal||0),0) : 0;
     const target = userProfile ? userProfile.goalKcal : 2000;
     const pct = target>0 ? Math.min(100,Math.round(kcal/target*100)) : 0;
@@ -905,6 +911,7 @@ function normalizeItem(it) {
 }
 
 let editingItemIdx = null;
+let editingExisting = null; // {idx, time} כשעורכים ארוחה שכבר נרשמה (שלב 2)
 function showMealEditor(meal) {
   editingItemIdx = null;
   pendingMeal = {
@@ -1396,7 +1403,7 @@ async function updateStreak() {
   for (let i=0; i<365; i++) {
     const key = dateKey(d);
     const isToday = i===0;
-    const dayData = isToday ? todayData : (history[key]||null);
+    const dayData = isToday ? realTodayData : (history[key]||null);
     if (!dayData||!dayData.meals||!dayData.meals.length) break;
     streak++;
     d.setDate(d.getDate()-1);
@@ -2669,3 +2676,248 @@ scheduleLocalNotifications = function() {
     if (todayConsumed() < 100 && (userProfile.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
   });
 };
+
+// ══════════════════════════════════════════════════════════════════
+// שלב 2 — ניווט תאריך + עריכת ארוחות עבר + רישום ליום קודם
+// מודול עצמאי: עוטף פונקציות קיימות בלי לשכתב אותן.
+// ══════════════════════════════════════════════════════════════════
+(function () {
+  const MAX_PAST_DAYS = 7; // עד כמה אחורה מותר לצפות ולערוך
+
+  function keyToDate(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function viewingToday() { return currentDayKey === getTodayKey(); }
+  function daysBack(key) {
+    const ms = keyToDate(getTodayKey()) - keyToDate(key);
+    return Math.round(ms / 86400000);
+  }
+  function formatDayLabel(key) {
+    const back = daysBack(key);
+    if (back === 0) return 'היום';
+    if (back === 1) return 'אתמול';
+    const d = keyToDate(key);
+    const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+    return 'יום ' + days[d.getDay()] + ', ' + d.getDate() + '/' + (d.getMonth() + 1);
+  }
+
+  // ── סרגל ניווט התאריך (מוזרק פעם אחת לראש מסך הבית) ──
+  function ensureDateNav() {
+    if (document.getElementById('date-nav')) return;
+    const sc = document.querySelector('#screen-home .scroll-content');
+    if (!sc) return;
+    const bar = document.createElement('div');
+    bar.id = 'date-nav';
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg-2,#fff);border-radius:14px;padding:8px 10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)';
+    bar.innerHTML =
+      '<button id="date-prev" onclick="dayNavPrev()" aria-label="יום קודם" style="border:none;background:var(--bg-3,#f0eee9);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer">▶</button>' +
+      '<div style="text-align:center;flex:1"><div id="date-nav-label" style="font-weight:700;font-size:15px">היום</div><div id="date-nav-back" class="link-btn" style="font-size:12px;color:var(--gold);cursor:pointer;display:none" onclick="dayNavToday()">חזרה להיום</div></div>' +
+      '<button id="date-next" onclick="dayNavNext()" aria-label="יום הבא" style="border:none;background:var(--bg-3,#f0eee9);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer">◀</button>';
+    sc.insertBefore(bar, sc.firstChild);
+  }
+  function updateDateNav() {
+    ensureDateNav();
+    const label = document.getElementById('date-nav-label');
+    const back = document.getElementById('date-nav-back');
+    const prev = document.getElementById('date-prev');
+    const next = document.getElementById('date-next');
+    if (label) label.textContent = formatDayLabel(currentDayKey);
+    if (back) back.style.display = viewingToday() ? 'none' : 'block';
+    // prev = אחורה בזמן; חסום כשהגענו לגבול
+    if (prev) { const atLimit = daysBack(currentDayKey) >= MAX_PAST_DAYS; prev.disabled = atLimit; prev.style.opacity = atLimit ? '.35' : '1'; }
+    // next = קדימה בזמן; חסום כשאנחנו על היום (אין עתיד)
+    if (next) { const atToday = viewingToday(); next.disabled = atToday; next.style.opacity = atToday ? '.35' : '1'; }
+  }
+
+  // ── טעינת יום לצפייה/עריכה ──
+  async function loadDay(key) {
+    if (key === currentDayKey) return;
+    if (key === getTodayKey()) {
+      // חזרה להיום — משחזרים את נתוני היום האמיתי
+      todayData = realTodayData;
+      waterCount = realWaterCount;
+      currentDayKey = getTodayKey();
+    } else {
+      // עוזבים את היום — שומרים את נתוני היום האמיתי לפני ההחלפה
+      if (viewingToday()) { realTodayData = todayData; realWaterCount = waterCount; }
+      let data = { meals: [], burned: 0, steps: 0 }, water = 0;
+      try {
+        const doc = await db.collection('users').doc(currentUser.uid).collection('days').doc(key).get();
+        if (doc.exists) { const d = doc.data(); data = { meals: d.meals || [], burned: d.burned || 0, steps: d.steps || 0 }; water = d.water || 0; }
+      } catch (e) { console.error('loadDay:', e); }
+      todayData = data;
+      waterCount = water;
+      currentDayKey = key;
+    }
+    renderHome();
+    updateFoodDateBanner();
+  }
+
+  function shiftDay(deltaDays) {
+    const d = keyToDate(currentDayKey);
+    d.setDate(d.getDate() + deltaDays);
+    let key = dateKey(d);
+    // מגבלות: לא לעתיד, ולא מעבר ל-MAX_PAST_DAYS אחורה
+    if (keyToDate(key) > keyToDate(getTodayKey())) key = getTodayKey();
+    if (daysBack(key) > MAX_PAST_DAYS) return;
+    loadDay(key);
+  }
+  window.dayNavPrev = () => shiftDay(-1);   // אחורה בזמן
+  window.dayNavNext = () => shiftDay(1);     // קדימה בזמן
+  window.dayNavToday = () => loadDay(getTodayKey());
+
+  // ── כרום מסך הבית לפי היום המוצג ──
+  function applyDayViewChrome() {
+    const today = viewingToday();
+    const setHidden = (id, cond) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', cond); };
+    // מקטעים ששייכים ל"היום" בלבד — מוסתרים בימי עבר
+    ['week-header', 'week-chart', 'body-metrics-section'].forEach(id => setHidden(id, !today));
+    // כרטיסי מאמן/יעד — לא רצים על ימי עבר
+    if (!today) ['trigger-card', 'coach-card', 'adaptive-card', 'partial-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    const mt = document.getElementById('meals-title');
+    if (mt) mt.textContent = today ? 'ארוחות היום' : ('ארוחות · ' + formatDayLabel(currentDayKey));
+    updateDateNav();
+  }
+
+  // ── עטיפת renderHome: מוסיפה סרגל תאריך + כרום עבר ──
+  const _renderHome = renderHome;
+  renderHome = function () {
+    _renderHome();
+    ensureDateNav();
+    applyDayViewChrome();
+  };
+
+  // ── עטיפת renderMealsInHome: שורות לחיצות לעריכה + כפתור מחיקה, בכל יום ──
+  renderMealsInHome = function () {
+    const list = document.getElementById('meals-list');
+    if (!list) return;
+    if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות</div>'; return; }
+    list.innerHTML = '<div class="meals-card">' + todayData.meals.map((m, i) =>
+      '<div class="meal-row">' +
+        '<div style="flex:1;cursor:pointer" onclick="editHomeMeal(' + i + ')"><div class="meal-name">' + esc(m.name) + ' <span style="font-size:11px;color:var(--gold)">✏️</span></div><div class="meal-time">' + esc(m.time || '') + '</div></div>' +
+        '<div class="meal-kcal">' + (m.kcal || 0) + ' קל\'</div>' +
+        '<button onclick="deleteHomeMeal(' + i + ')" aria-label="מחק" style="border:none;background:none;color:var(--text-3,#999);font-size:20px;cursor:pointer;padding:0 4px;margin-inline-start:6px">×</button>' +
+      '</div>'
+    ).join('') + '</div>';
+  };
+
+  window.deleteHomeMeal = async function (idx) {
+    if (!todayData.meals[idx]) return;
+    if (!confirm('למחוק את הארוחה?')) return;
+    todayData.meals.splice(idx, 1);
+    await saveTodayData();
+    await updateStreak();
+    renderHome();
+    if (typeof renderFoodMeals === 'function') renderFoodMeals();
+  };
+
+  // ── עטיפת showMealEditor: איפוס מצב עריכה בכל פתיחה של ארוחה חדשה ──
+  const _showMealEditor = showMealEditor;
+  showMealEditor = function (meal) { editingExisting = null; _showMealEditor(meal); };
+
+  // ── עריכת ארוחה קיימת דרך המסך האחיד ──
+  window.editHomeMeal = function (idx) {
+    const meal = todayData.meals[idx];
+    if (!meal) return;
+    const time = meal.time || '';
+    const items = (meal.items && meal.items.length)
+      ? meal.items.map(it => ({ ...it }))
+      : [{ name: meal.name || 'פריט', amount: 0, unit: '', qty: 1, kcal: meal.kcal || 0, protein: meal.protein || 0, carbs: meal.carbs || 0, fat: meal.fat || 0, fiber: meal.fiber || 0, sugar: meal.sugar || 0, sodium: meal.sodium || 0 }];
+    goToScreen('food');
+    showMealEditor({ name: meal.name, items: items, source: meal.source || null, note: meal.note || '' }); // מאפס את הדגל ומרנדר כרגיל
+    editingExisting = { idx: idx, time: time };  // מפעיל מצב עריכה
+    renderEditor();                               // מרנדר מחדש עם כפתורי העריכה
+  };
+
+  // ── מצב עריכה קיים: addMeal מנותב לשמירת שינויים ──
+  const _addMeal = addMeal;
+  addMeal = async function () {
+    if (editingExisting) return saveEditedMeal();
+    return _addMeal();
+  };
+
+  window.saveEditedMeal = async function () {
+    if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
+    const finalMeal = buildMealFromEditor();
+    if (editingExisting.time) finalMeal.time = editingExisting.time; // שמירה על שעת הרישום המקורית
+    todayData.meals[editingExisting.idx] = finalMeal;
+    editingExisting = null;
+    pendingMeal = null;
+    document.getElementById('food-result').classList.add('hidden');
+    await saveTodayData();
+    await updateStreak();
+    if (typeof renderFoodMeals === 'function') renderFoodMeals();
+    goToScreen('home');
+  };
+
+  window.deleteEditedMeal = async function () {
+    if (!editingExisting) return;
+    if (!confirm('למחוק את הארוחה?')) return;
+    todayData.meals.splice(editingExisting.idx, 1);
+    editingExisting = null;
+    pendingMeal = null;
+    document.getElementById('food-result').classList.add('hidden');
+    await saveTodayData();
+    await updateStreak();
+    if (typeof renderFoodMeals === 'function') renderFoodMeals();
+    goToScreen('home');
+  };
+
+  window.cancelEditedMeal = function () {
+    editingExisting = null;
+    pendingMeal = null;
+    document.getElementById('food-result').classList.add('hidden');
+    goToScreen('home');
+  };
+
+  // ── עטיפת renderEditor: כשעורכים ארוחה קיימת — כפתורי פעולה מותאמים ──
+  const _renderEditor = renderEditor;
+  renderEditor = function () {
+    _renderEditor();
+    if (editingExisting) {
+      const actions = document.querySelector('#food-result .result-actions');
+      if (actions) actions.innerHTML =
+        '<button class="btn-primary" onclick="addMeal()">שמור שינויים ✓</button>' +
+        '<button class="btn-ghost" onclick="deleteEditedMeal()">מחק ארוחה 🗑</button>' +
+        '<button class="btn-ghost" onclick="cancelEditedMeal()">בטל</button>';
+    }
+  };
+
+  // ── באנר במסך האוכל: מיידע לאיזה יום נרשם (כשלא היום) ──
+  function ensureFoodDateBanner() {
+    if (document.getElementById('food-date-banner')) return;
+    const sc = document.querySelector('#screen-food .scroll-content');
+    if (!sc) return;
+    const b = document.createElement('div');
+    b.id = 'food-date-banner';
+    b.style.cssText = 'display:none;align-items:center;justify-content:space-between;gap:8px;background:var(--gold-light,#faece0);color:var(--gold,#8a5a00);border-radius:12px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:600';
+    b.innerHTML = '<span id="food-date-banner-text"></span><span class="link-btn" style="cursor:pointer;text-decoration:underline" onclick="dayNavToday();goToScreen(\'home\')">להיום</span>';
+    sc.insertBefore(b, sc.firstChild);
+  }
+  function updateFoodDateBanner() {
+    ensureFoodDateBanner();
+    const b = document.getElementById('food-date-banner');
+    const t = document.getElementById('food-date-banner-text');
+    if (!b || !t) return;
+    if (viewingToday()) { b.style.display = 'none'; }
+    else { t.textContent = '📅 רושם ליום: ' + formatDayLabel(currentDayKey); b.style.display = 'flex'; }
+  }
+  window.updateFoodDateBanner = updateFoodDateBanner;
+
+  // ── עטיפת goToScreen: מרעננת את באנר האוכל ──
+  const _goToScreen = goToScreen;
+  goToScreen = function (name) {
+    _goToScreen(name);
+    if (name === 'food') updateFoodDateBanner();
+  };
+
+  // ── עטיפת loadUserData: איפוס מצב הניווט להיום בכל טעינה ──
+  const _loadUserData = loadUserData;
+  loadUserData = async function () {
+    await _loadUserData();
+    currentDayKey = getTodayKey();
+    realTodayData = todayData;
+    realWaterCount = waterCount;
+  };
+})();
