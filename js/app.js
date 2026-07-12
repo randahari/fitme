@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.13.0';
+const APP_VERSION = '2.14.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -567,7 +567,7 @@ async function analyzeFood() {
 - אפשרויות הכמות חייבות להיות מוחשיות: גרמים, כפות, כוסות, יחידות ("צלחת קטנה ~150 גרם").
 - אם רלוונטי, שאל על סוג (בשר בקר/הודו) או שיטת בישול (מטוגן/אפוי).
 - עד 3 שאלות. אל תשאל על מה שכבר ברור מהטקסט. אל תוסיף טקסט מחוץ ל-JSON.` }] });
-    const parsed = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const parsed = parseModelJSON(data.content[0].text);
     foodSession.questions = parsed.questions;
     showNextQuestion();
   } catch(e) { alert('שגיאה: ' + e.message); }
@@ -601,7 +601,7 @@ async function calculateFoodResult() {
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: `חשב ערכים תזונתיים: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}.
 פרק את המנה לרכיבים נפרדים (כל רכיב בשורה משלו עם כמות וערכים משלו). ב-suggestions כלול 2-4 "קלוריות נסתרות" אופייניות למנה כזו שהמשתמש אולי שכח (שמן בבישול, גבינה מגוררת, לחם ליד, רוטב) — עם ערכים לכמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד במבנה: ${ITEMS_JSON_SPEC}` }] });
-    const meal = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const meal = parseModelJSON(data.content[0].text);
     showMealEditor(meal);
   } catch(e) { alert('שגיאה בחישוב.'); }
   finally { document.getElementById('food-loading').classList.add('hidden'); }
@@ -612,7 +612,7 @@ function startLabelCamera() { photoMode = 'label'; document.getElementById('came
 
 const PLATE_PROMPT = `זהה כל פריט מאכל בצלחת בנפרד — כל רכיב בשורה משלו עם הערכת כמות (גרם/יחידות/כפות) וערכים תזונתיים משלו. אל תאחד הכל לשורה אחת.
 ב-suggestions כלול 2-4 "קלוריות נסתרות" שהמצלמה לא רואה אבל אופייניות למנה כזו (שמן בבישול/בטיגון, גבינה מגוררת, רוטב, חמאה) — עם ערכים לכמות טיפוסית.
-sodium במ"ג, השאר בגרם. אם התמונה לא ברורה ציין זאת ב-note. החזר JSON בלבד במבנה: `;
+sodium במ"ג, השאר בגרם. אם התמונה לא ברורה ציין זאת ב-note. חשוב: החזר JSON תקין בלבד — בלי שום טקסט, הסבר או הקדמה לפני או אחרי ה-JSON. התו הראשון בתשובה חייב להיות { והתו האחרון }. המבנה: `;
 
 const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של מוצר מזון. קרא את הטבלה בזהירות והחזר פריט אחד מדויק.
 כללים מחייבים:
@@ -622,7 +622,7 @@ const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של �
 4. sodium במ"ג. אם רשום רק מלח: נתרן(מ"ג) = מלח(גרם) ÷ 2.5 × 1000.
 5. בדיקה עצמית לפני החזרה: חומצות שומן רוויות ≤ שומן כולל; סוכר ≤ פחמימות; והקלוריות בערך שוות ל: חלבון×4 + פחמימות×4 + שומן×9. אם משהו לא מסתדר — קרא שוב את הטבלה ותקן.
 6. ב-note ציין על איזה בסיס חושבו הערכים (כמה גרם).
-suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. החזר JSON בלבד במבנה: `;
+suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. חשוב: החזר JSON תקין בלבד — בלי שום טקסט, הסבר או הקדמה לפני או אחרי ה-JSON. התו הראשון בתשובה חייב להיות { והתו האחרון }. המבנה: `;
 
 // דחיסת תמונה לפני שליחה ל-Claude — חוסכת ~70% מהעלות של הקריאה היקרה ביותר.
 // מקטינה לרוחב/גובה מקסימלי 1024px ומייצאת JPEG באיכות 0.85.
@@ -666,7 +666,7 @@ async function analyzePhoto(input) {
   try {
     const img = await compressImageForUpload(file);
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.b64 } },{ type: 'text', text: (mode==='label' ? LABEL_PROMPT : PLATE_PROMPT) + ITEMS_JSON_SPEC }] }] });
-    const meal = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const meal = parseModelJSON(data.content[0].text);
     if (meal.error) { alert('לא הצלחתי לקרוא את התווית. נסה לצלם שוב מקרוב, באור טוב.'); return; }
     if (mode === 'label') {
       // צילום תווית שהגיע ממסלול ברקוד — נשייך את הברקוד כדי שהתיקון יישמר למאגר הקבוצה
@@ -904,6 +904,20 @@ async function lookupBarcode(code) {
 function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
+// חילוץ JSON עמיד מתשובת המודל — עומד גם אם המודל הוסיף טקסט (בעברית) לפני/אחרי ה-JSON.
+function parseModelJSON(raw) {
+  let t = String(raw == null ? '' : raw).replace(/```json|```/g, '').trim();
+  const firstObj = t.indexOf('{');
+  const firstArr = t.indexOf('[');
+  if (firstObj === -1 && firstArr === -1) throw new Error('לא נמצא JSON בתשובה');
+  let start, endChar;
+  if (firstArr !== -1 && (firstObj === -1 || firstArr < firstObj)) { start = firstArr; endChar = ']'; }
+  else { start = firstObj; endChar = '}'; }
+  const end = t.lastIndexOf(endChar);
+  if (end > start) t = t.slice(start, end + 1);
+  return JSON.parse(t);
+}
+
 function normalizeItem(it) {
   return { name: it.name||'פריט', amount: num(it.amount), unit: it.unit||'', kcal: num(it.kcal),
     protein: num(it.protein), carbs: num(it.carbs), fat: num(it.fat),
@@ -1070,7 +1084,7 @@ async function editorAddCustom() {
   btn.disabled = true; btn.textContent = '...';
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: `הערך תזונתית פריט בודד: "${val}". אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: {"name":"שם","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
-    const it = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const it = parseModelJSON(data.content[0].text);
     pendingMeal.items.push(normalizeItem(it));
     renderEditor();
   } catch(e) { alert('שגיאה: ' + e.message); btn.disabled = false; btn.textContent = 'הוסף'; }
@@ -1279,7 +1293,7 @@ async function submitQuickLearn() {
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content:
       `הערך תזונתית עד 5 פריטים שהמשתמש צורך בקביעות. תשובות המשתמש — משקה בוקר: "${a1}"; ארוחת בוקר: "${a2}"; חטיף נפוץ: "${a3}". פצל לפריטים בודדים הגיוניים (למשל "קפה עם חלב" → פריט אחד). אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: מערך של {"name":"שם בעברית","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
-    const arr = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const arr = parseModelJSON(data.content[0].text);
     const now = Date.now();
     (Array.isArray(arr) ? arr : []).forEach(it => {
       if (!it || !it.name) return;
@@ -1511,7 +1525,7 @@ async function generatePlan() {
   document.getElementById('plan-loading').classList.remove('hidden');
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: `תפריט שבועי: מטרה=${GOAL_LABELS[userProfile.goal]}, קלוריות=${userProfile.goalKcal}, מאכלים=${userProfile.foods.join(',')}. JSON בלבד: מערך 7: {day:"יום א'",breakfast:"",lunch:"",dinner:"",snack:""}` }] });
-    const menu = JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
+    const menu = parseModelJSON(data.content[0].text);
     userProfile.weeklyMenu = menu;
     await saveProfile();
     renderWeeklyMenu(menu);
