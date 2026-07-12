@@ -6,6 +6,28 @@ admin.initializeApp();
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 
+// ── מכסות יומיות לכל משתמש (הגנה על החשבון מפני שימוש-יתר) ──
+// תמונות הן הקריאה היקרה — מכסה נמוכה יותר. טקסט זול — מכסה גבוהה.
+const PHOTO_DAILY_LIMIT = 50;
+const TEXT_DAILY_LIMIT = 300;
+
+// מפתח תאריך לפי UTC (הפונקציה רצה ב-UTC). המכסה מתאפסת בחצות UTC —
+// קצת אחרי חצות בישראל, וזה בסדר גמור למטרת הגבלת קצב.
+function utcDateKey() {
+  const d = new Date();
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+}
+
+// סיווג הקריאה: 'photo' אם יש בלוק תמונה, אחרת 'text'
+function classifyCall(body) {
+  try {
+    for (const m of (body.messages || [])) {
+      if (Array.isArray(m.content) && m.content.some(c => c && c.type === 'image')) return 'photo';
+    }
+  } catch (e) {}
+  return 'text';
+}
+
 // ── Anthropic API Proxy ──
 // Proxy מאומת עם Firebase Auth שמעביר בקשות ל-Anthropic API
 // המפתח נשמר בסוד בצד השרת, המשתמשים לא צריכים מפתח משלהם
@@ -57,6 +79,39 @@ exports.anthropicProxy = onRequest(
       body.max_tokens = 2000;
     }
 
+    // ── אכיפת מכסה יומית ──
+    // מונה יומי מנוהל בטרנזקציה (מונע מרוץ בין בקשות מקבילות).
+    // הספירה מתבצעת לפני הקריאה ל-Anthropic — כך שגם ניסיונות חוזרים נספרים.
+    const kind = classifyCall(body);
+    const today = utcDateKey();
+    const usageRef = admin.firestore().collection('usage').doc(uid);
+    try {
+      const allowed = await admin.firestore().runTransaction(async (tx) => {
+        const snap = await tx.get(usageRef);
+        const data = snap.exists ? snap.data() : {};
+        const daily = (data.daily && data.daily.date === today)
+          ? { date: today, photo: data.daily.photo || 0, text: data.daily.text || 0 }
+          : { date: today, photo: 0, text: 0 };
+        const limit = kind === 'photo' ? PHOTO_DAILY_LIMIT : TEXT_DAILY_LIMIT;
+        if ((daily[kind] || 0) >= limit) return false;
+        daily[kind] = (daily[kind] || 0) + 1;
+        tx.set(usageRef, { daily }, { merge: true });
+        return true;
+      });
+      if (!allowed) {
+        res.status(429).json({
+          error: 'Daily limit reached',
+          message: kind === 'photo'
+            ? 'הגעת למכסת התמונות היומית. נסה שוב מחר, או רשום את הארוחה ידנית.'
+            : 'הגעת למכסת הבקשות היומית. נסה שוב מחר.'
+        });
+        return;
+      }
+    } catch (e) {
+      // אם בדיקת המכסה נכשלה (למשל תקלת רשת ל-Firestore) — לא חוסמים משתמש לגיטימי
+      console.warn('rate limit check failed (allowing):', e.message);
+    }
+
     // ── העברה ל-Anthropic ──
     try {
       const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -71,10 +126,10 @@ exports.anthropicProxy = onRequest(
 
       const data = await anthropicRes.json();
 
-      // ── רישום שימוש למעקב עלויות ──
+      // ── רישום שימוש למעקב עלויות (סכומים מצטברים) ──
       if (data.usage) {
         try {
-          await admin.firestore().collection('usage').doc(uid).set({
+          await usageRef.set({
             lastUsed: admin.firestore.FieldValue.serverTimestamp(),
             totalInputTokens: admin.firestore.FieldValue.increment(data.usage.input_tokens || 0),
             totalOutputTokens: admin.firestore.FieldValue.increment(data.usage.output_tokens || 0),
