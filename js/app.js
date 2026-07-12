@@ -211,7 +211,7 @@ async function requestNotificationPermission() {
 function sendLocalNotification(title, body) {
   if (Notification.permission !== 'granted') return;
   navigator.serviceWorker.ready.then(sw => {
-    sw.showNotification(title, { body, icon: '/fitme/icon192.png', dir: 'rtl', lang: 'he', vibrate: [200,100,200] });
+    sw.showNotification(title, { body, icon: '/fitme/assets/icon-192.png', dir: 'rtl', lang: 'he', vibrate: [200,100,200] });
   });
 }
 

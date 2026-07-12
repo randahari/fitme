@@ -1,4 +1,4 @@
-const VERSION = 'v2.5.0';
+const VERSION = 'v2.10.0';
 const CACHE = 'fitme-' + VERSION;
 
 self.addEventListener('install', e => {
@@ -8,8 +8,8 @@ self.addEventListener('install', e => {
     '/fitme/css/app.css',
     '/fitme/js/app.js',
     '/fitme/js/firebase-config.js',
-    '/fitme/icon192.png',
-    '/fitme/icon512.png'
+    '/fitme/assets/icon-192.png',
+    '/fitme/assets/icon-512.png'
   ])));
   self.skipWaiting();
 });
@@ -41,8 +41,8 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : { title: 'FitMe', body: 'התראה חדשה' };
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
-    icon: '/fitme/icon192.png',
-    badge: '/fitme/icon192.png',
+    icon: '/fitme/assets/icon-192.png',
+    badge: '/fitme/assets/icon-192.png',
     dir: 'rtl',
     lang: 'he',
     vibrate: [200, 100, 200],
