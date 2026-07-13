@@ -107,7 +107,7 @@ function showApp() {
   renderSettings();
   renderPlanBanner();
   buildWater();
-  buildWeekChart();
+  // buildWeekChart() מוסר כאן: renderHome() כבר קורא לו (ומונע קריאת היסטוריה כפולה ב-Cold Start). PERF-001
 }
 
 // signInWithGoogle מוגדר ב-firebase-config.js (redirect באייפון/PWA, popup בדסקטופ)
@@ -120,7 +120,14 @@ async function signOut() {
 async function loadUserData() {
   if (!currentUser) return;
   try {
-    const profileDoc = await db.collection('users').doc(currentUser.uid).get();
+    // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
+    const todayKey = getTodayKey();
+    const userRef = db.collection('users').doc(currentUser.uid);
+    const [profileDoc, todayDoc, favDoc] = await Promise.all([
+      userRef.get(),
+      userRef.collection('days').doc(todayKey).get(),
+      userRef.collection('data').doc('favorites').get()
+    ]);
     if (profileDoc.exists) {
       userProfile = profileDoc.data();
       darkMode = userProfile.darkMode || false;
@@ -131,8 +138,6 @@ async function loadUserData() {
         await saveProfile();
       }
     }
-    const todayKey = getTodayKey();
-    const todayDoc = await db.collection('users').doc(currentUser.uid).collection('days').doc(todayKey).get();
     if (todayDoc.exists) {
       const d = todayDoc.data();
       todayData = { meals: d.meals || [], burned: d.burned || 0, steps: d.steps || 0 };
@@ -141,8 +146,7 @@ async function loadUserData() {
       todayData = { meals: [], burned: 0, steps: 0 };
       waterCount = 0;
     }
-    // Load favorites
-    const favDoc = await db.collection('users').doc(currentUser.uid).collection('data').doc('favorites').get();
+    // Load favorites (favDoc כבר נטען ב-Promise.all לעיל — PERF-001)
     favoriteMeals = favDoc.exists ? (favDoc.data().meals || []) : [];
     // Load quick-log items (מנה 3)
     quickItems = (userProfile && Array.isArray(userProfile.quickItems)) ? userProfile.quickItems : [];

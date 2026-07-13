@@ -1,16 +1,20 @@
-const VERSION = 'v2.10.0';
+const VERSION = 'v2.14.0';
 const CACHE = 'fitme-' + VERSION;
 
+// נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
+const SHELL = [
+  '/fitme/',
+  '/fitme/index.html',
+  '/fitme/css/app.css',
+  '/fitme/js/firebase-config.js',
+  '/fitme/js/app.js',
+  '/fitme/js/memory.js',
+  '/fitme/assets/icon-192.png',
+  '/fitme/assets/icon-512.png'
+];
+
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll([
-    '/fitme/',
-    '/fitme/index.html',
-    '/fitme/css/app.css',
-    '/fitme/js/app.js',
-    '/fitme/js/firebase-config.js',
-    '/fitme/assets/icon-192.png',
-    '/fitme/assets/icon-512.png'
-  ])));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
   self.skipWaiting();
 });
 
@@ -21,19 +25,35 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Firebase + שירותים חיצוניים: network-only (לעולם לא מהקאש)
+function isNetworkOnly(url) {
+  return url.includes('firestore') ||
+         url.includes('googleapis') ||
+         url.includes('gstatic') ||
+         url.includes('firebaseapp') ||
+         url.includes('cloudfunctions') ||
+         url.includes('anthropic') ||
+         url.includes('openfoodfacts');
+}
+
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('firestore') ||
-      e.request.url.includes('googleapis') ||
-      e.request.url.includes('anthropic') ||
-      e.request.url.includes('gstatic')) return;
+  const req = e.request;
+  if (req.method !== 'GET') return;          // כתיבות/פרוקסי — תמיד לרשת
+  if (isNetworkOnly(req.url)) return;        // Firebase/חיצוני — network-only
+
+  // shell סטטי, same-origin: stale-while-revalidate
+  // מגישים מיד מהקאש (מהיר), ומרעננים ברקע לפעם הבאה.
   e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
+    caches.match(req).then(cached => {
+      const fetchAndCache = fetch(req).then(res => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(req, clone));
+        }
         return res;
-      })
-      .catch(() => caches.match(e.request))
+      }).catch(() => cached);
+      return cached || fetchAndCache;
+    })
   );
 });
 
