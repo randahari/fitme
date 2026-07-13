@@ -1,5 +1,8 @@
 // ── GLOBALS ──
 const APP_VERSION = '2.14.0';
+// ═══ PERF-002 TEMPORARY (remove after diagnosis) ═══
+if (typeof window !== 'undefined' && !window.__mark) { window.__mark = function () {}; window.__time = function (l, p) { return Promise.resolve(p); }; }
+__mark('1b app.js parse start');
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -66,6 +69,7 @@ let favoriteMeals = [];
 
 // ── AUTH ──
 auth.onAuthStateChanged(async (user) => {
+  __mark('4 auth state resolved  (user=' + !!user + ', SW controller=' + (('serviceWorker' in navigator) ? !!navigator.serviceWorker.controller : 'n/a') + ')'); // PERF-002
   if (user) {
     currentUser = user;
     await loadUserData();
@@ -97,10 +101,12 @@ function showOnboarding() {
 }
 
 function showApp() {
+  __mark('9 showApp start'); // PERF-002
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('onboarding').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
+  __mark('13 FIRST VISIBLE APP SCREEN'); // PERF-002
   if (darkMode) document.body.classList.add('dark');
   setTodayDate();
   renderHome();
@@ -108,6 +114,7 @@ function showApp() {
   renderPlanBanner();
   buildWater();
   // buildWeekChart() מוסר כאן: renderHome() כבר קורא לו (ומונע קריאת היסטוריה כפולה ב-Cold Start). PERF-001
+  __mark('9 showApp end (sync)'); // PERF-002
 }
 
 // signInWithGoogle מוגדר ב-firebase-config.js (redirect באייפון/PWA, popup בדסקטופ)
@@ -119,14 +126,15 @@ async function signOut() {
 // ── FIRESTORE ──
 async function loadUserData() {
   if (!currentUser) return;
+  __mark('5 loadUserData start'); // PERF-002
   try {
     // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
     const todayKey = getTodayKey();
     const userRef = db.collection('users').doc(currentUser.uid);
     const [profileDoc, todayDoc, favDoc] = await Promise.all([
-      userRef.get(),
-      userRef.collection('days').doc(todayKey).get(),
-      userRef.collection('data').doc('favorites').get()
+      __time('6 profile read', userRef.get()),                                   // PERF-002
+      __time('7 today read', userRef.collection('days').doc(todayKey).get()),    // PERF-002
+      __time('8 favorites read', userRef.collection('data').doc('favorites').get()) // PERF-002
     ]);
     if (profileDoc.exists) {
       userProfile = profileDoc.data();
@@ -150,7 +158,8 @@ async function loadUserData() {
     favoriteMeals = favDoc.exists ? (favDoc.data().meals || []) : [];
     // Load quick-log items (מנה 3)
     quickItems = (userProfile && Array.isArray(userProfile.quickItems)) ? userProfile.quickItems : [];
-  } catch(e) { console.error('loadUserData:', e); }
+    __mark('5 loadUserData end'); // PERF-002
+  } catch(e) { console.error('loadUserData:', e); __mark('5 loadUserData ERROR'); }
 }
 
 async function saveProfile() {
@@ -2939,3 +2948,35 @@ scheduleLocalNotifications = function() {
     realWaterCount = waterCount;
   };
 })();
+
+// ═══════════════════════════════════════════════════════════════════
+// PERF-002 TEMPORARY — עוטף את הגרסאות הסופיות של פונקציות ההפעלה
+// (אחרי כל ה-overrides) כדי למדוד זמנים. הסר בלוק זה אחרי האבחון.
+// ═══════════════════════════════════════════════════════════════════
+(function () {
+  if (typeof renderHome === 'function') {
+    var _rh = renderHome;
+    renderHome = function () { __mark('10 renderHome start'); var r = _rh.apply(this, arguments); __mark('10 renderHome end (sync)'); return r; };
+  }
+  if (typeof getHistoryData === 'function') {
+    var _gh = getHistoryData;
+    getHistoryData = function () {
+      __mark('11 getHistoryData start');
+      return Promise.resolve(_gh.apply(this, arguments)).then(function (r) {
+        __mark('11 getHistoryData end  (' + Object.keys(r || {}).length + ' days)');
+        return r;
+      });
+    };
+  }
+  if (typeof buildWeekChart === 'function') {
+    var _bw = buildWeekChart;
+    buildWeekChart = function () {
+      __mark('12 buildWeekChart start');
+      return Promise.resolve(_bw.apply(this, arguments)).then(function (r) {
+        __mark('12 buildWeekChart end  = 14 FULLY INTERACTIVE');
+        return r;
+      });
+    };
+  }
+})();
+__mark('1c app.js parse end');

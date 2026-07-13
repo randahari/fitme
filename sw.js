@@ -1,4 +1,4 @@
-const VERSION = 'v2.14.0';
+const VERSION = 'v2.14.0-perf2'; // PERF-002 TEMPORARY bump — forces fresh precache of instrumented shell; revert with instrumentation
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)

@@ -9,6 +9,7 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+if (window.__mark) __mark('2 firebase.initializeApp done'); // PERF-002
 const auth = firebase.auth();
 const db = firebase.firestore();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
@@ -52,5 +53,12 @@ auth.getRedirectResult().catch(err => {
 
 // Register Service Worker
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/fitme/sw.js').catch(e => console.log('SW:', e));
+  if (window.__mark) __mark('3 SW register: start  (controller now=' + !!navigator.serviceWorker.controller + ')'); // PERF-002
+  navigator.serviceWorker.register('/fitme/sw.js')
+    .then(reg => { if (window.__mark) __mark('3 SW register: ok  (scope ' + reg.scope + ')'); }) // PERF-002
+    .catch(e => { if (window.__mark) __mark('3 SW register: FAILED'); console.log('SW:', e); });
+  // PERF-002: when is a SW actually active + controlling the page?
+  navigator.serviceWorker.ready.then(reg => {
+    if (window.__mark) __mark('3b SW ready  (active=' + !!(reg && reg.active) + ', controller=' + !!navigator.serviceWorker.controller + ')');
+  });
 }
