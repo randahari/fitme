@@ -49,6 +49,29 @@ service cloud.firestore {
       match /data/{doc} {
         allow read, write: if isSignedIn() && request.auth.uid == uid;
       }
+
+      // ── זיכרונות המאמן (שכבת הזיכרון המטויפסת) ──
+      // מקורות שהלקוח רשאי לגעת בהם: user_stated / migrated בלבד.
+      // מקורות מנוע (inferred_event / inferred_pattern / coach_generated)
+      // נכתבים אך ורק ע"י ה-Cloud Function דרך admin (עוקף חוקים) — server-only.
+      match /memories/{memoryId} {
+        // קריאה: הבעלים בלבד.
+        allow read: if isSignedIn() && request.auth.uid == uid;
+
+        // יצירה: הבעלים בלבד, ורק זיכרון שמקורו user_stated או migrated.
+        allow create: if isSignedIn() && request.auth.uid == uid
+          && request.resource.data.source in ['user_stated', 'migrated'];
+
+        // עדכון: הבעלים בלבד; רק על זיכרון קיים שמקורו user_stated/migrated;
+        //   ואסור לשנות את שדה source למקור אחר.
+        allow update: if isSignedIn() && request.auth.uid == uid
+          && resource.data.source in ['user_stated', 'migrated']
+          && request.resource.data.source == resource.data.source;
+
+        // מחיקה: הבעלים בלבד; רק על זיכרון קיים שמקורו user_stated/migrated.
+        allow delete: if isSignedIn() && request.auth.uid == uid
+          && resource.data.source in ['user_stated', 'migrated'];
+      }
     }
 
     // ── קבוצות ──
