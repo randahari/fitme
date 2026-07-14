@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.14.0';
+const APP_VERSION = '2.15.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -2937,5 +2937,305 @@ scheduleLocalNotifications = function() {
     currentDayKey = getTodayKey();
     realTodayData = todayData;
     realWaterCount = waterCount;
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════
+// ── STAGE 6 / TASK-002 (v2.15.0): מנוע הרגלים (Habit Engine) ──
+// אחריות בלעדית: זיהוי, תחזוקה ועדכון של הרגלי משתמש.
+// לא כולל: המלצות, לוגיקת מאמן, זיהוי דפוסים מורכב, החלטות, יוזמות, UX.
+//
+// קלט:  אירועים קיימים בלבד — ארוחות (days/{date}.meals), אימונים
+//        (days/{date}.burned>0), משקל (weightHistory), היקפים
+//        (measurementHistory). בלי מערכת אירועים חדשה.
+// פלט:  הרגלים נכתבים לתוך תשתית הזיכרון הקיימת — coachMemory.habits.
+//        בלי מערכת זיכרון מקבילה.
+//
+// עקרון-על: כל ריצה מחשבת מחדש מהמקור (recompute-from-source). לכן עריכה/
+// מחיקה של רישומים משתקפת מאליה בריצה הבאה, בלי חשבונאות אירועים מצטברת.
+// הרגל מתפתח: הביטחון עולה עם עקביות ויורד בהדרגה בהיעדרות (הפרעה זמנית
+// לא מוחקת הרגל). הרגלים לא-פעילים נשמרים ואינם נמחקים.
+//
+// רץ פעם ביום, ברקע, לא חוסם עלייה. ללא UI (מוסתר לחלוטין).
+// ══════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── קבועים ──
+  const HE_VERSION   = 1;
+  const WINDOW_DAYS  = 42;   // חלון תצפית: 6 שבועות
+  const INERTIA      = 0.6;  // אינרציית ביטחון (ריכוך; הפרעה זמנית ≠ מחיקה)
+  const MAX_HABITS   = 60;   // תקרת אחסון (כולל לא-פעילים)
+
+  // ספי מחזור-חיים (ביטחון 0..1 + מספר מופעים)
+  const CONF_INACTIVE  = 0.20;
+  const CONF_CANDIDATE = 0.30;
+  const CONF_CONFIRMED = 0.55;
+  const CONF_ACTIVE    = 0.68;
+  const OCC_CANDIDATE  = 3;
+  const OCC_CONFIRMED  = 5;
+
+  // מרווח צפוי בין מופעים (ימים) — לחישוב "איחור" בהיחלשות/דעיכה
+  const INTERVAL_DAILY  = 2;
+  const INTERVAL_WEEKLY = 9;
+
+  const WEEKDAY_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
+  // ── עזרי תאריך טהורים (מפתחות YYYY-MM-DD בזמן מקומי, עקבי עם dateKey הגלובלי) ──
+  function toDate(k) { const p = String(k).split('-'); return new Date(+p[0], (+p[1]) - 1, +p[2]); }
+  function daysBetween(aKey, bKey) { return Math.round((toDate(bKey) - toDate(aKey)) / 86400000); }
+  function shiftKey(key, delta) { const d = toDate(key); d.setDate(d.getDate() + delta); return dateKey(d); }
+  function weekIdxOf(startKey, key) { return Math.floor(daysBetween(startKey, key) / 7); }
+  function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+  function round2(x) { return Math.round(x * 100) / 100; }
+  function trailingTrue(series) { let n = 0; for (let i = series.length - 1; i >= 0; i--) { if (series[i]) n++; else break; } return n; }
+
+  // שעת הארוחה כמספר שלם (או null אם חסר/לא תקין)
+  function mealHour(m) {
+    if (!m || typeof m.time !== 'string') return null;
+    const h = parseInt(m.time.split(':')[0], 10);
+    return (isNaN(h) || h < 0 || h > 23) ? null : h;
+  }
+  // שיוך שעה למקטע-יום
+  function inPart(h, part) {
+    if (part === 'morning') return h >= 5 && h < 11;
+    if (part === 'midday')  return h >= 11 && h < 16;
+    if (part === 'evening') return h >= 16 && h < 22;
+    if (part === 'night')   return h >= 22 || h < 5;
+    return false;
+  }
+  function ratioLabel(r) { return r >= 0.85 ? 'כמעט תמיד' : r >= 0.6 ? 'לרוב' : 'לעיתים'; }
+
+  // מבנה אות (signal) אחיד שכל גלאי מחזיר
+  function makeSignal(type, key, description, frequency, occ, expected, streak, srcDates, period) {
+    return {
+      id: type + ':' + key, type, key, description, frequency,
+      occ, expected, streak, period,
+      lastDay: srcDates.length ? srcDates[srcDates.length - 1] : null,
+      sourceDates: srcDates
+    };
+  }
+
+  // ── בניית התצפיות מהחלון (מהיסטוריה + מהפרופיל שכבר בזיכרון) ──
+  function buildObservations(history, today) {
+    const windowStart = shiftKey(today, -(WINDOW_DAYS - 1));
+    const days = [];
+    Object.keys(history || {}).forEach(key => {
+      if (key < windowStart || key > today) return; // השוואת מחרוזות תקינה ל-YYYY-MM-DD
+      const d = history[key] || {};
+      const meals = Array.isArray(d.meals) ? d.meals : [];
+      const hours = meals.map(mealHour).filter(h => h != null);
+      days.push({
+        key,
+        weekday: toDate(key).getDay(),
+        weekIdx: weekIdxOf(windowStart, key),
+        hasMeal: meals.length > 0,
+        hasTimedMeal: hours.length > 0,
+        hours,
+        workout: (d.burned || 0) > 0
+      });
+    });
+    days.sort((a, b) => (a.key < b.key ? -1 : 1));
+
+    const inWin = k => k && k >= windowStart && k <= today;
+    const weightDates = ((userProfile && userProfile.weightHistory) || [])
+      .map(w => w && w.date).filter(inWin).sort();
+    const measureDates = ((userProfile && userProfile.measurementHistory) || [])
+      .map(m => m && m.date).filter(inWin).sort();
+
+    // שבועות "פעילים" = שבוע עם פעילות כלשהי (ארוחה/אימון/שקילה/מדידה).
+    // כך חופשה/מחלה (שבוע ללא פעילות) אינם נספרים לרעת ההרגל.
+    const activeSet = {};
+    days.forEach(d => { if (d.hasMeal || d.workout) activeSet[d.weekIdx] = true; });
+    weightDates.forEach(k => { activeSet[weekIdxOf(windowStart, k)] = true; });
+    measureDates.forEach(k => { activeSet[weekIdxOf(windowStart, k)] = true; });
+    const activeWeeks = Object.keys(activeSet).map(Number).sort((a, b) => a - b);
+
+    return { today, windowStart, days, weightDates, measureDates, activeWeeks };
+  }
+
+  // ── גלאי תזונה: מקטעי-יום קבועים + עקביות רישום שבועית ──
+  function detectNutrition(obs) {
+    const out = [];
+    const timedDays = obs.days.filter(d => d.hasTimedMeal);
+    const active = timedDays.length;
+
+    if (active >= 5) {
+      const parts = [['morning', 'בוקר'], ['midday', 'צהריים'], ['evening', 'ערב'], ['night', 'לילה']];
+      parts.forEach(([partKey, name]) => {
+        const series = timedDays.map(d => d.hours.some(h => inPart(h, partKey)));
+        const occ = series.filter(Boolean).length;
+        const ratio = occ / active;
+        if (occ >= OCC_CANDIDATE && ratio >= 0.5) {
+          const src = timedDays.filter((d, i) => series[i]).map(d => d.key);
+          out.push(makeSignal('nutrition', 'meal:' + partKey, 'ארוחת ' + name + ' קבועה',
+            ratioLabel(ratio), occ, active, trailingTrue(series), src, 'daily'));
+        }
+      });
+    }
+
+    // עקביות רישום שבועית: שבוע "מתועד היטב" = לפחות ~4/7 מהימים שבו כוללים ארוחה
+    const weeks = {};
+    obs.days.forEach(d => {
+      const w = weeks[d.weekIdx] || (weeks[d.weekIdx] = { idx: d.weekIdx, present: 0, mealDays: 0, lastKey: d.key });
+      w.present++; if (d.hasMeal) w.mealDays++;
+      if (d.key > w.lastKey) w.lastKey = d.key;
+    });
+    const ordered = Object.values(weeks).filter(w => w.present >= 3).sort((a, b) => a.idx - b.idx);
+    if (ordered.length >= 3) {
+      const series = ordered.map(w => (w.mealDays / w.present) >= 0.57);
+      const occ = series.filter(Boolean).length;
+      if (occ >= OCC_CANDIDATE) {
+        const src = ordered.filter((w, i) => series[i]).map(w => w.lastKey);
+        out.push(makeSignal('nutrition', 'log-consistency', 'רישום אוכל עקבי',
+          occ + '/' + ordered.length + ' שבועות', occ, ordered.length, trailingTrue(series), src, 'weekly'));
+      }
+    }
+    return out;
+  }
+
+  // ── גלאי אימונים: הרגל אימון קבוע לפי יום-בשבוע (תומך בשגרות מרובות) ──
+  function detectWorkout(obs) {
+    const out = [];
+    if (obs.activeWeeks.length < 3) return out;
+    const startWd = toDate(obs.windowStart).getDay();
+    const todayOffset = daysBetween(obs.windowStart, obs.today);
+    const dayByKey = {}; obs.days.forEach(d => { dayByKey[d.key] = d; });
+
+    for (let wd = 0; wd < 7; wd++) {
+      const series = [], src = [];
+      obs.activeWeeks.forEach(wi => {
+        const off = wi * 7 + ((wd - startWd + 7) % 7);
+        if (off < 0 || off > todayOffset) return; // היום-בשבוע לא נופל בחלון עבור שבוע זה
+        const dk = shiftKey(obs.windowStart, off);
+        const worked = !!(dayByKey[dk] && dayByKey[dk].workout);
+        series.push(worked);
+        if (worked) src.push(dk);
+      });
+      const occ = series.filter(Boolean).length;
+      const exp = series.length;
+      if (exp >= 3 && occ >= OCC_CANDIDATE && (occ / exp) >= 0.5) {
+        out.push(makeSignal('workout', 'weekday:' + wd, 'אימון קבוע ביום ' + WEEKDAY_HE[wd],
+          occ + '/' + exp + ' שבועות', occ, exp, trailingTrue(series), src, 'weekly'));
+      }
+    }
+    return out;
+  }
+
+  // ── גלאי שקילה: הרגל שקילה שבועי (התנהגות הרישום, לא ערך המשקל) ──
+  function detectWeight(obs) {
+    return weeklyLogHabit(obs, obs.weightDates, 'weight', 'weigh-in', 'שקילה שבועית קבועה');
+  }
+  // ── גלאי היקפים: הרגל מדידה שבועי ──
+  function detectMeasurement(obs) {
+    return weeklyLogHabit(obs, obs.measureDates, 'measurement', 'measure', 'מדידת היקפים קבועה');
+  }
+  // עזר משותף לשני הגלאים השבועיים לעיל (מונע כפילות לוגיקה)
+  function weeklyLogHabit(obs, dates, type, key, description) {
+    const out = [];
+    if (obs.activeWeeks.length < 3) return out;
+    const hitWeeks = new Set(dates.map(k => weekIdxOf(obs.windowStart, k)));
+    const lastInWeek = {};
+    dates.forEach(k => { const w = weekIdxOf(obs.windowStart, k); if (!lastInWeek[w] || k > lastInWeek[w]) lastInWeek[w] = k; });
+    const series = obs.activeWeeks.map(wi => hitWeeks.has(wi));
+    const occ = series.filter(Boolean).length;
+    const exp = obs.activeWeeks.length;
+    if (occ >= OCC_CANDIDATE && (occ / exp) >= 0.5) {
+      const src = obs.activeWeeks.filter(wi => hitWeeks.has(wi)).map(wi => lastInWeek[wi]);
+      out.push(makeSignal(type, key, description, occ + '/' + exp + ' שבועות', occ, exp, trailingTrue(series), src, 'weekly'));
+    }
+    return out;
+  }
+
+  // ── מחזור-חיים: קביעת סטטוס דטרמיניסטית מביטחון + מופעים + רעננות ──
+  // Observed → Candidate → Confirmed → Active → Weakening → Inactive
+  function statusOf(conf, occ, daysSince, interval) {
+    const late = interval > 0 ? daysSince / interval : 0;
+    if (conf < CONF_INACTIVE || late > 4) return 'inactive';
+    if (occ < OCC_CANDIDATE || conf < CONF_CANDIDATE) return 'observed';
+    if (occ < OCC_CONFIRMED || conf < CONF_CONFIRMED) return 'candidate';
+    if (late > 1.5) return 'weakening';        // מבוסס אך מחליק
+    if (conf < CONF_ACTIVE) return 'confirmed'; // מוצק אך לא "פעיל" חזק
+    return 'active';                            // חזק + בקצב
+  }
+
+  // עדכון/יצירה מתוך אות נוכחי
+  function upsertFromSignal(prev, sig, todayKey) {
+    const rawC = clamp01(sig.expected > 0 ? sig.occ / sig.expected : 0);
+    const conf = prev ? round2(prev.confidence * INERTIA + rawC * (1 - INERTIA)) : round2(rawC * 0.5);
+    const interval = sig.period === 'weekly' ? INTERVAL_WEEKLY : INTERVAL_DAILY;
+    const daysSince = sig.lastDay ? daysBetween(sig.lastDay, todayKey) : 0;
+    return {
+      id: sig.id, type: sig.type, key: sig.key,
+      description: sig.description, frequency: sig.frequency,
+      confidence: conf, consistency: round2(rawC), streak: sig.streak,
+      status: statusOf(conf, sig.occ, daysSince, interval),
+      firstObserved: prev ? prev.firstObserved : (sig.sourceDates[0] || todayKey),
+      lastObserved: sig.lastDay || (prev ? prev.lastObserved : todayKey),
+      period: sig.period, expectedIntervalDays: interval,
+      sourceEvents: { count: sig.occ, window: WINDOW_DAYS, dates: sig.sourceDates.slice(-12) }
+    };
+  }
+
+  // דעיכה להרגל ששמור אך לא הופיע בריצה הזו (נשמר — לעולם לא נמחק)
+  function decayAbsent(prev, todayKey) {
+    const conf = round2((prev.confidence || 0) * INERTIA);
+    const interval = prev.expectedIntervalDays || (prev.period === 'weekly' ? INTERVAL_WEEKLY : INTERVAL_DAILY);
+    const occ = (prev.sourceEvents && prev.sourceEvents.count) || 0;
+    const daysSince = prev.lastObserved ? daysBetween(prev.lastObserved, todayKey) : 999;
+    return Object.assign({}, prev, {
+      confidence: conf,
+      consistency: round2((prev.consistency || 0) * INERTIA),
+      status: statusOf(conf, occ, daysSince, interval)
+    });
+  }
+
+  // ── מתזמר: פעם ביום, ברקע, כותב ל-coachMemory.habits ──
+  async function runHabitEngine() {
+    try {
+      if (!currentUser || !userProfile) return;
+      ensureCoachMemory();
+      const mem = userProfile.coachMemory;
+      if (!mem.habitsMeta) mem.habitsMeta = { lastRun: null, version: HE_VERSION };
+      if (!Array.isArray(mem.habits)) mem.habits = [];
+
+      const today = getTodayKey();
+      if (mem.habitsMeta.lastRun === today) return; // שער: ריצה אחת ביום (עלות אפס בפתיחות נוספות)
+
+      const history = await getHistoryData();
+      const obs = buildObservations(history, today);
+      const signals = [].concat(
+        detectNutrition(obs), detectWorkout(obs), detectWeight(obs), detectMeasurement(obs)
+      );
+
+      const byId = {}; signals.forEach(s => { byId[s.id] = s; });
+      const prevById = {}; mem.habits.forEach(h => { prevById[h.id] = h; });
+
+      const next = [];
+      signals.forEach(s => next.push(upsertFromSignal(prevById[s.id] || null, s, today)));
+      mem.habits.forEach(h => { if (!byId[h.id]) next.push(decayAbsent(h, today)); }); // שמירה + דעיכה
+
+      // תקרת אחסון: שומרים את בעלי הביטחון הגבוה (הלא-פעילים נשמרים עד התקרה)
+      if (next.length > MAX_HABITS) {
+        next.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+        next.length = MAX_HABITS;
+      }
+
+      mem.habits = next;
+      mem.habitsMeta = { lastRun: today, version: HE_VERSION };
+      mem.lastUpdated = Date.now();
+      await saveProfile();
+    } catch (e) {
+      console.error('runHabitEngine:', e);
+    }
+  }
+  window.runHabitEngine = runHabitEngine;
+
+  // ── חיבור: showApp → מריץ את מנוע ההרגלים ברקע (לא חוסם עלייה) ──
+  const _s6_showApp = showApp;
+  showApp = function () {
+    _s6_showApp();
+    try { Promise.resolve().then(runHabitEngine); } catch (e) { /* לעולם לא שובר עלייה */ }
   };
 })();
