@@ -2,20 +2,6 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <!-- ═══ PERF-002 TEMPORARY startup instrumentation (remove after diagnosis) ═══ -->
-  <script>
-    window.__t0 = performance.now();
-    window.__mark = function (l) { try { console.log('[T] ' + performance.now().toFixed(0).padStart(6) + ' ms  ' + l); } catch (e) {} };
-    window.__time = function (l, p) {
-      var s = performance.now();
-      return Promise.resolve(p).then(
-        function (r) { window.__mark(l + '  (' + (performance.now() - s).toFixed(0) + ' ms)'); return r; },
-        function (e) { window.__mark(l + '  FAILED (' + (performance.now() - s).toFixed(0) + ' ms)'); throw e; }
-      );
-    };
-    __mark('1 script start (head)');
-  </script>
-  <!-- ═══ end PERF-002 helper ═══ -->
   <!-- Content Security Policy — מגביל טעינת סקריפטים למקורות המוכרים בלבד.
        'unsafe-inline' נדרש כי האפליקציה משתמשת ב-onclick ובסגנונות inline. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://apis.google.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.google.com https://us-central1-fitme-f9289.cloudfunctions.net https://world.openfoodfacts.org https://*.firebaseapp.com; frame-src 'self' https://fitme-f9289.firebaseapp.com https://accounts.google.com https://*.google.com; manifest-src 'self'">
