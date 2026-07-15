@@ -8,6 +8,7 @@ const SHELL = [
   '/fitme/css/app.css',
   '/fitme/js/firebase-config.js',
   '/fitme/js/app.js',
+  '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',
   '/fitme/assets/icon-512.png'
 ];
