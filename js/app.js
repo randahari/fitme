@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.17.0';
+const APP_VERSION = '2.17.1';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -179,11 +179,17 @@ async function getHistoryData() {
   if (!currentUser) return {};
   const history = {};
   try {
-    // סידור לפי מזהה המסמך (מפתח התאריך YYYY-MM-DD ממוין כרונולוגית),
-    // לא לפי updatedAt — כך גם ימים ישנים בלי חותמת זמן נכללים, ועד 400 יום.
-    const snap = await db.collection('users').doc(currentUser.uid).collection('days').orderBy(firebase.firestore.FieldPath.documentId(),'desc').limit(400).get();
-    snap.forEach(doc => { history[doc.id] = doc.data(); });
-  } catch(e) {}
+    // BUGFIX-001: orderBy(documentId(),'desc') דרש אינדקס single-field ידני ונכשל ב-failed-precondition,
+    // וה-catch הריק בלע את השגיאה — ההיסטוריה חזרה {} וכל הצרכנים קיבלו תמונה ריקה.
+    // קריאה בלי orderBy ובלי limit אינה דורשת אינדקס כלל. מזהי המסמכים הם YYYY-MM-DD
+    // ולכן ממוינים כרונולוגית מעצמם — המיון והחיתוך ל-400 האחרונים נעשים ב-JS,
+    // כך נשמרת התנהגות "400 ימי הרישום האחרונים" גם בהיסטוריה דלילה עם פערים.
+    const snap = await db.collection('users').doc(currentUser.uid).collection('days').get();
+    const docs = [];
+    snap.forEach(doc => { docs.push(doc); });
+    docs.sort((a, b) => (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)));
+    docs.slice(-400).forEach(doc => { history[doc.id] = doc.data(); });
+  } catch(e) { console.error('getHistoryData:', e); }
   return history;
 }
 
