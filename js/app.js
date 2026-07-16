@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.18.0';
+const APP_VERSION = '2.19.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -64,14 +64,70 @@ let coachCardShown = false; // כדי לא לייצר הודעת מאמן פעמ
 let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
 let favoriteMeals = [];
 
+// ══════════════════════════════════════════════════════════════════
+// ── REM-002: Session State Reset and Account Isolation ──
+// app.js נרשם ל-SessionLifecycle עם ניקוי ה-state שהוא-עצמו הבעלים שלו בלבד
+// (memory.js נרשם באופן עצמאי, בקובץ שלו). ה-cleanup הזה רץ בתוך reset(),
+// שנקרא מ-auth.onAuthStateChanged — נקודת המחזור-חיים המרכזית היחידה.
+// לפי §8 ב-SPEC: מכסה core session state, coach/AI state, nutrition state,
+// engine state, ו-UI תלוי-משתמש. אינו נוגע בלוגיקת Habit/Pattern/Trigger/
+// Adaptive TDEE עצמה — רק באיפוס ה-state התלוי-משתמש סביבן.
+// ══════════════════════════════════════════════════════════════════
+function _resetAppCoreState() {
+  currentUser = null;
+  userProfile = null;
+  todayData = { meals: [], burned: 0, steps: 0 };
+  waterCount = 0;
+  currentDayKey = getTodayKey();
+  realTodayData = todayData;
+  realWaterCount = 0;
+  darkMode = false;
+  workoutType = null;
+  workoutInt = 'med';
+  pendingMeal = null;
+  photoMode = 'plate';
+  pendingBarcode = null;
+  obData = { gender: 'male', days: '2', goal: null, coachStyle: 'mixed', coachChatter: 'balanced' };
+  quickItems = [];
+  coachCardShown = false;
+  foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
+  favoriteMeals = [];
+  editingItemIdx = null;
+  editingExisting = null;
+  quickManage = false;
+  _adaptProposal = null;
+  window._adaptHistoryCache = null;
+  // משאבי מצלמה/טיימרים חיים — עצירה בפועל, לא רק איפוס לוגי
+  try { stopBarcodeReader(); } catch (e) {}
+  try { closeBarcode(); } catch (e) {}
+  try { closeLabelPrompt(); } catch (e) {}
+  // ניקוי UI תלוי-משתמש (§5: "clear user-specific UI")
+  ['coach-card', 'trigger-card', 'adaptive-card', 'partial-prompt'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+}
+SessionLifecycle.registerCleanup('app-core-state', _resetAppCoreState);
+
 // ── AUTH ──
 auth.onAuthStateChanged(async (user) => {
+  // REM-002 §5-§7: כל מעבר auth (sign-out / UID אחר / חזרה ל-unauthenticated) מפעיל reset()
+  // מרכזי אחד: מקדם generation (חוסם async ישן) ומריץ את כל ה-cleanups הרשומים.
+  const _authGen = SessionLifecycle.reset(user ? 'auth:signed-in' : 'auth:signed-out');
   if (user) {
     currentUser = user;
     await loadUserData();
+    if (!SessionLifecycle.isCurrent(_authGen)) return; // סשן זה הוחלף בזמן הטעינה — לא ממשיכים
     if (userProfile) {
       showApp();
       initNotifications();
+      // REM-002: הרצה מחדש של בדיקת המיגרציה בכל סשן מאומת (לא רק בטעינת הדף הראשונה),
+      // כדי שמשתמש B שמתחבר אחרי A באותו טאב יקבל גם הוא הזדמנות למיגרציה. אידמפוטנטי מטבעו.
+      if (window.FitMeMemory && typeof window.FitMeMemory.migrateIfNeeded === 'function') {
+        window.FitMeMemory.migrateIfNeeded().catch(function (e) {
+          try { console.warn('memory migration failed:', e && e.message); } catch (_) {}
+        });
+      }
     } else {
       showOnboarding();
     }
@@ -79,7 +135,7 @@ auth.onAuthStateChanged(async (user) => {
     currentUser = null;
     userProfile = null;
     // REM-001 §19 Invariant 9 / ER-006 — אין מועמד תזונתי חוצה-משתמשים ששורד sign-out/החלפת חשבון.
-    // מוצמד לנקודת המחזור-חיים היחידה הקיימת (auth.onAuthStateChanged), בלי מנגנון ניקוי חדש.
+    // נשאר כאן במקביל ל-reset() המרכזי (כפילות בטוחה, לא מוסרת) — ראו גם _resetAppCoreState.
     pendingMeal = null;
     editingItemIdx = null;
     pendingBarcode = null;
@@ -125,6 +181,7 @@ async function signOut() {
 // ── FIRESTORE ──
 async function loadUserData() {
   if (!currentUser) return;
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
     const todayKey = getTodayKey();
@@ -134,6 +191,7 @@ async function loadUserData() {
       userRef.collection('days').doc(todayKey).get(),
       userRef.collection('data').doc('favorites').get()
     ]);
+    if (!SessionLifecycle.isCurrent(_gen)) return; // REM-002: סשן הוחלף תוך כדי הטעינה — לא כותבים state ישן
     if (profileDoc.exists) {
       userProfile = profileDoc.data();
       darkMode = userProfile.darkMode || false;
@@ -354,9 +412,10 @@ async function refreshCoachCard() {
   const hour = new Date().getHours();
   const partOfDay = hour < 11 ? 'בוקר' : hour < 17 ? 'צהריים' : 'ערב';
   const ctx = `עכשיו ${partOfDay}. ${coachName()} פתח את מסך הבית. צרך ${consumed} קל׳ מתוך ${userProfile.goalKcal} (נותרו ${remain}). חלבון ${protein}g מתוך ${targetProtein}g. סטריק ${userProfile.streak||0} ימים. מטרה: ${GOAL_LABELS[userProfile.goal]}. תן משפט מלווה שמתאים לשעה ולמצב — עידוד או טיפ קטן.`;
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const msg = await coachMessage(ctx);
-    if (msg) { textEl.textContent = msg; card.classList.remove('hidden'); }
+    if (msg && SessionLifecycle.isCurrent(_gen)) { textEl.textContent = msg; card.classList.remove('hidden'); }
   } catch(e) { /* שקט — אם אין רשת פשוט לא מציגים כרטיס */ }
 }
 
@@ -680,9 +739,11 @@ async function calculateFoodResult() {
   document.getElementById('food-questionnaire').classList.add('hidden');
   document.getElementById('food-loading').classList.remove('hidden');
   const answersText = foodSession.answers.map(a=>`${a.q}: ${a.a}`).join(', ');
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: `חשב ערכים תזונתיים: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}.
 פרק את המנה לרכיבים נפרדים (כל רכיב בשורה משלו עם כמות וערכים משלו). ב-suggestions כלול 2-4 "קלוריות נסתרות" אופייניות למנה כזו שהמשתמש אולי שכח (שמן בבישול, גבינה מגוררת, לחם ליד, רוטב) — עם ערכים לכמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד במבנה: ${ITEMS_JSON_SPEC}` }] });
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי קריאת ה-AI
     const meal = parseModelJSON(data.content[0].text);
     meal.source = meal.source || 'text';
     routeAiMeal(meal, 'text', calculateFoodResult);
@@ -746,9 +807,11 @@ async function analyzePhoto(input) {
   document.getElementById('food-loading').classList.remove('hidden');
   document.getElementById('food-result').classList.add('hidden');
   const mode = photoMode; photoMode = 'plate';
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const img = await compressImageForUpload(file);
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.b64 } },{ type: 'text', text: (mode==='label' ? LABEL_PROMPT : PLATE_PROMPT) + ITEMS_JSON_SPEC }] }] });
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הניתוח
     const meal = parseModelJSON(data.content[0].text);
     if (meal.error) { alert('לא הצלחתי לקרוא את התווית. נסה לצלם שוב מקרוב, באור טוב.'); return; }
     if (mode === 'label') {
@@ -922,8 +985,10 @@ async function saveBarcodeToCache(code, item, existingAddedByName) {
 }
 
 async function lookupBarcode(code) {
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   // 1. מאגר הקבוצה — הכי מהיר, ידני, מדויק. אבל רק אם יש בו ערכים אמיתיים.
   const cached = await lookupBarcodeInCache(code);
+  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי חיפוש המאגר
   const cachedHasData = cached && ((cached.kcal||0) > 0 || (cached.protein||0) > 0 || (cached.carbs||0) > 0 || (cached.fat||0) > 0);
   if (cachedHasData) {
     closeBarcode();
@@ -944,6 +1009,7 @@ async function lookupBarcode(code) {
   try {
     const res = await fetch('https://world.openfoodfacts.org/api/v0/product/' + code + '.json');
     const data = await res.json();
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הבקשה ל-OpenFoodFacts
     if (data.status !== 1 || !data.product) {
       closeBarcode();
       showLabelPrompt(code);
@@ -1178,8 +1244,10 @@ async function editorAddCustom() {
   const val = input.value.trim(); if (!val) return;
   const btn = document.getElementById('ed-add-btn');
   btn.disabled = true; btn.textContent = '...';
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: `הערך תזונתית פריט בודד: "${val}". אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: {"name":"שם","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הקריאה ל-AI (pendingMeal כבר אינו רלוונטי)
     const it = parseModelJSON(data.content[0].text);
     // REM-001 §15/ER-002 — "meal editor AI item insertion": פריט בודד, אימות ראשון מיד אחרי הפענוח,
     // בלתי-תלוי במקור pendingMeal הכולל (גם אם עורכים מנה שהגיעה מברקוד, הפריט החדש הזה כן AI טרי).
@@ -1411,9 +1479,11 @@ async function submitQuickLearn() {
   const a1 = qval('ql-morning'), a2 = qval('ql-breakfast'), a3 = qval('ql-snack');
   if (!a1 && !a2 && !a3) { dismissQuickLearn(); return; }
   document.getElementById('ql-loading').classList.remove('hidden');
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content:
       `הערך תזונתית עד 5 פריטים שהמשתמש צורך בקביעות. תשובות המשתמש — משקה בוקר: "${a1}"; ארוחת בוקר: "${a2}"; חטיף נפוץ: "${a3}". פצל לפריטים בודדים הגיוניים (למשל "קפה עם חלב" → פריט אחד). אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: מערך של {"name":"שם בעברית","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הקריאה ל-AI
     const arr = parseModelJSON(data.content[0].text);
     const now = Date.now();
     // REM-001 §15/ER-002 — "quick-log onboarding AI generation": כל פריט מוערך עצמאית;
@@ -2247,7 +2317,9 @@ let _adaptProposal = null; // ההצעה הממתינה לאישור
 // נקרא בטעינת האפליקציה
 async function runAdaptiveCheck() {
   if (!userProfile || !adaptEnabled()) { renderAdaptiveCard(); renderPartialPrompt(); return; }
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   const history = await getHistoryData();
+  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
   window._adaptHistoryCache = history; // לשימוש פניית המאמן על ימים חלקיים
 
   // בדיקת קצב זמן — מציעים רק אם עברו ≥7 ימים
@@ -2273,10 +2345,12 @@ async function renderAdaptiveCard() {
   const metaEl = document.getElementById('adaptive-card-meta');
   if (metaEl) metaEl.textContent =
     `${p.oldGoal.toLocaleString()} → ${p.newGoal.toLocaleString()} קל׳ ${arrow} · TDEE נלמד: ${p.calc.tdee.toLocaleString()} · על סמך ${p.calc.nDays} ימי רישום ו-${p.calc.nWeights} שקילות`;
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   if (textEl) {
     textEl.textContent = adaptiveLocalExplain(p); // מיידי
-    try { const msg = await coachAdaptiveMessage(p); if (msg) textEl.textContent = msg; } catch(e) {}
+    try { const msg = await coachAdaptiveMessage(p); if (msg && SessionLifecycle.isCurrent(_gen)) textEl.textContent = msg; } catch(e) {}
   }
+  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא חושפים את הכרטיס
   card.classList.remove('hidden');
 }
 
@@ -2646,7 +2720,9 @@ async function runCoachTriggers() {
   ensureCoachMemory();
   const card = document.getElementById('trigger-card');
   if (!card) return;
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   const history = await getHistoryData();
+  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
 
   const candidates = [
     evalRedFlag(history),
@@ -2668,7 +2744,7 @@ async function runCoachTriggers() {
   await logCoachEvent(t.type, t.data);
 
   if (t.live && textEl) {
-    try { const msg = await triggerLiveText(t); if (msg) textEl.textContent = msg; } catch (e) {}
+    try { const msg = await triggerLiveText(t); if (msg && SessionLifecycle.isCurrent(_gen)) textEl.textContent = msg; } catch (e) {}
   }
 }
 
@@ -2782,8 +2858,12 @@ scheduleLocalNotifications = function() {
   if (Notification.permission !== 'granted' || !userProfile) return;
   const now = new Date();
   const hour = now.getHours();
+  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard — נלכד בזמן התזמון, נבדק בזמן הירי
 
   async function push(type, priority, title, body) {
+    // REM-002: הטיימר עצמו לא ניתן לביטול (setTimeout גולמי) — חוסמים כאן את התוכן/הכתיבה
+    // אם ה-session שבו נקבע התזמון כבר אינו הנוכחי (sign-out/UID אחר קרו בינתיים).
+    if (!SessionLifecycle.isCurrent(_gen)) return;
     if (!canFire(type, priority)) return;
     sendLocalNotification(title, body);
     await markFired(type);
@@ -3055,7 +3135,9 @@ scheduleLocalNotifications = function() {
   // ── עטיפת loadUserData: איפוס מצב הניווט להיום בכל טעינה ──
   const _loadUserData = loadUserData;
   loadUserData = async function () {
+    const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
     await _loadUserData();
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא עוקפים את מצב הניווט הנוכחי
     currentDayKey = getTodayKey();
     realTodayData = todayData;
     realWaterCount = waterCount;
@@ -3325,7 +3407,9 @@ scheduleLocalNotifications = function() {
       const today = getTodayKey();
       if (mem.habitsMeta.lastRun === today) return; // שער: ריצה אחת ביום (עלות אפס בפתיחות נוספות)
 
+      const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
       const history = await getHistoryData();
+      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא כותבים על userProfile/uid אחר
       const obs = buildObservations(history, today);
       const signals = [].concat(
         detectNutrition(obs), detectWorkout(obs), detectWeight(obs), detectMeasurement(obs)
@@ -3724,9 +3808,11 @@ scheduleLocalNotifications = function() {
   async function runPatternEngine() {
     try {
       if (!currentUser || !userProfile) return;
+      var _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
 
       // סדר אחרי Habit Engine — טיפול שגיאה מקומי: כשל אינו מבטל את Pattern Engine
       try { if (typeof runHabitEngine === 'function') await runHabitEngine(); } catch (e) { /* ממשיכים על Raw Data בלבד */ }
+      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי Habit Engine
 
       ensureCoachMemory();
       var mem = userProfile.coachMemory;
@@ -3735,6 +3821,7 @@ scheduleLocalNotifications = function() {
       if (mem.patternsMeta.lastAdvanceDataDay === undefined) mem.patternsMeta.lastAdvanceDataDay = null;
 
       var history = await getHistoryData();
+      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
       var today = getTodayKey();
 
       // probe: תמונת מקור טרייה ללא צעד Lifecycle — משמשת גם לזיהוי no-op לפני כל מוטציה

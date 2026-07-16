@@ -91,17 +91,29 @@
   }
 
   var _migrating = false;
+  // REM-002: session guard — true אם אין SessionLifecycle זמין (Node/בדיקות) או אם ה-generation
+  // עדיין זהה לזה שנלכד כשהמיגרציה התחילה. false = הסשן הוחלף תוך כדי הלולאה האסינכרונית.
+  function _sessionStillCurrent(gen) {
+    if (typeof window === 'undefined' || !window.SessionLifecycle) return true;
+    return window.SessionLifecycle.isCurrent(gen);
+  }
+  function _currentGen() {
+    return (typeof window !== 'undefined' && window.SessionLifecycle) ? window.SessionLifecycle.getGeneration() : null;
+  }
+
   async function migrateIfNeeded() {
     if (_migrating) return;
     if (!currentUser || !userProfile) return;
     if ((userProfile.schemaVersion || 0) >= SCHEMA_VERSION) return;
     _migrating = true;
+    var _gen = _currentGen();
     try {
       var cm = userProfile.coachMemory || {};
       var obs = Array.isArray(cm.observations) ? cm.observations : [];
       var prefs = (cm.preferences && typeof cm.preferences === 'object') ? cm.preferences : {};
 
       for (var i = 0; i < obs.length; i++) {
+        if (!_sessionStillCurrent(_gen)) return; // REM-002: סשן הוחלף — לא ממשיכים לכתוב תחת UID אחר
         var o = obs[i];
         var text = (typeof o === 'string') ? o : (o && (o.text || o.note || ''));
         if (!text) continue;
@@ -116,6 +128,7 @@
 
       var keys = Object.keys(prefs);
       for (var j = 0; j < keys.length; j++) {
+        if (!_sessionStillCurrent(_gen)) return; // REM-002: סשן הוחלף — לא ממשיכים
         var k = keys[j];
         var val = prefs[k];
         if (val === undefined || val === null || val === '') continue;
@@ -128,6 +141,7 @@
         }, 'mig_pref_' + safeKey(k));
       }
 
+      if (!_sessionStillCurrent(_gen)) return; // REM-002: לא מסמנים schemaVersion תחת סשן ישן
       userProfile.schemaVersion = SCHEMA_VERSION;
       userProfile.memoryMigratedAt = nowTs();
       await saveProfile();
@@ -222,6 +236,7 @@
 
   async function openSheet() {
     installStyles();
+    var _gen = _currentGen(); // REM-002: session guard
     var sheet = overlay ? overlay.querySelector('.fitme-mem-sheet') : buildSheet();
     sheet.innerHTML = '';
 
@@ -265,6 +280,8 @@
     var mems;
     try { mems = await listMemories(); }
     catch (e) { body.textContent = 'לא הצלחתי לטעון את הזיכרונות. נסה שוב.'; return; }
+
+    if (!_sessionStillCurrent(_gen)) return; // REM-002: סשן הוחלף תוך כדי הטעינה — לא מציגים תוכן ישן
 
     body.innerHTML = '';
 
@@ -426,6 +443,14 @@
   if (typeof window !== 'undefined') {
     window.FitMeMemory = API;
     if (typeof document !== 'undefined') { installStyles(); }
+    // REM-002: רישום ניקוי עצמאי — memory.js אחראי רק על ה-state שלו-עצמו
+    // (הגיליון הפתוח + דגל המיגרציה), לא על state של מודולים אחרים.
+    if (window.SessionLifecycle && typeof window.SessionLifecycle.registerCleanup === 'function') {
+      window.SessionLifecycle.registerCleanup('memory', function () {
+        closeSheet();
+        _migrating = false;
+      });
+    }
     boot();
   }
   if (typeof module !== 'undefined' && module.exports) {
