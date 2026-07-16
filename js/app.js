@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.17.1';
+const APP_VERSION = '2.18.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -78,6 +78,12 @@ auth.onAuthStateChanged(async (user) => {
   } else {
     currentUser = null;
     userProfile = null;
+    // REM-001 §19 Invariant 9 / ER-006 — אין מועמד תזונתי חוצה-משתמשים ששורד sign-out/החלפת חשבון.
+    // מוצמד לנקודת המחזור-חיים היחידה הקיימת (auth.onAuthStateChanged), בלי מנגנון ניקוי חדש.
+    pendingMeal = null;
+    editingItemIdx = null;
+    pendingBarcode = null;
+    foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
     showLogin();
   }
 });
@@ -604,6 +610,72 @@ function answerQuestion(answer) {
 
 const ITEMS_JSON_SPEC = `{"name":"שם המנה בעברית","items":[{"name":"רכיב","amount":150,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"suggestions":[{"name":"תוספת","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"note":"הערה קצרה על בסיס ההערכה"}`;
 
+// ══════════════════════════════════════════════════════════════════
+// ── REM-001: LLM Nutrition Output Validation Layer — integration glue ──
+// שכבת האימות עצמה (window.NutritionOutputValidator) חיה ב-js/nutritionValidator.js
+// (רכיב טהור, ללא UI/פרסיסטנס/קריאות LLM — REM-001 §7). כאן רק ניתוב + UI מינימלי.
+// מקורות 'off'/'group' (התאמת ברקוד ממאגר) ו-'manual' (בנייה ידנית מאפס אחרי דחייה)
+// אינם תוצר AI ואינם בסקופ (REM-001 §3/§4 — "לא לשנות לוגיקת מאגר ברקוד").
+// ══════════════════════════════════════════════════════════════════
+const NUTRITION_VALIDATION_EXEMPT_SOURCES = ['off', 'group', 'manual'];
+function mealRequiresNutritionValidation(meal) {
+  const src = meal && meal.source;
+  return NUTRITION_VALIDATION_EXEMPT_SOURCES.indexOf(src) < 0;
+}
+
+// §17 Logging and Observability — ללא תוכן ארוחה/פרומפט/תמונה/טוקנים, רק תוצאת האימות.
+function collectNutritionErrorCodes(gate) {
+  const codes = [];
+  (gate.itemResults || []).forEach(r => (r.errors || []).forEach(e => codes.push(e.code)));
+  (gate.aggregateResult ? gate.aggregateResult.errors : []).forEach(e => codes.push(e.code));
+  return codes;
+}
+function logNutritionValidation(status, sourceType, errorCodes) {
+  try {
+    const v = window.NutritionOutputValidator;
+    console.info('[nutritionValidation]', {
+      status, sourceType, errorCodes: errorCodes || [], warningCodes: [],
+      validatorVersion: (v && v.VERSION) || 'unknown'
+    });
+  } catch (e) {}
+}
+
+// שער ראשון (REM-001 §15/ER-001): מיד אחרי parseModelJSON, לפני שהעורך נפתח בכלל.
+// meal: {name, items, suggestions, note, source?}. retryFn: הרצה חוזרת של הניתוח המקורי.
+function routeAiMeal(meal, sourceType, retryFn) {
+  const V = window.NutritionOutputValidator;
+  const items = (meal && Array.isArray(meal.items)) ? meal.items : [];
+  const gate = V.validateNutritionMeal(items, sourceType);
+  logNutritionValidation(gate.overallStatus, sourceType, collectNutritionErrorCodes(gate));
+  if (gate.overallStatus === 'REJECTED') { showAiRejectedRecovery(retryFn, meal); return; }
+  showMealEditor(meal);
+}
+
+// §14.3 — REJECTED: נתיב התאוששות ברור (נסה שוב / הזן ידנית / בטל), בלי קוד טכני למשתמש.
+function showAiRejectedRecovery(retryFn, originalMeal) {
+  document.getElementById('food-questionnaire').classList.add('hidden');
+  pendingMeal = null;
+  const box = document.getElementById('food-result');
+  if (!box) { alert('לא הצלחתי לוודא את הערכים התזונתיים. נסה שוב.'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML =
+    '<div class="result-header"><div class="result-name">לא הצלחתי לוודא את הערכים</div></div>' +
+    '<div class="result-note">משהו בהערכה יצא לא הגיוני. אפשר לנסות שוב, להזין את הארוחה ידנית, או לבטל.</div>' +
+    '<div class="result-actions">' +
+      '<button class="btn-primary" id="rem001-retry-btn">נסה שוב</button>' +
+      '<button class="btn-ghost" id="rem001-manual-btn">הזן ידנית</button>' +
+      '<button class="btn-ghost" id="rem001-cancel-btn">בטל</button>' +
+    '</div>';
+  const retryBtn = document.getElementById('rem001-retry-btn');
+  const manualBtn = document.getElementById('rem001-manual-btn');
+  const cancelBtn = document.getElementById('rem001-cancel-btn');
+  if (retryBtn) retryBtn.onclick = () => { box.classList.add('hidden'); if (typeof retryFn === 'function') retryFn(); };
+  if (manualBtn) manualBtn.onclick = () => {
+    showMealEditor({ name: (originalMeal && originalMeal.name) || (foodSession && foodSession.originalInput) || 'ארוחה', items: [], suggestions: [], source: 'manual' });
+  };
+  if (cancelBtn) cancelBtn.onclick = () => { cancelFood(); };
+}
+
 async function calculateFoodResult() {
   document.getElementById('food-questionnaire').classList.add('hidden');
   document.getElementById('food-loading').classList.remove('hidden');
@@ -612,7 +684,8 @@ async function calculateFoodResult() {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: `חשב ערכים תזונתיים: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}.
 פרק את המנה לרכיבים נפרדים (כל רכיב בשורה משלו עם כמות וערכים משלו). ב-suggestions כלול 2-4 "קלוריות נסתרות" אופייניות למנה כזו שהמשתמש אולי שכח (שמן בבישול, גבינה מגוררת, לחם ליד, רוטב) — עם ערכים לכמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד במבנה: ${ITEMS_JSON_SPEC}` }] });
     const meal = parseModelJSON(data.content[0].text);
-    showMealEditor(meal);
+    meal.source = meal.source || 'text';
+    routeAiMeal(meal, 'text', calculateFoodResult);
   } catch(e) { alert('שגיאה בחישוב.'); }
   finally { document.getElementById('food-loading').classList.add('hidden'); }
 }
@@ -686,7 +759,7 @@ async function analyzePhoto(input) {
     } else {
       meal.source = 'plate';
     }
-    showMealEditor(meal);
+    routeAiMeal(meal, mode === 'label' ? 'label' : 'photo', () => { if (mode === 'label') startLabelCamera(); else startCamera(); });
   } catch(e) { alert('שגיאה בניתוח התמונה: ' + e.message); }
   finally { document.getElementById('food-loading').classList.add('hidden'); }
 }
@@ -976,6 +1049,18 @@ function mealTotals() {
 
 function fmtQty(q) { return (q % 1 === 0 ? q : q.toFixed(2).replace(/0$/,'')); }
 
+// REM-001 §16/ER-004 — "Validation banner": מחושב חי מתוך המצב הנוכחי של pendingMeal.items,
+// כך שהוספה/עריכה/מחיקה של פריט משקפות את הבאנר מיד, בלי דגל נפרד שעלול להתיישן.
+function nutritionValidationBanner() {
+  if (!pendingMeal || !pendingMeal.items.length || !mealRequiresNutritionValidation(pendingMeal)) return '';
+  const gate = window.NutritionOutputValidator.validateNutritionMeal(pendingMeal.items, pendingMeal.source || 'text');
+  if (gate.overallStatus === 'VALID') return '';
+  const text = gate.overallStatus === 'REJECTED'
+    ? 'אחד הערכים לא הגיוני (למשל שלילי או חסר). תקן אותו לפני השמירה.'
+    : 'FITME לא בטוח לגמרי בהערכה הזו. בדוק את הקלוריות והערכים לפני השמירה.';
+  return `<div class="result-note">🔎 ${esc(text)}</div>`;
+}
+
 function renderEditor() {
   const box = document.getElementById('food-result');
   if (!box || !pendingMeal) return;
@@ -1022,6 +1107,7 @@ function renderEditor() {
     : '';
   box.innerHTML = `
     <div class="result-header"><div class="result-name">${esc(pendingMeal.name)}</div></div>
+    ${nutritionValidationBanner()}
     ${sourceBadge()}
     <div class="ed-items">${rows || '<div class="empty-state">אין פריטים — הוסף למטה</div>'}</div>
     ${suggs}
@@ -1095,7 +1181,18 @@ async function editorAddCustom() {
   try {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: `הערך תזונתית פריט בודד: "${val}". אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: {"name":"שם","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
     const it = parseModelJSON(data.content[0].text);
+    // REM-001 §15/ER-002 — "meal editor AI item insertion": פריט בודד, אימות ראשון מיד אחרי הפענוח,
+    // בלתי-תלוי במקור pendingMeal הכולל (גם אם עורכים מנה שהגיעה מברקוד, הפריט החדש הזה כן AI טרי).
+    const gate = window.NutritionOutputValidator.validateNutritionMeal([it], 'editor-item');
+    logNutritionValidation(gate.overallStatus, 'editor-item', collectNutritionErrorCodes(gate));
+    if (gate.overallStatus === 'REJECTED') {
+      alert('אני לא בטוח בערכים של הפריט הזה. נסה לתאר אותו אחרת, או הוסף את הערכים ידנית.');
+      btn.disabled = false; btn.textContent = 'הוסף';
+      return;
+    }
     pendingMeal.items.push(normalizeItem(it));
+    input.value = '';
+    btn.disabled = false; btn.textContent = 'הוסף';
     renderEditor();
   } catch(e) { alert('שגיאה: ' + e.message); btn.disabled = false; btn.textContent = 'הוסף'; }
 }
@@ -1114,7 +1211,14 @@ function buildMealFromEditor() {
 }
 
 async function addMeal() {
-  if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
+  if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return false; }
+  // REM-001 §14/ER-001 — שער אימות שני, חובה, מיד לפני הפרסיסטנס הסופי (גם על ערכים שהמשתמש ערך ידנית).
+  // מקורות שאינם AI ('off'/'group'/'manual') פטורים — REM-001 §4 אוסר לשנות לוגיקת מאגר ברקוד/הזנה ידנית.
+  if (mealRequiresNutritionValidation(pendingMeal)) {
+    const gate = window.NutritionOutputValidator.validateNutritionMeal(pendingMeal.items, pendingMeal.source || 'text');
+    logNutritionValidation(gate.overallStatus, pendingMeal.source || 'text', collectNutritionErrorCodes(gate));
+    if (gate.overallStatus !== 'VALID') { renderEditor(); return false; }
+  }
   // שמירה/עדכון מאגר הקבוצה — עם הערכים הסופיים (כולל תיקונים ידניים). חל על כל מסלול ברקוד.
   if (pendingMeal.barcode && pendingMeal.items[0]) {
     saveBarcodeToCache(pendingMeal.barcode, pendingMeal.items[0], pendingMeal.addedByName);
@@ -1131,10 +1235,17 @@ async function addMeal() {
   renderFoodMeals();
   renderQuickStrip();
   renderHome();
+  return true;
 }
 
 async function addMealAndFavorite() {
   if (!pendingMeal || !pendingMeal.items.length) return;
+  // בדיקה מקדימה בלבד (ללא מוטציה): אם השער השני ידחה, לא שומרים כמועדף — addMeal() עצמו יבצע
+  // את הבדיקה האמיתית ויציג משוב; כך פריט לא-תקין לעולם לא הופך למועדף (REM-001 ER-001).
+  if (mealRequiresNutritionValidation(pendingMeal)) {
+    const precheck = window.NutritionOutputValidator.validateNutritionMeal(pendingMeal.items, pendingMeal.source || 'text');
+    if (precheck.overallStatus !== 'VALID') { await addMeal(); return; }
+  }
   await saveFavoriteFromPending();
   await addMeal();
 }
@@ -1305,8 +1416,13 @@ async function submitQuickLearn() {
       `הערך תזונתית עד 5 פריטים שהמשתמש צורך בקביעות. תשובות המשתמש — משקה בוקר: "${a1}"; ארוחת בוקר: "${a2}"; חטיף נפוץ: "${a3}". פצל לפריטים בודדים הגיוניים (למשל "קפה עם חלב" → פריט אחד). אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: מערך של {"name":"שם בעברית","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
     const arr = parseModelJSON(data.content[0].text);
     const now = Date.now();
-    (Array.isArray(arr) ? arr : []).forEach(it => {
-      if (!it || !it.name) return;
+    // REM-001 §15/ER-002 — "quick-log onboarding AI generation": כל פריט מוערך עצמאית;
+    // פריט שנדחה (REJECTED, ערכים לא הגיוניים) לא נכנס למאגר המהיר בכלל.
+    const rawItems = Array.isArray(arr) ? arr.filter(it => it && it.name) : [];
+    const gate = window.NutritionOutputValidator.validateNutritionMeal(rawItems, 'quick-log');
+    logNutritionValidation(gate.overallStatus, 'quick-log', collectNutritionErrorCodes(gate));
+    rawItems.forEach((it, idx) => {
+      if (gate.itemResults[idx].status === 'REJECTED') return;
       quickItems.push({ name: String(it.name).trim(), amount: r1(it.amount), unit: it.unit||'', kcal: Math.round(+it.kcal||0),
         protein: r1(it.protein), carbs: r1(it.carbs), fat: r1(it.fat), fiber: r1(it.fiber), sugar: r1(it.sugar), sodium: Math.round(+it.sodium||0),
         count: 2, lastUsed: now, lastHour: null, pinned: false });
