@@ -94,25 +94,28 @@ test('6d. Habit Engine single-flight wrapper exists and is used by both the regi
   assert.match(appJs, /function runHabitEngineSingleFlight\s*\(/);
   assert.match(appJs, /var _habitInFlight/);
   // registered habitEngine adapter must call the single-flight wrapper, not the raw function directly
+  // (B3: now passed ctx.state as an explicit argument — runHabitEngineSingleFlight(ctx.state))
   const habitAdapterIndex = appJs.search(/id:\s*'habitEngine'/);
-  const habitAdapterBody = appJs.slice(habitAdapterIndex, habitAdapterIndex + 400);
-  assert.match(habitAdapterBody, /runHabitEngineSingleFlight\(\)/);
-  // Pattern's internal call site must also go through the single-flight wrapper
+  const habitAdapterBody = appJs.slice(habitAdapterIndex, habitAdapterIndex + 1200);
+  assert.match(habitAdapterBody, /runHabitEngineSingleFlight\(/);
+  assert.equal(/await runHabitEngine\(ctx\.state\)/.test(habitAdapterBody), false, 'the adapter must go through the single-flight wrapper, not call runHabitEngine directly');
+  // Pattern's internal call site must also go through the single-flight wrapper (no access
+  // argument available there — B3: it self-provisions its own habitEngine capability)
   const patternFnIndex = appJs.search(/async function runPatternEngine\s*\(/);
   const patternFnBody = appJs.slice(patternFnIndex, patternFnIndex + 1200);
   assert.match(patternFnBody, /runHabitEngineSingleFlight\(\)/);
-  assert.equal(/await runHabitEngine\(\)/.test(patternFnBody), false, 'Pattern must no longer call the raw runHabitEngine() directly');
+  assert.equal(/await runHabitEngine\(effectiveAccess\)|await runHabitEngine\(\)/.test(patternFnBody), false, 'Pattern must no longer call the raw runHabitEngine() directly');
 });
 
 test('7. adaptiveTdeeEngine and triggerEngine declare exactly the SPEC-approved actions', () => {
   const adaptiveActions = ['ADAPTIVE_CHECK', 'WEIGHT_CHANGED', 'ADAPTIVE_RECHECK'];
   const triggerActions = ['DAILY_COACH_CHECK', 'WORKOUT_COMPLETED', 'LOCAL_NOTIFICATION_SCHEDULE'];
   const adaptiveIndex = appJs.search(/id:\s*'adaptiveTdeeEngine'/);
-  const adaptiveBody = appJs.slice(adaptiveIndex, adaptiveIndex + 1600);
+  const adaptiveBody = appJs.slice(adaptiveIndex, adaptiveIndex + 2600);
   adaptiveActions.forEach((a) => assert.ok(adaptiveBody.indexOf(a) !== -1, 'adaptiveTdeeEngine must reference action ' + a));
 
   const triggerIndex = appJs.search(/id:\s*'triggerEngine'/);
-  const triggerBody = appJs.slice(triggerIndex, triggerIndex + 1600);
+  const triggerBody = appJs.slice(triggerIndex, triggerIndex + 2600);
   triggerActions.forEach((a) => assert.ok(triggerBody.indexOf(a) !== -1, 'triggerEngine must reference action ' + a));
 });
 
@@ -134,13 +137,18 @@ test('8. applyAdaptiveUpdate is not registered with the Engine Registry (stays m
   assert.equal(fnBody.indexOf('EngineRegistry'), -1, 'applyAdaptiveUpdate() must not touch EngineRegistry');
 });
 
-test('9. fireWorkoutTrigger accepts a sessionGeneration parameter and guards before its first mutation', () => {
+test('9. fireWorkoutTrigger accepts a State Access capability and writes only through it (B3: session guard now enforced by the access layer)', () => {
   const fnIndex = appJs.search(/async function fireWorkoutTrigger\s*\(/);
   assert.notEqual(fnIndex, -1);
-  const fnBody = appJs.slice(fnIndex, fnIndex + 200);
-  assert.match(fnBody, /fireWorkoutTrigger\s*\(\s*burn\s*,\s*sessionGeneration\s*\)/);
-  const callSiteIndex = appJs.search(/await fireWorkoutTrigger\(burn, gen\)/);
-  assert.notEqual(callSiteIndex, -1, 'the triggerEngine adapter must pass session generation into fireWorkoutTrigger');
+  const fnBody = appJs.slice(fnIndex, fnIndex + 300);
+  assert.match(fnBody, /fireWorkoutTrigger\s*\(\s*burn\s*,\s*access\s*\)/);
+  assert.match(fnBody, /access\.write\.recordTriggerOutcome/, 'fireWorkoutTrigger must write only through the State Access capability, not saveProfile()/logCoachEvent() directly');
+  const callSiteIndex = appJs.search(/await fireWorkoutTrigger\(burn, ctx\.state\)/);
+  assert.notEqual(callSiteIndex, -1, 'the triggerEngine adapter must pass its State Access capability into fireWorkoutTrigger');
+  // the adapter itself still guards before/after with SessionLifecycle, independent of the access layer's own internal check
+  const adapterIndex = appJs.search(/id:\s*'triggerEngine'/);
+  const adapterBody = appJs.slice(adapterIndex, adapterIndex + 2600);
+  assert.match(adapterBody, /if \(!SessionLifecycle\.isCurrent\(gen\)\) return \{ status: 'SKIPPED', error: \{ code: 'STALE_SESSION'/);
 });
 
 test('10. index.html loads engineRegistry.js before app.js', () => {
@@ -155,13 +163,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.21.0');
+  assert.equal(versionMatch[1], '2.22.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.21.0');
+  assert.equal(appVersionMatch[1], '2.22.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

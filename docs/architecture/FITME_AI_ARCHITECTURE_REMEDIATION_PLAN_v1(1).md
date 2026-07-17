@@ -3,7 +3,7 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-17  
+**Last Updated:** 2026-07-17 (B3 closure)  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
@@ -121,7 +121,25 @@ Recorded outcomes:
 ### B3 — State Ownership and Access Boundaries
 
 **Finding:** F2  
-**Status:** ⏭️ NEXT
+**Status:** ✅ COMPLETED — v2.22.0
+
+Recorded outcomes:
+
+- ✅ One logical State Access Layer implemented (`js/stateAccess.js`), scoped by user, session
+  generation, engine ID and action.
+- ✅ `context.state` added additively to `EngineRunContext` as the sole capability-delivery channel;
+  no parallel `run(context, access)` channel introduced.
+- ✅ Habit Engine, Pattern Engine, Adaptive TDEE Engine and Trigger Engine migrated to explicit
+  scoped read snapshots and owner-controlled write commands.
+- ✅ Habit Engine and Pattern Engine stopped writing the shared `coachMemory.lastUpdated` field;
+  domain-specific timestamps moved into `habitsMeta` / `patternsMeta`.
+- ✅ Engine computation separated from UI rendering (Section 17); visible behavior preserved.
+- ✅ Architecture clarification recorded and approved: Habit single-flight self-provisioning on
+  Pattern's internal soft-invocation path is orchestration-helper code, not a second capability
+  channel — `NO SPEC VIOLATION` (see `docs/tasks/B3/SPEC.md` Appendix B.4).
+- ✅ B1 and B2 preserved unchanged; REM-002 and REM-003 preserved unchanged.
+- ✅ 116 automated tests passed.
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes.
 
 ### B4 — Persistence Contract
 
@@ -173,14 +191,14 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## B3 — State Ownership and Access Boundaries
+## B4 — Persistence Contract
 
-**Finding:** F2  
+**Findings:** F4, F5  
 **Status:** ⏭️ NEXT
 
 Required deliverable:
 
-An approved B3 architecture specification in the project task documentation structure.
+An approved B4 architecture specification in the project task documentation structure.
 
 No implementation SHALL begin before the specification passes Engineering Readiness Review.
 

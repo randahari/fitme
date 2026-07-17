@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.21.0';
+const APP_VERSION = '2.22.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -2154,8 +2154,10 @@ function pendingPartialDays() {
 
 // ══ הליבה: חישוב TDEE אמיתי מהנתונים ══
 // מחזיר אובייקט תיאור מלא (בלי לגעת בפרופיל).
-function computeAdaptiveTdee(history) {
-  const p = userProfile || {};
+// B3: profile הוא State Access snapshot מוגבל (adaptiveProfile) — לא userProfile
+// חי. החישוב עצמו (הפורמולות/הספים) ללא שינוי.
+function computeAdaptiveTdee(history, profile) {
+  const p = profile || {};
   const goal = p.goalKcal || 2000;
   const confirmed = p.confirmedLightDays || [];
 
@@ -2205,8 +2207,8 @@ function computeAdaptiveTdee(history) {
 
 // ══ ניתוח היקפים ══
 // measurementHistory: [{date, waist, arm, chest}] — waist חובה, השאר אופציונלי.
-function analyzeMeasurements() {
-  const p = userProfile || {};
+function analyzeMeasurements(profile) {
+  const p = profile || {};
   const mh = (p.measurementHistory || []).filter(m => m && m.date);
   const cutoff = dateKey(new Date(Date.now() - 28 * 86400000)); // חודש אחורה להיקפים
   const recent = mh.filter(m => m.date >= cutoff);
@@ -2222,9 +2224,10 @@ function analyzeMeasurements() {
 
 // ══ שילוב שלושת האותות → תרחיש + הסבר אנושי ══
 // עקרון מפתח: היקפים מנצחים משקל.
-function buildWeeklySignals(calc, meas) {
-  const goal = userProfile.goal;
-  const wkg = userProfile.currentWeight || userProfile.weight || 75;
+function buildWeeklySignals(calc, meas, profile) {
+  const p = profile || {};
+  const goal = p.goal;
+  const wkg = p.currentWeight || p.weight || 75;
   const slopePctWeek = (calc.slopeKgPerWeek / wkg) * 100; // אחוז ממשקל הגוף לשבוע
 
   const waistDown = meas.waist != null && meas.waist < -0.2;
@@ -2255,8 +2258,8 @@ function buildWeeklySignals(calc, meas) {
 }
 
 // ══ חישוב הגירעון הבא (הזחילה ההדרגתית) ══
-function computeNextDeficit(signals) {
-  const p = userProfile;
+function computeNextDeficit(signals, profile) {
+  const p = profile || {};
   const rate = ADAPT_RATES[adaptRate()];
   const goal = p.goal;
   const target = goal === 'cut' ? rate.cutTarget : goal === 'bulk' ? rate.bulkTarget : 0;
@@ -2282,14 +2285,14 @@ function computeNextDeficit(signals) {
 }
 
 // ══ בונה הצעת עדכון מלאה (בלי להחיל) ══
-function buildAdaptiveProposal(history) {
-  const calc = computeAdaptiveTdee(history);
+function buildAdaptiveProposal(history, profile) {
+  const calc = computeAdaptiveTdee(history, profile);
   if (!calc.enoughData) return { ready: false, calc };
-  const meas = analyzeMeasurements();
-  const signals = buildWeeklySignals(calc, meas);
-  const nextDeficit = computeNextDeficit(signals);
+  const meas = analyzeMeasurements(profile);
+  const signals = buildWeeklySignals(calc, meas, profile);
+  const nextDeficit = computeNextDeficit(signals, profile);
   const newGoal = Math.round(Math.max(1200, Math.min(5000, calc.tdee + nextDeficit)));
-  const oldGoal = userProfile.goalKcal;
+  const oldGoal = (profile || {}).goalKcal;
   return {
     ready: true, calc, meas, signals,
     nextDeficit, newGoal, oldGoal,
@@ -2324,24 +2327,25 @@ function adaptiveLocalExplain(prop) {
 
 let _adaptProposal = null; // ההצעה הממתינה לאישור
 
-// נקרא בטעינת האפליקציה
-async function runAdaptiveCheck() {
-  if (!userProfile || !adaptEnabled()) { renderAdaptiveCard(); renderPartialPrompt(); return; }
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-  const history = await getHistoryData();
-  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
-  window._adaptHistoryCache = history; // לשימוש פניית המאמן על ימים חלקיים
+// B3: access (EngineStateAccess) מגיע מהאדפטר. UI (renderAdaptiveCard/
+// renderPartialPrompt) הוסרו מכאן — הן נקראות על ידי האדפטר, אחרי החישוב,
+// בדיוק כמו קודם מבחינת תוכן/תזמון (§17: "Engine computation / state
+// command → ... → UI adapter renders"). session checks עברו ל-State Access.
+async function runAdaptiveCheck(access) {
+  if (!userProfile || !access) return;
+  if (!adaptEnabled()) return; // האדפטר עדיין יקרא render כדי להסתיר כרטיס קיים
+  const profile = access.read.adaptiveProfile();
+  const history = await access.read.nutritionActivityHistory();
+  await access.write.markAdaptiveCheckCompleted({ history }); // לשימוש פניית המאמן על ימים חלקיים
 
   // בדיקת קצב זמן — מציעים רק אם עברו ≥7 ימים
-  const last = userProfile.lastTdeeUpdate;
+  const last = profile.lastTdeeUpdate;
   const dueByTime = !last || daysBetween(getTodayKey(), last) >= ADAPT_CADENCE_DAYS;
 
   if (dueByTime) {
-    const prop = buildAdaptiveProposal(history);
-    if (prop.ready && prop.delta !== 0) _adaptProposal = prop;
+    const prop = buildAdaptiveProposal(history, profile);
+    if (prop.ready && prop.delta !== 0) await access.write.storeAdaptiveProposal({ proposal: prop });
   }
-  renderAdaptiveCard();
-  renderPartialPrompt();
 }
 
 // כרטיס ההצעה במסך הבית
@@ -2613,7 +2617,8 @@ async function markFired(type) {
 
 function todayConsumed() { return todayData.meals.reduce((s, m) => s + (m.kcal || 0), 0); }
 function todayProtein() { return Math.round(todayData.meals.reduce((s, m) => s + (m.protein || 0), 0)); }
-function proteinTarget() { return Math.round((userProfile.weight || 75) * 1.8); }
+function computeProteinTarget(weight) { return Math.round((weight || 75) * 1.8); } // B3: פורמולה משותפת, ללא שינוי
+function proteinTarget() { return computeProteinTarget(userProfile.weight); }
 
 // מאכל חלבוני מהרשימה של המשתמש (אחרת ברירת מחדל)
 function proteinFoodHint() {
@@ -2623,52 +2628,56 @@ function proteinFoodHint() {
   return hit || 'ביצה, קוטג׳ או עוף';
 }
 
+// B3: כל evalXxx מקבל snapshots מוגבלים (State Access) במקום קריאה ישירה
+// ל-userProfile/todayData — הלוגיקה/הספים עצמם ללא שינוי.
+
 // 🔴 דגל אדום בריאותי — מהמנוע המסתגל (שלב 4)
-function evalRedFlag(history) {
+function evalRedFlag(history, profile) {
   if (typeof computeAdaptiveTdee !== 'function') return null;
   try {
-    const calc = computeAdaptiveTdee(history);
+    const calc = computeAdaptiveTdee(history, profile);
     if (!calc.enoughData) return null;
-    const meas = analyzeMeasurements();
-    const sig = buildWeeklySignals(calc, meas);
+    const meas = analyzeMeasurements(profile);
+    const sig = buildWeeklySignals(calc, meas, profile);
     if (sig.redFlag) return { type: 'redflag', priority: PRIO.health, live: true, data: { sig, calc } };
   } catch (e) {}
   return null;
 }
 
 // 🟡 שכחת לאכול — 14:00–19:00 ופחות מ-400 קל׳
-function evalForgotToEat() {
+function evalForgotToEat(todayNutrition) {
   const h = new Date().getHours();
-  if (h >= 14 && h < 20 && todayConsumed() < 400) {
-    return { type: 'forgot-eat', priority: PRIO.opportunity, live: false, data: { have: todayConsumed() } };
+  const consumed = todayNutrition.consumed;
+  if (h >= 14 && h < 20 && consumed < 400) {
+    return { type: 'forgot-eat', priority: PRIO.opportunity, live: false, data: { have: consumed } };
   }
   return null;
 }
 
 // 🟡 חלבון נמוך יומיים ברצף
-function evalLowProtein(history) {
-  const target = proteinTarget();
-  const todayP = todayProtein();
+function evalLowProtein(history, triggerProfile, todayNutrition) {
+  const target = computeProteinTarget(triggerProfile.weight);
+  const todayP = todayNutrition.protein;
   const y = new Date(); y.setDate(y.getDate() - 1);
   const yData = history[dateKey(y)];
   if (!yData) return null;
   const yP = Math.round((yData.meals || []).reduce((s, m) => s + (m.protein || 0), 0));
-  if (todayConsumed() > 500 && todayP < target * 0.6 && yP < target * 0.6) {
+  if (todayNutrition.consumed > 500 && todayP < target * 0.6 && yP < target * 0.6) {
     return { type: 'low-protein', priority: PRIO.opportunity, live: false, data: { have: todayP, target } };
   }
   return null;
 }
 
 // 🟡 לא התאמנת כבר כמה ימים (לפי תדירות היעד)
-function evalNoWorkout(history) {
-  if (!userProfile.totalWorkouts) return null; // משתמש חדש — לא מנדנדים
-  const gap = userProfile.days === '6' ? 2 : userProfile.days === '4' ? 3 : 4;
+function evalNoWorkout(history, triggerProfile, todayNutrition) {
+  if (!triggerProfile.totalWorkouts) return null; // משתמש חדש — לא מנדנדים
+  const gap = triggerProfile.workoutFrequency === '6' ? 2 : triggerProfile.workoutFrequency === '4' ? 3 : 4;
   const d = new Date();
   let since = 0;
   for (let i = 0; i < 14; i++) {
     const key = dateKey(d);
-    const dd = (i === 0) ? todayData : history[key];
-    if (dd && (dd.burned || 0) > 0) break;
+    const burned = (i === 0) ? todayNutrition.burned : ((history[key] || {}).burned || 0);
+    if (burned > 0) break;
     since++; d.setDate(d.getDate() - 1);
   }
   if (since > gap) return { type: 'no-workout', priority: PRIO.opportunity, live: false, data: { since } };
@@ -2676,9 +2685,9 @@ function evalNoWorkout(history) {
 }
 
 // 🟡 קרוב מאוד ליעד בערב
-function evalCloseToGoal() {
+function evalCloseToGoal(triggerProfile, todayNutrition) {
   const h = new Date().getHours();
-  const remain = userProfile.goalKcal - todayConsumed();
+  const remain = triggerProfile.goalKcal - todayNutrition.consumed;
   if (h >= 19 && remain >= 100 && remain <= 300) {
     return { type: 'close-goal', priority: PRIO.opportunity, live: false, data: { remain } };
   }
@@ -2686,8 +2695,8 @@ function evalCloseToGoal() {
 }
 
 // 🟢 אבן דרך בסטריק
-function evalStreakMilestone() {
-  const s = userProfile.streak || 0;
+function evalStreakMilestone(triggerProfile) {
+  const s = triggerProfile.streak || 0;
   if ([7, 14, 30, 60, 100].indexOf(s) >= 0) {
     return { type: 'streak-' + s, priority: PRIO.encouragement, live: s >= 30, data: { streak: s } };
   }
@@ -2727,59 +2736,73 @@ async function triggerLiveText(t) {
 }
 
 // ══ הרצת המנוע בכניסה — בוחר טריגר אחד (הכי גבוה בעדיפות) ══
-async function runCoachTriggers() {
-  if (!userProfile) return;
-  ensureCoachMemory();
-  const card = document.getElementById('trigger-card');
-  if (!card) return;
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-  const history = await getHistoryData();
-  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
+// B3: חישוב + state-write בלבד — אין תלות ב-DOM (§17: engine computation לא
+// רשאי להיות תלוי בקיום DOM element). session checks עברו ל-State Access.
+// מחזיר את הטריגר שנבחר (או null) לצורך הצגה — ראה presentTriggerCard().
+async function runCoachTriggers(access) {
+  if (!userProfile || !access) return null;
+  const history = await access.read.nutritionActivityHistory();
+  const profile = access.read.adaptiveProfile();
+  const triggerProfile = access.read.triggerProfile();
+  const todayNutrition = access.read.todayNutrition();
 
   const candidates = [
-    evalRedFlag(history),
-    evalForgotToEat(),
-    evalLowProtein(history),
-    evalNoWorkout(history),
-    evalCloseToGoal(),
-    evalStreakMilestone()
-  ].filter(Boolean).filter(t => canFire(t.type, t.priority));
+    evalRedFlag(history, profile),
+    evalForgotToEat(todayNutrition),
+    evalLowProtein(history, triggerProfile, todayNutrition),
+    evalNoWorkout(history, triggerProfile, todayNutrition),
+    evalCloseToGoal(triggerProfile, todayNutrition),
+    evalStreakMilestone(triggerProfile)
+  ].filter(Boolean).filter(t => access.read.canFire(t.type, t.priority));
 
-  if (!candidates.length) { card.classList.add('hidden'); return; }
+  if (!candidates.length) return null;
   candidates.sort((a, b) => b.priority - a.priority);
   const t = candidates[0];
 
+  await access.write.updateDailyTriggerBudget({ type: t.type });
+  await access.write.recordTriggerOutcome({ type: t.type, data: t.data });
+  return t;
+}
+
+// ── UI (B3 §17): מציגה את ה-trigger-card לפי תוצאת runCoachTriggers().
+// זהה בתוכן/תזמון לקוד הקודם — רק הועברה מחוץ לחישוב ה-engine עצמו. ──
+async function presentTriggerCard(t, sessionGeneration) {
+  const card = document.getElementById('trigger-card');
+  if (!card) return;
+  if (!t) { card.classList.add('hidden'); return; }
   const textEl = document.getElementById('trigger-card-text');
   if (textEl) textEl.textContent = triggerLocalText(t) || '...';
   card.classList.remove('hidden');
-  await markFired(t.type);
-  await logCoachEvent(t.type, t.data);
-
   if (t.live && textEl) {
-    try { const msg = await triggerLiveText(t); if (msg && SessionLifecycle.isCurrent(_gen)) textEl.textContent = msg; } catch (e) {}
+    try {
+      const msg = await triggerLiveText(t);
+      if (msg && (typeof sessionGeneration === 'undefined' || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
+    } catch (e) {}
   }
 }
 
 // ── טריגר מיידי אחרי אימון (תגובה ישירה לפעולת המשתמש) ──
-// sessionGeneration: פרמטר אופציונלי (B2 Code Review — REM-002 session guard).
-// כשלא מועבר, ההתנהגות זהה למקור (ללא guard) — נשמר לתאימות. ה-adapter
-// היחיד שקורא לפונקציה זו (Trigger Engine, action WORKOUT_COMPLETED) תמיד
-// מעביר אותו כעת. אין שינוי ללוגיקה העסקית עצמה — רק דילוג מוקדם אם ה-session
-// כבר אינו נוכחי, לפני persistence ולפני עדכון UI.
-async function fireWorkoutTrigger(burn, sessionGeneration) {
-  var hasGuard = typeof sessionGeneration !== 'undefined';
-  if (hasGuard && !SessionLifecycle.isCurrent(sessionGeneration)) return;
-  await logCoachEvent('workout-logged', { burn });
-  if (hasGuard && !SessionLifecycle.isCurrent(sessionGeneration)) return;
+// B3: state-write בלבד (recordTriggerOutcome, session check פנימי ב-access.write
+// כבר לפני ה-mutation). DOM הועבר ל-presentWorkoutTriggerCard(), הנקראת מהאדפטר
+// רק אם ה-session עדיין נוכחי אחרי הכתיבה (כפי שהאדפטר כבר בודק). אין שינוי
+// עסקי — רק מיקום ה-guard/ה-DOM.
+async function fireWorkoutTrigger(burn, access) {
+  if (!access) return null;
+  return await access.write.recordTriggerOutcome({ type: 'workout-logged', data: { burn } });
+}
+
+// ── UI (B3 §17): מציגה את trigger-card לאחר אימון. זהה בתוכן/תזמון לקוד
+// הקודם — רק הועברה מחוץ לחישוב/כתיבת ה-state עצמם. ──
+async function presentWorkoutTriggerCard(burn, goal, sessionGeneration) {
   const card = document.getElementById('trigger-card');
   const textEl = document.getElementById('trigger-card-text');
   if (!card || !textEl) return;
   textEl.textContent = coachLine('workout', { burn: (burn || 0).toLocaleString() });
   card.classList.remove('hidden');
   try {
-    const ctx = `${coachName()} בדיוק סיים אימון ושרף ${burn} קל׳ (מטרה: ${GOAL_LABELS[userProfile.goal]}). תן לו קרדיט קצר שמחבר את האימון למטרה שלו.`;
+    const ctx = `${coachName()} בדיוק סיים אימון ושרף ${burn} קל׳ (מטרה: ${GOAL_LABELS[goal]}). תן לו קרדיט קצר שמחבר את האימון למטרה שלו.`;
     const msg = await coachMessage(ctx);
-    if (msg && (!hasGuard || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
+    if (msg && (typeof sessionGeneration === 'undefined' || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
   } catch (e) {}
 }
 
@@ -2865,46 +2888,63 @@ renderSettings = function() {
 // הבסיסית שהוחלפה בעבר הוסרה). התראות מתוזמנות מכבדות את אותו תקציב
 // ואי-כפילות כמו הכרטיסים. נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY
 // / LOCAL_NOTIFICATION_SCHEDULE) — ראה סוף הקובץ.
-function scheduleLocalNotifications() {
-  if (Notification.permission !== 'granted' || !userProfile) return;
+// B3: access נקרא מחדש בתוך כל scheduleAt callback (לא snapshot יחיד בזמן
+// התזמון) — כדי לשמר בדיוק את ההתנהגות הקודמת של קריאת נתונים "טריים" בזמן
+// ההפעלה בפועל (שעות אחרי התזמון), לא נתונים ישנים שנתפסו מראש. כל read/write
+// עצמו כבר בודק session פנימית (stateAccess.js) — try/catch כאן הוא רק כדי
+// שלא "לשבור" callback של setTimeout אם ה-session הפך stale בינתיים.
+function scheduleLocalNotifications(access) {
+  if (Notification.permission !== 'granted' || !userProfile || !access) return;
   const now = new Date();
   const hour = now.getHours();
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard — נלכד בזמן התזמון, נבדק בזמן הירי
 
   async function push(type, priority, title, body) {
-    // REM-002: הטיימר עצמו לא ניתן לביטול (setTimeout גולמי) — חוסמים כאן את התוכן/הכתיבה
-    // אם ה-session שבו נקבע התזמון כבר אינו הנוכחי (sign-out/UID אחר קרו בינתיים).
-    if (!SessionLifecycle.isCurrent(_gen)) return;
-    if (!canFire(type, priority)) return;
-    sendLocalNotification(title, body);
-    await markFired(type);
-    await logCoachEvent(type, { via: 'notification' });
+    try {
+      if (!access.read.canFire(type, priority)) return;
+      sendLocalNotification(title, body);
+      await access.write.updateDailyTriggerBudget({ type });
+      await access.write.recordTriggerOutcome({ type, data: { via: 'notification' } });
+    } catch (e) { /* session הפך stale בין התזמון להפעלה — לעולם לא שובר */ }
   }
 
   // בוקר (עידוד)
-  if (hour < 7) scheduleAt(7, 0, () => push('morning', PRIO.encouragement, 'בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: userProfile.goalKcal })));
+  if (hour < 7) scheduleAt(7, 0, () => {
+    try { const p = access.read.triggerProfile(); push('morning', PRIO.encouragement, 'בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: p.goalKcal })); } catch (e) {}
+  });
 
   // שכחת לאכול (הזדמנות)
   if (hour < 14) scheduleAt(14, 0, () => {
-    if (todayConsumed() < 400) push('forgot-eat', PRIO.opportunity, '🍽️ לא שכחת לאכול?', triggerLocalText({ type: 'forgot-eat', data: { have: todayConsumed() } }));
+    try {
+      const t = access.read.todayNutrition();
+      if (t.consumed < 400) push('forgot-eat', PRIO.opportunity, '🍽️ לא שכחת לאכול?', triggerLocalText({ type: 'forgot-eat', data: { have: t.consumed } }));
+    } catch (e) {}
   });
 
   // חלבון (הזדמנות)
   if (hour < 17) scheduleAt(17, 0, () => {
-    const p = todayProtein(), tgt = proteinTarget();
-    if (p < tgt * 0.6) push('protein', PRIO.opportunity, '📊 בדיקת תזונה', coachLine('protein', { have: p, target: tgt }));
+    try {
+      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
+      const tgt = computeProteinTarget(pf.weight);
+      if (t.protein < tgt * 0.6) push('protein', PRIO.opportunity, '📊 בדיקת תזונה', coachLine('protein', { have: t.protein, target: tgt }));
+    } catch (e) {}
   });
 
   // ערב — קרוב ליעד (הזדמנות)
   if (hour < 20) scheduleAt(20, 0, () => {
-    const remain = userProfile.goalKcal - todayConsumed();
-    if (remain >= 100 && remain <= 300) push('close-goal', PRIO.opportunity, '⚡ ' + coachName(), triggerLocalText({ type: 'close-goal', data: { remain } }));
-    else if (remain > 300) push('evening', PRIO.opportunity, '⚡ ' + coachName(), coachLine('evening', { remain }));
+    try {
+      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
+      const remain = pf.goalKcal - t.consumed;
+      if (remain >= 100 && remain <= 300) push('close-goal', PRIO.opportunity, '⚡ ' + coachName(), triggerLocalText({ type: 'close-goal', data: { remain } }));
+      else if (remain > 300) push('evening', PRIO.opportunity, '⚡ ' + coachName(), coachLine('evening', { remain }));
+    } catch (e) {}
   });
 
   // הגנת סטריק (בריאותי-רך — פורץ תקציב כי חשוב)
   if (hour < 21) scheduleAt(21, 0, () => {
-    if (todayConsumed() < 100 && (userProfile.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
+    try {
+      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
+      if (t.consumed < 100 && (pf.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: pf.streak }));
+    } catch (e) {}
   });
 }
 
@@ -3233,7 +3273,9 @@ function scheduleLocalNotifications() {
   }
 
   // ── בניית התצפיות מהחלון (מהיסטוריה + מהפרופיל שכבר בזיכרון) ──
-  function buildObservations(history, today) {
+  // B3: bodyHistory מגיע כפרמטר מפורש (State Access snapshot) במקום קריאה
+  // ישירה ל-userProfile.weightHistory/.measurementHistory — הלוגיקה זהה.
+  function buildObservations(history, bodyHistory, today) {
     const windowStart = shiftKey(today, -(WINDOW_DAYS - 1));
     const days = [];
     Object.keys(history || {}).forEach(key => {
@@ -3254,9 +3296,9 @@ function scheduleLocalNotifications() {
     days.sort((a, b) => (a.key < b.key ? -1 : 1));
 
     const inWin = k => k && k >= windowStart && k <= today;
-    const weightDates = ((userProfile && userProfile.weightHistory) || [])
+    const weightDates = ((bodyHistory && bodyHistory.weightHistory) || [])
       .map(w => w && w.date).filter(inWin).sort();
-    const measureDates = ((userProfile && userProfile.measurementHistory) || [])
+    const measureDates = ((bodyHistory && bodyHistory.measurementHistory) || [])
       .map(m => m && m.date).filter(inWin).sort();
 
     // שבועות "פעילים" = שבוע עם פעילות כלשהי (ארוחה/אימון/שקילה/מדידה).
@@ -3407,31 +3449,33 @@ function scheduleLocalNotifications() {
   }
 
   // ── מתזמר: פעם ביום, ברקע, כותב ל-coachMemory.habits ──
-  async function runHabitEngine() {
+  // B3: access (EngineStateAccess, scoped habitEngine/RECOMPUTE) מגיע מהאדפטר
+  // או מ-runHabitEngineSingleFlight(). כל הגישה ל-userProfile/saveProfile עברה
+  // ל-access.read/access.write — הלוגיקה עצמה (גלאים, upsert, דעיכה, תקרה)
+  // ללא שינוי. coachMemory.lastUpdated המשותף אינו נכתב עוד (B3 SPEC §6.2) —
+  // ה-timestamp עבר לתוך habitsMeta.lastUpdated.
+  async function runHabitEngine(access) {
     try {
-      if (!currentUser || !userProfile) return;
-      ensureCoachMemory();
-      const mem = userProfile.coachMemory;
-      if (!mem.habitsMeta) mem.habitsMeta = { lastRun: null, version: HE_VERSION };
-      if (!Array.isArray(mem.habits)) mem.habits = [];
-
+      if (!currentUser || !userProfile || !access) return;
       const today = getTodayKey();
-      if (mem.habitsMeta.lastRun === today) return; // שער: ריצה אחת ביום (עלות אפס בפתיחות נוספות)
 
-      const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-      const history = await getHistoryData();
-      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא כותבים על userProfile/uid אחר
-      const obs = buildObservations(history, today);
+      const currentView = access.read.habitView();
+      if (currentView.habitsMeta && currentView.habitsMeta.lastRun === today) return; // שער: ריצה אחת ביום
+
+      const history = await access.read.nutritionActivityHistory();
+      const body = access.read.bodyHistory();
+      const obs = buildObservations(history, body, today);
       const signals = [].concat(
         detectNutrition(obs), detectWorkout(obs), detectWeight(obs), detectMeasurement(obs)
       );
 
       const byId = {}; signals.forEach(s => { byId[s.id] = s; });
-      const prevById = {}; mem.habits.forEach(h => { prevById[h.id] = h; });
+      const prevHabits = currentView.habits || [];
+      const prevById = {}; prevHabits.forEach(h => { prevById[h.id] = h; });
 
       const next = [];
       signals.forEach(s => next.push(upsertFromSignal(prevById[s.id] || null, s, today)));
-      mem.habits.forEach(h => { if (!byId[h.id]) next.push(decayAbsent(h, today)); }); // שמירה + דעיכה
+      prevHabits.forEach(h => { if (!byId[h.id]) next.push(decayAbsent(h, today)); }); // שמירה + דעיכה
 
       // תקרת אחסון: שומרים את בעלי הביטחון הגבוה (הלא-פעילים נשמרים עד התקרה)
       if (next.length > MAX_HABITS) {
@@ -3439,11 +3483,10 @@ function scheduleLocalNotifications() {
         next.length = MAX_HABITS;
       }
 
-      mem.habits = next;
       // REM-003 §Recommended Additions — Authority Metadata: Path B (Deterministic Evidence),
       // אינה נוגעת בלוגיקת הזיהוי/מחזור-החיים של המנוע עצמו.
-      mem.habitsMeta = {
-        lastRun: today, version: HE_VERSION,
+      const habitsMeta = {
+        lastRun: today, version: HE_VERSION, lastUpdated: Date.now(), // B3 §6.2: timestamp דומיין-ספציפי
         authority: window.AuthorityContract.buildAuthorityMetadata({
           source: window.AuthorityContract.AUTHORITY_SOURCES.HABIT_ENGINE,
           createdBy: currentUser && currentUser.uid,
@@ -3451,8 +3494,8 @@ function scheduleLocalNotifications() {
           systemVersion: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null
         })
       };
-      mem.lastUpdated = Date.now();
-      await saveProfile();
+      const result = await access.write.replaceDerivedHabitView({ habits: next, habitsMeta: habitsMeta });
+      if (result.status !== 'APPLIED') console.error('runHabitEngine: write failed', result.error);
     } catch (e) {
       console.error('runHabitEngine:', e);
     }
@@ -3614,10 +3657,13 @@ function scheduleLocalNotifications() {
   }
 
   // ── תצפית: חלון מעוגן ל-lastDataDay (לא ל-today הקלנדרי) ──
-  function buildObservation(history, profile, todayKey) {
+  // B3: weightData הוא State Access snapshot מוגבל ({weightHistory,
+  // measurementHistory, currentWeight, weight}) — לא reference חי ל-userProfile.
+  // מוטבע ב-obs.weightSnapshot (במקום obs.profile הישן) לשימוש effectiveWeight().
+  function buildObservation(history, weightData, todayKey) {
     var keys = Object.keys(history || {}).filter(function (k) { return k <= todayKey; });
-    var wAll = ((profile && profile.weightHistory) || []).map(function (w) { return w && w.date; }).filter(function (d) { return d && d <= todayKey; });
-    var mAll = ((profile && profile.measurementHistory) || []).map(function (m) { return m && m.date; }).filter(function (d) { return d && d <= todayKey; });
+    var wAll = ((weightData && weightData.weightHistory) || []).map(function (w) { return w && w.date; }).filter(function (d) { return d && d <= todayKey; });
+    var mAll = ((weightData && weightData.measurementHistory) || []).map(function (m) { return m && m.date; }).filter(function (d) { return d && d <= todayKey; });
     var dataDays = keys.filter(function (k) { var d = history[k] || {}; return (Array.isArray(d.meals) && d.meals.length > 0) || ((d.burned || 0) > 0); });
     var anchors = dataDays.concat(wAll, mAll);
     if (!anchors.length) return null;
@@ -3647,7 +3693,7 @@ function scheduleLocalNotifications() {
     weightDates.forEach(function (k) { activeSet[weekIdxOf(windowStart, k)] = true; });
     measureDates.forEach(function (k) { activeSet[weekIdxOf(windowStart, k)] = true; });
     var activeWeekSet = {}; Object.keys(activeSet).forEach(function (w) { activeWeekSet[w] = true; });
-    return { todayKey: todayKey, lastDataDay: lastDataDay, windowStart: windowStart, calendar: calendar, weightDates: weightDates, measureDates: measureDates, activeWeekSet: activeWeekSet, profile: profile };
+    return { todayKey: todayKey, lastDataDay: lastDataDay, windowStart: windowStart, calendar: calendar, weightDates: weightDates, measureDates: measureDates, activeWeekSet: activeWeekSet, weightSnapshot: weightData };
   }
 
   // מבנה אות אחיד + חישוב evidence/opportunity/missedSinceLast
@@ -3708,7 +3754,7 @@ function scheduleLocalNotifications() {
     var out = [];
     var cal = obs.calendar;
     var byKey = {}; cal.forEach(function (c) { byKey[c.key] = c; });
-    var weight = effectiveWeight(obs.profile);           // ISSUE 4: משקל אפקטיבי (אותו helper כמו ב-fingerprint)
+    var weight = effectiveWeight(obs.weightSnapshot);     // ISSUE 4: משקל אפקטיבי (אותו helper כמו ב-fingerprint)
     var highThresh = Math.round(weight * 1.8) * 0.9;
 
     var woMeal = cal.filter(function (c) { return c.workout && c.hasMeal; });
@@ -3782,9 +3828,9 @@ function scheduleLocalNotifications() {
   }
 
   // fingerprint דטרמיניסטי של המקור הרלוונטי בחלון (כולל משקל אפקטיבי; מים אינו נכלל)
-  function computeFingerprint(obs, profile) {
+  function computeFingerprint(obs, weightData) {
     if (!obs) return hashStr('empty:' + PE_VERSION);
-    var parts = [PE_VERSION, obs.windowStart, obs.lastDataDay, 'WT:' + effectiveWeight(profile)]; // ISSUE 3
+    var parts = [PE_VERSION, obs.windowStart, obs.lastDataDay, 'WT:' + effectiveWeight(weightData)]; // ISSUE 3
     obs.calendar.forEach(function (c) {
       if (!c.hasMeal && !c.workout) return;
       parts.push(c.key + '|' + (c.firstHour == null ? '' : c.firstHour) + ',' + (c.lastHour == null ? '' : c.lastHour) + ',' + c.protein + ',' + c.mealCount + ',' + (c.workout ? 1 : 0));
@@ -3795,9 +3841,10 @@ function scheduleLocalNotifications() {
   }
 
   // recompute: תמונת המקור מחושבת תמיד מחדש; מחזור-החיים מתקדם רק בתקופת הערכה חדשה (advance).
-  function computePatterns(history, profile, todayKey, prevPatterns, advance) {
-    var obs = buildObservation(history, profile, todayKey);
-    var fingerprint = computeFingerprint(obs, profile);
+  // B3: weightData הוא State Access snapshot מוגבל, לא userProfile חי.
+  function computePatterns(history, weightData, todayKey, prevPatterns, advance) {
+    var obs = buildObservation(history, weightData, todayKey);
+    var fingerprint = computeFingerprint(obs, weightData);
     var prevById = {};
     (prevPatterns || []).forEach(function (p) { if (p && p.id && isCatalogId(p.id)) prevById[p.id] = p; });
     var byId = {};
@@ -3823,47 +3870,49 @@ function scheduleLocalNotifications() {
   //                   בלי לגעת ב-confidence/missedPeriods/status (עריכת עבר אינה תקופה חדשה).
   //   שער כתיבה: אין advance וגם אין שינוי fingerprint → no-op מוחלט, בלי כתיבה.
   //   retry לאחר כשל שמירה נשאר אפשרי (fingerprint/lastAdvanceDataDay לא קודמו).
-  async function runPatternEngine() {
+  // B3: access (EngineStateAccess, scoped patternEngine/RECOMPUTE) מגיע
+  // מהאדפטר. rollback-on-failure (ISSUE 2 המקורי) עבר לתוך
+  // access.write.replaceDerivedPatternView (stateAccess.js) — אותה סמנטיקה
+  // בדיוק, רק ממוקם ב-owner command. coachMemory.lastUpdated המשותף אינו
+  // נכתב עוד (B3 SPEC §6.2) — ה-timestamp עבר לתוך patternsMeta.lastUpdated.
+  async function runPatternEngine(access) {
     try {
-      if (!currentUser || !userProfile) return;
-      var _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
+      if (!currentUser || !userProfile || !access) return;
 
       // סדר אחרי Habit Engine — טיפול שגיאה מקומי: כשל אינו מבטל את Pattern Engine.
       // B2 Code Review Round 4: קורא ל-runHabitEngineSingleFlight() (עטיפת
       // single-flight, לא ל-runHabitEngine() ישירות) כדי לא לגרום להרצה כפולה
       // אם ה-Registry מריץ את habitEngine קרוב בזמן — ללא תלות בסדר הרצה,
-      // וללא הפיכת קשר זה ל-registry dependency (dependsOn נשאר []).
+      // וללא הפיכת קשר זה ל-registry dependency (dependsOn נשאר []). B3 Re-Review:
+      // אין קריאה בפועל ל-Habit Derived View data — זו הפעלת חישוב בלבד.
       try { if (typeof runHabitEngineSingleFlight === 'function') await runHabitEngineSingleFlight(); } catch (e) { /* ממשיכים על Raw Data בלבד */ }
-      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי Habit Engine
 
-      ensureCoachMemory();
-      var mem = userProfile.coachMemory;
-      if (!Array.isArray(mem.patterns)) mem.patterns = [];
-      if (!mem.patternsMeta) mem.patternsMeta = { lastRun: null, version: PE_VERSION, sourceFingerprint: null, lastAdvanceDataDay: null };
-      if (mem.patternsMeta.lastAdvanceDataDay === undefined) mem.patternsMeta.lastAdvanceDataDay = null;
+      var currentView = access.read.patternView();
+      var prevPatterns = currentView.patterns || [];
+      var patternsMeta = currentView.patternsMeta || { lastRun: null, version: PE_VERSION, sourceFingerprint: null, lastAdvanceDataDay: null };
+      if (patternsMeta.lastAdvanceDataDay === undefined) patternsMeta.lastAdvanceDataDay = null;
 
-      var history = await getHistoryData();
-      if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי טעינת ההיסטוריה
+      var history = await access.read.nutritionActivityHistory();
+      var weightData = access.read.weightThreshold();
       var today = getTodayKey();
 
       // probe: תמונת מקור טרייה ללא צעד Lifecycle — משמשת גם לזיהוי no-op לפני כל מוטציה
-      var probe = computePatterns(history, userProfile, today, mem.patterns, false);
-      var prevAdvanceDay = mem.patternsMeta.lastAdvanceDataDay;
+      var probe = computePatterns(history, weightData, today, prevPatterns, false);
+      var prevAdvanceDay = patternsMeta.lastAdvanceDataDay;
       var advance = !!probe.lastDataDay && (!prevAdvanceDay || probe.lastDataDay > prevAdvanceDay);
-      var fpChanged = (mem.patternsMeta.sourceFingerprint !== probe.fingerprint);
+      var fpChanged = (patternsMeta.sourceFingerprint !== probe.fingerprint);
 
       // no-op: אין יום נתונים חדש ואין שינוי מקור → לא נוגעים בכלום
       if (!advance && !fpChanged) return;
 
-      var result = advance ? computePatterns(history, userProfile, today, mem.patterns, true) : probe;
+      var result = advance ? computePatterns(history, weightData, today, prevPatterns, true) : probe;
 
-      // ISSUE 2: snapshot לפני מוטציה → כתיבה מבודדת המזהה כשל → rollback בכשל
-      var snap = { patterns: mem.patterns, patternsMeta: mem.patternsMeta, lastUpdated: mem.lastUpdated };
       // REM-003 §Recommended Additions — Authority Metadata: Path B (Deterministic Evidence),
       // אינה נוגעת בלוגיקת ה-fingerprint/advance/rollback הקיימת של המנוע.
       var newMeta = {
         lastRun: today, version: PE_VERSION, sourceFingerprint: result.fingerprint,
         lastAdvanceDataDay: advance ? result.lastDataDay : prevAdvanceDay,
+        lastUpdated: Date.now(), // B3 §6.2: timestamp דומיין-ספציפי (לא coachMemory.lastUpdated משותף)
         authority: window.AuthorityContract.buildAuthorityMetadata({
           source: window.AuthorityContract.AUTHORITY_SOURCES.PATTERN_ENGINE,
           createdBy: currentUser && currentUser.uid,
@@ -3871,24 +3920,9 @@ function scheduleLocalNotifications() {
           systemVersion: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null
         })
       };
-      var newUpdated = Date.now();
-      mem.patterns = result.patterns;
-      mem.patternsMeta = newMeta;
-      mem.lastUpdated = newUpdated;
-      try {
-        // כתיבה מבודדת (merge) של שדות הדפוסים בלבד — לא נוגעת ב-habits/observations/preferences,
-        // ואינה משנה את חוזה saveProfile() הגלובלי. זורקת בכשל (בניגוד ל-saveProfile הבולעת).
-        await db.collection('users').doc(currentUser.uid).set(
-          { coachMemory: { patterns: result.patterns, patternsMeta: newMeta, lastUpdated: newUpdated } },
-          { merge: true }
-        );
-      } catch (persistErr) {
-        // rollback מלא: המצב המקומי חוזר; fingerprint/lastAdvanceDataDay אינם מקודמים; retry אפשרי
-        mem.patterns = snap.patterns;
-        mem.patternsMeta = snap.patternsMeta;
-        mem.lastUpdated = snap.lastUpdated;
-        console.error('runPatternEngine: persist failed, rolled back', persistErr);
-      }
+
+      var writeResult = await access.write.replaceDerivedPatternView({ patterns: result.patterns, patternsMeta: newMeta });
+      if (writeResult.status !== 'APPLIED') console.error('runPatternEngine: persist failed, rolled back', writeResult.error);
     } catch (e) {
       console.error('runPatternEngine:', e); // לעולם לא זורק החוצה
     }
@@ -3907,6 +3941,35 @@ function scheduleLocalNotifications() {
 // כל אדפטר קורא לפונקציה הקיימת והבלתי-משתנה של המנוע — אין שינוי
 // ללוגיקה העסקית. ראה docs/tasks/B2/B2_SPEC.md.
 // ══════════════════════════════════════════════════════════════════
+
+// B3: מזריק את התלויות האמיתיות (userProfile, todayData, saveProfile, db
+// וכו') לתוך js/stateAccess.js. engineRegistry.js אינו נוגע בכך כלל —
+// ה-configure קורה כאן, ב-app.js, לפני שאדפטר כלשהו עשוי להיקרא בפועל.
+// db נחשף רק בתוך persistPatternView (סגור, לא מוזרק כאובייקט db גולמי).
+StateAccess.configure({
+  getUserProfile: function () { return userProfile; },
+  getCurrentUser: function () { return currentUser; },
+  getTodayData: function () { return todayData; },
+  getTodayConsumed: todayConsumed,
+  getTodayProtein: todayProtein,
+  getTodayBurned: function () { return (todayData && todayData.burned) || 0; },
+  fetchHistory: getHistoryData,
+  persistProfile: saveProfile,
+  persistPatternView: function (patterns, patternsMeta) {
+    return db.collection('users').doc(currentUser.uid).set(
+      { coachMemory: { patterns: patterns, patternsMeta: patternsMeta } },
+      { merge: true }
+    );
+  },
+  isSessionCurrent: function (gen) { return SessionLifecycle.isCurrent(gen); },
+  ensureCoachMemoryShape: ensureCoachMemory,
+  setAdaptProposal: function (proposal) { _adaptProposal = proposal; },
+  setAdaptHistoryCache: function (history) { window._adaptHistoryCache = history; },
+  recordCoachEvent: logCoachEvent,
+  markTriggerFired: markFired,
+  checkCanFire: canFire,
+  getTriggerBudget: coachDay
+});
 
 // context בסיסי (ללא action/payload — אלה נבנים לכל engine בנפרד) — B2 SPEC §6.
 function engineRunContextBase() {
@@ -3957,13 +4020,22 @@ function runAuthSessionReadyEngines() {
 // של Pattern Engine (ואינו נשען עוד על tie-break לקסיקוגרפי, כנדרש ב-Review).
 // session-safe: in-flight Promise משותף רק בתוך אותה session generation; אינו
 // נגזל בין sessions. לא נוגע ב-once-per-day gate ולא בלוגיקה העסקית של Habit.
+// B3: מקבל access אופציונלי (מהאדפטר של habitEngine). כשל Pattern קורא ללא
+// access (הקריאה הפנימית שלו אינה מחזיקה capability של habitEngine — B3 §8.1
+// כלל 6: "One engine's capability SHALL never be delivered to another engine")
+// — הפונקציה יוצרת capability habitEngine/RECOMPUTE משלה, כי החישוב עצמו
+// תמיד רץ תחת הזהות של Habit Engine, לא של מי שהפעיל אותו.
 var _habitInFlight = null; // { generation, promise } | null
-function runHabitEngineSingleFlight() {
+function runHabitEngineSingleFlight(access) {
   var gen = SessionLifecycle.getGeneration();
   if (_habitInFlight && _habitInFlight.generation === gen) {
     return _habitInFlight.promise; // אותה session, ריצה כבר פעילה — שיתוף
   }
-  var p = runHabitEngine().finally(function () {
+  var effectiveAccess = access || StateAccess.createEngineAccess({
+    engineId: 'habitEngine', action: 'RECOMPUTE',
+    userId: currentUser && currentUser.uid, sessionGeneration: gen, runId: null
+  });
+  var p = runHabitEngine(effectiveAccess).finally(function () {
     if (_habitInFlight && _habitInFlight.promise === p) _habitInFlight = null;
   });
   _habitInFlight = { generation: gen, promise: p };
@@ -3993,7 +4065,16 @@ function runHabitEngineSingleFlight() {
     dependsOn: [],
     run: async function (ctx) {
       if (ctx.action !== 'RECOMPUTE') return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a habitEngine action' } };
-      await runHabitEngineSingleFlight();
+      // B3: context.state הוא הערוץ היחיד להעברת ה-capability — נוצר כאן
+      // (trusted adapter), לא על ידי ה-Registry ולא ניתן ל-override מה-caller
+      // החיצוני (EngineRunRequest אינו מכיל state כלל — engineRegistry.js אינו
+      // מעתיק שדה כזה כשהוא בונה context). run(context) לא השתנה — אין ערוץ
+      // מקביל כמו run(context, access).
+      ctx.state = StateAccess.createEngineAccess({
+        engineId: 'habitEngine', action: ctx.action,
+        userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId
+      });
+      await runHabitEngineSingleFlight(ctx.state);
       return { status: 'SUCCESS' };
     }
   });
@@ -4009,7 +4090,11 @@ function runHabitEngineSingleFlight() {
     dependsOn: [],
     run: async function (ctx) {
       if (ctx.action !== 'RECOMPUTE') return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a patternEngine action' } };
-      await runPatternEngine();
+      ctx.state = StateAccess.createEngineAccess({
+        engineId: 'patternEngine', action: ctx.action,
+        userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId
+      });
+      await runPatternEngine(ctx.state);
       return { status: 'SUCCESS' };
     }
   });
@@ -4026,15 +4111,23 @@ function runHabitEngineSingleFlight() {
     dependsOn: [],
     run: async function (ctx) {
       if (ctx.trigger === 'APP_READY' && ctx.action === 'ADAPTIVE_CHECK') {
-        await runAdaptiveCheck();
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'adaptiveTdeeEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
+        await runAdaptiveCheck(ctx.state);
+        // B3 §17: UI (renderAdaptiveCard/renderPartialPrompt) הועברה לכאן — האדפטר,
+        // אחרי החישוב, בדיוק כמו קודם מבחינת תוכן/תזמון; רק תלות ה-DOM הוסרה מה-engine.
+        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) { renderAdaptiveCard(); renderPartialPrompt(); }
         return { status: 'SUCCESS' };
       }
       if (ctx.trigger === 'SOURCE_DATA_CHANGED' && ctx.action === 'WEIGHT_CHANGED') {
-        await runAdaptiveCheck();
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'adaptiveTdeeEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
+        await runAdaptiveCheck(ctx.state);
+        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) { renderAdaptiveCard(); renderPartialPrompt(); }
         return { status: 'SUCCESS' };
       }
       if (ctx.trigger === 'MANUAL' && ctx.action === 'ADAPTIVE_RECHECK') {
-        await runAdaptiveCheck();
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'adaptiveTdeeEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
+        await runAdaptiveCheck(ctx.state);
+        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) { renderAdaptiveCard(); renderPartialPrompt(); }
         return { status: 'SUCCESS' };
       }
       return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not an adaptiveTdeeEngine action for this trigger' } };
@@ -4055,19 +4148,29 @@ function runHabitEngineSingleFlight() {
       // אין יותר "action ריק/undefined = default"; ה-Registry כבר מסנן החוצה
       // engines שלא קיבלו action מפורש עבור ה-run הזה לפני שהוא בכלל קורא ל-run().
       if (ctx.trigger === 'APP_READY' && ctx.action === 'DAILY_COACH_CHECK') {
-        await runCoachTriggers();
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'triggerEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
+        var chosen = await runCoachTriggers(ctx.state);
+        // B3 §17: DOM (trigger-card) הוצא מה-engine — computation/writes אינם תלויים
+        // בקיום ה-element; ה-render עצמו (presentTriggerCard) עדיין בודק את קיומו.
+        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) await presentTriggerCard(chosen, ctx.sessionGeneration);
         return { status: 'SUCCESS' };
       }
       if (ctx.trigger === 'SOURCE_DATA_CHANGED' && ctx.action === 'WORKOUT_COMPLETED') {
         var gen = ctx.sessionGeneration; // REM-002: session guard — נלכד לפני הקריאה, נבדק לפניה
         if (!SessionLifecycle.isCurrent(gen)) return { status: 'SKIPPED', error: { code: 'STALE_SESSION', message: 'session changed before workout trigger could run' } };
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'triggerEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: gen, runId: ctx.runId });
         var burn = ctx.payload && ctx.payload.burn;
-        await fireWorkoutTrigger(burn, gen); // B2 Code Review: guard מועבר גם פנימה, לפני logCoachEvent/UI
+        var writeResult = await fireWorkoutTrigger(burn, ctx.state); // access.write עצמו כבר בודק session לפני ה-mutation
         if (!SessionLifecycle.isCurrent(gen)) return { status: 'SKIPPED', error: { code: 'STALE_SESSION', message: 'session changed during workout trigger' } };
+        if (writeResult && writeResult.status === 'APPLIED') {
+          var goalForCard = ctx.state.read.triggerProfile().goal;
+          await presentWorkoutTriggerCard(burn, goalForCard, gen);
+        }
         return { status: 'SUCCESS' };
       }
       if (ctx.trigger === 'AUTH_SESSION_READY' && ctx.action === 'LOCAL_NOTIFICATION_SCHEDULE') {
-        scheduleLocalNotifications();
+        ctx.state = StateAccess.createEngineAccess({ engineId: 'triggerEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
+        scheduleLocalNotifications(ctx.state);
         return { status: 'SUCCESS' };
       }
       return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a triggerEngine trigger/action pair' } };

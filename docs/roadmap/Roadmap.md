@@ -194,7 +194,34 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase B — In Progress.** B1 and B2 are closed. B3 is `NEXT`.
+## B3 — State Ownership and Access Boundaries
+
+**Status:** 🟢 APPROVED AND MERGED  
+**Completion Date:** 2026-07-17  
+**Implementation Version:** 2.22.0
+
+### Deliverables
+
+- ✅ Approved `docs/tasks/B3/SPEC.md` (v1.1)
+- ✅ Formal Engineering Readiness Review + focused Re-Review — READY
+- ✅ One logical State Access Layer (`js/stateAccess.js`), scoped by user, session generation,
+  engine ID and action
+- ✅ `context.state` added additively to `EngineRunContext` as the sole capability-delivery channel
+- ✅ Habit Engine, Pattern Engine, Adaptive TDEE Engine and Trigger Engine migrated to explicit
+  scoped read snapshots and owner-controlled write commands
+- ✅ Habit Engine and Pattern Engine stopped writing the shared `coachMemory.lastUpdated` field
+- ✅ Engine computation separated from UI rendering; visible product behavior preserved
+- ✅ Code Review: one architectural clarification raised and resolved (Habit single-flight
+  self-provisioning — `NO SPEC VIOLATION`), two mechanical test/session-check corrections applied
+- ✅ REM-002 Session Lifecycle and REM-003 Authority Contract preserved unchanged
+- ✅ B1 and B2 preserved unchanged
+- ✅ 116 automated tests passed
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes
+- ✅ Commit and push to `main`
+
+---
+
+**Phase B — In Progress.** B1, B2 and B3 are closed. B4 is `NEXT`.
 
 ---
 
@@ -229,5 +256,6 @@ Implementation must not begin until Phase A of the Architecture Remediation Plan
 Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, REM-003).
 B1 — Canonical Memory Decision is approved and closed, with no production code changes.
 B2 — Engine Contract and Registry is approved, implemented (v2.21.0) and closed.
+B3 — State Ownership and Access Boundaries is approved, implemented (v2.22.0) and closed.
 
-Begin B3 — State Ownership and Access Boundaries.
+Begin B4 — Persistence Contract.

@@ -16,7 +16,8 @@
 - ✅ Architecture Remediation Program — Phase A complete
 - 🟢 B1 — Canonical Memory Decision approved and closed (architecture decision, no code change)
 - 🟢 B2 — Engine Contract and Registry approved, tested and merged
-- ⏭️ Next task: B3 — State Ownership and Access Boundaries
+- 🟢 B3 — State Ownership and Access Boundaries approved, tested and merged
+- ⏭️ Next task: B4 — Persistence Contract
 
 ---
 
@@ -43,6 +44,49 @@
 ### Next
 
 B2 — Engine Contract and Registry is `NEXT`.
+
+---
+
+## v2.22.0 — B3 State Ownership and Access Boundaries
+
+**Date:** 2026-07-17
+**Status:** Merged to `main`
+
+### Added
+
+- `js/stateAccess.js` — one logical State Access Layer module: `createEngineAccess()` factory,
+  scoped read/write capability objects, and the locked permission matrix for the four B2 engines.
+- `tests/stateAccess.test.js` with 34 automated tests.
+
+### Changed
+
+- `context.state` added additively to `EngineRunContext`, created exclusively by trusted adapter
+  code in `js/app.js`; no parallel `run(context, access)` channel exists.
+- Habit Engine, Pattern Engine, Adaptive TDEE Engine and Trigger Engine now read and write
+  exclusively through scoped `context.state` capabilities instead of direct `userProfile` /
+  `todayData` / Firestore access.
+- Habit Engine and Pattern Engine stopped writing the shared `coachMemory.lastUpdated` field;
+  each now maintains its own timestamp inside `habitsMeta` / `patternsMeta`.
+- Engine computation separated from UI rendering (`presentTriggerCard`,
+  `presentWorkoutTriggerCard`); visible card content and timing unchanged.
+- `tests/b2Wiring.test.js` and `tests/habitSingleFlight.test.js` updated/extended for the new
+  signatures and for behavioral coverage of the Habit single-flight self-provisioning path.
+- `APP_VERSION` and service-worker cache version advanced to `2.22.0`.
+
+### Verification
+
+- Engineering Readiness Review + focused Re-Review: `READY`.
+- Code Review: `APPROVED`, with two mechanical corrections applied (post-await session re-check on
+  three write commands; added behavioral test coverage) and one architectural clarification —
+  Habit single-flight self-provisioning on Pattern's internal soft-invocation path is orchestration
+  helper code, not a second capability channel: `NO SPEC VIOLATION`, confirmed by Product/Architecture.
+- Automated tests: `116 passed / 0 failed`.
+- No Firestore schema, Firestore rules or Firebase Functions changes.
+- No B4/B5/Recommendation Engine implementation.
+
+### Next
+
+B4 — Persistence Contract is `NEXT`.
 
 ---
 
