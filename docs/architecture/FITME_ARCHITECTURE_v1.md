@@ -205,17 +205,25 @@ This is the most carefully engineered piece of the codebase, with the header com
 
 ## 11. Startup and Engine Execution Order
 
-`app.js` is loaded as one script; because it is built out of sequential "Stage" blocks that each capture-and-reassign the previous version of a function (e.g. `const _s4_showApp = showApp; showApp = function(){ _s4_showApp(); ... }`), **the effective behavior of `showApp()` at runtime is the composition of every stage's wrapper, in file (definition) order** — not something visible from any single function body. As of this snapshot, the composed chain is:
+**Updated by B2 (v2.21.0).** Prior to B2, `showApp()`, `logWeight()`, `saveWorkout()`
+and `scheduleLocalNotifications` were each override-chained by successive
+"Stage" blocks (`const _sN_fn = fn; fn = function(){ _sN_fn(); ...engine
+call...; }`), so the effective runtime behavior of these functions was an
+invisible composition of every stage's wrapper in file-definition order.
+That pattern has been removed for the four intelligence engines and
+replaced by one central **Engine Registry / Orchestrator**
+(`js/engineRegistry.js`), with the four engines registered in a
+"Stage 8 / B2" block near the end of `js/app.js`. See
+`docs/tasks/B2/B2_SPEC.md` for the full contract.
 
-1. **Base `showApp()`** ([js/app.js:99](../../js/app.js)): un-hide the `app` container, hide loading/login/onboarding, apply dark mode, `setTodayDate()`, `renderHome()` (itself later overridden — see below), `renderSettings()`, `renderPlanBanner()`, `buildWater()`.
-2. **Stage 4 wrapper** ([js/app.js:2316](../../js/app.js)): + `runAdaptiveCheck()` (not awaited).
-3. **Stage 5 wrapper** ([js/app.js:2641](../../js/app.js)): + `runCoachTriggers()` (not awaited).
-4. **Stage 6 wrapper** ([js/app.js:3242](../../js/app.js)): + `Promise.resolve().then(runHabitEngine)` (background, never throws into caller).
-5. **Stage 7 wrapper** ([js/app.js:3666](../../js/app.js)): + `Promise.resolve().then(runPatternEngine)` (background; internally `await`s `runHabitEngine()` again first — harmless no-op the second time due to the Habit Engine's own once-per-day gate).
+1. **Base `showApp()`** ([js/app.js:161](../../js/app.js)): un-hide the `app` container, hide loading/login/onboarding, apply dark mode, `setTodayDate()`, `renderHome()` (still later overridden — see below), `renderSettings()`, `renderPlanBanner()`, `buildWater()`, then one added call: `runAppReadyEngines()` (non-blocking).
+2. **`runAppReadyEngines()`** builds one explicit `EngineRunRequest` for the `APP_READY` trigger, supplying a distinct, explicit action per engine (`habitEngine`/`patternEngine` → `RECOMPUTE`, `adaptiveTdeeEngine` → `ADAPTIVE_CHECK`, `triggerEngine` → `DAILY_COACH_CHECK`) and calls `EngineRegistry.run(request)` without awaiting it.
+3. **`EngineRegistry.run()`** resolves the four eligible engines' deterministic execution order (topological, lexicographic tie-break among independents: `adaptiveTdeeEngine` → `habitEngine` → `patternEngine` → `triggerEngine`) and executes them **sequentially, one at a time** (a deliberate B2 design choice — see §12 and B2 SPEC §9/§12), rather than the prior implicit concurrent fire-and-forget behavior.
+4. **Habit Engine single-flight.** Because Pattern Engine's own `run()` still internally invokes Habit Engine's underlying computation (as enrichment — see §12), the Habit orchestration path wraps it in a session-generation-scoped single-flight (`runHabitEngineSingleFlight()`): a concurrent or overlapping call for the same session is handed the same in-flight `Promise` rather than starting a duplicate run. Correctness here does not depend on execution order.
 
-Separately, `renderHome` (called from step 1) is **fully replaced** later in the file (["OVERRIDE: renderHome with ring", js/app.js:1782](../../js/app.js)) rather than wrapped — this replacement version additionally calls `refreshCoachCard()` (the home-screen LLM-generated greeting card, gated to render at most once per app-open via the `coachCardShown` flag), `buildWater()`, and `buildWeekChart()`.
+Separately, `renderHome` (called from step 1) is **fully replaced** later in the file (["OVERRIDE: renderHome with ring", js/app.js:1782](../../js/app.js)) rather than wrapped — this replacement version additionally calls `refreshCoachCard()` (the home-screen LLM-generated greeting card, gated to render at most once per app-open via the `coachCardShown` flag), `buildWater()`, and `buildWeekChart()`. This non-engine override was not in B2's scope and is unchanged.
 
-`initNotifications()` and `loadUserData()` are called from the top-level `auth.onAuthStateChanged` handler, **outside** of `showApp()` itself.
+`initNotifications()` and `loadUserData()` are called from the top-level `auth.onAuthStateChanged` handler, **outside** of `showApp()` itself. `initNotifications()` now calls `runAuthSessionReadyEngines()` (also Registry-mediated, action `LOCAL_NOTIFICATION_SCHEDULE`) instead of calling `scheduleLocalNotifications()` directly; that function itself is now a single consolidated definition (the prior base-definition-plus-full-replacement pair was collapsed — the base was confirmed dead code, since the replacement always ran first at script-load time).
 
 Sequence at cold start (from the moment a returning, already-onboarded user's auth state resolves):
 
@@ -225,14 +233,18 @@ onAuthStateChanged(user)
  → showApp()
      → [sync] base render (home/settings/plan banner/water)
          → renderHome() (overridden) → refreshCoachCard()   [async, LLM call, gated once/open]
-     → [fire-and-forget] runAdaptiveCheck()                 [async, reads full history]
-     → [fire-and-forget] runCoachTriggers()                 [async, reads full history]
-     → [fire-and-forget] runHabitEngine()                   [async, reads full history, ≤1x/day]
-     → [fire-and-forget] runPatternEngine()                 [async, awaits runHabitEngine first, reads full history]
- → initNotifications()                    (separately, outside showApp)
+     → [fire-and-forget] runAppReadyEngines()
+         → EngineRegistry.run({trigger: APP_READY, actions: {...}})
+             → adaptiveTdeeEngine  → runAdaptiveCheck()                       [awaited, reads full history]
+             → habitEngine         → runHabitEngineSingleFlight()             [awaited, reads full history, ≤1x/day]
+             → patternEngine       → runPatternEngine()                       [awaited; internally awaits the same
+                                                                                 single-flight Habit run — no-op if
+                                                                                 already completed this cycle]
+             → triggerEngine       → runCoachTriggers()                       [awaited, reads full history]
+ → initNotifications() → runAuthSessionReadyEngines()   (separately, outside showApp)
 ```
 
-Several of these independently call `getHistoryData()` (a full-collection Firestore read of up to 400 days) on the same app open — Adaptive TDEE, Trigger Engine, Habit Engine, and Pattern Engine each fetch it separately rather than sharing one fetched copy (see §14, Risks).
+Several of these independently call `getHistoryData()` (a full-collection Firestore read of up to 400 days) on the same app open — Adaptive TDEE, Trigger Engine, Habit Engine, and Pattern Engine each fetch it separately rather than sharing one fetched copy (see §14, Risks; unchanged by B2). Because engine execution is now sequential rather than concurrent, this app-open background work now completes in roughly the *sum* of each engine's duration rather than the *max* — a deliberate correctness-over-latency trade-off made during B2 (it does not block the synchronous UI render in step 1).
 
 ---
 
@@ -241,14 +253,14 @@ Several of these independently call `getHistoryData()` (a full-collection Firest
 ```
 Adaptive TDEE Engine  ──(read-only reuse of computeAdaptiveTdee/buildWeeklySignals)──▶  Trigger Engine (evalRedFlag)
 Habit Engine          ──(explicitly optional/no hard dependency; documented as "enrichment only, not a source")──▶  Pattern Engine
-Pattern Engine        ──(sequences before it runs)──▶  awaits Habit Engine's completion, but tolerates its failure
+Pattern Engine        ──(internally invokes, via single-flight)──▶  Habit Engine's underlying computation, but tolerates its failure
 Typed Memory (memory.js) ──(one-way, one-time)──▶  migrates legacy coachMemory.observations/preferences on first load after schema bump
 Coach persona (buildCoachSystemPrompt) ──(reads)──▶  legacy coachMemory.observations/preferences via coachMemoryPromptFragment()
 ```
 
 Concretely:
 - The **Trigger Engine**'s red-flag condition directly calls the Adaptive TDEE Engine's pure functions (`computeAdaptiveTdee`, `analyzeMeasurements`, `buildWeeklySignals`) rather than duplicating that logic.
-- The **Pattern Engine** is sequenced to run after the **Habit Engine** on every `showApp` and can *read* Habit Engine output as optional enrichment (per its header comment), but its own header explicitly states its primary source is raw history, and it degrades gracefully (continues on raw data) if the Habit Engine throws.
+- **Updated by B2 (v2.21.0).** The **Pattern Engine** and **Habit Engine** are both registered independently with the Engine Registry, each with `dependsOn: []` — this is deliberately *not* a registry-level dependency, because promoting it would invoke the Registry's Failure Policy and change Pattern's approved behavior of continuing on raw data if Habit fails. Pattern Engine still internally reads Habit Engine output as optional enrichment (per its own header comment; primary source remains raw history), but that internal call now goes through a session-generation-scoped single-flight wrapper (`runHabitEngineSingleFlight()`) rather than a raw direct call, so that it cannot start a duplicate Habit computation regardless of whether the Registry has already started (or finished) its own Habit invocation for this session. See B2 SPEC §11 for the full rationale.
 - The **Habit Engine** has no dependency on the Pattern Engine, Trigger Engine, or Adaptive TDEE Engine.
 - The **coach system prompt** reads from the *legacy* `coachMemory.observations`/`preferences` fields only — it does **not** currently read `coachMemory.habits`, `coachMemory.patterns`, or the typed `users/{uid}/memories` collection. In other words, the Habit Engine and Pattern Engine currently compute and persist data that **no other part of the app reads back** — they are write-only observation layers as of this snapshot (consistent with their own header comments: "לא כולל... UI" / "no UI").
 
@@ -279,7 +291,7 @@ A proper per-record sub-collection with an explicit schema:
 
 ## 14. Technical Risks and Technical Debt
 
-- **Global-scope monolith with cascading function overrides.** `app.js` has no modules; every "Stage" either wraps a global function (capturing the previous version in a closure-scoped `_sN_name` variable) or fully replaces it. Correctness of any given call depends on the textual order of these reassignments in the file. This pattern is called out in the code's own comments as temporary ("יעוצב מחדש בשלב העיצוב" — will be redesigned later) and has already caused at least one regression fixed in this history: `d549b4b` ("restore Coach Memory transparency UI - re-add memory.js script tag and SW SHELL entry").
+- **Global-scope monolith with cascading function overrides.** `app.js` has no modules; every "Stage" either wraps a global function (capturing the previous version in a closure-scoped `_sN_name` variable) or fully replaces it. Correctness of any given call depends on the textual order of these reassignments in the file. This pattern is called out in the code's own comments as temporary ("יעוצב מחדש בשלב העיצוב" — will be redesigned later) and has already caused at least one regression fixed in this history: `d549b4b` ("restore Coach Memory transparency UI - re-add memory.js script tag and SW SHELL entry"). **Updated by B2 (v2.21.0):** resolved specifically for the four intelligence engines (Habit, Pattern, Adaptive TDEE, Trigger) — see §11 — via a central Engine Registry. Non-engine cascading overrides remain (e.g. `callClaude`, `buildCoachSystemPrompt`, `renderSettings`, `renderProfile`, and `renderHome`'s full replacement), out of B2's scope.
 - **Two parallel, unreconciled memory systems** (§13) — the more sophisticated engines (Habit, Pattern) write to a blob with no consent/transparency UI, while the typed, consent-aware store only contains migrated legacy data. A developer adding a new memory consumer must know to check both.
 - **Habit/Pattern engine output currently has no consumer.** Both are explicitly write-only observation layers per their own header comments; the coach prompt only reads the older `observations`/`preferences` fields. The substantial engineering investment in these two engines (§9, §10) is not yet connected to any user-visible behavior.
 - **Single ever-growing profile document.** `weightHistory`, `measurementHistory`, `coachEvents` (capped 200), `coachMemory.habits` (capped 60), and `coachMemory.patterns` (uncapped in the code read) all live inside one `users/{uid}` document with no archival/pagination — long-lived users risk approaching Firestore's 1 MiB document size limit.
@@ -296,7 +308,7 @@ A proper per-record sub-collection with an explicit schema:
 
 Based on explicit in-code documentation and observed behavior, the following constraints appear intentional and should not be silently broken by future changes:
 
-1. **Engines must never block the UI or break app startup.** Habit Engine and Pattern Engine are invoked as `Promise.resolve().then(fn)` and internally wrap their entire body in try/catch that only `console.error`s — this is stated explicitly in both engines' header comments ("לא חוסם עלייה" / does not block startup, "לעולם לא שובר עלייה" / never breaks startup).
+1. **Engines must never block the UI or break app startup.** Habit Engine and Pattern Engine internally wrap their entire body in try/catch that only `console.error`s — this is stated explicitly in both engines' header comments ("לא חוסם עלייה" / does not block startup, "לעולם לא שובר עלייה" / never breaks startup). **Updated by B2 (v2.21.0):** invocation is now via the Engine Registry (`js/engineRegistry.js`), triggered non-blockingly from `showApp()` through `runAppReadyEngines()` (the call itself is not awaited by `showApp()`), rather than the prior per-engine `Promise.resolve().then(fn)` wrappers. The engines' own internal try/catch behavior is unchanged.
 2. **Recompute-from-source, not incremental accounting.** Both the Habit Engine and Pattern Engine explicitly recompute their source-derived fields fresh from raw `days`/`weightHistory`/`measurementHistory` on every run rather than maintaining running counters — this is what makes editing/deleting a past meal correctly reflect in the next run without a separate reconciliation step. Any future change must preserve this property rather than reintroducing incremental/event-sourced counters.
 3. **Lifecycle advancement is gated on new data, not on time or app opens.** The Pattern Engine in particular (its own "ISSUE 10" comment) is explicit that confidence/status must only change on a genuinely new `lastDataDay`, never merely because a calendar day passed or the user reopened the app. Do not "simplify" this into a time-based cooldown.
 4. **A temporary gap must never look like abandonment.** Both engines require multiple consecutive missed periods (not a single miss) before marking something `inactive`, and never delete a habit/pattern outright — decay only. Preserve the distinct `weakening`/`inactive` staging.
@@ -354,11 +366,17 @@ flowchart TB
 
 ## 17. App Startup and Background Engine Execution (Mermaid Sequence)
 
+**Updated by B2 (v2.21.0).** Engine invocation is now mediated by the
+Engine Registry and executed sequentially (not concurrently); Habit
+Engine correctness is provided by a session-scoped single-flight
+wrapper rather than by this ordering.
+
 ```mermaid
 sequenceDiagram
     participant U as User
     participant Auth as Firebase Auth
     participant App as app.js (main thread)
+    participant Reg as EngineRegistry
     participant FS as Firestore
     participant Adapt as Adaptive TDEE Engine
     participant Trig as Trigger Engine
@@ -374,28 +392,32 @@ sequenceDiagram
     App->>Claude: refreshCoachCard() [async, once per open]
     Claude-->>App: coach greeting text (or local fallback on failure)
 
-    par Fire-and-forget engines (non-blocking)
-        App->>Adapt: runAdaptiveCheck()
-        Adapt->>FS: getHistoryData() (own fetch)
-        Adapt-->>App: proposal card (if due, delta != 0) — awaits explicit user confirm
-    and
-        App->>Trig: runCoachTriggers()
-        Trig->>FS: getHistoryData() (own fetch)
-        Trig->>Adapt: evalRedFlag() reuses computeAdaptiveTdee()
-        Trig-->>App: at most one trigger card (local text now, Claude text if "live")
-    and
-        App->>Habit: runHabitEngine() [gated: ≤1x/calendar day]
-        Habit->>FS: getHistoryData() (own fetch)
-        Habit->>FS: save coachMemory.habits (merge, via saveProfile)
-    and
-        App->>Pat: runPatternEngine()
-        Pat->>Habit: await runHabitEngine() (idempotent no-op if already run)
-        Pat->>FS: getHistoryData() (own fetch)
-        Pat->>Pat: fingerprint check — skip write entirely if no-op
-        Pat->>FS: isolated write coachMemory.patterns (merge, with rollback on failure)
-    end
+    App->>Reg: runAppReadyEngines() [fire-and-forget]<br/>EngineRunRequest{trigger:APP_READY,<br/>actions:{habitEngine:RECOMPUTE, patternEngine:RECOMPUTE,<br/>adaptiveTdeeEngine:ADAPTIVE_CHECK, triggerEngine:DAILY_COACH_CHECK}}
 
-    App->>App: initNotifications() — outside showApp(), schedules budget-aware local pushes
+    Note over Reg: sequential, deterministic order —<br/>adaptiveTdeeEngine → habitEngine → patternEngine → triggerEngine
+
+    Reg->>Adapt: run(ADAPTIVE_CHECK)
+    Adapt->>FS: getHistoryData() (own fetch)
+    Adapt-->>Reg: proposal card (if due, delta != 0) — awaits explicit user confirm
+
+    Reg->>Habit: run(RECOMPUTE) → runHabitEngineSingleFlight()
+    Habit->>FS: getHistoryData() (own fetch)
+    Habit->>FS: save coachMemory.habits (merge, via saveProfile) [gated: ≤1x/calendar day]
+
+    Reg->>Pat: run(RECOMPUTE)
+    Pat->>Habit: runHabitEngineSingleFlight() (same in-flight/completed run — no duplicate computation)
+    Pat->>FS: getHistoryData() (own fetch)
+    Pat->>Pat: fingerprint check — skip write entirely if no-op
+    Pat->>FS: isolated write coachMemory.patterns (merge, with rollback on failure)
+
+    Reg->>Trig: run(DAILY_COACH_CHECK)
+    Trig->>FS: getHistoryData() (own fetch)
+    Trig->>Adapt: evalRedFlag() reuses computeAdaptiveTdee()
+    Trig-->>Reg: at most one trigger card (local text now, Claude text if "live")
+
+    App->>App: initNotifications() — outside showApp()
+    App->>Reg: runAuthSessionReadyEngines() [fire-and-forget]<br/>EngineRunRequest{trigger:AUTH_SESSION_READY,<br/>actions:{triggerEngine:LOCAL_NOTIFICATION_SCHEDULE}}
+    Reg->>Trig: run(LOCAL_NOTIFICATION_SCHEDULE) — schedules budget-aware local pushes
 ```
 
 ---

@@ -102,12 +102,26 @@ Recorded outcomes:
 ### B2 — Engine Contract and Registry
 
 **Findings:** F1, F3  
-**Status:** ⏭️ NEXT
+**Status:** ✅ COMPLETED — v2.21.0
+
+Recorded outcomes:
+
+- ✅ Common Engine Contract (`id`, `version`, `triggers[]`, `dependsOn`, `run(context)`) approved.
+- ✅ One central Engine Registry / Orchestrator implemented (`js/engineRegistry.js`).
+- ✅ Habit Engine, Pattern Engine, Adaptive TDEE Engine and Trigger Engine registered.
+- ✅ Explicit per-engine `actions` and `payloads` (`EngineRunRequest`) — no engine's action is ever inferred from an undefined/absent value.
+- ✅ Multiple triggers per engine supported without splitting Engine IDs (Trigger Engine, Adaptive TDEE Engine).
+- ✅ All prior override-chaining/wrapper-reassignment/function-replacement orchestration for these four engines removed.
+- ✅ Habit Engine single-flight (session-generation-scoped) implemented in the orchestration layer, replacing reliance on lexicographic tie-break order.
+- ✅ No hard dependency introduced between Habit Engine and Pattern Engine.
+- ✅ REM-002 Session Lifecycle and REM-003 Authority Contract preserved unchanged.
+- ✅ 86 automated tests passed.
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes.
 
 ### B3 — State Ownership and Access Boundaries
 
 **Finding:** F2  
-**Status:** ⏳ PENDING
+**Status:** ⏭️ NEXT
 
 ### B4 — Persistence Contract
 
@@ -159,14 +173,14 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## B2 — Engine Contract and Registry
+## B3 — State Ownership and Access Boundaries
 
-**Findings:** F1, F3  
+**Finding:** F2  
 **Status:** ⏭️ NEXT
 
 Required deliverable:
 
-An approved B2 architecture specification in the project task documentation structure.
+An approved B3 architecture specification in the project task documentation structure.
 
 No implementation SHALL begin before the specification passes Engineering Readiness Review.
 

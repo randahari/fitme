@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.20.0';
+const APP_VERSION = '2.21.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -170,6 +170,7 @@ function showApp() {
   renderPlanBanner();
   buildWater();
   // buildWeekChart() מוסר כאן: renderHome() כבר קורא לו (ומונע קריאת היסטוריה כפולה ב-Cold Start). PERF-001
+  runAppReadyEngines(); // B2: Engine Registry orchestration (Habit/Pattern/Adaptive TDEE/Trigger) — non-blocking
 }
 
 // signInWithGoogle מוגדר ב-firebase-config.js (redirect באייפון/PWA, popup בדסקטופ)
@@ -286,7 +287,7 @@ async function initNotifications() {
   if (Notification.permission === 'default') {
     setTimeout(() => requestNotificationPermission(), 3000);
   }
-  scheduleLocalNotifications();
+  runAuthSessionReadyEngines(); // B2: Trigger Engine — AUTH_SESSION_READY / LOCAL_NOTIFICATION_SCHEDULE
 }
 
 async function requestNotificationPermission() {
@@ -303,48 +304,9 @@ function sendLocalNotification(title, body) {
   });
 }
 
-function scheduleLocalNotifications() {
-  if (Notification.permission !== 'granted' || !userProfile) return;
-  const now = new Date();
-  const hour = now.getHours();
-  const name = userProfile.name;
-
-  // Morning 7:00
-  if (hour < 7) scheduleAt(7, 0, () => sendLocalNotification('בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: userProfile.goalKcal })));
-
-  // Water reminders every 2 hours
-  [9,11,13,15,17].forEach(h => {
-    if (hour < h) scheduleAt(h, 0, () => {
-      if (waterCount < 6) sendLocalNotification('💧 זמן לשתות מים', 'שתית רק ' + waterCount + ' כוסות עד עכשיו. תשתה עוד!');
-    });
-  });
-
-  // Lunch reminder
-  if (hour < 13) scheduleAt(13, 0, () => {
-    const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-    if (consumed < 400) sendLocalNotification('🍽️ לא שכחת לאכול?', 'רשמת רק ' + consumed + ' קל\' עד עכשיו. מה אכלת היום?');
-  });
-
-  // Macro check 17:00
-  if (hour < 17) scheduleAt(17, 0, () => {
-    const protein = todayData.meals.reduce((s,m)=>s+(m.protein||0),0);
-    const targetProtein = Math.round((userProfile.weight||75) * 1.8);
-    if (protein < targetProtein * 0.6) sendLocalNotification('📊 בדיקת תזונה', coachLine('protein', { have: Math.round(protein), target: targetProtein }));
-  });
-
-  // Evening push 20:00
-  if (hour < 20) scheduleAt(20, 0, () => {
-    const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-    const remain = userProfile.goalKcal - consumed;
-    if (remain > 200) sendLocalNotification('⚡ ' + coachName(), coachLine('evening', { remain }));
-  });
-
-  // Streak protection 21:00
-  if (hour < 21) scheduleAt(21, 0, () => {
-    const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-    if (consumed < 100 && (userProfile.streak||0) > 2) sendLocalNotification('🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
-  });
-}
+// B2: scheduleLocalNotifications() consolidated to a single definition — see the
+// Trigger Engine adapter section near the end of this file (previously this name
+// had a base definition here plus a full replacement later in the file).
 
 function scheduleAt(hour, min, callback) {
   const now = new Date();
@@ -611,6 +573,7 @@ async function logWeight() {
   document.getElementById('weight-input').value = '';
   await saveProfile();
   renderHome();
+  await runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED');
 }
 
 // ── FOOD ──
@@ -1630,7 +1593,10 @@ async function logSteps() {
 }
 
 async function saveWorkout() {
-  if (!workoutType) return;
+  // B2 Code Review: השורה הישנה ב-Stage 5 wrapper הפעילה תמיד fireWorkoutTrigger(0)
+  // גם כשלא נשמר דבר (workoutType ריק) — before/after delta יצא 0 כי todayData.burned
+  // לא השתנה. נשמר כאן במפורש (parity) כדי לא לשנות behavior קיים ללא אישור Product.
+  if (!workoutType) { await runEngineAction('SOURCE_DATA_CHANGED', 'triggerEngine', 'WORKOUT_COMPLETED', { burn: 0 }); return; }
   const burn = parseInt(document.getElementById('burn-val').textContent.replace(/,/g,''))||0;
   todayData.burned = (todayData.burned||0) + burn;
   userProfile.totalWorkouts = (userProfile.totalWorkouts||0) + 1;
@@ -1641,6 +1607,7 @@ async function saveWorkout() {
   sendLocalNotification('אימון נשמר! 💪', coachLine('workout', { burn: burn.toLocaleString() }));
   alert('האימון נשמר! שרפת '+burn.toLocaleString()+' קלוריות 💪');
   goToScreen('home');
+  await runEngineAction('SOURCE_DATA_CHANGED', 'triggerEngine', 'WORKOUT_COMPLETED', { burn });
 }
 
 // ── STREAK ──
@@ -2478,7 +2445,7 @@ async function confirmDayLight(key) {
   if (userProfile.confirmedLightDays.indexOf(key) < 0) userProfile.confirmedLightDays.push(key);
   await saveProfile();
   renderPartialPrompt();
-  await runAdaptiveCheck();
+  await runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED'); // day-classification affects the TDEE window
 }
 
 // ── רישום היקפים ──
@@ -2544,7 +2511,7 @@ async function setAdaptiveRate(v) {
   userProfile.rate = v;
   document.querySelectorAll('#set-adapt-rate .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
   await saveProfile();
-  await runAdaptiveCheck();
+  await runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
 }
 
 async function toggleAdaptive() {
@@ -2553,21 +2520,12 @@ async function toggleAdaptive() {
   const tog = document.getElementById('adapt-toggle');
   if (tog) tog.classList.toggle('on', userProfile.adaptiveEnabled);
   await saveProfile();
-  await runAdaptiveCheck();
+  await runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
 }
 
-// ══ Hooks: עטיפת פונקציות קיימות (הן כבר עברו override קודם — עוטפים את הסופיות) ══
-const _s4_showApp = showApp;
-showApp = function() {
-  _s4_showApp();
-  runAdaptiveCheck();
-};
-
-const _s4_logWeight = logWeight;
-logWeight = async function() {
-  await _s4_logWeight();
-  await runAdaptiveCheck(); // שקילה חדשה עשויה להפעיל הצעה
-};
+// B2: Adaptive TDEE Engine orchestration no longer wraps showApp/logWeight here —
+// see runAppReadyEngines() (showApp) and runEngineAction() (logWeight),
+// wired through the Engine Registry near the end of this file.
 
 const _s4_renderProfile = renderProfile;
 renderProfile = async function() {
@@ -2803,8 +2761,16 @@ async function runCoachTriggers() {
 }
 
 // ── טריגר מיידי אחרי אימון (תגובה ישירה לפעולת המשתמש) ──
-async function fireWorkoutTrigger(burn) {
+// sessionGeneration: פרמטר אופציונלי (B2 Code Review — REM-002 session guard).
+// כשלא מועבר, ההתנהגות זהה למקור (ללא guard) — נשמר לתאימות. ה-adapter
+// היחיד שקורא לפונקציה זו (Trigger Engine, action WORKOUT_COMPLETED) תמיד
+// מעביר אותו כעת. אין שינוי ללוגיקה העסקית עצמה — רק דילוג מוקדם אם ה-session
+// כבר אינו נוכחי, לפני persistence ולפני עדכון UI.
+async function fireWorkoutTrigger(burn, sessionGeneration) {
+  var hasGuard = typeof sessionGeneration !== 'undefined';
+  if (hasGuard && !SessionLifecycle.isCurrent(sessionGeneration)) return;
   await logCoachEvent('workout-logged', { burn });
+  if (hasGuard && !SessionLifecycle.isCurrent(sessionGeneration)) return;
   const card = document.getElementById('trigger-card');
   const textEl = document.getElementById('trigger-card-text');
   if (!card || !textEl) return;
@@ -2813,7 +2779,7 @@ async function fireWorkoutTrigger(burn) {
   try {
     const ctx = `${coachName()} בדיוק סיים אימון ושרף ${burn} קל׳ (מטרה: ${GOAL_LABELS[userProfile.goal]}). תן לו קרדיט קצר שמחבר את האימון למטרה שלו.`;
     const msg = await coachMessage(ctx);
-    if (msg) textEl.textContent = msg;
+    if (msg && (!hasGuard || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
   } catch (e) {}
 }
 
@@ -2883,21 +2849,10 @@ buildCoachSystemPrompt = function() {
   return mem ? (base + ' ' + mem) : base;
 };
 
-// showApp → מריץ את מנוע הטריגרים בכניסה
-const _s5_showApp = showApp;
-showApp = function() {
-  _s5_showApp();
-  runCoachTriggers();
-};
-
-// saveWorkout → טריגר מיידי אחרי אימון
-const _s5_saveWorkout = saveWorkout;
-saveWorkout = async function() {
-  const before = todayData.burned || 0;
-  await _s5_saveWorkout();
-  const burn = (todayData.burned || 0) - before;
-  await fireWorkoutTrigger(burn);
-};
+// B2: Trigger Engine orchestration no longer wraps showApp/saveWorkout here —
+// see runAppReadyEngines() (showApp, action DAILY_COACH_CHECK) and the
+// runEngineAction() call inside saveWorkout() itself (action
+// WORKOUT_COMPLETED), wired through the Engine Registry near the end of this file.
 
 // renderSettings → מציג את מונה השימוש
 const _s5_renderSettings_u = renderSettings;
@@ -2906,9 +2861,11 @@ renderSettings = function() {
   renderUsage();
 };
 
-// scheduleLocalNotifications → גרסה מודעת-תקציב (מחליפה את הקודמת)
-// התראות מתוזמנות מכבדות את אותו תקציב טון ואי-כפילות כמו הכרטיסים.
-scheduleLocalNotifications = function() {
+// scheduleLocalNotifications — גרסה מודעת-תקציב, ההגדרה היחידה (B2: אוחדה,
+// הבסיסית שהוחלפה בעבר הוסרה). התראות מתוזמנות מכבדות את אותו תקציב
+// ואי-כפילות כמו הכרטיסים. נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY
+// / LOCAL_NOTIFICATION_SCHEDULE) — ראה סוף הקובץ.
+function scheduleLocalNotifications() {
   if (Notification.permission !== 'granted' || !userProfile) return;
   const now = new Date();
   const hour = now.getHours();
@@ -2949,7 +2906,7 @@ scheduleLocalNotifications = function() {
   if (hour < 21) scheduleAt(21, 0, () => {
     if (todayConsumed() < 100 && (userProfile.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: userProfile.streak }));
   });
-};
+}
 
 // ══════════════════════════════════════════════════════════════════
 // שלב 2 — ניווט תאריך + עריכת ארוחות עבר + רישום ליום קודם
@@ -3502,12 +3459,9 @@ scheduleLocalNotifications = function() {
   }
   window.runHabitEngine = runHabitEngine;
 
-  // ── חיבור: showApp → מריץ את מנוע ההרגלים ברקע (לא חוסם עלייה) ──
-  const _s6_showApp = showApp;
-  showApp = function () {
-    _s6_showApp();
-    try { Promise.resolve().then(runHabitEngine); } catch (e) { /* לעולם לא שובר עלייה */ }
-  };
+  // B2: Habit Engine orchestration no longer wraps showApp here — registered
+  // with the Engine Registry (id: habitEngine, trigger: APP_READY) near the
+  // end of this file; showApp() invokes it via runAppReadyEngines().
 })();
 
 // ══════════════════════════════════════════════════════════════════
@@ -3874,8 +3828,12 @@ scheduleLocalNotifications = function() {
       if (!currentUser || !userProfile) return;
       var _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
 
-      // סדר אחרי Habit Engine — טיפול שגיאה מקומי: כשל אינו מבטל את Pattern Engine
-      try { if (typeof runHabitEngine === 'function') await runHabitEngine(); } catch (e) { /* ממשיכים על Raw Data בלבד */ }
+      // סדר אחרי Habit Engine — טיפול שגיאה מקומי: כשל אינו מבטל את Pattern Engine.
+      // B2 Code Review Round 4: קורא ל-runHabitEngineSingleFlight() (עטיפת
+      // single-flight, לא ל-runHabitEngine() ישירות) כדי לא לגרום להרצה כפולה
+      // אם ה-Registry מריץ את habitEngine קרוב בזמן — ללא תלות בסדר הרצה,
+      // וללא הפיכת קשר זה ל-registry dependency (dependsOn נשאר []).
+      try { if (typeof runHabitEngineSingleFlight === 'function') await runHabitEngineSingleFlight(); } catch (e) { /* ממשיכים על Raw Data בלבד */ }
       if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי Habit Engine
 
       ensureCoachMemory();
@@ -3937,10 +3895,182 @@ scheduleLocalNotifications = function() {
   }
   window.runPatternEngine = runPatternEngine;
 
-  // ── חיבור: showApp → מריץ אחרי Habit Engine, ברקע, לא חוסם עלייה ──
-  var _s7_showApp = showApp;
-  showApp = function () {
-    _s7_showApp();
-    try { Promise.resolve().then(runPatternEngine); } catch (e) { /* לעולם לא שובר עלייה */ }
+  // B2: Pattern Engine orchestration no longer wraps showApp here — registered
+  // with the Engine Registry (id: patternEngine, trigger: APP_READY) below;
+  // its internal soft call to runHabitEngine() is unchanged (B2 SPEC §11 Rule 10).
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// ── STAGE 8 / B2 (v2.21.0): Engine Registry / Orchestrator wiring ──
+// מחליף את מנגנוני ה-override-chain של Stages 4-7 (showApp/logWeight/
+// saveWorkout/scheduleLocalNotifications) עבור ארבעת המנועים בלבד.
+// כל אדפטר קורא לפונקציה הקיימת והבלתי-משתנה של המנוע — אין שינוי
+// ללוגיקה העסקית. ראה docs/tasks/B2/B2_SPEC.md.
+// ══════════════════════════════════════════════════════════════════
+
+// context בסיסי (ללא action/payload — אלה נבנים לכל engine בנפרד) — B2 SPEC §6.
+function engineRunContextBase() {
+  return {
+    userId: currentUser && currentUser.uid,
+    sessionGeneration: SessionLifecycle.getGeneration(),
+    now: Date.now()
   };
+}
+
+// APP_READY — action מפורש ונפרד לכל אחד מארבעת המנועים (B2 Code Review Round 4:
+// אין יותר action משותף/undefined-default יחיד לכל ה-engines). לא חוסם עלייה
+// (תואם להתנהגות Stages 4-7 הקודמת: showApp עצמה אינה async).
+function runAppReadyEngines() {
+  try {
+    EngineRegistry.run({
+      trigger: 'APP_READY',
+      actions: {
+        habitEngine: 'RECOMPUTE',
+        patternEngine: 'RECOMPUTE',
+        adaptiveTdeeEngine: 'ADAPTIVE_CHECK',
+        triggerEngine: 'DAILY_COACH_CHECK'
+      },
+      context: engineRunContextBase()
+    }).catch(function () {});
+  } catch (e) { /* לעולם לא שובר עלייה */ }
+}
+
+// helper גנרי: action בודד למנוע בודד (SOURCE_DATA_CHANGED/MANUAL) — משתמש
+// ב-EngineRegistry.run() עם מפת actions/payloads בעלת מפתח יחיד, כך שה-action
+// וה-payload מגיעים אך ורק ל-engine המבוקש ולא לאף engine זכאי-trigger אחר.
+async function runEngineAction(trigger, engineId, action, payload) {
+  var actions = {}; actions[engineId] = action;
+  var request = { trigger: trigger, actions: actions, context: engineRunContextBase() };
+  if (typeof payload !== 'undefined') { var payloads = {}; payloads[engineId] = payload; request.payloads = payloads; }
+  try { return await EngineRegistry.run(request); } catch (e) { /* לא זורק החוצה */ }
+}
+
+// AUTH_SESSION_READY — לא חוסם, תואם להתנהגות initNotifications() הקודמת.
+function runAuthSessionReadyEngines() {
+  try { runEngineAction('AUTH_SESSION_READY', 'triggerEngine', 'LOCAL_NOTIFICATION_SCHEDULE'); }
+  catch (e) { /* לעולם לא שובר עלייה */ }
+}
+
+// ── B2 Code Review Round 4: Habit Engine single-flight ──
+// עוטף את runHabitEngine() הקיים (לא נוגע בו) כדי שרק ריצה אחת בפועל תהיה
+// active בכל רגע נתון — ללא תלות בסדר ההרצה של ה-Registry מול הקריאה הפנימית
+// של Pattern Engine (ואינו נשען עוד על tie-break לקסיקוגרפי, כנדרש ב-Review).
+// session-safe: in-flight Promise משותף רק בתוך אותה session generation; אינו
+// נגזל בין sessions. לא נוגע ב-once-per-day gate ולא בלוגיקה העסקית של Habit.
+var _habitInFlight = null; // { generation, promise } | null
+function runHabitEngineSingleFlight() {
+  var gen = SessionLifecycle.getGeneration();
+  if (_habitInFlight && _habitInFlight.generation === gen) {
+    return _habitInFlight.promise; // אותה session, ריצה כבר פעילה — שיתוף
+  }
+  var p = runHabitEngine().finally(function () {
+    if (_habitInFlight && _habitInFlight.promise === p) _habitInFlight = null;
+  });
+  _habitInFlight = { generation: gen, promise: p };
+  return p;
+}
+
+(function () {
+  'use strict';
+
+  // B2 Code Review: diagnostics בלבד — register() כבר לא זורק, אך רישום שנכשל
+  // בשקט (למשל id כפול עקב טעות עתידית) יהיה בלתי-נראה בלי לוג מפורש.
+  function _registerEngine(def) {
+    var r = EngineRegistry.register(def);
+    if (!r.ok) console.error('[EngineRegistry] registration failed:', def.id, r.error);
+    return r;
+  }
+
+  // Habit Engine — B2 SPEC §17. אדפטר דק: קורא ל-runHabitEngineSingleFlight()
+  // (עטיפת single-flight מעל runHabitEngine() הקיים — B2 Code Review Round 4).
+  // action מפורש נדרש כעת מכל engine (גם עם action יחיד) — Round 4: אין יותר
+  // "אין ולידציה כי יש רק action אחד"; ה-Registry עצמו כבר מדלג אם לא סופק
+  // action כלל, וכאן נבדק גם שהערך שכן סופק הוא הצפוי.
+  _registerEngine({
+    id: 'habitEngine',
+    version: '1.0.0',
+    triggers: ['APP_READY'],
+    dependsOn: [],
+    run: async function (ctx) {
+      if (ctx.action !== 'RECOMPUTE') return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a habitEngine action' } };
+      await runHabitEngineSingleFlight();
+      return { status: 'SUCCESS' };
+    }
+  });
+
+  // Pattern Engine — dependsOn נעול ל-[] (B2 SPEC §11 כלל 10): הקריאה הפנימית
+  // הקיימת של runPatternEngine() ל-Habit (דרך runHabitEngineSingleFlight, ראה
+  // מעלה) היא soft enrichment עם graceful degradation, ואינה הופכת ל-registry
+  // dependency. נכונות אינה נשענת עוד על סדר לקסיקוגרפי (B2 Code Review Round 4).
+  _registerEngine({
+    id: 'patternEngine',
+    version: '1.0.0',
+    triggers: ['APP_READY'],
+    dependsOn: [],
+    run: async function (ctx) {
+      if (ctx.action !== 'RECOMPUTE') return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a patternEngine action' } };
+      await runPatternEngine();
+      return { status: 'SUCCESS' };
+    }
+  });
+
+  // Adaptive TDEE Engine — רק runAdaptiveCheck() רשום; applyAdaptiveUpdate()
+  // נשאר מחוץ ל-Registry כפעולה ידנית מאושרת של המשתמש (B2 SPEC §17/§19),
+  // ללא שינוי, וממשיכה להשתמש ב-Authority Contract הקיים. B2 Code Review
+  // Round 4: בדיקת action הפכה לשוויון מלא (&&) — אין יותר "action ריק = default",
+  // כי ה-Registry כבר לא קורא ל-run() בכלל אם לא סופק action מפורש.
+  _registerEngine({
+    id: 'adaptiveTdeeEngine',
+    version: '1.0.0',
+    triggers: ['APP_READY', 'SOURCE_DATA_CHANGED', 'MANUAL'],
+    dependsOn: [],
+    run: async function (ctx) {
+      if (ctx.trigger === 'APP_READY' && ctx.action === 'ADAPTIVE_CHECK') {
+        await runAdaptiveCheck();
+        return { status: 'SUCCESS' };
+      }
+      if (ctx.trigger === 'SOURCE_DATA_CHANGED' && ctx.action === 'WEIGHT_CHANGED') {
+        await runAdaptiveCheck();
+        return { status: 'SUCCESS' };
+      }
+      if (ctx.trigger === 'MANUAL' && ctx.action === 'ADAPTIVE_RECHECK') {
+        await runAdaptiveCheck();
+        return { status: 'SUCCESS' };
+      }
+      return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not an adaptiveTdeeEngine action for this trigger' } };
+    }
+  });
+
+  // Trigger Engine — engine לוגי אחד עם 3 actions, לא מפוצל (B2 SPEC §17: בעלות
+  // משותפת על budget/dedup/coachEvents/coachDay). WORKOUT_COMPLETED מקבל כאן
+  // session-generation guard חדש (B2 SPEC §19, סוגר את הפער שזוהה ב-Round 1/2) —
+  // fireWorkoutTrigger() עצמה נשארת ללא שינוי עסקי.
+  _registerEngine({
+    id: 'triggerEngine',
+    version: '1.0.0',
+    triggers: ['APP_READY', 'SOURCE_DATA_CHANGED', 'AUTH_SESSION_READY'],
+    dependsOn: [],
+    run: async function (ctx) {
+      // B2 Code Review Round 4: כל ענף בודק trigger וגם action בשוויון מלא —
+      // אין יותר "action ריק/undefined = default"; ה-Registry כבר מסנן החוצה
+      // engines שלא קיבלו action מפורש עבור ה-run הזה לפני שהוא בכלל קורא ל-run().
+      if (ctx.trigger === 'APP_READY' && ctx.action === 'DAILY_COACH_CHECK') {
+        await runCoachTriggers();
+        return { status: 'SUCCESS' };
+      }
+      if (ctx.trigger === 'SOURCE_DATA_CHANGED' && ctx.action === 'WORKOUT_COMPLETED') {
+        var gen = ctx.sessionGeneration; // REM-002: session guard — נלכד לפני הקריאה, נבדק לפניה
+        if (!SessionLifecycle.isCurrent(gen)) return { status: 'SKIPPED', error: { code: 'STALE_SESSION', message: 'session changed before workout trigger could run' } };
+        var burn = ctx.payload && ctx.payload.burn;
+        await fireWorkoutTrigger(burn, gen); // B2 Code Review: guard מועבר גם פנימה, לפני logCoachEvent/UI
+        if (!SessionLifecycle.isCurrent(gen)) return { status: 'SKIPPED', error: { code: 'STALE_SESSION', message: 'session changed during workout trigger' } };
+        return { status: 'SUCCESS' };
+      }
+      if (ctx.trigger === 'AUTH_SESSION_READY' && ctx.action === 'LOCAL_NOTIFICATION_SCHEDULE') {
+        scheduleLocalNotifications();
+        return { status: 'SUCCESS' };
+      }
+      return { status: 'SKIPPED', error: { code: 'UNKNOWN_ACTION', message: 'not a triggerEngine trigger/action pair' } };
+    }
+  });
 })();

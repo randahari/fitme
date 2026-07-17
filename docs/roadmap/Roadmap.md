@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-16
+**Last Updated:** 2026-07-17
 
 ---
 
@@ -170,7 +170,31 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase B — In Progress.** B1 is closed. B2 is `NEXT`.
+## B2 — Engine Contract and Registry
+
+**Status:** 🟢 APPROVED AND MERGED  
+**Completion Date:** 2026-07-17  
+**Implementation Version:** 2.21.0
+
+### Deliverables
+
+- ✅ Approved `docs/tasks/B2/B2_SPEC.md` (v1.3)
+- ✅ Formal Engineering Readiness Review Round 2 — READY
+- ✅ One logical Engine Registry / Orchestrator (`js/engineRegistry.js`)
+- ✅ Four engines registered: Habit Engine, Pattern Engine, Adaptive TDEE Engine, Trigger Engine
+- ✅ Explicit per-engine `actions`/`payloads` (`EngineRunRequest`) — no action ever inferred from `undefined`
+- ✅ Multiple triggers per engine without splitting Engine IDs
+- ✅ Habit Engine single-flight (session-generation-scoped), replacing reliance on tie-break order
+- ✅ No hard dependency introduced between Habit Engine and Pattern Engine
+- ✅ All prior override-chaining/wrapper/replacement orchestration for these four engines removed
+- ✅ REM-002 Session Lifecycle and REM-003 Authority Contract preserved unchanged
+- ✅ 86 automated tests passed
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes
+- ✅ Commit and push to `main`
+
+---
+
+**Phase B — In Progress.** B1 and B2 are closed. B3 is `NEXT`.
 
 ---
 
@@ -204,5 +228,6 @@ Implementation must not begin until Phase A of the Architecture Remediation Plan
 
 Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, REM-003).
 B1 — Canonical Memory Decision is approved and closed, with no production code changes.
+B2 — Engine Contract and Registry is approved, implemented (v2.21.0) and closed.
 
-Begin B2 — Engine Contract and Registry.
+Begin B3 — State Ownership and Access Boundaries.

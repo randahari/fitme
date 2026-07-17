@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-16
+**Last Updated:** 2026-07-17
 
 ---
 
@@ -15,7 +15,8 @@
 - 🟢 REM-003 approved, tested and merged
 - ✅ Architecture Remediation Program — Phase A complete
 - 🟢 B1 — Canonical Memory Decision approved and closed (architecture decision, no code change)
-- ⏭️ Next task: B2 — Engine Contract and Registry
+- 🟢 B2 — Engine Contract and Registry approved, tested and merged
+- ⏭️ Next task: B3 — State Ownership and Access Boundaries
 
 ---
 
@@ -42,6 +43,48 @@
 ### Next
 
 B2 — Engine Contract and Registry is `NEXT`.
+
+---
+
+## v2.21.0 — B2 Engine Contract and Registry
+
+**Date:** 2026-07-17
+**Status:** Merged to `main`
+
+### Added
+
+- `js/engineRegistry.js` — pure Engine Registry / Orchestrator module.
+- Explicit per-engine `actions` and `payloads` (`EngineRunRequest`): every orchestration run supplies
+  each engine its own action from a per-engine-id map — no engine's behavior is ever selected by
+  treating an absent/`undefined` action as an implicit default.
+- Habit Engine single-flight (session-generation-scoped), guaranteeing Habit Engine's underlying
+  computation cannot run twice when both the Registry and Pattern Engine's internal call invoke it
+  around the same time — independent of execution order.
+- `tests/engineRegistry.test.js`, `tests/habitSingleFlight.test.js`, `tests/b2Wiring.test.js`.
+
+### Changed
+
+- Habit Engine, Pattern Engine, Adaptive TDEE Engine and Trigger Engine are now registered with, and
+  invoked exclusively through, the Engine Registry.
+- Removed the prior engine-orchestration override-chain wrappers on `showApp` (Stages 4–7),
+  `logWeight` and `saveWorkout`.
+- `scheduleLocalNotifications` consolidated to a single definition (previously a base function fully
+  replaced by a later version — the base was dead code, never reached in production).
+- `APP_VERSION` and service-worker cache version advanced to `2.21.0`.
+
+### Verification
+
+- Engineering Readiness Review Round 2: `READY`.
+- Code Review: two correction rounds applied and re-verified (Habit single-flight, explicit
+  per-engine action routing), `FIXED AND APPROVED`.
+- Automated tests: `86 passed / 0 failed`.
+- No Firestore rules changes.
+- No Firebase Functions changes.
+- No B3/B4/B5 implementation.
+
+### Next
+
+B3 — State Ownership and Access Boundaries is `NEXT`.
 
 ---
 
@@ -152,4 +195,4 @@ B2 — Engine Contract and Registry is `NEXT`.
 
 ## Next
 
-B2 — Engine Contract and Registry.
+B3 — State Ownership and Access Boundaries.
