@@ -3,7 +3,7 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-16  
+**Last Updated:** 2026-07-17  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
@@ -65,13 +65,20 @@ Note: REM-001 added narrow cleanup for transient nutrition-analysis state. REM-0
 **Finding:** F13  
 **Severity:** High  
 **Task:** REM-003  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED — v2.20.0, merged 2026-07-17
 
-Required outcome:
+Implemented outcomes:
 
-- Define explicit trust tiers.
-- Generative AI MUST NOT directly mutate authoritative health, goal, habit, pattern or memory state.
-- All authoritative writes MUST pass through approved deterministic write paths.
+- ✅ Explicit Generative, Validated and Authoritative trust tiers.
+- ✅ Authority Contract module with authority metadata and audit trail support.
+- ✅ Generative AI cannot directly mutate authoritative state without the approved validation and authority boundary.
+- ✅ Quick Learn authoritative diary path gated by nutrition validation.
+- ✅ Generative Persistent Data explicitly marked as non-authoritative.
+- ✅ Authority metadata added to approved Habit Engine, Pattern Engine and Adaptive TDEE write paths.
+- ✅ Session lifecycle compatibility preserved.
+- ✅ 42 automated tests passed.
+
+**Phase A Status:** ✅ COMPLETE
 
 ---
 
@@ -80,12 +87,22 @@ Required outcome:
 ### B1 — Canonical Memory Decision
 
 **Finding:** F11  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED — architecture decision, 2026-07-17
+
+Recorded outcomes:
+
+- ✅ Architecture decision approved.
+- ✅ Engineering Review `READY`.
+- ✅ No production implementation required.
+- ✅ One canonical logical user-memory model approved.
+- ✅ `coachMemory` designated as migration base.
+- ✅ Raw source history, canonical memory, derived intelligence, generative persistent data and transient state remain separate domains.
+- ✅ Habit and Pattern outputs classified as Derived Intelligence Views.
 
 ### B2 — Engine Contract and Registry
 
 **Findings:** F1, F3  
-**Status:** ⏳ PENDING
+**Status:** ⏭️ NEXT
 
 ### B3 — State Ownership and Access Boundaries
 
@@ -132,7 +149,7 @@ REM-001 established the first standalone pure module and automated test suite. B
 
 # 3. Implementation Gate
 
-The project MUST NOT continue to ENG-011 or Recommendation Engine implementation until all Phase A items are approved and resolved.
+Phase A is complete.
 
 Phase B items MUST be architecturally specified before Recommendation Engine implementation begins.
 
@@ -142,11 +159,14 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## REM-003 — Generative vs. Authoritative Boundary
+## B2 — Engine Contract and Registry
+
+**Findings:** F1, F3  
+**Status:** ⏭️ NEXT
 
 Required deliverable:
 
-`docs/tasks/REM-002/SPEC.md`
+An approved B2 architecture specification in the project task documentation structure.
 
 No implementation SHALL begin before the specification passes Engineering Readiness Review.
 

@@ -146,6 +146,34 @@ Centralize cleanup of every user-scoped runtime variable on sign-out, authentica
 
 ---
 
+## B1 — Canonical Memory Decision
+
+**Status:** 🟢 APPROVED AND CLOSED  
+**Completion Date:** 2026-07-17  
+**Production Code Changes:** None
+
+### Canonical Decision
+
+FITME has exactly one Canonical User Memory Model per authenticated user. `coachMemory` is the
+migration base and current logical root of canonical coach memory. No parallel memory system is
+approved. Raw source history, canonical memory, derived intelligence, generative persistent data
+and transient state remain explicitly separate domains. Habit Engine and Pattern Engine outputs
+are classified as Derived Intelligence Views, not independent memory authorities.
+
+### Deliverables
+
+- ✅ Formal Engineering Readiness Review — READY
+- ✅ Product/Architecture Approval — APPROVED
+- ✅ Canonical memory architecture decision recorded in `docs/tasks/B1/SPEC.md`
+- ✅ Downstream dependencies and risks identified for B2, B3, B4 and B5
+- ✅ No implementation or migration performed (architecture decision only)
+
+---
+
+**Phase B — In Progress.** B1 is closed. B2 is `NEXT`.
+
+---
+
 # Blocked Until Remediation Foundations Are Complete
 
 ## TASK-004 — Recommendation Engine
@@ -175,6 +203,6 @@ Implementation must not begin until Phase A of the Architecture Remediation Plan
 # Next Step
 
 Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, REM-003).
-Phase B architecture decisions (Canonical Memory, Engine Contract and Registry, State Ownership,
-Persistence Contract, Habit/Pattern Consumption Path) require Product & Architecture review before
-any implementation begins.
+B1 — Canonical Memory Decision is approved and closed, with no production code changes.
+
+Begin B2 — Engine Contract and Registry.

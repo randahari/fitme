@@ -14,6 +14,34 @@
 - 🟢 REM-002 approved, tested and merged
 - 🟢 REM-003 approved, tested and merged
 - ✅ Architecture Remediation Program — Phase A complete
+- 🟢 B1 — Canonical Memory Decision approved and closed (architecture decision, no code change)
+- ⏭️ Next task: B2 — Engine Contract and Registry
+
+---
+
+## B1 — Canonical Memory Decision
+
+**Date:** 2026-07-17
+**Status:** Approved and closed (architecture decision only — no application version change)
+
+### Decision
+
+- One canonical logical user-memory model approved for FITME.
+- `coachMemory` is designated as the migration base for canonical coach memory.
+- Typed memory (`users/{uid}/memories`) is not a competing authority; it is directed to be mapped
+  into the canonical model over time, not replaced or run as a parallel store.
+- Habit Engine and Pattern Engine outputs are classified as Derived Intelligence Views —
+  recomputable from source, not independent memory authorities.
+
+### Verification
+
+- Engineering Readiness Review: `READY`.
+- Product/Architecture Review: `APPROVED`.
+- No code, Firestore, Firebase Functions, or data migration changes.
+
+### Next
+
+B2 — Engine Contract and Registry is `NEXT`.
 
 ---
 
@@ -124,6 +152,4 @@
 
 ## Next
 
-Phase A of the Architecture Remediation Program is complete. Phase B (Canonical Memory, Engine
-Contract and Registry, State Ownership, Persistence Contract, Habit/Pattern Consumption Path)
-requires Product & Architecture review before implementation begins.
+B2 — Engine Contract and Registry.
