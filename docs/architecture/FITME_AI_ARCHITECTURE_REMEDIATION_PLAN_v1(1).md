@@ -49,7 +49,7 @@ Implemented outcomes:
 **Finding:** F14  
 **Severity:** High  
 **Task:** REM-002  
-**Status:** ⏭️ NEXT
+**Status:** ✅ COMPLETED — v2.19.0, merged 2026-07-16
 
 Required outcome:
 
@@ -142,7 +142,7 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## REM-002 — Session State Reset and Account Isolation
+## REM-003 — Generative vs. Authoritative Boundary
 
 Required deliverable:
 

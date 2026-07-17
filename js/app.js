@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.19.0';
+const APP_VERSION = '2.20.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -682,6 +682,18 @@ function mealRequiresNutritionValidation(meal) {
   return NUTRITION_VALIDATION_EXEMPT_SOURCES.indexOf(src) < 0;
 }
 
+// REM-003 §Recommended Additions — Authority Metadata: מקור הסמכות של רשומת ארוחה סמכותית.
+// משתמש באותה סיווג-מקור הקיים כבר מ-REM-001 (mealRequiresNutritionValidation), כדי שלא
+// תיווצר טקסונומיה שנייה. 'text'/'photo'/'label' = הצעת AI שנסקרה ואושרה ע"י המשתמש בעורך;
+// 'off'/'group'/'manual' = התאמת מאגר/הזנה ידנית שהמשתמש אישר במישרין — לא הערכת AI.
+function authoritySourceForMeal(meal) {
+  const src = meal && meal.source;
+  if (NUTRITION_VALIDATION_EXEMPT_SOURCES.indexOf(src) >= 0) {
+    return window.AuthorityContract.AUTHORITY_SOURCES.USER_DECLARATION;
+  }
+  return window.AuthorityContract.AUTHORITY_SOURCES.USER_CONFIRMED_AI_ESTIMATE;
+}
+
 // §17 Logging and Observability — ללא תוכן ארוחה/פרומפט/תמונה/טוקנים, רק תוצאת האימות.
 function collectNutritionErrorCodes(gate) {
   const codes = [];
@@ -1274,7 +1286,15 @@ function buildMealFromEditor() {
     protein: Math.round(t.protein*10)/10, carbs: Math.round(t.carbs*10)/10, fat: Math.round(t.fat*10)/10,
     fiber: Math.round(t.fiber*10)/10, sugar: Math.round(t.sugar*10)/10, sodium: Math.round(t.sodium),
     items: pendingMeal.items.map(it => ({ ...it })),
-    time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')
+    time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),
+    // REM-003 §9/Recommended Additions — Authority Metadata + Audit Trail. נצמד כאן (מקום יחיד),
+    // כך ש-addMeal() וגם saveFavoriteFromPending() (ששניהם קוראים לפונקציה הזו) יורשים אותו באופן עקבי.
+    authority: window.AuthorityContract.buildAuthorityMetadata({
+      source: authoritySourceForMeal(pendingMeal),
+      createdBy: currentUser && currentUser.uid,
+      rule: 'meal-editor.addMeal.v1',
+      systemVersion: APP_VERSION
+    })
   };
 }
 
@@ -1438,9 +1458,25 @@ async function logQuick(gi, btn) {
   const q = quickItems[gi]; if (!q) return;
   const now = new Date();
   const item = { name:q.name, amount:q.amount, unit:q.unit, kcal:q.kcal, protein:q.protein, carbs:q.carbs, fat:q.fat, fiber:q.fiber, sugar:q.sugar, sodium:q.sodium, qty:1 };
+  // REM-003 §10 "Quick Learn" — הערכת AI שנוצרה ב-submitQuickLearn() (Generative Persistent Data,
+  // Level 2 בלבד) חייבת לעבור את אותו Authoritative Write Contract כמו כל מסלול AI אחר לפני
+  // שהיא הופכת לרשומה סמכותית ביומן (todayData.meals, הניזון ל-Adaptive TDEE/Habit/Pattern).
+  const gate = window.NutritionOutputValidator.validateNutritionMeal([item], 'quick-log');
+  logNutritionValidation(gate.overallStatus, 'quick-log', collectNutritionErrorCodes(gate));
+  if (gate.overallStatus !== 'VALID') {
+    alert('הפריט הזה לא עבר אימות תזונתי. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק/לתקן את הערכים.');
+    return;
+  }
+  const authority = window.AuthorityContract.buildAuthorityMetadata({
+    source: window.AuthorityContract.AUTHORITY_SOURCES.USER_CONFIRMED_AI_ESTIMATE,
+    createdBy: currentUser && currentUser.uid,
+    rule: 'logQuick.v1',
+    systemVersion: APP_VERSION
+  });
   todayData.meals.push({
     name: q.name, kcal: q.kcal, protein: q.protein, carbs: q.carbs, fat: q.fat, fiber: q.fiber, sugar: q.sugar, sodium: q.sodium,
-    items: [item], time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')
+    items: [item], time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),
+    authority: authority
   });
   q.count = (q.count||0)+1; q.lastUsed = Date.now(); q.lastHour = now.getHours();
   if (userProfile) userProfile.quickItems = quickItems;
@@ -1495,7 +1531,10 @@ async function submitQuickLearn() {
       if (gate.itemResults[idx].status === 'REJECTED') return;
       quickItems.push({ name: String(it.name).trim(), amount: r1(it.amount), unit: it.unit||'', kcal: Math.round(+it.kcal||0),
         protein: r1(it.protein), carbs: r1(it.carbs), fat: r1(it.fat), fiber: r1(it.fiber), sugar: r1(it.sugar), sodium: Math.round(+it.sodium||0),
-        count: 2, lastUsed: now, lastHour: null, pinned: false });
+        count: 2, lastUsed: now, lastHour: null, pinned: false,
+        // REM-003 §4 "Generative Persistent Data" — הצעת AI שאושרה ב-Level 2 (validator) בלבד;
+        // אינה Authoritative עד שתירשם בפועל ביומן דרך logQuick() (שם מצורף authority עדכני משלה).
+        authority: window.AuthorityContract.buildGenerativeMetadata({ systemVersion: APP_VERSION }) });
     });
     if (userProfile) { userProfile.quickItems = quickItems; userProfile.quickOnboarded = true; }
     await saveProfile();
@@ -1723,6 +1762,10 @@ async function generatePlan() {
     const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: `תפריט שבועי: מטרה=${GOAL_LABELS[userProfile.goal]}, קלוריות=${userProfile.goalKcal}, מאכלים=${userProfile.foods.join(',')}. JSON בלבד: מערך 7: {day:"יום א'",breakfast:"",lunch:"",dinner:"",snack:""}` }] });
     const menu = parseModelJSON(data.content[0].text);
     userProfile.weeklyMenu = menu;
+    // REM-003 §4 "Generative Persistent Data" — התפריט הוא הצעה בלבד (כמו הדוגמה "Weekly Menu"
+    // בסעיף עצמו): מותר לשמור, אך מסומן במפורש כלא-סמכותי ולא נקרא ע"י אף מנוע דטרמיניסטי.
+    // שדה-אח נפרד, לא נוגע בצורת המערך שממנה renderWeeklyMenu קורא.
+    userProfile.weeklyMenuMeta = window.AuthorityContract.buildGenerativeMetadata({ systemVersion: APP_VERSION });
     await saveProfile();
     renderWeeklyMenu(menu);
   } catch(e) { alert('שגיאה.'); }
@@ -2376,7 +2419,18 @@ async function applyAdaptiveUpdate() {
   userProfile.currentDeficit = p.nextDeficit;
   userProfile.lastTdeeUpdate = getTodayKey();
   if (!Array.isArray(userProfile.tdeeHistory)) userProfile.tdeeHistory = [];
-  userProfile.tdeeHistory.push({ date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit });
+  // Correction (post-REM-003 Product Approval feedback): הרשומה מחושבת ע"י מנוע דטרמיניסטי
+  // (Adaptive TDEE), לא ע"י הצהרת משתמש — authoritySource הוא SYSTEM. אישור המשתמש (לחיצת
+  // "אשר") מתועד דרך ה-rule עצמו, לא דרך authoritySource.
+  userProfile.tdeeHistory.push({
+    date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit,
+    authority: window.AuthorityContract.buildAuthorityMetadata({
+      source: window.AuthorityContract.AUTHORITY_SOURCES.SYSTEM,
+      createdBy: currentUser && currentUser.uid,
+      rule: 'ADAPTIVE_TDEE_USER_APPROVED',
+      systemVersion: APP_VERSION
+    })
+  });
   await saveProfile();
   _adaptProposal = null;
   renderAdaptiveCard();
@@ -3429,7 +3483,17 @@ scheduleLocalNotifications = function() {
       }
 
       mem.habits = next;
-      mem.habitsMeta = { lastRun: today, version: HE_VERSION };
+      // REM-003 §Recommended Additions — Authority Metadata: Path B (Deterministic Evidence),
+      // אינה נוגעת בלוגיקת הזיהוי/מחזור-החיים של המנוע עצמו.
+      mem.habitsMeta = {
+        lastRun: today, version: HE_VERSION,
+        authority: window.AuthorityContract.buildAuthorityMetadata({
+          source: window.AuthorityContract.AUTHORITY_SOURCES.HABIT_ENGINE,
+          createdBy: currentUser && currentUser.uid,
+          rule: 'habitEngine.recompute.v1',
+          systemVersion: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null
+        })
+      };
       mem.lastUpdated = Date.now();
       await saveProfile();
     } catch (e) {
@@ -3837,9 +3901,17 @@ scheduleLocalNotifications = function() {
 
       // ISSUE 2: snapshot לפני מוטציה → כתיבה מבודדת המזהה כשל → rollback בכשל
       var snap = { patterns: mem.patterns, patternsMeta: mem.patternsMeta, lastUpdated: mem.lastUpdated };
+      // REM-003 §Recommended Additions — Authority Metadata: Path B (Deterministic Evidence),
+      // אינה נוגעת בלוגיקת ה-fingerprint/advance/rollback הקיימת של המנוע.
       var newMeta = {
         lastRun: today, version: PE_VERSION, sourceFingerprint: result.fingerprint,
-        lastAdvanceDataDay: advance ? result.lastDataDay : prevAdvanceDay
+        lastAdvanceDataDay: advance ? result.lastDataDay : prevAdvanceDay,
+        authority: window.AuthorityContract.buildAuthorityMetadata({
+          source: window.AuthorityContract.AUTHORITY_SOURCES.PATTERN_ENGINE,
+          createdBy: currentUser && currentUser.uid,
+          rule: 'patternEngine.recompute.v1',
+          systemVersion: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null
+        })
       };
       var newUpdated = Date.now();
       mem.patterns = result.patterns;

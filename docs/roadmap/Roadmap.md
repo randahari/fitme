@@ -112,7 +112,9 @@
 
 ## REM-002 — Session State Reset and Account Isolation
 
-**Status:** ⏭️ NEXT
+**Status:** 🟢 APPROVED AND MERGED
+**Completion Date:** 2026-07-16
+**Implementation Version:** 2.19.0
 
 ### Objective
 
@@ -122,7 +124,25 @@ Centralize cleanup of every user-scoped runtime variable on sign-out, authentica
 
 ## REM-003 — Generative vs. Authoritative Boundary
 
-**Status:** ⏳ PENDING
+**Status:** 🟢 APPROVED AND MERGED  
+**Completion Date:** 2026-07-16  
+**Implementation Version:** 2.20.0
+
+### Deliverables
+
+- ✅ Approved `docs/tasks/REM-003/SPEC.md`
+- ✅ Formal Engineering Readiness Review — READY
+- ✅ Authority Contract module (`js/authorityContract.js`)
+- ✅ Authority Metadata + Audit Trail attached to every LLM-input write path
+- ✅ Quick Learn brought into the same Authoritative Write Contract as other AI paths
+- ✅ Generative Persistent Data tagging (Weekly Menu, Quick Learn catalog)
+- ✅ Habit Engine / Pattern Engine / Adaptive TDEE authority metadata
+- ✅ 42 automated tests passed
+- ✅ Commit and push to `main`
+
+---
+
+**Phase A — Immediate Blockers: COMPLETE.** REM-001, REM-002 and REM-003 are all approved and merged.
 
 ---
 
@@ -154,6 +174,7 @@ Implementation must not begin until Phase A of the Architecture Remediation Plan
 
 # Next Step
 
-Create and review:
-
-`docs/tasks/REM-002/SPEC.md`
+Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, REM-003).
+Phase B architecture decisions (Canonical Memory, Engine Contract and Registry, State Ownership,
+Persistence Contract, Habit/Pattern Consumption Path) require Product & Architecture review before
+any implementation begins.

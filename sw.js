@@ -1,4 +1,4 @@
-const VERSION = 'v2.19.0';
+const VERSION = 'v2.20.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -9,6 +9,7 @@ const SHELL = [
   '/fitme/js/firebase-config.js',
   '/fitme/js/sessionLifecycle.js',
   '/fitme/js/nutritionValidator.js',
+  '/fitme/js/authorityContract.js',
   '/fitme/js/app.js',
   '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',
