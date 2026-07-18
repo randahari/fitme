@@ -3,7 +3,7 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-17 (B3 closure)  
+**Last Updated:** 2026-07-18 (B4 closure)  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
@@ -144,7 +144,28 @@ Recorded outcomes:
 ### B4 — Persistence Contract
 
 **Findings:** F4, F5  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED — v2.23.0
+
+Recorded outcomes:
+
+- ✅ One logical Persistence Gateway implemented (`js/persistenceGateway.js`), closed
+  six-operation catalog (`DERIVED_HABITS_REPLACE`, `DERIVED_PATTERNS_REPLACE`,
+  `DERIVED_ADAPTIVE_PROPOSAL_APPLY`, `TRIGGER_RECORD_EVENT`, `TRIGGER_UPDATE_BUDGET`,
+  `SOURCE_HISTORY_SAVE_DAY`).
+- ✅ Field-scoped Repository Layer replacing broad `saveProfile()`/direct Firestore writes for
+  Habit, Pattern, Adaptive TDEE (user-approved apply), Trigger, and the AI-nutrition
+  authoritative boundary (`addMeal()`/`logQuick()`).
+- ✅ Ownership, Authority (REM-003) and Session (REM-002) validation enforced by the gateway
+  ahead of every durable write.
+- ✅ Bounded retry, Pattern conflict detection (`expectedVersion` + Firestore transaction), and
+  idempotency for the append-style `TRIGGER_RECORD_EVENT`.
+- ✅ `output.persistence` used for engine persistence reporting — `js/engineRegistry.js`
+  unmodified.
+- ✅ Implementation Review `APPROVED`, with three corrections applied and regression-tested
+  (Habit rollback, Trigger rollback, stale-session failure-alert suppression).
+- ✅ B1, B2 and B3 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged.
+- ✅ 170 automated tests passed.
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes.
 
 ### B5 — Habit and Pattern Consumption Path
 
@@ -191,14 +212,14 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## B4 — Persistence Contract
+## B5 — Habit and Pattern Consumption Path
 
-**Findings:** F4, F5  
+**Finding:** F9  
 **Status:** ⏭️ NEXT
 
 Required deliverable:
 
-An approved B4 architecture specification in the project task documentation structure.
+An approved B5 architecture specification in the project task documentation structure.
 
 No implementation SHALL begin before the specification passes Engineering Readiness Review.
 

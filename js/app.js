@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.22.0';
+const APP_VERSION = '2.23.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -232,6 +232,28 @@ async function saveTodayData() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch(e) { console.error('saveTodayData:', e); }
+}
+
+// B4 §33 item 5 / Engineering Readiness Review finding 4: הכתיבה הסופית (SOURCE_HISTORY_SAVE_DAY)
+// עבור שני נקודות-הגבול הסמכותיות היחידות שכבר עוברות REM-001+REM-003 — addMeal()/logQuick().
+// שאר קוראי saveTodayData() (מים, אימון, מועדפים) נשארים legacy מחוץ ל-scope (B4 §33: "MAY
+// remain temporarily... documented"). authority משקף את הארוחה שזה עתה נוספה (כבר אומתה).
+async function persistDaySnapshot(meals, burned, steps, water, authority, sessionGeneration) {
+  if (!currentUser) return { status: 'REJECTED' };
+  return await PersistenceGateway.persist({
+    requestId: 'day-' + currentUser.uid + '-' + currentDayKey + '-' + Date.now(),
+    operation: 'SOURCE_HISTORY_SAVE_DAY',
+    domain: 'SOURCE_HISTORY',
+    owner: 'nutritionHistoryState',
+    userId: currentUser.uid,
+    sessionGeneration: sessionGeneration,
+    payload: { meals: meals, burned: burned, steps: steps, water: water },
+    authority: authority,
+    expectedVersion: null,
+    idempotencyKey: null,
+    createdAt: Date.now(),
+    metadata: { engineId: null, trigger: 'USER_ACTION', runId: null }
+  });
 }
 
 async function saveFavorites() {
@@ -1275,13 +1297,29 @@ async function addMeal() {
     saveBarcodeToCache(pendingMeal.barcode, pendingMeal.items[0], pendingMeal.addedByName);
   }
   const finalMeal = buildMealFromEditor();
+  const gen = SessionLifecycle.getGeneration();
+  // B4 §26: מוסיפים אופטימית ל-todayData.meals מיד (סינכרונית, לפני ה-await) — בדיוק
+  // כמו לפני B4 — כדי לשמר קומפוזיציה נכונה מול תוספת-ארוחה נוספת שרצה כמעט באותו רגע
+  // (todayData הוא אובייקט mutable משותף יחיד; דחיית המוטציה עד אחרי ה-await הייתה יוצרת
+  // race: התוספת השנייה הייתה מחשבת candidate מתוך snapshot ישן, בלי הראשונה). candidate
+  // vs. committed מתבטא כאן דרך rollback מפורש (הסרת הרשומה שהוספנו) בכשל durable —
+  // אותו דפוס בדיוק כמו Pattern Engine (B4 §25 כלל 10: "aligned with this contract").
   todayData.meals.push(finalMeal);
+  const snapshotMeals = todayData.meals.slice();
+  const result = await persistDaySnapshot(snapshotMeals, todayData.burned, todayData.steps, waterCount, finalMeal.authority, gen);
+  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
+    const idx = todayData.meals.indexOf(finalMeal);
+    if (idx !== -1) todayData.meals.splice(idx, 1); // rollback — לא מתחייבים ל-candidate שנכשל
+    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
+    if (SessionLifecycle.isCurrent(gen)) alert('שמירת הארוחה נכשלה. נסה שוב.');
+    return false;
+  }
+  if (!SessionLifecycle.isCurrent(gen)) return false; // REM-002: stale-on-completion — אין אפקטים
   learnQuickItems(finalMeal);
   pendingMeal = null;
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-input').value = '';
-  await saveTodayData();
-  await saveProfile();
+  await saveProfile(); // quickItems/streak — legacy broad-save, מחוץ ל-scope B4 (Review Q17)
   await updateStreak();
   renderFoodMeals();
   renderQuickStrip();
@@ -1436,16 +1474,29 @@ async function logQuick(gi, btn) {
     rule: 'logQuick.v1',
     systemVersion: APP_VERSION
   });
-  todayData.meals.push({
+  const newMeal = {
     name: q.name, kcal: q.kcal, protein: q.protein, carbs: q.carbs, fat: q.fat, fiber: q.fiber, sugar: q.sugar, sodium: q.sodium,
     items: [item], time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),
     authority: authority
-  });
+  };
+  // B4 §26: מוסיפים אופטימית מיד (סינכרונית) כמו addMeal() — למניעת race מול תוספת
+  // מקבילה; rollback מפורש (הסרת הרשומה) בכשל durable, במקום דחיית המוטציה עד אחרי ה-await.
+  const gen = SessionLifecycle.getGeneration();
+  todayData.meals.push(newMeal);
+  const snapshotMeals = todayData.meals.slice();
+  const result = await persistDaySnapshot(snapshotMeals, todayData.burned, todayData.steps, waterCount, authority, gen);
+  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
+    const idx = todayData.meals.indexOf(newMeal);
+    if (idx !== -1) todayData.meals.splice(idx, 1);
+    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
+    if (SessionLifecycle.isCurrent(gen)) alert('שמירת הפריט נכשלה. נסה שוב.');
+    return;
+  }
+  if (!SessionLifecycle.isCurrent(gen)) return; // REM-002: stale-on-completion — אין אפקטים
   q.count = (q.count||0)+1; q.lastUsed = Date.now(); q.lastHour = now.getHours();
   if (userProfile) userProfile.quickItems = quickItems;
   if (btn) { const o = btn.innerHTML; btn.innerHTML = '✓ נוסף'; btn.disabled = true; setTimeout(()=>{ btn.innerHTML = o; btn.disabled = false; }, 1200); }
-  await saveTodayData();
-  await saveProfile();
+  await saveProfile(); // quickItems/streak — legacy broad-save, מחוץ ל-scope B4 (Review Q17)
   await updateStreak();
   renderFoodMeals();
   renderHome();
@@ -2382,27 +2433,62 @@ async function coachAdaptiveMessage(p) {
   return await coachMessage(ctx);
 }
 
+// B4 §16.3/§26: applyAdaptiveUpdate() נשאר מחוץ ל-Registry (B2 SPEC §17/§19, פעולה
+// ידנית מאושרת ע"י המשתמש — ללא שינוי לגבול הזה). candidate state מחושב מקומית ואינו
+// נכתב ל-userProfile לפני הצלחה durable (§26 כלל 2/3/6) — בעבר userProfile עודכן
+// באופן אופטימי לפני saveProfile() שבלע שגיאות בשקט; כעת הצלחה/כשל מדווחים בכנות,
+// ו-goalKcal/adaptiveTdee/currentDeficit/lastTdeeUpdate נכתבים field-scoped
+// (owner: profileGoalsState, B3 §6: Authoritative Adaptive Target) במקום saveProfile()
+// המלא. הפורמולה/הרשאות/תוכן ההודעה למשתמש ללא שינוי — נוספה רק הודעת כשל מינימלית
+// (B4 §37: "minimal save/error recovery required by persistence outcomes" מותר במפורש).
 async function applyAdaptiveUpdate() {
-  if (!_adaptProposal || !userProfile) return;
+  if (!_adaptProposal || !userProfile || !currentUser) return;
   const p = _adaptProposal;
+  const gen = SessionLifecycle.getGeneration(); // REM-002: נלכד לפני העבודה האסינכרונית
+  const authority = window.AuthorityContract.buildAuthorityMetadata({
+    // Correction (post-REM-003 Product Approval feedback): הרשומה מחושבת ע"י מנוע דטרמיניסטי
+    // (Adaptive TDEE), לא ע"י הצהרת משתמש — authoritySource הוא SYSTEM. אישור המשתמש (לחיצת
+    // "אשר") מתועד דרך ה-rule עצמו, לא דרך authoritySource.
+    source: window.AuthorityContract.AUTHORITY_SOURCES.SYSTEM,
+    createdBy: currentUser.uid,
+    rule: 'ADAPTIVE_TDEE_USER_APPROVED',
+    systemVersion: APP_VERSION
+  });
+  const historyEntry = { date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit, authority: authority };
+  const nextTdeeHistory = (Array.isArray(userProfile.tdeeHistory) ? userProfile.tdeeHistory : []).concat([historyEntry]);
+
+  const result = await PersistenceGateway.persist({
+    requestId: 'adaptive-apply-' + currentUser.uid + '-' + Date.now(),
+    operation: 'DERIVED_ADAPTIVE_PROPOSAL_APPLY',
+    domain: 'USER_PROFILE',
+    owner: 'profileGoalsState',
+    userId: currentUser.uid,
+    sessionGeneration: gen,
+    payload: {
+      goalKcal: p.newGoal, adaptiveTdee: p.calc.tdee, currentDeficit: p.nextDeficit,
+      lastTdeeUpdate: getTodayKey(), tdeeHistory: nextTdeeHistory
+    },
+    authority: authority,
+    expectedVersion: null,
+    idempotencyKey: null,
+    createdAt: Date.now(),
+    metadata: { engineId: null, trigger: 'MANUAL', runId: null }
+  });
+
+  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
+    // B4 §16.3: "Not mark the update applied if persistence fails" — proposal נשאר פעיל, לא ננקה.
+    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי — Implementation Review correction:
+    // בעבר הכשל הוצג תמיד, גם למשתמש שכבר התנתק/החליף חשבון בזמן ההמתנה.
+    if (SessionLifecycle.isCurrent(gen)) alert('שמירת היעד נכשלה. נסה שוב.');
+    return;
+  }
+  if (!SessionLifecycle.isCurrent(gen)) return; // REM-002: stale-on-completion — אין אפקטים
+
   userProfile.adaptiveTdee = p.calc.tdee;
   userProfile.goalKcal = p.newGoal;
   userProfile.currentDeficit = p.nextDeficit;
   userProfile.lastTdeeUpdate = getTodayKey();
-  if (!Array.isArray(userProfile.tdeeHistory)) userProfile.tdeeHistory = [];
-  // Correction (post-REM-003 Product Approval feedback): הרשומה מחושבת ע"י מנוע דטרמיניסטי
-  // (Adaptive TDEE), לא ע"י הצהרת משתמש — authoritySource הוא SYSTEM. אישור המשתמש (לחיצת
-  // "אשר") מתועד דרך ה-rule עצמו, לא דרך authoritySource.
-  userProfile.tdeeHistory.push({
-    date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit,
-    authority: window.AuthorityContract.buildAuthorityMetadata({
-      source: window.AuthorityContract.AUTHORITY_SOURCES.SYSTEM,
-      createdBy: currentUser && currentUser.uid,
-      rule: 'ADAPTIVE_TDEE_USER_APPROVED',
-      systemVersion: APP_VERSION
-    })
-  });
-  await saveProfile();
+  userProfile.tdeeHistory = nextTdeeHistory;
   _adaptProposal = null;
   renderAdaptiveCard();
   renderHome();
@@ -2563,17 +2649,6 @@ function ensureCoachMemory() {
   if (!Array.isArray(userProfile.coachEvents)) userProfile.coachEvents = [];
 }
 
-// ── יומן אירועים: חומר הגלם שממנו שכבת הזיכרון תסיק דפוסים בעתיד ──
-async function logCoachEvent(type, meta) {
-  if (!userProfile) return;
-  ensureCoachMemory();
-  userProfile.coachEvents.push({ type, date: getTodayKey(), ts: Date.now(), meta: meta || {} });
-  if (userProfile.coachEvents.length > COACH_EVENTS_CAP) {
-    userProfile.coachEvents = userProfile.coachEvents.slice(-COACH_EVENTS_CAP);
-  }
-  await saveProfile();
-}
-
 // ── ניסוח קצר של הזיכרון לתוך הוראת המערכת (ריק כרגע → יתמלא בשלב הבא) ──
 function coachMemoryPromptFragment() {
   const m = userProfile && userProfile.coachMemory;
@@ -2604,12 +2679,6 @@ function canFire(type, priority) {
   if (cd.fired.indexOf(type) >= 0) return false;          // בלי כפילות באותו יום
   if (priority < PRIO.health && cd.count >= COACH_DAILY_BUDGET) return false; // תקציב מוצה
   return true;
-}
-async function markFired(type) {
-  const cd = coachDay();
-  if (cd.fired.indexOf(type) < 0) cd.fired.push(type);
-  cd.count++;
-  await saveProfile();
 }
 
 // ══ הערכת טריגרים — פונקציות תנאי טהורות ══
@@ -2739,8 +2808,11 @@ async function triggerLiveText(t) {
 // B3: חישוב + state-write בלבד — אין תלות ב-DOM (§17: engine computation לא
 // רשאי להיות תלוי בקיום DOM element). session checks עברו ל-State Access.
 // מחזיר את הטריגר שנבחר (או null) לצורך הצגה — ראה presentTriggerCard().
+// B4 §27: מחזיר { trigger, persistence } במקום trigger בלבד — persistence מדווח
+// ל-output.persistence של האדפטר (worst-of-two: אם אחת משתי הכתיבות לא APPLIED,
+// זו המדווחת, כדי לא להסתיר כשל/CONFLICT מאחורי הצלחת האחרת).
 async function runCoachTriggers(access) {
-  if (!userProfile || !access) return null;
+  if (!userProfile || !access) return { trigger: null, persistence: persistenceSummary(null) };
   const history = await access.read.nutritionActivityHistory();
   const profile = access.read.adaptiveProfile();
   const triggerProfile = access.read.triggerProfile();
@@ -2755,13 +2827,14 @@ async function runCoachTriggers(access) {
     evalStreakMilestone(triggerProfile)
   ].filter(Boolean).filter(t => access.read.canFire(t.type, t.priority));
 
-  if (!candidates.length) return null;
+  if (!candidates.length) return { trigger: null, persistence: persistenceSummary(null) };
   candidates.sort((a, b) => b.priority - a.priority);
   const t = candidates[0];
 
-  await access.write.updateDailyTriggerBudget({ type: t.type });
-  await access.write.recordTriggerOutcome({ type: t.type, data: t.data });
-  return t;
+  const budgetResult = await access.write.updateDailyTriggerBudget({ type: t.type });
+  const eventResult = await access.write.recordTriggerOutcome({ type: t.type, data: t.data });
+  const worst = (eventResult.status !== 'APPLIED') ? eventResult : budgetResult;
+  return { trigger: t, persistence: persistenceSummary(worst) };
 }
 
 // ── UI (B3 §17): מציגה את ה-trigger-card לפי תוצאת runCoachTriggers().
@@ -3196,6 +3269,18 @@ function scheduleLocalNotifications(access) {
 })();
 
 
+// B4 §27: ממפה StateCommandResult (B3) לצורת ה-persistence המצומצמת שאדפטרי ה-Registry
+// שמים תחת output.persistence — לא top-level EngineRunResult.persistence (הרישום כבר
+// סגור ב-js/engineRegistry.js:normalizeResult, ו-B4 אינו נוגע בו — Engineering
+// Readiness Review §40 Q15). requestId/persistenceStatus מגיעים מ-mapPersistenceResult
+// ב-js/stateAccess.js (metadata.persistenceRequestId / metadata.persistenceStatus).
+function persistenceSummary(result) {
+  if (!result) return { requested: false, status: null, requestId: null };
+  var status = (result.metadata && result.metadata.persistenceStatus) || (result.status === 'APPLIED' ? 'SUCCESS' : 'FAILED');
+  var requestId = (result.metadata && result.metadata.persistenceRequestId) || null;
+  return { requested: true, status: status, requestId: requestId };
+}
+
 // ══════════════════════════════════════════════════════════════════
 // ── STAGE 6 / TASK-002 (v2.15.0): מנוע הרגלים (Habit Engine) ──
 // אחריות בלעדית: זיהוי, תחזוקה ועדכון של הרגלי משתמש.
@@ -3456,11 +3541,11 @@ function scheduleLocalNotifications(access) {
   // ה-timestamp עבר לתוך habitsMeta.lastUpdated.
   async function runHabitEngine(access) {
     try {
-      if (!currentUser || !userProfile || !access) return;
+      if (!currentUser || !userProfile || !access) return persistenceSummary(null);
       const today = getTodayKey();
 
       const currentView = access.read.habitView();
-      if (currentView.habitsMeta && currentView.habitsMeta.lastRun === today) return; // שער: ריצה אחת ביום
+      if (currentView.habitsMeta && currentView.habitsMeta.lastRun === today) return persistenceSummary(null); // שער: ריצה אחת ביום
 
       const history = await access.read.nutritionActivityHistory();
       const body = access.read.bodyHistory();
@@ -3496,8 +3581,10 @@ function scheduleLocalNotifications(access) {
       };
       const result = await access.write.replaceDerivedHabitView({ habits: next, habitsMeta: habitsMeta });
       if (result.status !== 'APPLIED') console.error('runHabitEngine: write failed', result.error);
+      return persistenceSummary(result);
     } catch (e) {
       console.error('runHabitEngine:', e);
+      return persistenceSummary(null);
     }
   }
   window.runHabitEngine = runHabitEngine;
@@ -3877,7 +3964,7 @@ function scheduleLocalNotifications(access) {
   // נכתב עוד (B3 SPEC §6.2) — ה-timestamp עבר לתוך patternsMeta.lastUpdated.
   async function runPatternEngine(access) {
     try {
-      if (!currentUser || !userProfile || !access) return;
+      if (!currentUser || !userProfile || !access) return persistenceSummary(null);
 
       // סדר אחרי Habit Engine — טיפול שגיאה מקומי: כשל אינו מבטל את Pattern Engine.
       // B2 Code Review Round 4: קורא ל-runHabitEngineSingleFlight() (עטיפת
@@ -3903,7 +3990,7 @@ function scheduleLocalNotifications(access) {
       var fpChanged = (patternsMeta.sourceFingerprint !== probe.fingerprint);
 
       // no-op: אין יום נתונים חדש ואין שינוי מקור → לא נוגעים בכלום
-      if (!advance && !fpChanged) return;
+      if (!advance && !fpChanged) return persistenceSummary(null);
 
       var result = advance ? computePatterns(history, weightData, today, prevPatterns, true) : probe;
 
@@ -3921,10 +4008,17 @@ function scheduleLocalNotifications(access) {
         })
       };
 
-      var writeResult = await access.write.replaceDerivedPatternView({ patterns: result.patterns, patternsMeta: newMeta });
+      // B4 §16.2/§24: expectedVersion = ה-fingerprint שהיה durable כשהריצה הזו התחילה
+      // (patternsMeta.sourceFingerprint, לפני כל מוטציה) — נבדק אטומית ב-Gateway כדי
+      // לזהות CONFLICT (מצב durable התקדם בין הקריאה לכתיבה).
+      var writeResult = await access.write.replaceDerivedPatternView({
+        patterns: result.patterns, patternsMeta: newMeta, expectedVersion: patternsMeta.sourceFingerprint || null
+      });
       if (writeResult.status !== 'APPLIED') console.error('runPatternEngine: persist failed, rolled back', writeResult.error);
+      return persistenceSummary(writeResult);
     } catch (e) {
       console.error('runPatternEngine:', e); // לעולם לא זורק החוצה
+      return persistenceSummary(null);
     }
   }
   window.runPatternEngine = runPatternEngine;
@@ -3942,10 +4036,45 @@ function scheduleLocalNotifications(access) {
 // ללוגיקה העסקית. ראה docs/tasks/B2/B2_SPEC.md.
 // ══════════════════════════════════════════════════════════════════
 
-// B3: מזריק את התלויות האמיתיות (userProfile, todayData, saveProfile, db
-// וכו') לתוך js/stateAccess.js. engineRegistry.js אינו נוגע בכך כלל —
-// ה-configure קורה כאן, ב-app.js, לפני שאדפטר כלשהו עשוי להיקרא בפועל.
-// db נחשף רק בתוך persistPatternView (סגור, לא מוזרק כאובייקט db גולמי).
+// B4: מזריק את מבצעי ה-Firestore בפועל (db, טרנזקציות) לתוך js/persistenceGateway.js —
+// המודול עצמו אינו נוגע ב-Firestore/window ישירות, בדיוק כמו js/stateAccess.js (B3),
+// כדי שיישאר ניתן לבדיקה עצמאית ב-Node. engineRegistry.js אינו נוגע בכך כלל.
+PersistenceGateway.configure({
+  isSessionCurrent: function (gen) { return SessionLifecycle.isCurrent(gen); },
+  mergeUserFields: function (uid, fields) {
+    return db.collection('users').doc(uid).set(fields, { merge: true });
+  },
+  replaceDayDocument: function (uid, payload) {
+    return db.collection('users').doc(uid).collection('days').doc(currentDayKey).set({
+      meals: payload.meals, burned: payload.burned, steps: payload.steps, water: payload.water,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  },
+  // Pattern בלבד: expectedVersion נבדק אטומית מול coachMemory.patternsMeta.sourceFingerprint
+  // ה-durable בתוך טרנזקציה (B4 §16.2/§24) — לא ניתן לאכוף CAS אמיתי עם set/merge פשוט.
+  runPatternTransaction: function (uid, payload, expectedVersion) {
+    var ref = db.collection('users').doc(uid);
+    return db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (snap) {
+        var data = snap.data() || {};
+        var currentFingerprint = data.coachMemory && data.coachMemory.patternsMeta && data.coachMemory.patternsMeta.sourceFingerprint;
+        if (expectedVersion !== null && typeof expectedVersion !== 'undefined' && currentFingerprint !== expectedVersion) {
+          var err = new Error('pattern expectedVersion mismatch');
+          err.conflict = true; err.currentVersion = currentFingerprint;
+          throw err;
+        }
+        tx.set(ref, { coachMemory: { patterns: payload.patterns, patternsMeta: payload.patternsMeta } }, { merge: true });
+        return { version: payload.patternsMeta && payload.patternsMeta.sourceFingerprint };
+      });
+    });
+  }
+});
+
+// B3: מזריק את התלויות האמיתיות (userProfile, todayData וכו') לתוך js/stateAccess.js.
+// engineRegistry.js אינו נוגע בכך כלל — ה-configure קורה כאן, ב-app.js, לפני שאדפטר
+// כלשהו עשוי להיקרא בפועל. B4: persistHabitsView/persistPatternView/recordCoachEvent/
+// markTriggerFired בונים PersistenceRequest טיפוסי ומעבירים ל-PersistenceGateway.persist()
+// במקום saveProfile()/db ישיר — db עצמו נחשף רק בתוך PersistenceGateway.configure לעיל.
 StateAccess.configure({
   getUserProfile: function () { return userProfile; },
   getCurrentUser: function () { return currentUser; },
@@ -3954,19 +4083,97 @@ StateAccess.configure({
   getTodayProtein: todayProtein,
   getTodayBurned: function () { return (todayData && todayData.burned) || 0; },
   fetchHistory: getHistoryData,
-  persistProfile: saveProfile,
-  persistPatternView: function (patterns, patternsMeta) {
-    return db.collection('users').doc(currentUser.uid).set(
-      { coachMemory: { patterns: patterns, patternsMeta: patternsMeta } },
-      { merge: true }
-    );
+  persistHabitsView: function (identity, command) {
+    return PersistenceGateway.persist({
+      requestId: 'habits-' + identity.userId + '-' + (identity.runId || Date.now()),
+      operation: 'DERIVED_HABITS_REPLACE',
+      domain: 'DERIVED_INTELLIGENCE',
+      owner: 'habitState',
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      payload: { habits: command.habits, habitsMeta: command.habitsMeta },
+      authority: command.habitsMeta && command.habitsMeta.authority,
+      expectedVersion: null,
+      idempotencyKey: null,
+      createdAt: Date.now(),
+      metadata: { engineId: 'habitEngine', engineVersion: command.habitsMeta && command.habitsMeta.version, trigger: 'APP_READY', runId: identity.runId }
+    });
+  },
+  persistPatternView: function (identity, command) {
+    return PersistenceGateway.persist({
+      requestId: 'patterns-' + identity.userId + '-' + (identity.runId || Date.now()),
+      operation: 'DERIVED_PATTERNS_REPLACE',
+      domain: 'DERIVED_INTELLIGENCE',
+      owner: 'patternState',
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      payload: { patterns: command.patterns, patternsMeta: command.patternsMeta },
+      authority: command.patternsMeta && command.patternsMeta.authority,
+      expectedVersion: (typeof command.expectedVersion !== 'undefined') ? command.expectedVersion : null,
+      idempotencyKey: null,
+      createdAt: Date.now(),
+      metadata: { engineId: 'patternEngine', engineVersion: command.patternsMeta && command.patternsMeta.version, trigger: 'APP_READY', runId: identity.runId }
+    });
   },
   isSessionCurrent: function (gen) { return SessionLifecycle.isCurrent(gen); },
   ensureCoachMemoryShape: ensureCoachMemory,
   setAdaptProposal: function (proposal) { _adaptProposal = proposal; },
   setAdaptHistoryCache: function (history) { window._adaptHistoryCache = history; },
-  recordCoachEvent: logCoachEvent,
-  markTriggerFired: markFired,
+  // Implementation Review correction (B4 §26 כלל 6, מיושר ל-Habit/Pattern rollback): לפני
+  // B4, saveProfile() לא נדחה אף פעם — עכשיו כשל durable אמיתי בלי rollback היה משאיר את
+  // ה-type ב-cd.fired לצמיתות (עד חילוף היום), וחוסם retry עתידי דרך canFire() על סמך מצב
+  // שמעולם לא נשמר. recordCoachEvent פחות קריטי (הרשומה לא "נעלמת", רק ממתינה לסנכרון הבא)
+  // אך מיושר לעקביות עם דפוס ה-rollback הקיים.
+  recordCoachEvent: function (identity, type, meta) {
+    if (!userProfile) return Promise.resolve(null);
+    ensureCoachMemory();
+    var snapshot = userProfile.coachEvents;
+    var nextEvents = snapshot.concat([{ type: type, date: getTodayKey(), ts: Date.now(), meta: meta || {} }]);
+    if (nextEvents.length > COACH_EVENTS_CAP) nextEvents = nextEvents.slice(-COACH_EVENTS_CAP);
+    userProfile.coachEvents = nextEvents;
+    return PersistenceGateway.persist({
+      requestId: 'trigger-event-' + identity.userId + '-' + (identity.runId || Date.now()) + '-' + type,
+      operation: 'TRIGGER_RECORD_EVENT',
+      domain: 'SYSTEM_METADATA',
+      owner: 'triggerState',
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      payload: { coachEvents: nextEvents },
+      authority: null,
+      expectedVersion: null,
+      // append-style (B4 §23 כלל 3) — יציב per user/type/day, תואם לגרנולריות ה-dedup
+      // הקיימת של canFire (upstream), כך שאותו type לא באמת "יבקש" מפתח פעמיים ביום.
+      idempotencyKey: identity.userId + ':' + type + ':' + getTodayKey(),
+      createdAt: Date.now(),
+      metadata: { engineId: 'triggerEngine', runId: identity.runId }
+    }).then(function (pr) {
+      if (userProfile && pr && pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') userProfile.coachEvents = snapshot;
+      return pr;
+    });
+  },
+  markTriggerFired: function (identity, type) {
+    var cd = coachDay();
+    var snapshotFired = cd.fired.slice(), snapshotCount = cd.count;
+    if (cd.fired.indexOf(type) < 0) cd.fired.push(type);
+    cd.count++;
+    return PersistenceGateway.persist({
+      requestId: 'trigger-budget-' + identity.userId + '-' + (identity.runId || Date.now()) + '-' + type,
+      operation: 'TRIGGER_UPDATE_BUDGET',
+      domain: 'SYSTEM_METADATA',
+      owner: 'triggerState',
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      payload: { coachDay: cd },
+      authority: null,
+      expectedVersion: null,
+      idempotencyKey: null,
+      createdAt: Date.now(),
+      metadata: { engineId: 'triggerEngine', runId: identity.runId }
+    }).then(function (pr) {
+      if (pr && pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') { cd.fired = snapshotFired; cd.count = snapshotCount; }
+      return pr;
+    });
+  },
   checkCanFire: canFire,
   getTriggerBudget: coachDay
 });
@@ -4074,8 +4281,10 @@ function runHabitEngineSingleFlight(access) {
         engineId: 'habitEngine', action: ctx.action,
         userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId
       });
-      await runHabitEngineSingleFlight(ctx.state);
-      return { status: 'SUCCESS' };
+      var persistence = await runHabitEngineSingleFlight(ctx.state);
+      // B4 §27: persistence outcome מדווח דרך output.persistence — לא top-level
+      // EngineRunResult.persistence (js/engineRegistry.js:normalizeResult סגור/לא נוגעים בו).
+      return { status: 'SUCCESS', output: { persistence: persistence } };
     }
   });
 
@@ -4094,8 +4303,8 @@ function runHabitEngineSingleFlight(access) {
         engineId: 'patternEngine', action: ctx.action,
         userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId
       });
-      await runPatternEngine(ctx.state);
-      return { status: 'SUCCESS' };
+      var persistence = await runPatternEngine(ctx.state);
+      return { status: 'SUCCESS', output: { persistence: persistence } };
     }
   });
 
@@ -4149,11 +4358,11 @@ function runHabitEngineSingleFlight(access) {
       // engines שלא קיבלו action מפורש עבור ה-run הזה לפני שהוא בכלל קורא ל-run().
       if (ctx.trigger === 'APP_READY' && ctx.action === 'DAILY_COACH_CHECK') {
         ctx.state = StateAccess.createEngineAccess({ engineId: 'triggerEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });
-        var chosen = await runCoachTriggers(ctx.state);
+        var runResult = await runCoachTriggers(ctx.state);
         // B3 §17: DOM (trigger-card) הוצא מה-engine — computation/writes אינם תלויים
         // בקיום ה-element; ה-render עצמו (presentTriggerCard) עדיין בודק את קיומו.
-        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) await presentTriggerCard(chosen, ctx.sessionGeneration);
-        return { status: 'SUCCESS' };
+        if (SessionLifecycle.isCurrent(ctx.sessionGeneration)) await presentTriggerCard(runResult.trigger, ctx.sessionGeneration);
+        return { status: 'SUCCESS', output: { persistence: runResult.persistence } };
       }
       if (ctx.trigger === 'SOURCE_DATA_CHANGED' && ctx.action === 'WORKOUT_COMPLETED') {
         var gen = ctx.sessionGeneration; // REM-002: session guard — נלכד לפני הקריאה, נבדק לפניה
@@ -4166,7 +4375,7 @@ function runHabitEngineSingleFlight(access) {
           var goalForCard = ctx.state.read.triggerProfile().goal;
           await presentWorkoutTriggerCard(burn, goalForCard, gen);
         }
-        return { status: 'SUCCESS' };
+        return { status: 'SUCCESS', output: { persistence: persistenceSummary(writeResult) } };
       }
       if (ctx.trigger === 'AUTH_SESSION_READY' && ctx.action === 'LOCAL_NOTIFICATION_SCHEDULE') {
         ctx.state = StateAccess.createEngineAccess({ engineId: 'triggerEngine', action: ctx.action, userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId });

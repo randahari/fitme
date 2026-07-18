@@ -42,10 +42,18 @@ function makeEnv(overrides) {
     getTodayProtein: () => Math.round(todayData.meals.reduce((s, m) => s + (m.protein || 0), 0)),
     getTodayBurned: () => todayData.burned || 0,
     fetchHistory: async () => ({ '2026-07-16': { meals: [{ kcal: 400, protein: 10 }], burned: 0, steps: 0, water: 0 } }),
-    persistProfile: async () => { calls.savedProfile++; },
-    persistPatternView: async (patterns, patternsMeta) => {
+    // B4: these four now mirror js/app.js's actual StateAccess.configure() shape — each
+    // takes (identity, command/type/...) and resolves a PersistenceResult-shaped object
+    // (js/persistenceGateway.js), which mapPersistenceResult() in js/stateAccess.js
+    // translates back into the (unchanged) StateCommandResult contract these tests assert on.
+    persistHabitsView: async (identity, command) => {
+      calls.savedProfile++;
+      return { status: 'SUCCESS', changed: true, requestId: 'req-habits', receipt: {} };
+    },
+    persistPatternView: async (identity, command) => {
       if (deps.__failPatternPersist) throw new Error('simulated Firestore failure');
-      calls.patternWrites.push({ patterns, patternsMeta });
+      calls.patternWrites.push({ patterns: command.patterns, patternsMeta: command.patternsMeta });
+      return { status: 'SUCCESS', changed: true, requestId: 'req-patterns', receipt: {} };
     },
     isSessionCurrent: (gen) => gen === generation,
     ensureCoachMemoryShape: () => {
@@ -54,8 +62,14 @@ function makeEnv(overrides) {
     },
     setAdaptProposal: (p) => { calls.adaptProposal = p; },
     setAdaptHistoryCache: (h) => { calls.adaptHistoryCache = h; },
-    recordCoachEvent: async (type, data) => { calls.coachEvents.push({ type, data }); },
-    markTriggerFired: async (type) => { calls.firedTypes.push(type); profile.coachDay.fired.push(type); profile.coachDay.count++; },
+    recordCoachEvent: async (identity, type, data) => {
+      calls.coachEvents.push({ type, data });
+      return { status: 'SUCCESS', changed: true, requestId: 'req-event', receipt: {} };
+    },
+    markTriggerFired: async (identity, type) => {
+      calls.firedTypes.push(type); profile.coachDay.fired.push(type); profile.coachDay.count++;
+      return { status: 'SUCCESS', changed: true, requestId: 'req-budget', receipt: {} };
+    },
     checkCanFire: (type) => profile.coachDay.fired.indexOf(type) === -1,
     getTriggerBudget: () => profile.coachDay
   };
@@ -288,6 +302,22 @@ test('19. replaceDerivedHabitView / replaceDerivedPatternView never touch a shar
   assert.equal(env.profile.coachMemory.patternsMeta.lastUpdated, 67890, 'the timestamp lives inside patternsMeta instead');
 });
 
+// Implementation Review correction: writeReplaceDerivedHabitView previously had no rollback
+// on FAILED — unreachable pre-B4 (saveProfile() never rejected), but a real gap once the
+// Gateway can genuinely fail, since habitsMeta.lastRun would advance in-memory without ever
+// being durably saved, silently blocking the once-per-day gate's retry for the rest of the day.
+test('19b. Habit rollback restores habits/habitsMeta on persistence failure (regression, Implementation Review)', async () => {
+  const env = makeEnv(); configure(env);
+  const originalHabits = env.profile.coachMemory.habits;
+  const originalMeta = env.profile.coachMemory.habitsMeta;
+  env.deps.persistHabitsView = async () => ({ status: 'FAILED', changed: false, requestId: 'req-x', error: { code: 'STATE_WRITE_FAILED' }, receipt: {} });
+  const habit = access('habitEngine', 'RECOMPUTE', env);
+  const result = await habit.write.replaceDerivedHabitView({ habits: [{ id: 'temp' }], habitsMeta: { lastRun: '2026-07-17' } });
+  assert.equal(result.status, 'FAILED');
+  assert.deepEqual(env.profile.coachMemory.habits, originalHabits, 'rollback must restore the pre-mutation habits array');
+  assert.deepEqual(env.profile.coachMemory.habitsMeta, originalMeta, 'rollback must restore the pre-mutation habitsMeta (lastRun must not silently advance on a failed write)');
+});
+
 // ── 20. Pattern rollback continues to work via patternsMeta ──
 test('20. Pattern rollback restores patterns/patternsMeta (including their own lastUpdated) on persistence failure', async () => {
   const env = makeEnv(); configure(env);
@@ -347,43 +377,49 @@ test('32. checkCanFire reflects the injected trigger budget accessor', () => {
   assert.equal(trigger.read.canFire('streak-7', 1), false);
 });
 
-// ── Additional (Code Review correction): async WRITE completions re-check session
-// after their await, mirroring the read-side pattern (test 31) — B3 SPEC §18 rule 5.
-// The underlying persist already happened (cannot be undone without B4 rollback), so
-// status stays APPLIED; staleAfterWrite:true is the honest post-hoc signal.
-test('33. replaceDerivedPatternView flags staleAfterWrite when the session changes mid-flight', async () => {
+// ── B4: post-await session staleness is now detected by js/persistenceGateway.js itself
+// (receipt.staleOnCompletion — see tests/persistenceGateway.test.js tests 22/24), not by
+// js/stateAccess.js. These tests verify stateAccess.js's own responsibility: faithfully
+// translating a PersistenceResult carrying staleOnCompletion into StateCommandResult's
+// metadata.staleAfterWrite (B3 SPEC §18 rule 5) — status stays APPLIED, since a durable
+// write that already succeeded cannot be honestly un-applied without B4 rollback.
+test('33. replaceDerivedPatternView surfaces the Gateway\'s staleOnCompletion as metadata.staleAfterWrite', async () => {
   const env = makeEnv(); configure(env);
-  let resolvePersist;
-  env.deps.persistPatternView = (patterns, patternsMeta) => new Promise((resolve) => { resolvePersist = () => resolve(); });
+  env.deps.persistPatternView = async () => ({ status: 'SUCCESS', changed: true, requestId: 'req-x', receipt: { staleOnCompletion: true } });
   const pattern = access('patternEngine', 'RECOMPUTE', env);
-  const pending = pattern.write.replaceDerivedPatternView({ patterns: [{ id: 'x' }], patternsMeta: { lastUpdated: 1 } });
-  env.setGeneration(2);
-  resolvePersist();
-  const result = await pending;
+  const result = await pattern.write.replaceDerivedPatternView({ patterns: [{ id: 'x' }], patternsMeta: { lastUpdated: 1 } });
   assert.equal(result.status, 'APPLIED', 'the persist already succeeded and cannot be silently un-applied');
   assert.equal(result.metadata.staleAfterWrite, true);
 });
 
-test('34. recordTriggerOutcome and updateDailyTriggerBudget flag staleAfterWrite when the session changes mid-flight', async () => {
+test('34. recordTriggerOutcome and updateDailyTriggerBudget surface staleOnCompletion as metadata.staleAfterWrite', async () => {
   const env = makeEnv(); configure(env);
-  let resolveEvent;
-  env.deps.recordCoachEvent = () => new Promise((resolve) => { resolveEvent = () => resolve(); });
+  env.deps.recordCoachEvent = async () => ({ status: 'SUCCESS', changed: true, requestId: 'req-event', receipt: { staleOnCompletion: true } });
   const trigger = access('triggerEngine', 'DAILY_COACH_CHECK', env);
-  const pending = trigger.write.recordTriggerOutcome({ type: 'streak-7', data: {} });
-  env.setGeneration(2);
-  resolveEvent();
-  const result = await pending;
+  const result = await trigger.write.recordTriggerOutcome({ type: 'streak-7', data: {} });
   assert.equal(result.status, 'APPLIED');
   assert.equal(result.metadata.staleAfterWrite, true);
 
   const env2 = makeEnv(); configure(env2);
-  let resolveFired;
-  env2.deps.markTriggerFired = () => new Promise((resolve) => { resolveFired = () => resolve(); });
+  env2.deps.markTriggerFired = async () => ({ status: 'SUCCESS', changed: true, requestId: 'req-budget', receipt: { staleOnCompletion: true } });
   const trigger2 = access('triggerEngine', 'DAILY_COACH_CHECK', env2);
-  const pending2 = trigger2.write.updateDailyTriggerBudget({ type: 'streak-7' });
-  env2.setGeneration(2);
-  resolveFired();
-  const result2 = await pending2;
+  const result2 = await trigger2.write.updateDailyTriggerBudget({ type: 'streak-7' });
   assert.equal(result2.status, 'APPLIED');
   assert.equal(result2.metadata.staleAfterWrite, true);
+});
+
+// ── B4: CONFLICT (Pattern only) is mapped to StateCommandResult status FAILED (B3's own
+// status enum has no CONFLICT slot) but tagged in metadata.persistenceStatus so the engine
+// level (output.persistence, js/app.js) can still report it as a true CONFLICT, not a
+// generic failure (B4 SPEC §24 rule 2/§35 test 37). Rollback behaves exactly like a FAILED write.
+test('35. a Pattern CONFLICT from the Gateway rolls back in-memory state and is tagged (not a generic FAILED)', async () => {
+  const env = makeEnv(); configure(env);
+  const originalPatterns = env.profile.coachMemory.patterns;
+  env.deps.persistPatternView = async () => ({ status: 'CONFLICT', changed: false, requestId: 'req-conflict', error: { code: 'EXPECTED_VERSION_MISMATCH' }, receipt: {} });
+  const pattern = access('patternEngine', 'RECOMPUTE', env);
+  const result = await pattern.write.replaceDerivedPatternView({ patterns: [{ id: 'newer' }], patternsMeta: { lastUpdated: 1 }, expectedVersion: 'stale-fp' });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.error.code, 'STATE_WRITE_CONFLICT');
+  assert.equal(result.metadata.persistenceStatus, 'CONFLICT');
+  assert.deepEqual(env.profile.coachMemory.patterns, originalPatterns, 'CONFLICT must roll back exactly like FAILED — no overwrite of newer durable state');
 });

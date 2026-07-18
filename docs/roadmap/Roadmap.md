@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-17
+**Last Updated:** 2026-07-18
 
 ---
 
@@ -221,7 +221,36 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase B — In Progress.** B1, B2 and B3 are closed. B4 is `NEXT`.
+## B4 — Persistence Contract
+
+**Status:** 🟢 APPROVED AND MERGED  
+**Completion Date:** 2026-07-18  
+**Implementation Version:** 2.23.0
+
+### Deliverables
+
+- ✅ Approved `docs/tasks/B4/B4_SPEC.md` (v1.0)
+- ✅ Formal Engineering Readiness Review — READY
+- ✅ One logical Persistence Gateway (`js/persistenceGateway.js`), closed six-operation catalog
+- ✅ Field-scoped Repository Layer replacing broad `saveProfile()`/direct Firestore writes on
+  the migrated paths
+- ✅ Ownership, Authority (REM-003) and Session (REM-002) validation enforced by the gateway
+- ✅ Bounded retry, Pattern conflict detection (`expectedVersion` + transaction), and
+  idempotency for append-style operations
+- ✅ Habit Engine, Pattern Engine, Adaptive TDEE (user-approved apply), Trigger Engine and the
+  AI-nutrition authoritative boundary migrated to the gateway
+- ✅ `output.persistence` used for engine persistence reporting — `js/engineRegistry.js`
+  unchanged
+- ✅ Implementation Review: `APPROVED`, with three corrections applied (Habit rollback,
+  Trigger rollback, stale-session failure-alert suppression) and regression-tested
+- ✅ B1, B2 and B3 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged
+- ✅ 170 automated tests passed
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes
+- ✅ Commit and push to `main`
+
+---
+
+**Phase B — In Progress.** B1, B2, B3 and B4 are closed. B5 is `NEXT`.
 
 ---
 
@@ -257,5 +286,6 @@ Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, R
 B1 — Canonical Memory Decision is approved and closed, with no production code changes.
 B2 — Engine Contract and Registry is approved, implemented (v2.21.0) and closed.
 B3 — State Ownership and Access Boundaries is approved, implemented (v2.22.0) and closed.
+B4 — Persistence Contract is approved, implemented (v2.23.0) and closed.
 
-Begin B4 — Persistence Contract.
+Begin B5 — Habit and Pattern Consumption Path.

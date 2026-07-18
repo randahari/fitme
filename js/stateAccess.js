@@ -66,6 +66,24 @@
     };
   }
 
+  // ── B4: מתרגם PersistenceResult (js/persistenceGateway.js) בחזרה ל-StateCommandResult
+  // הקיים של B3 — הצורה עצמה (status/changed/domain/command/error/metadata) אינה משתנה
+  // (B3 נעול/CLOSED); רק מקור הביצוע בפועל של ה-write עבר ל-Gateway. CONFLICT (B4 §24,
+  // רק ל-Pattern) ממופה ל-'FAILED' ברמת ה-StateCommandResult — אין ל-B3 ערך CONFLICT
+  // משלו — אך מסומן ב-metadata.persistenceStatus כדי שרמת ה-Engine (B4 §27, output.persistence)
+  // תוכל לדווח עליו כ-CONFLICT אמיתי ולא ככשל גנרי.
+  function mapPersistenceResult(domain, op, identity, pr) {
+    var baseMeta = { runId: identity.runId, sessionGeneration: identity.sessionGeneration };
+    if (!pr) return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', 'no persistence result', baseMeta);
+    var meta = Object.assign({}, baseMeta, { persistenceStatus: pr.status, persistenceRequestId: pr.requestId || null });
+    if (pr.status === 'SUCCESS' || pr.status === 'NO_OP') {
+      if (pr.receipt && pr.receipt.staleOnCompletion) meta.staleAfterWrite = true;
+      return makeCommandResult('APPLIED', domain, op, !!pr.changed, null, null, meta);
+    }
+    var code = pr.status === 'CONFLICT' ? 'STATE_WRITE_CONFLICT' : (pr.status === 'STALE_SESSION' ? 'STALE_SESSION' : 'STATE_WRITE_FAILED');
+    return makeCommandResult('FAILED', domain, op, false, code, (pr.error && pr.error.message) || pr.status, meta);
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Read operations (B3 SPEC §9/§13/§14/§16) — כל אחת snapshot מוגן ──
   // ══════════════════════════════════════════════════════════════════
@@ -181,37 +199,56 @@
   // ── Write operations (owner commands, B3 SPEC §10/§11) ──
   // ══════════════════════════════════════════════════════════════════
 
+  // B4: הכתיבה בפועל (Firestore) עברה מ-deps.persistProfile() (broad saveProfile) ל-
+  // deps.persistHabitsView(identity, command) — field-scoped דרך js/persistenceGateway.js.
+  // Implementation Review correction (B4 §26 כלל 6: "On FAILED, the owner SHALL keep or
+  // restore the last committed snapshot"): לפני B4, deps.persistProfile()/saveProfile()
+  // לעולם לא נדחה (בלע שגיאות בעצמו), כך שענף ה-catch כאן היה בלתי-נגיש בפועל וה-rollback
+  // מעולם לא נדרש. ה-Gateway כן יכול להחזיר FAILED/CONFLICT/REJECTED אמיתיים — בלי rollback,
+  // habitsMeta.lastRun היה מתקדם ב-memory גם בכשל durable, ושער "פעם ביום" של runHabitEngine
+  // (הקורא הבא, אותו יום/session) היה חוסם retry לצמיתות על סמך מצב שמעולם לא נשמר. עכשיו
+  // מיושר ל-Pattern's snapshot-and-rollback (ISSUE 2 המקורי).
   async function writeReplaceDerivedHabitView(identity, command) {
     var domain = 'habit', op = 'replaceDerivedHabitView';
     if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     deps.ensureCoachMemoryShape();
     var mem = deps.getUserProfile().coachMemory;
+    var snapHabits = mem.habits, snapMeta = mem.habitsMeta;
     mem.habits = command.habits;
     mem.habitsMeta = command.habitsMeta;
     try {
-      await deps.persistProfile();
-      if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration, staleAfterWrite: true });
-      return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+      var pr = await deps.persistHabitsView(identity, command);
+      if (pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') {
+        mem.habits = snapHabits;
+        mem.habitsMeta = snapMeta;
+      }
+      return mapPersistenceResult(domain, op, identity, pr);
     } catch (e) {
+      mem.habits = snapHabits;
+      mem.habitsMeta = snapMeta;
       return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     }
   }
 
+  // B4: deps.persistPatternView(identity, command) עכשיו מעביר command.expectedVersion
+  // (fingerprint שהיה durable לפני הריצה) ל-Gateway עבור בדיקת CONFLICT אטומית
+  // (B4 §16.2/§24). CONFLICT מטופל בדיוק כמו FAILED מבחינת ה-rollback המקומי
+  // הקיים (ISSUE 2 המקורי) — אין overwrite של durable state חדש יותר.
   async function writeReplaceDerivedPatternView(identity, command) {
     var domain = 'pattern', op = 'replaceDerivedPatternView';
     if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     deps.ensureCoachMemoryShape();
     var mem = deps.getUserProfile().coachMemory;
-    var snapPatterns = mem.patterns, snapMeta = mem.patternsMeta; // ISSUE 2 (B2-era): שמור לפני מוטציה, rollback בכשל
+    var snapPatterns = mem.patterns, snapMeta = mem.patternsMeta; // ISSUE 2 (B2-era): שמור לפני מוטציה, rollback בכשל/קונפליקט
     mem.patterns = command.patterns;
     mem.patternsMeta = command.patternsMeta;
     try {
-      await deps.persistPatternView(command.patterns, command.patternsMeta);
-      // B3 §18 כלל 5: re-check אחרי async write completion — הכתיבה כבר בוצעה
-      // (אי אפשר "לבטל" persist שהצליח), staleAfterWrite הוא מטא-דאטה מודיע
-      // בלבד לקורא, לא שינוי ל-status (מקביל ל-readNutritionActivityHistory).
-      if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration, staleAfterWrite: true });
-      return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+      var pr = await deps.persistPatternView(identity, command);
+      if (pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') {
+        mem.patterns = snapPatterns;
+        mem.patternsMeta = snapMeta;
+      }
+      return mapPersistenceResult(domain, op, identity, pr);
     } catch (e) {
       mem.patterns = snapPatterns;
       mem.patternsMeta = snapMeta;
@@ -233,13 +270,14 @@
     return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
   }
 
+  // B4: deps.recordCoachEvent(identity, type, data) מבצע את מוטציית ה-in-memory הקיימת
+  // (userProfile.coachEvents) ואז כותב field-scoped דרך ה-Gateway, במקום saveProfile().
   async function writeRecordTriggerOutcome(identity, command) {
     var domain = 'trigger', op = 'recordTriggerOutcome';
     if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     try {
-      await deps.recordCoachEvent(command.type, command.data);
-      if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration, staleAfterWrite: true });
-      return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+      var pr = await deps.recordCoachEvent(identity, command.type, command.data);
+      return mapPersistenceResult(domain, op, identity, pr);
     } catch (e) {
       return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     }
@@ -249,9 +287,8 @@
     var domain = 'trigger', op = 'updateDailyTriggerBudget';
     if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     try {
-      await deps.markTriggerFired(command.type);
-      if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration, staleAfterWrite: true });
-      return makeCommandResult('APPLIED', domain, op, true, null, null, { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+      var pr = await deps.markTriggerFired(identity, command.type);
+      return mapPersistenceResult(domain, op, identity, pr);
     } catch (e) {
       return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     }

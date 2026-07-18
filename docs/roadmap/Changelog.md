@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-17
+**Last Updated:** 2026-07-18
 
 ---
 
@@ -17,7 +17,8 @@
 - 🟢 B1 — Canonical Memory Decision approved and closed (architecture decision, no code change)
 - 🟢 B2 — Engine Contract and Registry approved, tested and merged
 - 🟢 B3 — State Ownership and Access Boundaries approved, tested and merged
-- ⏭️ Next task: B4 — Persistence Contract
+- 🟢 B4 — Persistence Contract approved, tested and merged
+- ⏭️ Next task: B5 — Habit and Pattern Consumption Path
 
 ---
 
@@ -44,6 +45,72 @@
 ### Next
 
 B2 — Engine Contract and Registry is `NEXT`.
+
+---
+
+## v2.23.0 — B4 Persistence Contract
+
+**Date:** 2026-07-18
+**Status:** Merged to `main`
+
+### Added
+
+- `js/persistenceGateway.js` — one logical Persistence Gateway: closed six-operation catalog
+  (`DERIVED_HABITS_REPLACE`, `DERIVED_PATTERNS_REPLACE`, `DERIVED_ADAPTIVE_PROPOSAL_APPLY`,
+  `TRIGGER_RECORD_EVENT`, `TRIGGER_UPDATE_BUDGET`, `SOURCE_HISTORY_SAVE_DAY`), field-scoped
+  Repository Layer, and a full validation pipeline (owner, domain, session generation,
+  authority, payload, idempotency) ahead of every durable write.
+- Ownership, Authority (REM-003) and Session (REM-002) validation enforced by the gateway
+  itself, in addition to the existing B3 State Access Layer checks.
+- Bounded retry (max 3 attempts, transient Firestore errors only, session re-checked before
+  every retry) and an idempotency ledger (required for the append-style
+  `TRIGGER_RECORD_EVENT`; naturally idempotent replace operations do not require a key).
+- Pattern Engine conflict detection: `DERIVED_PATTERNS_REPLACE` checks `expectedVersion`
+  against the durable `patternsMeta.sourceFingerprint` inside a Firestore transaction,
+  returning `CONFLICT` (not a generic failure) on mismatch.
+- `tests/persistenceGateway.test.js` with 52 automated tests.
+
+### Changed
+
+- Habit Engine, Pattern Engine, Adaptive TDEE (user-approved apply), Trigger Engine, and the
+  AI-nutrition final authoritative boundary (`addMeal()`/`logQuick()`) now persist exclusively
+  through the gateway instead of the broad `saveProfile()`/direct Firestore writes.
+- Engine persistence outcome is reported via `output.persistence`
+  (`{requested, status, requestId}`) on the `EngineRunResult` returned by each adapter —
+  `js/engineRegistry.js` was not modified (its `EngineRunResult` shape stays closed).
+- `applyAdaptiveUpdate()` and the meal-logging paths now use candidate-before-commit semantics
+  with explicit rollback on a failed durable write, instead of mutating `userProfile`/
+  `todayData` optimistically and silently swallowing persistence errors.
+- `tests/stateAccess.test.js` updated for the new dependency signatures injected into
+  `js/stateAccess.js`'s write operations (the operations' own contract — status/changed/
+  domain/command/error/metadata — is unchanged).
+
+### Fixed (Implementation Review)
+
+- Habit Engine's write had no rollback on a failed durable write (unreachable before B4, since
+  `saveProfile()` never rejected) — could silently advance `habitsMeta.lastRun` in memory
+  without a durable save, blocking that day's retry. Aligned with Pattern's existing
+  snapshot-and-rollback pattern.
+- Trigger Engine's `markTriggerFired`/`recordCoachEvent` had the same class of gap —
+  `markTriggerFired` in particular could permanently block `canFire()` retries for a trigger
+  type after a failed write. Fixed with the same rollback pattern.
+- The failure-path alert in `addMeal()`/`logQuick()`/`applyAdaptiveUpdate()` was not gated by
+  session currency, unlike the success path — a user who signed out mid-flight could still see
+  a stale-session failure alert. Fixed to match REM-002's completion-effect suppression rule.
+
+### Verification
+
+- Engineering Readiness Review: `READY`.
+- Implementation Review: `APPROVED`, with the three corrections above applied and
+  regression-tested.
+- Automated tests: `170 passed / 0 failed`.
+- B1, B2 and B3 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged.
+- No Firestore schema, Firestore rules or Firebase Functions changes.
+- No B5/Recommendation Engine implementation.
+
+### Next
+
+B5 — Habit and Pattern Consumption Path is `NEXT`.
 
 ---
 

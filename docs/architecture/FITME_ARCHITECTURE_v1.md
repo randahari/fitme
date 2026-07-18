@@ -178,7 +178,7 @@ A companion sub-feature (`pendingPartialDays` / `renderPartialPrompt` / `confirm
   - `detectWorkout`: per-weekday workout regularity (≥3 qualifying weeks, ≥50% hit rate).
   - `detectWeight` / `detectMeasurement`: weekly weigh-in / measurement logging regularity, sharing one helper (`weeklyLogHabit`).
 - Lifecycle: `upsertFromSignal` blends new evidence into a smoothed `confidence` (`INERTIA` = 0.6, i.e. 60% previous / 40% new) and derives a deterministic `status` via `statusOf()`: **observed → candidate → confirmed → active**, with a **weakening** state when recent occurrence is late relative to the expected interval, and **inactive** below a confidence floor or after a long absence. A habit present before but absent this run is *decayed*, never deleted (`decayAbsent`), matching the stated principle "a temporary lapse does not erase a habit."
-- Output is written to `userProfile.coachMemory.habits[]` / `coachMemory.habitsMeta` (capped at `MAX_HABITS` = 60, lowest-confidence entries dropped first if over cap) via the ordinary `saveProfile()` (merge write, no rollback logic).
+- Output is written to `userProfile.coachMemory.habits[]` / `coachMemory.habitsMeta` (capped at `MAX_HABITS` = 60, lowest-confidence entries dropped first if over cap). **Updated by B4 (v2.23.0):** the write no longer goes through `saveProfile()`; it is submitted as a `DERIVED_HABITS_REPLACE` request through the Persistence Gateway (`js/persistenceGateway.js`), which performs a field-scoped merge (`coachMemory.habits`/`coachMemory.habitsMeta` only) and normalizes success/failure. `js/stateAccess.js`'s `writeReplaceDerivedHabitView` snapshots and rolls back the in-memory `habits`/`habitsMeta` if the durable write does not succeed — see §19.
 - Gated to run at most once per calendar day (`mem.habitsMeta.lastRun === today` short-circuits), and hooked onto `showApp` as a fire-and-forget background task (`Promise.resolve().then(runHabitEngine)`), guaranteed never to block or throw into the UI (wrapped in try/catch).
 
 ---
@@ -198,7 +198,7 @@ This is the most carefully engineered piece of the codebase, with the header com
 - **Deterministic identity:** a closed catalog of pattern IDs (`isCatalogId`) with static descriptions, so the same behavior always maps to the same record rather than spawning duplicates.
 - **Recompute vs. lifecycle-advance separation** (the engine's own "ISSUE 10" comment spells this out): the pattern's *source-derived* fields (`strength`, `evidenceCount`, etc.) are recomputed fresh every run; but the *lifecycle* fields (`confidence`, `status`, `missedPeriods`) only move once per **new data day** (`advance = obs.lastDataDay > patternsMeta.lastAdvanceDataDay`), never on mere calendar-day passage or app re-opens, and never on editing past data. A pattern absent from the current source is preserved (`carryAbsent`), decayed only on a genuine advance, and only marked `inactive` after `MISS_INACTIVE_PERIODS` (3) consecutive missed evaluation periods — a single gap always lands on `weakening` first.
 - **Fingerprint-gated writes:** `computeFingerprint()` hashes the relevant window of raw data (including the user's "effective weight", used consistently for both the fingerprint and the protein threshold — called out as a fixed bug in the comments, "ISSUE 3/4"). If neither the fingerprint changed nor a new data day occurred, the run is a complete no-op (`if (!advance && !fpChanged) return;`) — no Firestore write at all.
-- **Isolated write with rollback:** unlike every other persistence path in the app (which goes through the swallow-errors `saveProfile()`), this engine writes `coachMemory.patterns`/`patternsMeta` directly via a scoped `db...set(..., {merge:true})` that **can throw**, and on failure explicitly rolls the in-memory state back to a pre-mutation snapshot so a retry is possible and the fingerprint/advance-day markers are not falsely advanced.
+- **Isolated write with rollback, now conflict-checked:** this engine writes `coachMemory.patterns`/`patternsMeta` via a scoped path that can fail, and on failure explicitly rolls the in-memory state back to a pre-mutation snapshot so a retry is possible and the fingerprint/advance-day markers are not falsely advanced. **Updated by B4 (v2.23.0):** the write is submitted as a `DERIVED_PATTERNS_REPLACE` request through the Persistence Gateway, which wraps it in a Firestore transaction comparing the request's `expectedVersion` (the fingerprint that was durable when this run started) against the currently-durable `patternsMeta.sourceFingerprint`; a mismatch returns `CONFLICT` (distinct from a generic write failure) instead of silently overwriting newer durable state. See §19.
 - Runs after the Habit Engine on every `showApp` (`await runHabitEngine()` inside `runPatternEngine`, itself wrapped in its own try/catch so a Habit Engine failure doesn't cancel the Pattern Engine — it just proceeds on raw data alone), hooked as a background, non-blocking `Promise.resolve().then(runPatternEngine)`.
 
 ---
@@ -369,7 +369,9 @@ flowchart TB
 **Updated by B2 (v2.21.0).** Engine invocation is now mediated by the
 Engine Registry and executed sequentially (not concurrently); Habit
 Engine correctness is provided by a session-scoped single-flight
-wrapper rather than by this ordering.
+wrapper rather than by this ordering. **Updated by B4 (v2.23.0):** durable
+writes for Habit and Pattern now go through the Persistence Gateway
+rather than directly reaching Firestore — see §19.
 
 ```mermaid
 sequenceDiagram
@@ -378,6 +380,7 @@ sequenceDiagram
     participant App as app.js (main thread)
     participant Reg as EngineRegistry
     participant FS as Firestore
+    participant Gate as PersistenceGateway
     participant Adapt as Adaptive TDEE Engine
     participant Trig as Trigger Engine
     participant Habit as Habit Engine
@@ -402,13 +405,15 @@ sequenceDiagram
 
     Reg->>Habit: run(RECOMPUTE) → runHabitEngineSingleFlight()
     Habit->>FS: getHistoryData() (own fetch)
-    Habit->>FS: save coachMemory.habits (merge, via saveProfile) [gated: ≤1x/calendar day]
+    Habit->>Gate: DERIVED_HABITS_REPLACE (field-scoped, via Persistence Gateway) [gated: ≤1x/calendar day]
+    Gate->>FS: merge coachMemory.habits/habitsMeta
 
     Reg->>Pat: run(RECOMPUTE)
     Pat->>Habit: runHabitEngineSingleFlight() (same in-flight/completed run — no duplicate computation)
     Pat->>FS: getHistoryData() (own fetch)
     Pat->>Pat: fingerprint check — skip write entirely if no-op
-    Pat->>FS: isolated write coachMemory.patterns (merge, with rollback on failure)
+    Pat->>Gate: DERIVED_PATTERNS_REPLACE (expectedVersion = durable fingerprint at run start)
+    Gate->>FS: transaction — compare + merge coachMemory.patterns/patternsMeta, or CONFLICT
 
     Reg->>Trig: run(DAILY_COACH_CHECK)
     Trig->>FS: getHistoryData() (own fetch)
@@ -430,3 +435,136 @@ sequenceDiagram
 - **Implemented but not yet consumed (write-only):** Habit Engine and Pattern Engine outputs (`coachMemory.habits`, `coachMemory.patterns`) — computed and persisted, but no other code path reads them back into the coach prompt or any UI as of this snapshot (§12, §14).
 - **Schema/rules present but no producer exists yet:** the typed memory `source` values `inferred_event`, `inferred_pattern`, `coach_generated` are defined in `js/memory.js` and permitted server-side by `firestore.rules`, but no Cloud Function or other server-side writer for them exists in this repository yet.
 - **Explicitly acknowledged as provisional by the code itself:** Adaptive TDEE, Trigger, Habit, and Pattern engines are all annotated in their own header comments as "designed functionally only — will be redesigned in the design phase" (`עוצב פונקציונלית בלבד — יעוצב מחדש בשלב העיצוב`), i.e., the current architecture is understood by its authors to be an intermediate, not final, state.
+- **Since this snapshot:** the Architecture Remediation Program has closed REM-001/002/003 and B1–B4 on top of this baseline — B2 (v2.21.0, Engine Registry, §11), B3 (v2.22.0, State Access Layer), and B4 (v2.23.0, Persistence Gateway, §19) are the most recent and directly affect the persistence behavior described in §9/§10/§17 above. This section's commit/version reference (`01ee236`/`2.17.1`) is left as the original snapshot basis and is not re-verified line-by-line here; §11, §19 and the inline "Updated by BN" notes throughout this document are the authoritative record of what has changed since.
+
+---
+
+## 19. Persistence Gateway (B4, v2.23.0)
+
+**Added by B4.** Prior to B4, every durable write went either through one broad, swallow-errors
+`saveProfile()` (full `userProfile` object, `{merge:true}`) / `saveTodayData()` (full day
+document overwrite), or — for the Pattern Engine only — a hand-rolled isolated write with local
+rollback. Callers had no reliable way to distinguish a durable success from a durable failure. B4
+introduces one logical **Persistence Gateway** (`js/persistenceGateway.js`) as the write boundary
+for a defined set of migrated paths, without redesigning B1 canonical memory, B2 orchestration, or
+B3 state ownership.
+
+### 19.1 Shape and Position in the Stack
+
+```
+Engine business logic (runHabitEngine / runPatternEngine / runCoachTriggers / applyAdaptiveUpdate / addMeal / logQuick)
+        ↓ (owner command, via js/stateAccess.js write ops, or directly for non-Engine paths)
+PersistenceGateway.persist(PersistenceRequest)   — js/persistenceGateway.js
+        ↓ (resolved Repository Adapter)
+injected Firestore executor   — PersistenceGateway.configure({...}) in js/app.js
+        ↓
+Firestore (users/{uid}, users/{uid}/days/{date})
+```
+
+The gateway is a standalone, dependency-injected module (same pattern as `js/stateAccess.js`):
+it never references `db`/`window`/`firebase` directly, so it loads and is fully unit-testable
+in Node. `js/app.js` is the only caller of `PersistenceGateway.configure(...)`, and injects the
+actual Firestore calls (`mergeUserFields`, `replaceDayDocument`, `runPatternTransaction`,
+`isSessionCurrent`). `js/engineRegistry.js` was not modified: engine persistence outcomes are
+reported through `output.persistence` on the existing (closed) `EngineRunResult.output` field,
+not a new top-level Registry field.
+
+### 19.2 Closed Operation Catalog
+
+Six operations, fixed in source (no runtime registration API):
+
+| Operation | Owner | Domain | Durable Surface | Conflict Policy | Idempotency Key |
+|---|---|---|---|---|---|
+| `DERIVED_HABITS_REPLACE` | `habitState` | `DERIVED_INTELLIGENCE` | `coachMemory.habits` / `habitsMeta` | none | not required |
+| `DERIVED_PATTERNS_REPLACE` | `patternState` | `DERIVED_INTELLIGENCE` | `coachMemory.patterns` / `patternsMeta` | `expectedVersion` (fingerprint) | not required |
+| `DERIVED_ADAPTIVE_PROPOSAL_APPLY` | `profileGoalsState` | `USER_PROFILE` | `goalKcal`, `adaptiveTdee`, `currentDeficit`, `lastTdeeUpdate`, `tdeeHistory` | none | not required |
+| `TRIGGER_RECORD_EVENT` | `triggerState` | `SYSTEM_METADATA` | `coachEvents` | none | **required** (append-style) |
+| `TRIGGER_UPDATE_BUDGET` | `triggerState` | `SYSTEM_METADATA` | `coachDay` | none | not required |
+| `SOURCE_HISTORY_SAVE_DAY` | `nutritionHistoryState` | `SOURCE_HISTORY` | day document (`meals`/`burned`/`steps`/`water`) | none | not required |
+
+Every operation requires authenticated `userId` and current `sessionGeneration` except the two
+Trigger operations, which are authority-neutral (operational bookkeeping, not authoritative or
+generative content). `DERIVED_ADAPTIVE_PROPOSAL_APPLY`'s owner is the Profile and Goals Domain
+(matching B3's ownership map), not the Adaptive TDEE Engine — the Adaptive TDEE Engine's own
+proposal-storage step remains in-memory only and is not persisted.
+
+### 19.3 Pipeline
+
+`persist(request)` runs, in order: validate request structure → resolve operation from the
+closed catalog (unknown operation → `REJECTED`) → validate owner is on the operation's allowed
+list → validate declared `domain` matches the operation's → validate `userId`/`sessionGeneration`
+against `SessionLifecycle` (stale → `STALE_SESSION`, before any repository call) → validate
+authority metadata against the operation's accepted `authoritySource` list where required →
+validate payload shape → validate idempotency key where required → resolve the Repository
+Adapter → execute with bounded retry → re-check session before returning (`receipt.
+staleOnCompletion`) → return a normalized `PersistenceResult`.
+
+### 19.4 Repository Adapters and Durable Surfaces
+
+Each repository is a thin wrapper mapping a request's payload to an explicit, fixed set of
+Firestore fields — never a raw pass-through of caller-supplied data — so two owners can never
+collide on the same field through a shared physical document:
+
+- **Field-scoped profile merge** (Habit, Adaptive-apply, Trigger event, Trigger budget): a
+  single shared repository factory builds `{coachMemory: {habits, habitsMeta}}` /
+  `{goalKcal, adaptiveTdee, currentDeficit, lastTdeeUpdate, tdeeHistory}` /
+  `{coachEvents}` / `{coachDay}` respectively, then calls the injected
+  `db.collection('users').doc(uid).set(fields, {merge:true})`.
+- **Day-document repository** (`SOURCE_HISTORY_SAVE_DAY`): full-day-document replace
+  (`meals`/`burned`/`steps`/`water`), the same shape `saveTodayData()` already used, now routed
+  through the gateway for the two REM-001/REM-003-gated authoritative call sites.
+- **Pattern transaction repository**: reads the durable `coachMemory.patternsMeta.
+  sourceFingerprint` inside a Firestore transaction, compares it to the request's
+  `expectedVersion`, aborts with `CONFLICT` on mismatch, otherwise merges
+  `{coachMemory: {patterns, patternsMeta}}` atomically.
+
+### 19.5 Retry, Conflict and Idempotency
+
+- **Retry:** bounded to 3 attempts, only for repository failures classified transient
+  (`unavailable`, `deadline-exceeded`, `aborted`, `internal`, `resource-exhausted`); session
+  re-checked before every retry; attempt count returned in `receipt.attemptCount`.
+- **Conflict:** `DERIVED_PATTERNS_REPLACE` only — `expectedVersion` mismatch returns `CONFLICT`,
+  distinct from `FAILED`, and never overwrites newer durable state.
+- **Idempotency:** a bounded, capped in-memory ledger (per user + operation + key) rejects a
+  replayed key carrying a different payload (`IDEMPOTENCY_MISMATCH`) and returns `NO_OP` for an
+  identical replay. `TRIGGER_RECORD_EVENT` requires a key (`{uid}:{type}:{date}`, matching the
+  existing `canFire` dedup granularity); the five replace-style operations do not, since a
+  replay with unchanged payload is naturally safe.
+
+### 19.6 Failure Honesty and Rollback
+
+`PersistenceResult.durable` is `true` only after confirmed repository success; a swallowed
+repository error is never reported as success. State owners distinguish candidate state from
+committed state:
+
+- `js/stateAccess.js`'s `writeReplaceDerivedHabitView`/`writeReplaceDerivedPatternView` snapshot
+  `coachMemory.habits`/`habitsMeta` and `.patterns`/`.patternsMeta` before mutating, and restore
+  the snapshot if the gateway result is not `SUCCESS`/`NO_OP` (Pattern also restores on
+  `CONFLICT`).
+- `js/app.js`'s `recordCoachEvent`/`markTriggerFired` deps apply the same snapshot-and-rollback
+  pattern to `coachEvents`/`coachDay`.
+- `applyAdaptiveUpdate()` and `addMeal()`/`logQuick()` compute candidate values locally and only
+  mutate `userProfile`/`todayData` after a `SUCCESS`/`NO_OP` result; on failure, `addMeal()`/
+  `logQuick()` roll back the specific meal entry they optimistically pushed.
+- All four failure/success completion paths (including the user-facing failure `alert()`) check
+  `SessionLifecycle.isCurrent()` before applying any runtime effect, so a session that went
+  stale mid-write neither re-applies old-session state nor surfaces a stale-session alert.
+
+### 19.7 Migrated Write Paths (In Scope)
+
+Habit Engine (`DERIVED_HABITS_REPLACE`), Pattern Engine (`DERIVED_PATTERNS_REPLACE`), Adaptive
+TDEE's user-approved `applyAdaptiveUpdate()` (`DERIVED_ADAPTIVE_PROPOSAL_APPLY`), Trigger
+Engine's `recordCoachEvent`/`markTriggerFired` (`TRIGGER_RECORD_EVENT`/`TRIGGER_UPDATE_BUDGET`),
+and the AI-nutrition final authoritative boundary — `addMeal()`/`logQuick()`, the two call sites
+already gated by REM-001 validation and REM-003 authority metadata
+(`SOURCE_HISTORY_SAVE_DAY`).
+
+### 19.8 Explicitly Out of Scope (Legacy, Unmigrated)
+
+`saveProfile()` and `saveTodayData()` remain in active use, unmigrated, by: `saveFavorites()`,
+group join/creation, barcode-cache writes, account deletion, water-count-only saves,
+`saveWorkout()`, `addFavoriteToToday()`, and the `quickItems`/`streak` side effects still
+attached to `addMeal()`/`logQuick()` (only their day-document write moved to the gateway). The
+Adaptive TDEE Engine's own proposal-storage step (`storeAdaptiveProposal`/
+`markAdaptiveCheckCompleted`) remains in-memory only — it was never persisted before B4 and
+still isn't. No new direct-Firestore-write path was added anywhere in the migration.
