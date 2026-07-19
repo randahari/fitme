@@ -250,7 +250,44 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase B — In Progress.** B1, B2, B3 and B4 are closed. B5 is `NEXT`.
+## B5 — Habit and Pattern Consumption Path
+
+**Status:** 🟢 APPROVED AND MERGED
+**Completion Date:** 2026-07-19
+**Implementation Version:** 2.24.0
+
+### Deliverables
+
+- ✅ Approved `docs/tasks/B5/B5_SPEC_v1.0.md` (canonical content, revised to v1.2 during review) — `CLOSED`
+- ✅ External Architecture Audit and two-pass External Engineering Readiness Review — READY
+  (against v1.1); an External Implementation Review against the subsequent v1.2 correction
+  found two defects (production-safe adapter separation, contradiction category), both fixed
+  and independently re-verified; External Engineering Re-Review (v1.2): READY
+- ✅ One logical `DerivedIntelligenceConsumer` (`js/derivedIntelligenceConsumer.js`) — closed
+  versioned Consumer Policy Catalog, `DerivedViewSnapshot` construction, normalization,
+  eligibility/relevance filtering, contradiction detection, overlap detection with
+  deterministic primary selection, stable ordering, policy-bounded truncation, immutable
+  `DerivedIntelligenceContext` output
+- ✅ Separate `js/derivedIntelligencePrompt.js` prompt projector — bounded (8 items / 1,200
+  chars), cautious Hebrew wording, no internal IDs/confidence values
+- ✅ New B3 State Access capability (`derivedIntelligenceConsumer`/`BUILD`) reusing the
+  existing `habitView`/`patternView` read operations — no new writes
+- ✅ AI Coach (`buildCoachSystemPrompt()`) integrated as the sole consumer, wrapped in
+  try/catch so any B5 failure never blocks the Coach
+- ✅ 92 new automated tests (`derivedIntelligenceConsumer.test.js`,
+  `derivedIntelligencePrompt.test.js`, `b5Wiring.test.js`) covering SPEC §57's full minimum
+  test matrix plus the two Implementation Review corrections
+- ✅ B1, B2, B3 and B4 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged
+- ✅ 262 automated tests passed (170 pre-existing + 92 new)
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes
+- ✅ No new Persistence Gateway operation; B5 is not a B2-registered Engine (ADR-B5-008)
+- ✅ Commit created and pushed to `main`
+- ✅ Remediation Finding F9 is closed; Recommendation Engine is formally unblocked (subject to
+  its own separate specification and approval)
+
+---
+
+**Phase B — Complete.** B1, B2, B3, B4 and B5 are all closed.
 
 ---
 
@@ -287,5 +324,6 @@ B1 — Canonical Memory Decision is approved and closed, with no production code
 B2 — Engine Contract and Registry is approved, implemented (v2.21.0) and closed.
 B3 — State Ownership and Access Boundaries is approved, implemented (v2.22.0) and closed.
 B4 — Persistence Contract is approved, implemented (v2.23.0) and closed.
+B5 — Habit and Pattern Consumption Path is approved, implemented (v2.24.0) and closed.
 
-Begin B5 — Habit and Pattern Consumption Path.
+Begin Phase C (maintainability/scale) items, per the Architecture Remediation Plan.

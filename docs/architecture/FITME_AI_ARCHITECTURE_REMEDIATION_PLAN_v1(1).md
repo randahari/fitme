@@ -3,7 +3,7 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-18 (B4 closure)  
+**Last Updated:** 2026-07-19 (B5 closure)  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
@@ -169,8 +169,39 @@ Recorded outcomes:
 
 ### B5 — Habit and Pattern Consumption Path
 
-**Finding:** F9  
-**Status:** ⏳ PENDING
+**Finding:** F9 — CLOSED  
+**Status:** ✅ COMPLETED, APPROVED AND MERGED — v2.24.0
+
+Recorded outcomes:
+
+- ✅ One logical `DerivedIntelligenceConsumer` implemented (`js/derivedIntelligenceConsumer.js`),
+  the sole consumption adapter for Habit/Pattern Derived Intelligence Views.
+- ✅ Closed, versioned Consumer Policy Catalog (`COACH_PROMPT_V1` fully enabled;
+  `RECOMMENDATION_SUPPORT_V1` contract/test-only; `TEST_FULL_DIAGNOSTIC_V1` test-harness-only;
+  `INITIATIVE_ENGINE`/`DECISION_ENGINE` disabled).
+- ✅ `DerivedViewSnapshot` envelope, normalization, the locked §22.3 freshness formula,
+  eligibility and relevance filtering, duplicate/contradiction handling, overlap detection with
+  deterministic primary selection, stable ordering and policy-bounded truncation — all
+  deterministic, no LLM ranking.
+- ✅ Separate `js/derivedIntelligencePrompt.js` prompt projector (bounded, cautious wording,
+  no internal IDs/confidence values).
+- ✅ New B3 State Access capability (`derivedIntelligenceConsumer`/`BUILD`) reusing the existing
+  `habitView`/`patternView` read operations unchanged — no new writes.
+- ✅ AI Coach integrated as the sole consumer (`buildCoachSystemPrompt()`), failure-isolated so
+  B5 never blocks existing Coach behavior.
+- ✅ No new Persistence Gateway operation; B5 is not a B2-registered Engine (ADR-B5-008,
+  capability-holder under B3 only).
+- ✅ B1, B2, B3 and B4 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged.
+- ✅ An External Implementation Review against the B5 v1.2 spec correction found two defects
+  (missing production-safe browser-adapter separation per §41.2/§42.3/§51.4; a mislabeled
+  `OPPOSING_BEHAVIOR` contradiction reported as `LIFECYCLE_CONFLICT` per §26.2) — both fixed
+  in `js/derivedIntelligenceConsumer.js`, with 6 new regression tests.
+- ✅ 262 automated tests passed (170 pre-existing + 92 new).
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes.
+- ✅ Commit created and pushed to `main`. Finding F9 is closed. Recommendation Engine
+  implementation is formally unblocked, subject to its own separate specification and approval.
+
+**Phase B Status:** ✅ COMPLETE (B1, B2, B3, B4, B5)
 
 ---
 
@@ -212,16 +243,10 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-## B5 — Habit and Pattern Consumption Path
-
-**Finding:** F9  
-**Status:** ⏭️ NEXT
-
-Required deliverable:
-
-An approved B5 architecture specification in the project task documentation structure.
-
-No implementation SHALL begin before the specification passes Engineering Readiness Review.
+Phase B (B1-B5) is complete. Current work item: Phase C (maintainability/scale) items —
+C1 (Modularization and Tests, started incrementally), C2 (Rejection and Suppression
+Feedback), C3 (Event Model Decision), C4 (Typed Memory Server Write Path) — scheduled
+incrementally per §3, provided they do not compromise Phase A or Phase B guarantees.
 
 ---
 

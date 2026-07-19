@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-18
+**Last Updated:** 2026-07-19
 
 ---
 
@@ -18,7 +18,8 @@
 - 🟢 B2 — Engine Contract and Registry approved, tested and merged
 - 🟢 B3 — State Ownership and Access Boundaries approved, tested and merged
 - 🟢 B4 — Persistence Contract approved, tested and merged
-- ⏭️ Next task: B5 — Habit and Pattern Consumption Path
+- 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
+- ⏭️ Next task: C-series maintainability/scale items (per Remediation Plan Phase C)
 
 ---
 
@@ -111,6 +112,97 @@ B2 — Engine Contract and Registry is `NEXT`.
 ### Next
 
 B5 — Habit and Pattern Consumption Path is `NEXT`.
+
+---
+
+## v2.24.0 — B5 Habit and Pattern Consumption Path
+
+**Date:** 2026-07-19
+**Status:** Merged to `main`
+
+### Added
+
+- `js/derivedIntelligenceConsumer.js` — the sole consumption adapter for Habit/Pattern
+  Derived Intelligence Views: request validation, a closed versioned Consumer Policy
+  Catalog (`COACH_PROMPT_V1` fully enabled; `RECOMMENDATION_SUPPORT_V1` contract/test-only;
+  `TEST_FULL_DIAGNOSTIC_V1` test-harness-only; `INITIATIVE_ENGINE`/`DECISION_ENGINE`
+  disabled), `DerivedViewSnapshot` envelope construction, record normalization
+  (Habit/Pattern → closed Domain/Topic/Qualifier vocabulary), duplicate resolution
+  (byte-equivalent collapse, conflicting records diagnosed and excluded), eligibility
+  filtering (lifecycle/confidence/evidence/freshness), the locked §22.3 freshness formula,
+  relevance evaluation (domain/topic/temporal/sequence, `intent.purpose`
+  `IMMEDIATE`/`REVIEW`), contradiction detection, overlap detection with deterministic
+  primary selection, stable ordering, and policy-bounded truncation. Returns an immutable,
+  deterministic `DerivedIntelligenceContext`. Performs zero durable writes and never
+  triggers producer recomputation.
+- `js/derivedIntelligencePrompt.js` — a separate, pure Hebrew prompt projector: bounded to
+  8 items / 1,200 characters, cautious non-absolute wording (`ACTIVE` vs `CONFIRMED`
+  lifecycle phrasing), no internal IDs/confidence values, and safe omission of any
+  unsupported label key.
+- New B3 State Access capability `derivedIntelligenceConsumer`/`BUILD` in
+  `js/stateAccess.js`, reusing the existing `habitView`/`patternView` read operations
+  unchanged, with no new write operations (`writes: []`).
+- `tests/derivedIntelligenceConsumer.test.js` (66 tests) and
+  `tests/derivedIntelligencePrompt.test.js` (10 tests) covering the full SPEC §57.1-§57.8
+  minimum test matrix, plus `tests/b5Wiring.test.js` (10 static wiring checks) covering
+  §57.9 Integration.
+
+### Changed
+
+- `buildCoachSystemPrompt()` (`js/app.js`) is now `async` and calls
+  `DerivedIntelligenceConsumer.build()` (consumer `AI_COACH_PROMPT`, policy
+  `COACH_PROMPT_V1`) followed by `DerivedIntelligencePrompt.project()` to append a bounded
+  Hebrew derived-intelligence fragment to the Coach system prompt. The call is wrapped in
+  try/catch — any B5 failure (state access, session, validation) degrades silently to the
+  existing prompt (memory fragment + base persona), never blocking the Coach. Its one
+  caller (`coachMessage()`) was updated to `await` it.
+- `index.html` / `sw.js`: both new modules registered, loaded after
+  `persistenceGateway.js` and before `app.js`; `APP_VERSION` / service worker `VERSION`
+  bumped to `2.24.0`.
+
+### Corrected (External Implementation Review)
+
+The spec text in `docs/tasks/B5/B5_SPEC_v1.0.md` had since been revised to v1.2 (a canonical
+correction), which locks a stricter requirement than the v1.1 text this implementation was
+originally reviewed against. An independent External Implementation Review against the
+current v1.2 text found two defects, both since fixed in `js/derivedIntelligenceConsumer.js`:
+
+- **Production-safe adapter separation (§19.5/§41.2/§42.3/§51.4).** `window.DerivedIntelligenceConsumer`
+  was previously the same object as the Node module export, so `TEST_HARNESS`/
+  `TEST_FULL_DIAGNOSTIC_V1` (full per-signal diagnostics) were reachable from any
+  browser-side caller. Added `buildProductionSafe()` and a separate `PRODUCTION_SAFE_API`
+  object — `window` now receives only a production-safe adapter that accepts exclusively the
+  production-enabled mapping (`AI_COACH_PROMPT` → `COACH_PROMPT_V1`) and rejects everything
+  else with `POLICY_NOT_ALLOWED_FOR_CONSUMER` before the core module is ever invoked. The
+  complete core module (all consumers/policies, for the Node test runner only) remains
+  available exclusively via `module.exports`.
+- **Contradiction category (§26.2).** `detectContradictions()` labeled every detected
+  contradiction `LIFECYCLE_CONFLICT`; the only case implemented (opposing `ACTIVE`/`SKIP`
+  tendency on identical domain/topic/qualifiers) is `OPPOSING_BEHAVIOR` per the spec's own
+  closed taxonomy. Corrected; diagnostic-only, no behavioral change.
+
+6 new regression tests added (5 in `tests/derivedIntelligenceConsumer.test.js`, 1 static check
+in `tests/b5Wiring.test.js`) covering both corrections.
+
+### Verification
+
+- Engineering Readiness Review: the v1.1-era review returned `READY`; the spec was
+  subsequently revised to v1.2 specifically to close the production-safe-adapter gap.
+  External Implementation Review against the v1.2 text found that gap (plus the
+  contradiction-category mislabel) still open; both were corrected as described above and
+  independently re-verified at runtime (simulated browser `window` global plus direct
+  output inspection, not just passing tests).
+- External Engineering Re-Review (v1.2): `READY`. Implementation Review: `APPROVED`.
+- Automated tests: `262 passed / 0 failed` (170 pre-existing + 86 B5 + 6 correction tests).
+- B1, B2, B3 and B4 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged.
+- No Firestore schema, Firestore rules or Firebase Functions changes.
+- No new Persistence Gateway operation; no new Engine Registry registration (B5 is a
+  capability-holder under B3, not a B2 Engine — ADR-B5-008).
+- B5_SPEC Appendix F closure record completed. B5 is `CLOSED`. Finding F9 is closed.
+
+### Next
+
+Phase C (maintainability/scale) items, per the Architecture Remediation Plan, are next.
 
 ---
 

@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.23.0';
+const APP_VERSION = '2.24.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -376,7 +376,7 @@ async function coachMessage(context) {
   const data = await callClaude({
     model: 'claude-sonnet-4-6',
     max_tokens: coachChatter() === 'gentle' ? 220 : 120,
-    system: buildCoachSystemPrompt(),
+    system: await buildCoachSystemPrompt(),
     messages: [{ role: 'user', content: 'המצב כרגע: ' + context + '\nכתוב הודעת מאמן אחת בהתאם לאופי ולאורך שהוגדרו.' }]
   });
   return (data.content && data.content[0] && data.content[0].text || '').trim();
@@ -2937,12 +2937,55 @@ callClaude = async function(body) {
   return await _s5_callClaude(body);
 };
 
-// buildCoachSystemPrompt → מזריק את הזיכרון (ריק כרגע, יתמלא בשלב הבא)
+// buildCoachSystemPrompt → מזריק את הזיכרון + B5 Derived Intelligence (Habit/Pattern),
+// דרך derivedIntelligenceConsumer.js — הצרכן היחיד המאושר בפועל של Habit/Pattern Derived
+// Intelligence Views לפרומפט המאמן (B5 §12.3: AI_COACH_PROMPT/COACH_PROMPT_V1). הופכת
+// לאסינכרונית כי build() קורא State Access (async); הקורא היחיד (coachMessage) כבר async.
+// כשל כלשהו ב-B5 (state access/session/build) לעולם לא חוסם את הפרומפט — B5 הוא מקור
+// תוספתי בלבד, לא תלות קריטית (SPEC §19.5 session safety / graceful degradation).
+function _s5TimeSegment(h) {
+  if (h >= 5 && h < 11) return 'MORNING';
+  if (h >= 11 && h < 16) return 'MIDDAY';
+  if (h >= 16 && h < 22) return 'EVENING';
+  return 'NIGHT';
+}
+function _s5ContextEvents() {
+  const events = [];
+  const today = getTodayKey();
+  if (todayData && todayData.burned > 0) events.push('WORKOUT_COMPLETED');
+  if (todayData && Array.isArray(todayData.meals) && todayData.meals.length) events.push('MEAL_LOGGED');
+  if (userProfile && Array.isArray(userProfile.weightHistory) && userProfile.weightHistory.some(w => w.date === today)) events.push('WEIGH_IN_RECORDED');
+  if (userProfile && Array.isArray(userProfile.measurementHistory) && userProfile.measurementHistory.some(m => m.date === today)) events.push('MEASUREMENT_RECORDED');
+  return events;
+}
 const _s5_buildCoachSystemPrompt = buildCoachSystemPrompt;
-buildCoachSystemPrompt = function() {
+buildCoachSystemPrompt = async function() {
   const base = _s5_buildCoachSystemPrompt();
   const mem = coachMemoryPromptFragment();
-  return mem ? (base + ' ' + mem) : base;
+  let derived = '';
+  try {
+    if (currentUser && currentUser.uid) {
+      const now = new Date();
+      const result = await DerivedIntelligenceConsumer.build({
+        requestId: 'coach-prompt-' + Date.now(),
+        consumer: 'AI_COACH_PROMPT',
+        policyId: 'COACH_PROMPT_V1',
+        session: { uid: currentUser.uid, generation: SessionLifecycle.getGeneration() },
+        intent: {
+          domain: 'GENERAL_COACHING',
+          purpose: 'IMMEDIATE',
+          weekday: now.getDay(),
+          localTimeSegment: _s5TimeSegment(now.getHours()),
+          contextEvents: _s5ContextEvents()
+        }
+      });
+      if (result && (result.status === 'SUCCESS' || result.status === 'PARTIAL')) {
+        derived = DerivedIntelligencePrompt.project(result.context);
+      }
+    }
+  } catch (e) { /* B5 תוספתי בלבד — לעולם לא חוסם את הפרומפט */ }
+  const withMem = mem ? (base + ' ' + mem) : base;
+  return derived ? (withMem + ' ' + derived) : withMem;
 };
 
 // B2: Trigger Engine orchestration no longer wraps showApp/saveWorkout here —
@@ -4176,6 +4219,28 @@ StateAccess.configure({
   },
   checkCanFire: canFire,
   getTriggerBudget: coachDay
+});
+
+// B5: מזריק תלויות ל-derivedIntelligenceConsumer.js — קורא Habit/Pattern Derived
+// Intelligence Views אך ורק דרך B3 State Access (capability חדש
+// 'derivedIntelligenceConsumer'/'BUILD', ר' js/stateAccess.js), לא ישירות מ-coachMemory.
+// אינו נרשם ב-EngineRegistry — אינו B2 Engine (ADR-B5-008), אלא capability-holder בלבד.
+DerivedIntelligenceConsumer.configure({
+  isSessionCurrent: function (gen) { return SessionLifecycle.isCurrent(gen); },
+  readHabitSnapshot: function (session) {
+    return StateAccess.createEngineAccess({
+      engineId: 'derivedIntelligenceConsumer', action: 'BUILD',
+      userId: session.uid, sessionGeneration: session.generation, runId: null
+    }).read.habitView();
+  },
+  readPatternSnapshot: function (session) {
+    return StateAccess.createEngineAccess({
+      engineId: 'derivedIntelligenceConsumer', action: 'BUILD',
+      userId: session.uid, sessionGeneration: session.generation, runId: null
+    }).read.patternView();
+  },
+  getLocalDate: function () { return getTodayKey(); },
+  getWeekday: function () { return new Date().getDay(); }
 });
 
 // context בסיסי (ללא action/payload — אלה נבנים לכל engine בנפרד) — B2 SPEC §6.

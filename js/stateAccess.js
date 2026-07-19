@@ -352,6 +352,15 @@
         reads: ['triggerProfile', 'todayNutrition', 'triggerBudget', 'canFire'],
         writes: ['recordTriggerOutcome', 'updateDailyTriggerBudget']
       }
+    },
+    // B5: capability-holder חדש בלבד — לא EngineRegistry.register() (הצרכן אינו B2 Engine,
+    // ADR-B5-008). משתמש מחדש ב-habitView/patternView הקיימים ללא שינוי; אין writes (B5 לא
+    // מבצע כתיבות durable כלשהן).
+    derivedIntelligenceConsumer: {
+      BUILD: {
+        reads: ['habitView', 'patternView'],
+        writes: []
+      }
     }
   };
 
