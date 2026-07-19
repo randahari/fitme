@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.27.0';
+const APP_VERSION = '2.28.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -80,9 +80,7 @@ let favoriteMeals = [];
 // Adaptive TDEE עצמה — רק באיפוס ה-state התלוי-משתמש סביבן.
 // ══════════════════════════════════════════════════════════════════
 function _resetAppCoreState() {
-  currentUser = null;
-  userProfile = null;
-  todayData = { meals: [], burned: 0, steps: 0 };
+  RuntimeState.resetForSession();
   waterCount = 0;
   currentDayKey = getTodayKey();
   realTodayData = todayData;
@@ -116,39 +114,52 @@ function _resetAppCoreState() {
 SessionLifecycle.registerCleanup('app-core-state', _resetAppCoreState);
 
 // ── AUTH ──
-AuthAdapter.onAuthStateChanged(async (user) => {
-  // REM-002 §5-§7: כל מעבר auth (sign-out / UID אחר / חזרה ל-unauthenticated) מפעיל reset()
-  // מרכזי אחד: מקדם generation (חוסם async ישן) ומריץ את כל ה-cleanups הרשומים.
-  const _authGen = SessionLifecycle.reset(user ? 'auth:signed-in' : 'auth:signed-out');
-  if (user) {
-    currentUser = user;
-    await loadUserData();
-    if (!SessionLifecycle.isCurrent(_authGen)) return; // סשן זה הוחלף בזמן הטעינה — לא ממשיכים
-    if (userProfile) {
-      showApp();
-      initNotifications();
-      // REM-002: הרצה מחדש של בדיקת המיגרציה בכל סשן מאומת (לא רק בטעינת הדף הראשונה),
-      // כדי שמשתמש B שמתחבר אחרי A באותו טאב יקבל גם הוא הזדמנות למיגרציה. אידמפוטנטי מטבעו.
-      if (window.FitMeMemory && typeof window.FitMeMemory.migrateIfNeeded === 'function') {
-        window.FitMeMemory.migrateIfNeeded().catch(function (e) {
-          try { console.warn('memory migration failed:', e && e.message); } catch (_) {}
-        });
-      }
-    } else {
-      showOnboarding();
+// C1-WP4: מכונת-המצבים של מעברי האימות (Session and Application Bootstrap) עברה ל-
+// js/app/authSessionController.js. app.js מזריק closures (לא הפניות חשופות — loadUserData
+// נעטף מאוחר יותר ב-Day Navigation IIFE, ראו docs/architecture/C1_WP0_INVENTORY.md §2.1)
+// עבור כל תלות, כדי שהמודול יישאר בדיוק זהה בהתנהגות לקוד המקורי. ראה
+// docs/specs/C1_SPEC_v1.0.md §C1-WP4.
+RuntimeState.configure({
+  getCurrentUser: function () { return currentUser; },
+  setCurrentUser: function (u) { currentUser = u; },
+  getProfile: function () { return userProfile; },
+  setProfile: function (p) { userProfile = p; },
+  getDisplayedDay: function () { return todayData; },
+  setDisplayedDay: function (d) { todayData = d; }
+});
+BootstrapController.configure({
+  profileRepository: ProfileRepository,
+  dayRepository: DayRepository,
+  favoritesRepository: FavoritesRepository
+});
+AuthSessionController.configure({
+  authAdapter: AuthAdapter,
+  sessionLifecycle: SessionLifecycle,
+  runtimeState: RuntimeState,
+  loadUserData: function () { return loadUserData(); },
+  showApp: function () { showApp(); },
+  showOnboarding: function () { showOnboarding(); },
+  showLogin: function () { showLogin(); },
+  initNotifications: function () { initNotifications(); },
+  // REM-002: הרצה מחדש של בדיקת המיגרציה בכל סשן מאומת (לא רק בטעינת הדף הראשונה),
+  // כדי שמשתמש B שמתחבר אחרי A באותו טאב יקבל גם הוא הזדמנות למיגרציה. אידמפוטנטי מטבעו.
+  migrateIfNeeded: function () {
+    if (window.FitMeMemory && typeof window.FitMeMemory.migrateIfNeeded === 'function') {
+      window.FitMeMemory.migrateIfNeeded().catch(function (e) {
+        try { console.warn('memory migration failed:', e && e.message); } catch (_) {}
+      });
     }
-  } else {
-    currentUser = null;
-    userProfile = null;
-    // REM-001 §19 Invariant 9 / ER-006 — אין מועמד תזונתי חוצה-משתמשים ששורד sign-out/החלפת חשבון.
-    // נשאר כאן במקביל ל-reset() המרכזי (כפילות בטוחה, לא מוסרת) — ראו גם _resetAppCoreState.
+  },
+  // REM-001 §19 Invariant 9 / ER-006 — אין מועמד תזונתי חוצה-משתמשים ששורד sign-out/החלפת חשבון.
+  // נשאר כאן במקביל ל-reset() המרכזי (כפילות בטוחה, לא מוסרת) — ראו גם _resetAppCoreState.
+  onSignedOut: function () {
     pendingMeal = null;
     editingItemIdx = null;
     pendingBarcode = null;
     foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
-    showLogin();
   }
 });
+AuthSessionController.start();
 
 function showLogin() {
   document.getElementById('loading-screen').classList.add('hidden');
@@ -191,12 +202,9 @@ async function loadUserData() {
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
+    // C1-WP4: מנגנון ה-fetch עצמו חי כעת ב-BootstrapController.loadUserSnapshot.
     const todayKey = getTodayKey();
-    const [profileDoc, todayDoc, favDoc] = await Promise.all([
-      ProfileRepository.loadProfile(currentUser.uid),
-      DayRepository.loadDay(currentUser.uid, todayKey),
-      FavoritesRepository.load(currentUser.uid)
-    ]);
+    const [profileDoc, todayDoc, favDoc] = await BootstrapController.loadUserSnapshot(currentUser.uid, todayKey);
     if (!SessionLifecycle.isCurrent(_gen)) return; // REM-002: סשן הוחלף תוך כדי הטעינה — לא כותבים state ישן
     if (profileDoc.exists) {
       userProfile = profileDoc.data();

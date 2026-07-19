@@ -32,12 +32,12 @@ test('all six WP2 adapter modules are registered in index.html, loaded before ap
 test('all six WP2 adapter modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   ADAPTER_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.27.0');
+  assert.equal(versionMatch[1], '2.28.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.27.0');
+  assert.equal(appVersionMatch[1], '2.28.0');
 });
 
 test('all six adapters are configured in app.js before first use', () => {
@@ -51,8 +51,16 @@ test('callClaude is a facade delegating to ClaudeProxyClient.send, and CLAUDE_PR
   assert.equal(appJs.indexOf('CLAUDE_PROXY_URL'), -1);
 });
 
-test('the Firebase auth state subscription is registered through AuthAdapter, not auth directly', () => {
-  assert.match(appJs, /AuthAdapter\.onAuthStateChanged\(async \(user\) => \{/);
+// C1-WP4 relocated the subscription itself out of app.js into
+// js/app/authSessionController.js (AuthSessionController.start(), which calls
+// deps.authAdapter.onAuthStateChanged) — intentional, per docs/specs/C1_SPEC_v1.0.md
+// §C1-WP4. This test now asserts app.js wires AuthAdapter into that controller instead
+// of subscribing directly, while still confirming no bare `auth.onAuthStateChanged(`
+// call exists anywhere.
+test('the Firebase auth state subscription is registered through AuthAdapter via AuthSessionController, not auth directly', () => {
+  assert.match(appJs, /AuthSessionController\.configure\(\{[\s\S]*?authAdapter: AuthAdapter,/);
+  assert.match(appJs, /AuthSessionController\.start\(\);/);
+  assert.equal(appJs.indexOf('AuthAdapter.onAuthStateChanged('), -1, 'the subscription call itself must live in authSessionController.js, not app.js');
   assert.equal(appJs.indexOf('auth.onAuthStateChanged('), -1, 'no direct auth.onAuthStateChanged call should remain in app.js');
 });
 

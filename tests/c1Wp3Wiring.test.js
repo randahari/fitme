@@ -34,12 +34,12 @@ test('all five WP3 repository modules are registered in index.html, loaded after
 test('all five WP3 repository modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   REPO_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.27.0');
+  assert.equal(versionMatch[1], '2.28.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.27.0');
+  assert.equal(appVersionMatch[1], '2.28.0');
 });
 
 test('all five repositories are configured in app.js before first use', () => {
@@ -48,8 +48,13 @@ test('all five repositories are configured in app.js before first use', () => {
   ].forEach((call) => assert.notEqual(appJs.indexOf(call), -1, call + ' must appear in app.js'));
 });
 
-test('loadUserData reads profile/day/favorites through the repositories, still in one Promise.all (parallel-read parity preserved)', () => {
-  assert.match(appJs, /const \[profileDoc, todayDoc, favDoc\] = await Promise\.all\(\[\s*ProfileRepository\.loadProfile\(currentUser\.uid\),\s*DayRepository\.loadDay\(currentUser\.uid, todayKey\),\s*FavoritesRepository\.load\(currentUser\.uid\)\s*\]\);/);
+// C1-WP4 relocated the Promise.all parallel-fetch mechanic itself out of app.js into
+// js/app/bootstrapController.js (BootstrapController.loadUserSnapshot) — intentional, per
+// docs/specs/C1_SPEC_v1.0.md §C1-WP4. The three repositories are now called from inside
+// that module (see tests/bootstrapController.test.js for the parallel-call proof); this
+// test now asserts loadUserData delegates to it instead of calling the repositories directly.
+test('loadUserData reads profile/day/favorites through BootstrapController.loadUserSnapshot (parallel-read parity preserved, mechanic relocated in C1-WP4)', () => {
+  assert.match(appJs, /const \[profileDoc, todayDoc, favDoc\] = await BootstrapController\.loadUserSnapshot\(currentUser\.uid, todayKey\);/);
 });
 
 test('saveProfile/saveTodayData/saveFavorites/getHistoryData delegate to their repositories', () => {
