@@ -1,0 +1,125 @@
+// C1-WP2 — static source/wiring checks (docs/specs/C1_SPEC_v1.0.md, Work Package C1-WP2).
+// Dependency-free: reads the actual repository files as text and asserts structural facts.
+// Does NOT execute app.js (no DOM/Firebase harness — same intentional scope limit as
+// tests/b2Wiring.test.js / tests/b5Wiring.test.js / tests/c1Wp0Characterization.test.js /
+// tests/c1Wp1Wiring.test.js).
+// Run with: node --test tests/c1Wp2Wiring.test.js
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+const firebaseConfigJs = fs.readFileSync(path.join(__dirname, '../js/firebase-config.js'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+
+const ADAPTER_FILES = [
+  'js/adapters/authAdapter.js', 'js/adapters/notificationAdapter.js', 'js/adapters/imageAdapter.js',
+  'js/adapters/barcodeScannerAdapter.js', 'js/adapters/openFoodFactsClient.js', 'js/adapters/claudeProxyClient.js'
+];
+
+test('all six WP2 adapter modules are registered in index.html, loaded before app.js', () => {
+  const appIdx = indexHtml.indexOf('js/app.js');
+  ADAPTER_FILES.forEach((f) => {
+    const idx = indexHtml.indexOf(f);
+    assert.notEqual(idx, -1, f + ' script tag must exist');
+    assert.ok(idx < appIdx, f + ' must load before app.js');
+  });
+});
+
+test('all six WP2 adapter modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
+  ADAPTER_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
+  const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
+  assert.equal(versionMatch[1], '2.26.0');
+});
+
+test('APP_VERSION matches the service worker cache version', () => {
+  const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
+  assert.equal(appVersionMatch[1], '2.26.0');
+});
+
+test('all six adapters are configured in app.js before first use', () => {
+  ['AuthAdapter.configure(', 'NotificationAdapter.configure(', 'ImageAdapter.configure(',
+    'BarcodeScannerAdapter.configure(', 'OpenFoodFactsClient.configure(', 'ClaudeProxyClient.configure('
+  ].forEach((call) => assert.notEqual(appJs.indexOf(call), -1, call + ' must appear in app.js'));
+});
+
+test('callClaude is a facade delegating to ClaudeProxyClient.send, and CLAUDE_PROXY_URL no longer lives in app.js', () => {
+  assert.match(appJs, /async function callClaude\(body\) \{ return ClaudeProxyClient\.send\(body, currentUser\); \}/);
+  assert.equal(appJs.indexOf('CLAUDE_PROXY_URL'), -1);
+});
+
+test('the Firebase auth state subscription is registered through AuthAdapter, not auth directly', () => {
+  assert.match(appJs, /AuthAdapter\.onAuthStateChanged\(async \(user\) => \{/);
+  assert.equal(appJs.indexOf('auth.onAuthStateChanged('), -1, 'no direct auth.onAuthStateChanged call should remain in app.js');
+});
+
+test('signOut keeps its confirm() UI decision and delegates the platform call to AuthAdapter', () => {
+  const idx = appJs.indexOf('async function signOut()');
+  assert.notEqual(idx, -1);
+  const body = appJs.slice(idx, idx + 150);
+  assert.match(body, /confirm\('להתנתק\?'\)/);
+  assert.match(body, /AuthAdapter\.signOut\(\)/);
+  assert.equal(appJs.indexOf('auth.signOut()'), -1, 'no direct auth.signOut() call should remain in app.js');
+});
+
+test('firebase-config.js routes Google sign-in and redirect-result handling through AuthAdapter', () => {
+  assert.match(firebaseConfigJs, /AuthAdapter\.signInWithGoogle\(\)/);
+  assert.match(firebaseConfigJs, /AuthAdapter\.handleRedirectResult\(\)/);
+  assert.equal(firebaseConfigJs.indexOf('signInWithPopup'), -1, 'no direct signInWithPopup call should remain in firebase-config.js');
+  assert.equal(firebaseConfigJs.indexOf('signInWithRedirect'), -1, 'no direct signInWithRedirect call should remain in firebase-config.js');
+  assert.equal(firebaseConfigJs.indexOf('getRedirectResult'), -1, 'no direct getRedirectResult call should remain in firebase-config.js (moved into AuthAdapter)');
+});
+
+test('no direct Notification/serviceWorker platform calls remain in app.js outside the single configure() injection', () => {
+  const occurrences = (appJs.match(/Notification\.|navigator\.serviceWorker/g) || []).length;
+  assert.equal(occurrences, 1, 'the only reference should be the NotificationAdapter.configure(...) injection line');
+  assert.match(appJs, /NotificationAdapter\.configure\(\{ notificationApi:/);
+});
+
+test('sendLocalNotification and scheduleAt are facades delegating to NotificationAdapter', () => {
+  assert.match(appJs, /function sendLocalNotification\(title, body\) \{\s*return NotificationAdapter\.showNotification\(title, body\);\s*\}/);
+  assert.match(appJs, /function scheduleAt\(hour, min, callback\) \{ return NotificationAdapter\.scheduleAt\(hour, min, callback\); \}/);
+});
+
+test('compressImageForUpload is a facade delegating to ImageAdapter, with no residual FileReader/canvas logic in app.js', () => {
+  assert.match(appJs, /function compressImageForUpload\(file, maxDim, quality\) \{ return ImageAdapter\.compressImageForUpload\(file, maxDim, quality\); \}/);
+  assert.equal(appJs.indexOf('new FileReader()'), -1);
+  assert.equal(appJs.indexOf("createElement('canvas')"), -1);
+});
+
+test('startCamera/startLabelCamera keep their photoMode product-state assignment and delegate activation to ImageAdapter', () => {
+  assert.match(appJs, /function startCamera\(\) \{ photoMode = 'plate'; ImageAdapter\.triggerFileInput\('camera-input'\); \}/);
+  assert.match(appJs, /function startLabelCamera\(\) \{ photoMode = 'label'; ImageAdapter\.triggerFileInput\('camera-input'\); \}/);
+});
+
+test('no direct Html5Qrcode/CDN references remain in app.js — scanner lifecycle routes through BarcodeScannerAdapter', () => {
+  assert.equal(appJs.indexOf('Html5Qrcode'), -1);
+  assert.equal(appJs.indexOf('unpkg.com'), -1);
+  assert.match(appJs, /await BarcodeScannerAdapter\.loadLibrary\(\)/);
+  assert.match(appJs, /BarcodeScannerAdapter\.createScanner\('barcode-reader'\)/);
+  assert.match(appJs, /await BarcodeScannerAdapter\.start\(h5qr, \(decodedText\) => onBarcodeDetected\(decodedText, statusEl\)\)/);
+  assert.match(appJs, /BarcodeScannerAdapter\.stop\(r\)/);
+});
+
+test('lookupBarcode routes the Open Food Facts request through OpenFoodFactsClient, with UI branching preserved in app.js', () => {
+  assert.match(appJs, /await OpenFoodFactsClient\.lookupProduct\(code\)/);
+  assert.equal(appJs.indexOf('world.openfoodfacts.org'), -1);
+  const idx = appJs.indexOf('async function lookupBarcode(code)');
+  assert.notEqual(idx, -1);
+  const body = appJs.slice(idx, appJs.indexOf('\n}', idx));
+  assert.match(body, /showLabelPrompt\(code\)/);
+  assert.match(body, /showMealEditor\(/);
+  assert.match(body, /alert\('שגיאה בחיפוש המוצר/);
+});
+
+test('no adapter file contains DOM/product-decision leakage: no alert()/confirm() calls', () => {
+  const jsDir = path.join(__dirname, '../js/adapters');
+  ADAPTER_FILES.forEach((f) => {
+    const content = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.doesNotMatch(content, /\balert\(/, f + ' must not call alert() (UI decision belongs to the caller)');
+    assert.doesNotMatch(content, /\bconfirm\(/, f + ' must not call confirm() (UI decision belongs to the caller)');
+  });
+});

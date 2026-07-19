@@ -19,31 +19,21 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.war
 // התחברות עם Google:
 // popup קודם (עובד גם ב-iOS PWA מודרני ובדסקטופ). redirect נשמר כגיבוי בלבד,
 // כי ב-PWA מותקן ב-iOS ה-redirect מאבד את המצב במעבר מספארי לאפליקציה.
+// C1-WP2: המנגנון הגולמי (popup/redirect/קודי שגיאה) עבר ל-AuthAdapter; כאן
+// נשארת רק ההחלטה איזו הודעת UI להציג — זהה לחלוטין להתנהגות הקודמת.
 function signInWithGoogle() {
-  auth.signInWithPopup(googleProvider).catch(err => {
-    const code = err && err.code ? err.code : '';
-    console.warn('sign-in popup failed:', code, err && err.message);
-    const fallbackCodes = [
-      'auth/popup-blocked',
-      'auth/popup-closed-by-user',
-      'auth/cancelled-popup-request',
-      'auth/operation-not-supported-in-this-environment'
-    ];
-    if (fallbackCodes.includes(code)) {
-      auth.signInWithRedirect(googleProvider).catch(e => {
-        alert('שגיאה בהתחברות: ' + (e.code || e.message || 'לא ידוע'));
-      });
-    } else if (code === 'auth/network-request-failed') {
-      alert('אין חיבור לאינטרנט. נסה שוב.');
-    } else if (code) {
-      alert('שגיאה בהתחברות: ' + code);
+  AuthAdapter.signInWithGoogle().then(result => {
+    if (result.status === 'ERROR') {
+      if (result.code === 'auth/network-request-failed') alert('אין חיבור לאינטרנט. נסה שוב.');
+      else if (result.code) alert('שגיאה בהתחברות: ' + result.code);
+      else alert('שגיאה בהתחברות: ' + (result.message || 'לא ידוע'));
     }
-    // אם המשתמש סגר את החלון בעצמו (לחיצה על X) — אל תראה שגיאה, פשוט לא עשה כלום
+    // SUCCESS / REDIRECTING / CANCELLED — אין הודעת UI, בדיוק כמו קודם.
   });
 }
 
 // טיפול בחזרה מ-redirect (רק אם ה-fallback הופעל)
-auth.getRedirectResult().catch(err => {
+AuthAdapter.handleRedirectResult().catch(err => {
   const code = err && err.code;
   if (code && code !== 'auth/no-auth-event') {
     console.error('Redirect error:', code, err.message);

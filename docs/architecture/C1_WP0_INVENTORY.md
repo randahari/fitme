@@ -104,15 +104,23 @@ No other collection name is referenced by `js/app.js` at WP0 baseline. This set 
 
 ### 5.2 External network endpoints (closed set, 3 endpoints)
 
-| Endpoint | Constant / literal | Location | Purpose |
-|---|---|---|---|
-| Claude proxy | `CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy'` | `js/app.js:3` | AI nutrition/coach requests |
-| Open Food Facts | `'https://world.openfoodfacts.org/api/v0/product/' + code + '.json'` | `js/app.js:1007` | barcode fallback lookup |
-| html5-qrcode CDN | `'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'` | `js/app.js:845` | dynamically loaded barcode scanner library, pinned version |
+**Updated by C1-WP2:** all three endpoints were intentionally relocated out of `js/app.js`
+into dedicated platform adapters, per `docs/specs/C1_SPEC_v1.0.md` §C1-WP2 (External Food
+Catalog Adapter, Claude Proxy Client). The literal values are unchanged; only their location
+moved. `tests/c1Wp0Characterization.test.js` was updated in the same commit to assert the
+new locations instead of `js/app.js`. The WP0-baseline location of each endpoint is preserved
+below alongside its current (post-WP2) location, consistent with the historical-preservation
+treatment used in §5.3.
+
+| Endpoint | Constant / literal | WP0 baseline location | Current (post-WP2) location | Purpose |
+|---|---|---|---|---|
+| Claude proxy | `CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy'` | `js/app.js:3` | `js/adapters/claudeProxyClient.js` | AI nutrition/coach requests |
+| Open Food Facts | `BASE_URL = 'https://world.openfoodfacts.org/api/v0/product/'` | `js/app.js:1007` | `js/adapters/openFoodFactsClient.js` | barcode fallback lookup |
+| html5-qrcode CDN | `LIBRARY_URL = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'` | `js/app.js:845` | `js/adapters/barcodeScannerAdapter.js` | dynamically loaded barcode scanner library, pinned version |
 
 ### 5.3 DOM ID surface
 
-127 unique `document.getElementById(...)` references exist in `js/app.js` at WP0 baseline. A full per-ID listing is deferred to the work package that first touches each screen (WP5–WP10), consistent with the specification's incremental-extraction model; enumerating all 127 in this document would not add engineering value beyond what `grep -oE "getElementById\('[a-zA-Z0-9_-]+'\)" js/app.js` already provides on demand. The Day Navigation IIFE's own DOM surface (`meals-list`, `food-result`, plus the date-nav banner elements it creates/toggles) is characterized structurally by `tests/c1Wp0Characterization.test.js`.
+127 unique `document.getElementById(...)` references existed in `js/app.js` at WP0 baseline; 126 remain after C1-WP2 (`startCamera`/`startLabelCamera` now call `ImageAdapter.triggerFileInput('camera-input')` instead of resolving the element directly — the element-lookup mechanic moved into the adapter, camera activation behavior is unchanged). This count is a descriptive snapshot, not an enforced invariant. A full per-ID listing is deferred to the work package that first touches each screen (WP5–WP10), consistent with the specification's incremental-extraction model; enumerating all 127 in this document would not add engineering value beyond what `grep -oE "getElementById\('[a-zA-Z0-9_-]+'\)" js/app.js` already provides on demand. The Day Navigation IIFE's own DOM surface (`meals-list`, `food-result`, plus the date-nav banner elements it creates/toggles) is characterized structurally by `tests/c1Wp0Characterization.test.js`.
 
 ### 5.4 Existing test coverage vs. gap
 

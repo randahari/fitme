@@ -187,8 +187,18 @@ test('10. Firebase collections referenced in app.js match the closed WP0 invento
     'a new or removed Firestore collection reference was found in app.js — update docs/architecture/C1_WP0_INVENTORY.md §5.1 and this test together');
 });
 
-test('11. external network endpoints referenced in app.js match the closed WP0 inventory exactly', () => {
-  assert.match(appJs, /const CLAUDE_PROXY_URL = 'https:\/\/us-central1-fitme-f9289\.cloudfunctions\.net\/anthropicProxy';/);
-  assert.match(appJs, /'https:\/\/world\.openfoodfacts\.org\/api\/v0\/product\/' \+ code \+ '\.json'/);
-  assert.match(appJs, /'https:\/\/unpkg\.com\/html5-qrcode@2\.3\.8\/html5-qrcode\.min\.js'/);
+// C1-WP2 relocated all three external endpoints out of app.js into dedicated platform
+// adapters (js/adapters/claudeProxyClient.js, openFoodFactsClient.js,
+// barcodeScannerAdapter.js) — intentional, per docs/specs/C1_SPEC_v1.0.md §C1-WP2. This
+// test now asserts the endpoints exist verbatim in their new homes instead of in app.js.
+test('11. external network endpoints exist verbatim in their C1-WP2 adapter homes (relocated from app.js)', () => {
+  const claudeProxyJs = fs.readFileSync(path.join(__dirname, '../js/adapters/claudeProxyClient.js'), 'utf8');
+  const offJs = fs.readFileSync(path.join(__dirname, '../js/adapters/openFoodFactsClient.js'), 'utf8');
+  const barcodeJs = fs.readFileSync(path.join(__dirname, '../js/adapters/barcodeScannerAdapter.js'), 'utf8');
+  assert.match(claudeProxyJs, /var CLAUDE_PROXY_URL = 'https:\/\/us-central1-fitme-f9289\.cloudfunctions\.net\/anthropicProxy';/);
+  assert.match(offJs, /var BASE_URL = 'https:\/\/world\.openfoodfacts\.org\/api\/v0\/product\/';/);
+  assert.match(barcodeJs, /var LIBRARY_URL = 'https:\/\/unpkg\.com\/html5-qrcode@2\.3\.8\/html5-qrcode\.min\.js';/);
+  assert.equal(appJs.indexOf('CLAUDE_PROXY_URL'), -1, 'CLAUDE_PROXY_URL must no longer be defined in app.js');
+  assert.equal(appJs.indexOf('world.openfoodfacts.org'), -1, 'the Open Food Facts endpoint must no longer be defined in app.js');
+  assert.equal(appJs.indexOf('unpkg.com/html5-qrcode'), -1, 'the html5-qrcode CDN endpoint must no longer be defined in app.js');
 });
