@@ -179,12 +179,26 @@ test('9. Habit Engine and Pattern Engine IIFEs each expose exactly one run funct
 // 10. Dependency surface — Firebase collections and external endpoints (closed sets)
 // ══════════════════════════════════════════════════════════════════
 
-test('10. Firebase collections referenced in app.js match the closed WP0 inventory exactly', () => {
-  const found = (appJs.match(/collection\('([a-zA-Z]+)'\)/g) || []).map((m) => m.replace(/collection\('([a-zA-Z]+)'\)/, '$1'));
+// C1-WP3 relocated most Firestore collection access out of app.js into dedicated
+// repository modules (js/repositories/*.js) — intentional, per
+// docs/specs/C1_SPEC_v1.0.md §C1-WP3. Two direct references remain in app.js by
+// design: 'users'/'days' inside PersistenceGateway.configure's injected callbacks
+// (the sole authoritative meal-write path, explicitly excluded from WP3) and
+// 'users' inside resetApp() (account deletion, not a named WP3 responsibility).
+// This test now asserts the closed set of 7 collection names exists verbatim
+// across app.js + the five repository files combined, instead of app.js alone.
+test('10. Firebase collections referenced in app.js + WP3 repositories match the closed WP0 inventory exactly', () => {
+  const repoFiles = [
+    'js/repositories/profileRepository.js', 'js/repositories/dayRepository.js',
+    'js/repositories/favoritesRepository.js', 'js/repositories/groupRepository.js',
+    'js/repositories/barcodeRepository.js'
+  ];
+  const combined = appJs + repoFiles.map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+  const found = (combined.match(/collection\('([a-zA-Z]+)'\)/g) || []).map((m) => m.replace(/collection\('([a-zA-Z]+)'\)/, '$1'));
   const expected = ['data', 'days', 'groupBarcodes', 'groups', 'members', 'products', 'users'];
   const foundUnique = Array.from(new Set(found)).sort();
   assert.deepEqual(foundUnique, expected,
-    'a new or removed Firestore collection reference was found in app.js — update docs/architecture/C1_WP0_INVENTORY.md §5.1 and this test together');
+    'a new or removed Firestore collection reference was found — update docs/architecture/C1_WP0_INVENTORY.md §5.1 and this test together');
 });
 
 // C1-WP2 relocated all three external endpoints out of app.js into dedicated platform

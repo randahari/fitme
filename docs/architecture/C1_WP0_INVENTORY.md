@@ -102,6 +102,29 @@ IIFEs 2–4 are already governed by the closed B1–B5 contracts and are the exp
 
 No other collection name is referenced by `js/app.js` at WP0 baseline. This set is asserted exhaustively by the characterization test.
 
+**Updated by C1-WP3:** most access to these 7 collection names moved out of `js/app.js`
+into dedicated repository modules, per `docs/specs/C1_SPEC_v1.0.md` §C1-WP3 (Profile/Day/
+Favourites/Group/Barcode Repositories). The literal collection names are unchanged; only
+their location moved. Two references remain directly in `js/app.js` by design: `users`/`days`
+inside `PersistenceGateway.configure`'s injected callbacks (the sole authoritative meal-write
+path, explicitly excluded from WP3 per spec — "B4 operations remain in PersistenceGateway
+and are not duplicated here"), and `users` inside `resetApp()` (account deletion, not a named
+WP3 responsibility). `tests/c1Wp0Characterization.test.js` was updated in the same commit to
+assert the closed set across `js/app.js` + the five repository files combined, instead of
+`js/app.js` alone. The WP0-baseline location of each collection is preserved below alongside
+its current (post-WP3) location(s), consistent with the historical-preservation treatment
+used in §5.2/§5.3.
+
+| Collection | WP0 baseline location | Current (post-WP3) location(s) |
+|---|---|---|
+| `users` | `js/app.js` | `js/repositories/profileRepository.js`, `js/repositories/dayRepository.js`, `js/repositories/favoritesRepository.js`, `js/repositories/groupRepository.js`; also remains in `js/app.js` (`PersistenceGateway.configure`, `resetApp()`) |
+| `days` (subcollection of `users/{uid}`) | `js/app.js` | `js/repositories/dayRepository.js`; also remains in `js/app.js` (`PersistenceGateway.configure`) |
+| `data` (subcollection of `users/{uid}`) | `js/app.js` | `js/repositories/favoritesRepository.js` |
+| `groups` | `js/app.js` | `js/repositories/groupRepository.js` |
+| `members` (subcollection of `groups/{code}`) | `js/app.js` | `js/repositories/groupRepository.js` |
+| `groupBarcodes` | `js/app.js` | `js/repositories/barcodeRepository.js` |
+| `products` (subcollection of `groupBarcodes/{key}`) | `js/app.js` | `js/repositories/barcodeRepository.js` |
+
 ### 5.2 External network endpoints (closed set, 3 endpoints)
 
 **Updated by C1-WP2:** all three endpoints were intentionally relocated out of `js/app.js`

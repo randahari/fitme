@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.26.0';
+const APP_VERSION = '2.27.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -9,6 +9,15 @@ ImageAdapter.configure();
 BarcodeScannerAdapter.configure();
 OpenFoodFactsClient.configure();
 ClaudeProxyClient.configure();
+
+// C1-WP3: מזריק את db (Firestore) האמיתי ואת serverTimestamp לתוך שכבת ה-Repository.
+// אותו אובייקט db גלובלי כמו קודם — רק דרך שכבת repository, לא ישירות.
+function _fsServerTimestamp() { return firebase.firestore.FieldValue.serverTimestamp(); }
+ProfileRepository.configure({ db: db });
+DayRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
+FavoritesRepository.configure({ db: db });
+GroupRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
+BarcodeRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
 async function callClaude(body) { return ClaudeProxyClient.send(body, currentUser); }
@@ -183,11 +192,10 @@ async function loadUserData() {
   try {
     // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
     const todayKey = getTodayKey();
-    const userRef = db.collection('users').doc(currentUser.uid);
     const [profileDoc, todayDoc, favDoc] = await Promise.all([
-      userRef.get(),
-      userRef.collection('days').doc(todayKey).get(),
-      userRef.collection('data').doc('favorites').get()
+      ProfileRepository.loadProfile(currentUser.uid),
+      DayRepository.loadDay(currentUser.uid, todayKey),
+      FavoritesRepository.load(currentUser.uid)
     ]);
     if (!SessionLifecycle.isCurrent(_gen)) return; // REM-002: סשן הוחלף תוך כדי הטעינה — לא כותבים state ישן
     if (profileDoc.exists) {
@@ -217,16 +225,15 @@ async function loadUserData() {
 
 async function saveProfile() {
   if (!currentUser || !userProfile) return;
-  try { await db.collection('users').doc(currentUser.uid).set(userProfile, { merge: true }); }
+  try { await ProfileRepository.mergeProfile(currentUser.uid, userProfile); }
   catch(e) { console.error('saveProfile:', e); }
 }
 
 async function saveTodayData() {
   if (!currentUser) return;
   try {
-    await db.collection('users').doc(currentUser.uid).collection('days').doc(currentDayKey).set({
-      meals: todayData.meals, burned: todayData.burned, steps: todayData.steps, water: waterCount,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    await DayRepository.saveLegacyDay(currentUser.uid, currentDayKey, {
+      meals: todayData.meals, burned: todayData.burned, steps: todayData.steps, water: waterCount
     });
   } catch(e) { console.error('saveTodayData:', e); }
 }
@@ -255,45 +262,22 @@ async function persistDaySnapshot(meals, burned, steps, water, authority, sessio
 
 async function saveFavorites() {
   if (!currentUser) return;
-  try { await db.collection('users').doc(currentUser.uid).collection('data').doc('favorites').set({ meals: favoriteMeals }); }
+  try { await FavoritesRepository.save(currentUser.uid, favoriteMeals); }
   catch(e) { console.error('saveFavorites:', e); }
 }
 
+// BUGFIX-001: orderBy(documentId(),'desc') דרש אינדקס single-field ידני ונכשל ב-failed-precondition,
+// וה-catch הריק בלע את השגיאה — ההיסטוריה חזרה {} וכל הצרכנים קיבלו תמונה ריקה.
+// המנגנון (קריאה בלי orderBy/limit, מיון+חיתוך ב-JS) חי כעת ב-DayRepository.fetchHistory —
+// C1-WP3, ראה docs/specs/C1_SPEC_v1.0.md §C1-WP3.
 async function getHistoryData() {
   if (!currentUser) return {};
-  const history = {};
-  try {
-    // BUGFIX-001: orderBy(documentId(),'desc') דרש אינדקס single-field ידני ונכשל ב-failed-precondition,
-    // וה-catch הריק בלע את השגיאה — ההיסטוריה חזרה {} וכל הצרכנים קיבלו תמונה ריקה.
-    // קריאה בלי orderBy ובלי limit אינה דורשת אינדקס כלל. מזהי המסמכים הם YYYY-MM-DD
-    // ולכן ממוינים כרונולוגית מעצמם — המיון והחיתוך ל-400 האחרונים נעשים ב-JS,
-    // כך נשמרת התנהגות "400 ימי הרישום האחרונים" גם בהיסטוריה דלילה עם פערים.
-    const snap = await db.collection('users').doc(currentUser.uid).collection('days').get();
-    const docs = [];
-    snap.forEach(doc => { docs.push(doc); });
-    docs.sort((a, b) => (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)));
-    docs.slice(-400).forEach(doc => { history[doc.id] = doc.data(); });
-  } catch(e) { console.error('getHistoryData:', e); }
-  return history;
+  return DayRepository.fetchHistory(currentUser.uid);
 }
 
 async function getGroupMembers() {
   if (!currentUser || !userProfile || !userProfile.groupId) return [];
-  try {
-    const snap = await db.collection('groups').doc(userProfile.groupId).collection('members').get();
-    const members = [];
-    for (const doc of snap.docs) {
-      const uid = doc.id;
-      const profileDoc = await db.collection('users').doc(uid).get();
-      if (profileDoc.exists) {
-        const p = profileDoc.data();
-        const todayDoc = await db.collection('users').doc(uid).collection('days').doc(getTodayKey()).get();
-        const todayKcal = todayDoc.exists ? (todayDoc.data().meals||[]).reduce((s,m)=>s+(m.kcal||0),0) : 0;
-        members.push({ uid, name: p.name, goal: p.goalKcal, kcal: todayKcal, streak: p.streak||0, isMe: uid === currentUser.uid });
-      }
-    }
-    return members;
-  } catch(e) { return []; }
+  return GroupRepository.getMembers(userProfile.groupId, currentUser.uid, getTodayKey());
 }
 
 // C1-WP1: מחולץ ל-js/core/dateUtils.js — פסאדה תואמת-לאחור, ללא שינוי התנהגות.
@@ -489,7 +473,7 @@ async function finishOnboarding() {
   };
   quickItems = [];
   await saveProfile();
-  await db.collection('groups').doc(groupCode).collection('members').doc(currentUser.uid).set({ joinedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  await GroupRepository.addMember(groupCode, currentUser.uid);
   todayData = { meals: [], burned: 0, steps: 0 }; waterCount = 0;
   showApp();
   initNotifications();
@@ -888,32 +872,14 @@ function getSharedBarcodeGroup() {
 
 async function lookupBarcodeInCache(code) {
   const groupKey = getSharedBarcodeGroup();
-  if (!groupKey) return null;
-  try {
-    const doc = await db.collection('groupBarcodes').doc(groupKey).collection('products').doc(code).get();
-    return doc.exists ? doc.data() : null;
-  } catch(e) { console.warn('barcode cache read failed:', e.code || e.message); return null; }
+  return BarcodeRepository.lookupInCache(groupKey, code);
 }
 
 async function saveBarcodeToCache(code, item, existingAddedByName) {
   const groupKey = getSharedBarcodeGroup();
-  if (!groupKey || !code || !item) return;
-  // אל תשמור רשומה ריקה (בלי ערכים) — היא רק תזהם את המאגר
-  const hasData = (item.kcal||0) > 0 || (item.protein||0) > 0 || (item.carbs||0) > 0 || (item.fat||0) > 0;
-  if (!hasData) return;
   // שמור את שם מי שהוסיף במקור; אם זה מוצר חדש — המשתמש הנוכחי
   const addedByName = existingAddedByName || (userProfile ? userProfile.name : '');
-  try {
-    await db.collection('groupBarcodes').doc(groupKey).collection('products').doc(code).set({
-      barcode: code,
-      name: item.name, amount: item.amount, unit: item.unit,
-      kcal: item.kcal, protein: item.protein, carbs: item.carbs, fat: item.fat,
-      fiber: item.fiber, sugar: item.sugar, sodium: item.sodium,
-      addedByName: addedByName,
-      updatedByName: userProfile ? userProfile.name : '',
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-  } catch(e) { console.warn('barcode cache save failed:', e.code || e.message); }
+  return BarcodeRepository.saveToCache(groupKey, code, item, addedByName, userProfile ? userProfile.name : '');
 }
 
 async function lookupBarcode(code) {
@@ -1620,11 +1586,11 @@ async function joinGroup() {
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
   if (!code || code.length < 4) { alert('הכנס קוד תקין'); return; }
   try {
-    const groupDoc = await db.collection('groups').doc(code).get();
-    if (!groupDoc.exists && !(await db.collection('groups').doc(code).collection('members').limit(1).get()).size) {
+    const exists = await GroupRepository.groupExists(code);
+    if (!exists) {
       alert('קוד לא נמצא. בדוק שוב.'); return;
     }
-    await db.collection('groups').doc(code).collection('members').doc(currentUser.uid).set({ joinedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await GroupRepository.addMember(code, currentUser.uid);
     userProfile.groupId = code;
     await saveProfile();
     document.getElementById('join-code-input').value = '';
@@ -3003,7 +2969,7 @@ function scheduleLocalNotifications(access) {
       if (viewingToday()) { realTodayData = todayData; realWaterCount = waterCount; }
       let data = { meals: [], burned: 0, steps: 0 }, water = 0;
       try {
-        const doc = await db.collection('users').doc(currentUser.uid).collection('days').doc(key).get();
+        const doc = await DayRepository.loadDay(currentUser.uid, key);
         if (doc.exists) { const d = doc.data(); data = { meals: d.meals || [], burned: d.burned || 0, steps: d.steps || 0 }; water = d.water || 0; }
       } catch (e) { console.error('loadDay:', e); }
       todayData = data;

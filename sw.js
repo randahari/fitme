@@ -1,4 +1,4 @@
-const VERSION = 'v2.26.0';
+const VERSION = 'v2.27.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -27,6 +27,11 @@ const SHELL = [
   '/fitme/js/adapters/barcodeScannerAdapter.js',
   '/fitme/js/adapters/openFoodFactsClient.js',
   '/fitme/js/adapters/claudeProxyClient.js',
+  '/fitme/js/repositories/profileRepository.js',
+  '/fitme/js/repositories/dayRepository.js',
+  '/fitme/js/repositories/favoritesRepository.js',
+  '/fitme/js/repositories/groupRepository.js',
+  '/fitme/js/repositories/barcodeRepository.js',
   '/fitme/js/app.js',
   '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',
