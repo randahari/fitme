@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.24.0';
+const APP_VERSION = '2.25.0';
 const CLAUDE_PROXY_URL = 'https://us-central1-fitme-f9289.cloudfunctions.net/anthropicProxy';
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
@@ -299,8 +299,9 @@ async function getGroupMembers() {
   } catch(e) { return []; }
 }
 
-function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
-function getTodayKey() { return dateKey(new Date()); }
+// C1-WP1: מחולץ ל-js/core/dateUtils.js — פסאדה תואמת-לאחור, ללא שינוי התנהגות.
+function dateKey(d) { return DateUtils.dateKey(d); }
+function getTodayKey() { return DateUtils.getTodayKey(); }
 function generateGroupCode() { return Math.random().toString(36).substr(2,6).toUpperCase(); }
 
 // ── NOTIFICATIONS ──
@@ -1047,28 +1048,12 @@ async function lookupBarcode(code) {
 }
 
 // ── מסך עריכה אחיד (תמונה / ברקוד / הקלדה) ──
-function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
-
-// חילוץ JSON עמיד מתשובת המודל — עומד גם אם המודל הוסיף טקסט (בעברית) לפני/אחרי ה-JSON.
-function parseModelJSON(raw) {
-  let t = String(raw == null ? '' : raw).replace(/```json|```/g, '').trim();
-  const firstObj = t.indexOf('{');
-  const firstArr = t.indexOf('[');
-  if (firstObj === -1 && firstArr === -1) throw new Error('לא נמצא JSON בתשובה');
-  let start, endChar;
-  if (firstArr !== -1 && (firstObj === -1 || firstArr < firstObj)) { start = firstArr; endChar = ']'; }
-  else { start = firstObj; endChar = '}'; }
-  const end = t.lastIndexOf(endChar);
-  if (end > start) t = t.slice(start, end + 1);
-  return JSON.parse(t);
-}
-
-function normalizeItem(it) {
-  return { name: it.name||'פריט', amount: num(it.amount), unit: it.unit||'', kcal: num(it.kcal),
-    protein: num(it.protein), carbs: num(it.carbs), fat: num(it.fat),
-    fiber: num(it.fiber), sugar: num(it.sugar), sodium: num(it.sodium), qty: it.qty || 1 };
-}
+// C1-WP1: מחולצים ל-js/core/stringUtils.js, js/core/numberUtils.js, js/core/jsonUtils.js,
+// js/domain/nutritionModel.js — פסאדות תואמות-לאחור, ללא שינוי התנהגות.
+function esc(s) { return StringUtils.esc(s); }
+function num(v) { return NumberUtils.num(v); }
+function parseModelJSON(raw) { return JsonUtils.parseModelJSON(raw); }
+function normalizeItem(it) { return NutritionModel.normalizeItem(it); }
 
 let editingItemIdx = null;
 let editingExisting = null; // {idx, time} כשעורכים ארוחה שכבר נרשמה (שלב 2)
@@ -1799,23 +1784,10 @@ function renderWeeklyMenu(menu) {
 // תוכנית אימונים הוסרה לבקשת המשתמש — תוכנית תזונה בלבד
 
 // ── PROFILE ──
-function calcBMI(weight, height) {
-  const h = height / 100;
-  return Math.round((weight / (h * h)) * 10) / 10;
-}
-
-function getBMICategory(bmi) {
-  if (bmi < 18.5) return { label: 'תת משקל', color: '#378ADD' };
-  if (bmi < 25) return { label: 'תקין', color: '#1D9E75' };
-  if (bmi < 30) return { label: 'עודף משקל', color: '#BA7517' };
-  return { label: 'השמנה', color: '#E24B4A' };
-}
-
-function calcBodyFat(weight, height, age, gender) {
-  const bmi = calcBMI(weight, height);
-  if (gender === 'male') return Math.round((1.20 * bmi) + (0.23 * age) - 16.2);
-  return Math.round((1.20 * bmi) + (0.23 * age) - 5.4);
-}
+// C1-WP1: מחולצים ל-js/domain/profileMetrics.js — פסאדות תואמות-לאחור, ללא שינוי התנהגות.
+function calcBMI(weight, height) { return ProfileMetrics.calcBMI(weight, height); }
+function getBMICategory(bmi) { return ProfileMetrics.getBMICategory(bmi); }
+function calcBodyFat(weight, height, age, gender) { return ProfileMetrics.calcBodyFat(weight, height, age, gender); }
 
 function getAvatarSVG(bmi, gender) {
   const isMale = gender !== 'female';
@@ -2152,25 +2124,11 @@ function adaptEnabled() {
 }
 
 // ── עזר: הפרש ימים בין שני מפתחות תאריך (YYYY-MM-DD) ──
-function daysBetween(k1, k2) {
-  return Math.round((new Date(k1 + 'T00:00:00') - new Date(k2 + 'T00:00:00')) / 86400000);
-}
-
-// ── רגרסיה לינארית (least squares). points: [{x, y}] → שיפוע ──
-function linearSlope(points) {
-  const n = points.length;
-  if (n < 2) return 0;
-  let sx = 0, sy = 0, sxy = 0, sxx = 0;
-  for (const p of points) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; }
-  const denom = n * sxx - sx * sx;
-  if (denom === 0) return 0;
-  return (n * sxy - sx * sy) / denom;
-}
-
-// ── סכימת קלוריות ליום בודד ──
-function dayKcal(dayData) {
-  return (dayData && dayData.meals || []).reduce((s, m) => s + (m.kcal || 0), 0);
-}
+// C1-WP1: מחולצים ל-js/core/dateUtils.js, js/core/numberUtils.js, js/domain/nutritionModel.js
+// — פסאדות תואמות-לאחור, ללא שינוי התנהגות.
+function daysBetween(k1, k2) { return DateUtils.daysBetween(k1, k2); }
+function linearSlope(points) { return NumberUtils.linearSlope(points); }
+function dayKcal(dayData) { return NutritionModel.dayKcal(dayData); }
 
 // ── בונה מפת ימים בחלון (כולל היום מ-todayData) ──
 function daysInWindow(history, windowDays) {
@@ -2686,7 +2644,8 @@ function canFire(type, priority) {
 
 function todayConsumed() { return todayData.meals.reduce((s, m) => s + (m.kcal || 0), 0); }
 function todayProtein() { return Math.round(todayData.meals.reduce((s, m) => s + (m.protein || 0), 0)); }
-function computeProteinTarget(weight) { return Math.round((weight || 75) * 1.8); } // B3: פורמולה משותפת, ללא שינוי
+// C1-WP1: מחולץ ל-js/domain/profileMetrics.js — פסאדה תואמת-לאחור, ללא שינוי התנהגות.
+function computeProteinTarget(weight) { return ProfileMetrics.computeProteinTarget(weight); }
 function proteinTarget() { return computeProteinTarget(userProfile.weight); }
 
 // מאכל חלבוני מהרשימה של המשתמש (אחרת ברירת מחדל)
