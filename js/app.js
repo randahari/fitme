@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.31.0';
+const APP_VERSION = '2.32.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -186,6 +186,33 @@ MealEditorPresenter.configure({
   showMealEditor: function (meal) { showMealEditor(meal); },
   cancelFood: function () { cancelFood(); },
   clearPendingMeal: function () { pendingMeal = null; },
+  alertFn: function (msg) { alert(msg); }
+});
+
+// C1-WP5D: מזריק closures לכל שלבי ה-commit המשותפים עם נקודות-כניסה אחרות —
+// persistDaySnapshot (גם logQuick, WP5E), learnQuickItems (WP5E, קריאה בלבד — אין
+// שכפול לוגיקת הלמידה), saveProfile/updateStreak (משותפים בין דומיינים רבים),
+// saveBarcodeToCache (WP3), renderFoodMeals/renderQuickStrip/renderHome/renderEditor
+// (חלקן עם override chains — closures, לא הפניות חשופות, מבטיחות תמיד את ההגדרה
+// הסופית-בזמן-ריצה). SessionLifecycle/NutritionOutputValidator מוזרקים כהפניה
+// חשופה — B1, קבועים, לעולם לא נעטפים.
+MealCommitService.configure({
+  mealRequiresNutritionValidation: function (meal) { return mealRequiresNutritionValidation(meal); },
+  nutritionOutputValidator: window.NutritionOutputValidator,
+  logValidation: function (status, sourceType, errorCodes) { logNutritionValidation(status, sourceType, errorCodes); },
+  collectErrorCodes: function (gate) { return collectNutritionErrorCodes(gate); },
+  saveBarcodeToCache: function (code, item, addedByName) { return saveBarcodeToCache(code, item, addedByName); },
+  sessionLifecycle: SessionLifecycle,
+  persistDaySnapshot: function (meals, burned, steps, water, authority, gen) { return persistDaySnapshot(meals, burned, steps, water, authority, gen); },
+  learnQuickItems: function (meal) { learnQuickItems(meal); },
+  clearPendingMeal: function () { pendingMeal = null; },
+  getElementById: function (id) { return document.getElementById(id); },
+  saveProfile: function () { return saveProfile(); },
+  updateStreak: function () { return updateStreak(); },
+  renderFoodMeals: function () { renderFoodMeals(); },
+  renderQuickStrip: function () { renderQuickStrip(); },
+  renderHome: function () { renderHome(); },
+  renderEditor: function () { renderEditor(); },
   alertFn: function (msg) { alert(msg); }
 });
 
@@ -1042,48 +1069,14 @@ function buildMealFromEditor() {
   });
 }
 
+// C1-WP5D: חולץ ל-MealCommitService.commitMeal — פסאדה תואמת-לאחור. authorityOptions
+// זהה לחלוטין למה ש-buildMealFromEditor() כבר מזריק (authoritySourceForMeal/currentUser/APP_VERSION).
 async function addMeal() {
-  if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return false; }
-  // REM-001 §14/ER-001 — שער אימות שני, חובה, מיד לפני הפרסיסטנס הסופי (גם על ערכים שהמשתמש ערך ידנית).
-  // מקורות שאינם AI ('off'/'group'/'manual') פטורים — REM-001 §4 אוסר לשנות לוגיקת מאגר ברקוד/הזנה ידנית.
-  if (mealRequiresNutritionValidation(pendingMeal)) {
-    const gate = window.NutritionOutputValidator.validateNutritionMeal(pendingMeal.items, pendingMeal.source || 'text');
-    logNutritionValidation(gate.overallStatus, pendingMeal.source || 'text', collectNutritionErrorCodes(gate));
-    if (gate.overallStatus !== 'VALID') { renderEditor(); return false; }
-  }
-  // שמירה/עדכון מאגר הקבוצה — עם הערכים הסופיים (כולל תיקונים ידניים). חל על כל מסלול ברקוד.
-  if (pendingMeal.barcode && pendingMeal.items[0]) {
-    saveBarcodeToCache(pendingMeal.barcode, pendingMeal.items[0], pendingMeal.addedByName);
-  }
-  const finalMeal = buildMealFromEditor();
-  const gen = SessionLifecycle.getGeneration();
-  // B4 §26: מוסיפים אופטימית ל-todayData.meals מיד (סינכרונית, לפני ה-await) — בדיוק
-  // כמו לפני B4 — כדי לשמר קומפוזיציה נכונה מול תוספת-ארוחה נוספת שרצה כמעט באותו רגע
-  // (todayData הוא אובייקט mutable משותף יחיד; דחיית המוטציה עד אחרי ה-await הייתה יוצרת
-  // race: התוספת השנייה הייתה מחשבת candidate מתוך snapshot ישן, בלי הראשונה). candidate
-  // vs. committed מתבטא כאן דרך rollback מפורש (הסרת הרשומה שהוספנו) בכשל durable —
-  // אותו דפוס בדיוק כמו Pattern Engine (B4 §25 כלל 10: "aligned with this contract").
-  todayData.meals.push(finalMeal);
-  const snapshotMeals = todayData.meals.slice();
-  const result = await persistDaySnapshot(snapshotMeals, todayData.burned, todayData.steps, waterCount, finalMeal.authority, gen);
-  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
-    const idx = todayData.meals.indexOf(finalMeal);
-    if (idx !== -1) todayData.meals.splice(idx, 1); // rollback — לא מתחייבים ל-candidate שנכשל
-    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
-    if (SessionLifecycle.isCurrent(gen)) alert('שמירת הארוחה נכשלה. נסה שוב.');
-    return false;
-  }
-  if (!SessionLifecycle.isCurrent(gen)) return false; // REM-002: stale-on-completion — אין אפקטים
-  learnQuickItems(finalMeal);
-  pendingMeal = null;
-  document.getElementById('food-result').classList.add('hidden');
-  document.getElementById('food-input').value = '';
-  await saveProfile(); // quickItems/streak — legacy broad-save, מחוץ ל-scope B4 (Review Q17)
-  await updateStreak();
-  renderFoodMeals();
-  renderQuickStrip();
-  renderHome();
-  return true;
+  return MealCommitService.commitMeal(pendingMeal, todayData, waterCount, {
+    authoritySource: authoritySourceForMeal(pendingMeal),
+    createdByUid: currentUser && currentUser.uid,
+    systemVersion: APP_VERSION
+  });
 }
 
 async function addMealAndFavorite() {

@@ -342,15 +342,30 @@ test('24. account switch cannot apply prior user completion state to the new ses
 // (REM-002: "Completion effects for the stale runtime SHALL be suppressed", B4 §18).
 // js/app.js is browser-only and cannot be require()'d, so this is a static source check —
 // mirrors the existing approach used by tests 39-42 above.
+//
+// C1-WP5D relocated addMeal()'s failure-alert gating into js/nutrition/mealCommitService.js
+// (MealCommitService.commitMeal) — intentional, per docs/specs/C1_SPEC_v1.0.md §C1-WP5D
+// ("stale-session effect suppression" is one of the service's named responsibilities). The
+// guarantee itself is unchanged (still gated by SessionLifecycle.isCurrent(gen), now via an
+// injected deps.sessionLifecycle so the module stays Node-testable — see
+// tests/mealCommitService.test.js's dedicated stale-completion tests for direct behavioral
+// proof). logQuick/applyAdaptiveUpdate have not moved and are still checked in js/app.js.
 test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on session currency (regression, Implementation Review)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
-  ['שמירת הארוחה נכשלה', 'שמירת הפריט נכשלה', 'שמירת היעד נכשלה'].forEach((msg) => {
-    const idx = appJs.indexOf(msg);
-    assert.notEqual(idx, -1, 'expected failure message not found: ' + msg);
-    const prefix = appJs.slice(Math.max(0, idx - 80), idx);
-    assert.match(prefix, /if \(SessionLifecycle\.isCurrent\(gen\)\)\s*alert\('$/, 'the alert for "' + msg + '" must be gated by SessionLifecycle.isCurrent(gen)');
+  const mealCommitServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/mealCommitService.js'), 'utf8');
+
+  const idx = mealCommitServiceJs.indexOf('שמירת הארוחה נכשלה');
+  assert.notEqual(idx, -1, 'expected failure message not found in mealCommitService.js: שמירת הארוחה נכשלה');
+  const prefix = mealCommitServiceJs.slice(Math.max(0, idx - 90), idx);
+  assert.match(prefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הארוחה נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
+
+  ['שמירת הפריט נכשלה', 'שמירת היעד נכשלה'].forEach((msg) => {
+    const appIdx = appJs.indexOf(msg);
+    assert.notEqual(appIdx, -1, 'expected failure message not found: ' + msg);
+    const appPrefix = appJs.slice(Math.max(0, appIdx - 80), appIdx);
+    assert.match(appPrefix, /if \(SessionLifecycle\.isCurrent\(gen\)\)\s*alert\('$/, 'the alert for "' + msg + '" must be gated by SessionLifecycle.isCurrent(gen)');
   });
 });
 

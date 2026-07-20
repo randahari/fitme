@@ -29,12 +29,12 @@ test('mealDraft.js is registered in index.html, loaded after its dependencies an
 test('mealDraft.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.31.0');
+  assert.equal(versionMatch[1], '2.32.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.31.0');
+  assert.equal(appVersionMatch[1], '2.32.0');
 });
 
 test('mealDraft.js is a pure module: no configure(), no window/document/db/alert/confirm, and depends only on NutritionModel/AuthorityContract via direct require (matching the WP1 pure-module precedent)', () => {
@@ -88,19 +88,23 @@ test('buildMealFromEditor still supplies authoritySourceForMeal/currentUser/APP_
   assert.match(body, /systemVersion: APP_VERSION/);
 });
 
-test('addMeal/addMealAndFavorite/persistDaySnapshot (commit, rollback, and persistence — WP5D) are untouched by WP5B', () => {
+// C1-WP5D subsequently relocated addMeal()'s body into MealCommitService.commitMeal
+// (intentional — see tests/c1Wp5dWiring.test.js) — this test now only confirms addMeal()
+// and persistDaySnapshot() still exist, and that buildMealFromEditor() (WP5B's own facade,
+// still used by saveFavoriteFromPending) is untouched.
+test('addMeal/persistDaySnapshot (WP5D territory) still exist; buildMealFromEditor (WP5B) is untouched', () => {
   assert.match(appJs, /async function addMeal\(\) \{/);
-  assert.match(appJs, /todayData\.meals\.push\(finalMeal\);/);
-  assert.match(appJs, /const result = await persistDaySnapshot\(/);
-  assert.doesNotMatch(appJs.slice(appJs.indexOf('async function addMeal() {'), appJs.indexOf('async function addMealAndFavorite')), /MealDraft\./, 'addMeal must not call MealDraft directly — it still calls buildMealFromEditor(), which is the facade');
+  assert.match(appJs, /async function persistDaySnapshot\(/);
+  assert.match(appJs, /function buildMealFromEditor\(\) \{\s*return MealDraft\.buildAuthoritativeMeal\(pendingMeal, \{/);
 });
 
-// C1-WP5C legitimately added js/nutrition/mealEditorPresenter.js after this test was written —
-// the closed set below was updated in the same commit to include it. mealDraft.js itself must
-// still never reference it or any WP5D-F name.
-test('no WP5D-F vocabulary was introduced into mealDraft.js; only the C1-WP5C file was added', () => {
+// C1-WP5C and C1-WP5D legitimately added js/nutrition/mealEditorPresenter.js and
+// mealCommitService.js after this test was written — the closed set below was updated in
+// the same commits to include them. mealDraft.js itself must still never reference either
+// of them or any WP5E-F name.
+test('no WP5D-F vocabulary was introduced into mealDraft.js; only the C1-WP5C/5D files were added', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js']);
+  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js']);
   assert.doesNotMatch(moduleContent, /mealCommitService|quickLogService|mealEditorPresenter|foodController|barcodeFlowController/);
 });
 
