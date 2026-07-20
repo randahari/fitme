@@ -27,12 +27,12 @@ test('mealCommitService.js is registered in index.html, loaded after mealEditorP
 test('mealCommitService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.33.0');
+  assert.equal(versionMatch[1], '2.34.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.33.0');
+  assert.equal(appVersionMatch[1], '2.34.0');
 });
 
 test('MealCommitService is configured with closures for every collaborator (never bare references)', () => {
@@ -107,11 +107,14 @@ test('addMealAndFavorite/saveFavoriteFromPending remain untouched — their own 
 // mealCommitService.js) is still checked to never reference it. appJs necessarily now references
 // the capitalized global QuickLogService (see tests/c1Wp5eWiring.test.js) — that is WP5E's own
 // concern, not WP5D's; this check is narrowed to the lowercase file-path form only.
-test('no WP5F vocabulary or unexpected files were introduced into js/nutrition/', () => {
+// C1-WP5F legitimately added js/nutrition/barcodeFlowController.js after this test was written —
+// the closed set below was updated in the same commit to include it, for the same reason (appJs
+// now references the capitalized global BarcodeFlowController — WP5F's own concern).
+test('no WP6+ vocabulary or unexpected files were introduced into js/nutrition/', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
+  assert.deepEqual(nutritionDirFiles, ['barcodeFlowController.js', 'mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
   assert.doesNotMatch(moduleContent, /quickLogService|foodController|barcodeFlowController/);
-  assert.doesNotMatch(appJs, /foodController|barcodeFlowController/);
+  assert.doesNotMatch(appJs, /foodController/);
 });
 
 test('quick-log (WP5E) functions — capQuick, scoreQuick, renderQuickStrip\'s internals, submitQuickLearn — are untouched by WP5D', () => {

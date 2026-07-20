@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.33.0';
+const APP_VERSION = '2.34.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -228,6 +228,20 @@ QuickLogService.configure({
   sessionLifecycle: SessionLifecycle,
   persistDaySnapshot: function (meals, burned, steps, water, authority, gen) { return persistDaySnapshot(meals, burned, steps, water, authority, gen); },
   alertFn: function (msg) { alert(msg); }
+});
+
+// C1-WP5F: מזריק closures ל-DOM ול-state המשותף עם app.js (showMealEditor — עטוף מאוחר יותר
+// ע"י Day Navigation; startLabelCamera — WP5A/photo-flow; userProfile/pendingBarcode — state
+// גלובלי משותף). BarcodeScannerAdapter/OpenFoodFactsClient/BarcodeRepository (WP2/WP3, יציבים)
+// נדרשים ישירות בתוך המודול — אין שכפול לוגיקה.
+BarcodeFlowController.configure({
+  documentRef: document,
+  alertFn: function (msg) { alert(msg); },
+  sessionLifecycle: SessionLifecycle,
+  showMealEditor: function (meal) { showMealEditor(meal); },
+  startLabelCamera: function () { startLabelCamera(); },
+  getUserProfile: function () { return userProfile; },
+  setPendingBarcode: function (code) { pendingBarcode = code; }
 });
 
 function showLogin() {
@@ -800,164 +814,26 @@ async function analyzePhoto(input) {
   finally { document.getElementById('food-loading').classList.add('hidden'); }
 }
 
-// ── BARCODE SCANNER (html5-qrcode — מנוע ZXing + גלאי native, יציב באייפון) ──
-let h5qr = null;
-let barcodeLastCode = null;
-let barcodeHintTimer = null;
+// ── BARCODE SCANNER — C1-WP5F: חולץ ל-BarcodeFlowController — פסאדות תואמות-לאחור.
+// h5qr/barcodeLastCode/barcodeHintTimer עברו להיות state פרטי של המודול (לא נקראים
+// משום מקום אחר ב-app.js).
+async function startBarcode() { return BarcodeFlowController.startBarcode(); }
+function onBarcodeDetected(code, statusEl) { return BarcodeFlowController.onBarcodeDetected(code, statusEl); }
+function armBarcodeHint(statusEl) { return BarcodeFlowController.armBarcodeHint(statusEl); }
+function barcodeToLabel() { return BarcodeFlowController.barcodeToLabel(); }
+function stopBarcodeReader() { return BarcodeFlowController.stopBarcodeReader(); }
+function closeBarcode() { return BarcodeFlowController.closeBarcode(); }
 
-async function startBarcode() {
-  const overlay = document.getElementById('barcode-overlay');
-  if (!overlay) { alert('סריקת ברקוד לא זמינה בדפדפן זה.'); return; }
-  overlay.classList.remove('hidden');
-  const statusEl = document.getElementById('barcode-status');
-  statusEl.textContent = 'מכוון את המצלמה לברקוד...';
-  barcodeLastCode = null;
+// ── בקשת צילום תווית (label fallback) — C1-WP5F: חולץ ל-BarcodeFlowController.
+function showLabelPrompt(code) { return BarcodeFlowController.showLabelPrompt(code); }
+function labelPromptCapture() { return BarcodeFlowController.labelPromptCapture(); }
+function closeLabelPrompt() { return BarcodeFlowController.closeLabelPrompt(); }
 
-  // C1-WP2: טעינת הספרייה, יצירת הסורק והתחלתו עברו ל-BarcodeScannerAdapter — אותו
-  // רצף/קודי שגיאה בדיוק, רק דרך שכבת מתאם.
-  try {
-    await BarcodeScannerAdapter.loadLibrary();
-  } catch(e) { closeBarcode(); alert('טעינת הסורק נכשלה. בדוק חיבור לאינטרנט.'); return; }
-
-  try {
-    h5qr = BarcodeScannerAdapter.createScanner('barcode-reader');
-  } catch(e) { closeBarcode(); alert('שגיאה באתחול הסורק.'); return; }
-
-  armBarcodeHint(statusEl);
-  try {
-    await BarcodeScannerAdapter.start(h5qr, (decodedText) => onBarcodeDetected(decodedText, statusEl));
-  } catch(e) {
-    closeBarcode();
-    alert('לא ניתן לפתוח מצלמה. אפשר גישה למצלמה בהגדרות הדפדפן.');
-  }
-}
-
-function onBarcodeDetected(code, statusEl) {
-  if (!code || barcodeLastCode) return; // כבר נתפס — מתעלמים מכפילויות
-  barcodeLastCode = code;
-  if (statusEl) statusEl.textContent = 'נמצא ברקוד: ' + code + ' — מחפש מוצר...';
-  stopBarcodeReader();
-  lookupBarcode(code);
-}
-
-function armBarcodeHint(statusEl) {
-  clearTimeout(barcodeHintTimer);
-  barcodeHintTimer = setTimeout(() => {
-    if (!barcodeLastCode) statusEl.innerHTML = 'לא מזהה? קרב מעט את הברקוד וודא תאורה — או <button onclick="barcodeToLabel()" style="background:none;border:none;color:var(--gold);text-decoration:underline;font-size:14px;cursor:pointer;font-family:Heebo,sans-serif">צלם תווית במקום</button>';
-  }, 20000);
-}
-
-function barcodeToLabel() {
-  closeBarcode();
-  showLabelPrompt('manual-' + Date.now());
-}
-
-function stopBarcodeReader() {
-  clearTimeout(barcodeHintTimer);
-  if (!h5qr) return;
-  const r = h5qr; h5qr = null;
-  BarcodeScannerAdapter.stop(r);
-}
-
-function closeBarcode() {
-  stopBarcodeReader();
-  const overlay = document.getElementById('barcode-overlay');
-  if (overlay) overlay.classList.add('hidden');
-}
-
-// ── בקשת צילום תווית (במקום confirm — כדי שהמצלמה תיפתח באייפון) ──
-function showLabelPrompt(code) {
-  pendingBarcode = code;
-  let el = document.getElementById('label-prompt');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'label-prompt';
-    el.style.cssText = 'position:fixed;inset:0;z-index:350;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Heebo,sans-serif;direction:rtl';
-    document.body.appendChild(el);
-  }
-  el.innerHTML = `
-    <div style="background:var(--bg);border-radius:16px;padding:22px;max-width:340px;width:100%;text-align:center;border:0.5px solid var(--border-2)">
-      <div style="font-size:34px;margin-bottom:8px">🏷️</div>
-      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">המוצר לא נמצא במאגר</div>
-      <div style="font-size:13px;color:var(--text-3);line-height:1.5;margin-bottom:16px">צלם את תווית הערכים התזונתיים. Claude יקרא אותה וישמור למאגר הקבוצה — פעם הבאה תזוהה מיד.</div>
-      <button onclick="labelPromptCapture()" style="width:100%;padding:14px;background:var(--gold);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:500;font-family:Heebo,sans-serif;cursor:pointer">📷 צלם תווית</button>
-      <button onclick="closeLabelPrompt()" style="width:100%;padding:12px;background:none;color:var(--text-2);border:none;font-size:14px;font-family:Heebo,sans-serif;cursor:pointer;margin-top:6px">ביטול</button>
-    </div>`;
-  el.style.display = 'flex';
-}
-
-function labelPromptCapture() {
-  closeLabelPrompt();
-  startLabelCamera();
-}
-
-function closeLabelPrompt() {
-  const el = document.getElementById('label-prompt');
-  if (el) el.style.display = 'none';
-}
-
-// ── מאגר ברקוד משותף לקבוצה ──
-function getSharedBarcodeGroup() {
-  if (!userProfile) return null;
-  return userProfile.groupId || null;
-}
-
-async function lookupBarcodeInCache(code) {
-  const groupKey = getSharedBarcodeGroup();
-  return BarcodeRepository.lookupInCache(groupKey, code);
-}
-
-async function saveBarcodeToCache(code, item, existingAddedByName) {
-  const groupKey = getSharedBarcodeGroup();
-  // שמור את שם מי שהוסיף במקור; אם זה מוצר חדש — המשתמש הנוכחי
-  const addedByName = existingAddedByName || (userProfile ? userProfile.name : '');
-  return BarcodeRepository.saveToCache(groupKey, code, item, addedByName, userProfile ? userProfile.name : '');
-}
-
-async function lookupBarcode(code) {
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-  // 1. מאגר הקבוצה — הכי מהיר, ידני, מדויק. אבל רק אם יש בו ערכים אמיתיים.
-  const cached = await lookupBarcodeInCache(code);
-  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי חיפוש המאגר
-  const cachedHasData = cached && ((cached.kcal||0) > 0 || (cached.protein||0) > 0 || (cached.carbs||0) > 0 || (cached.fat||0) > 0);
-  if (cachedHasData) {
-    closeBarcode();
-    const item = {
-      name: cached.name, amount: cached.amount, unit: cached.unit,
-      kcal: cached.kcal, protein: cached.protein, carbs: cached.carbs, fat: cached.fat,
-      fiber: cached.fiber, sugar: cached.sugar, sodium: cached.sodium
-    };
-    showMealEditor({
-      name: cached.name, items: [item], suggestions: [],
-      source: 'group', barcode: code, addedByName: cached.addedByName || '',
-      note: ''
-    });
-    return;
-  }
-
-  // 2. Open Food Facts — מאגר עולמי חינמי. C1-WP2: הבקשה ומיפוי התגובה עברו ל-
-  // OpenFoodFactsClient; ההחלטה מה להציג (עורך/בקשת תווית/שגיאה) נשארת כאן.
-  try {
-    const result = await OpenFoodFactsClient.lookupProduct(code);
-    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הבקשה ל-OpenFoodFacts
-    if (!result.found) {
-      closeBarcode();
-      showLabelPrompt(code);
-      return;
-    }
-    const item = result.item;
-    // הערכים יישמרו למאגר הקבוצה בעת ההוספה ליום (עם הערכים הסופיים, אחרי עריכה אם הייתה)
-    closeBarcode();
-    showMealEditor({
-      name: item.name, items: [item], suggestions: [],
-      source: 'off', barcode: code,
-      note: !result.servingSizeKnown ? 'לפי 100 גרם — התאם כמות עם +/-' : 'לפי מנה (' + result.servingSizeRaw + ')'
-    });
-  } catch(e) {
-    closeBarcode();
-    alert('שגיאה בחיפוש המוצר. בדוק חיבור לאינטרנט.');
-  }
-}
+// ── מאגר ברקוד משותף לקבוצה — C1-WP5F: חולץ ל-BarcodeFlowController.
+function getSharedBarcodeGroup() { return BarcodeFlowController.getSharedBarcodeGroup(); }
+async function lookupBarcodeInCache(code) { return BarcodeFlowController.lookupBarcodeInCache(code); }
+async function saveBarcodeToCache(code, item, existingAddedByName) { return BarcodeFlowController.saveBarcodeToCache(code, item, existingAddedByName); }
+async function lookupBarcode(code) { return BarcodeFlowController.lookupBarcode(code); }
 
 // ── מסך עריכה אחיד (תמונה / ברקוד / הקלדה) ──
 // C1-WP1: מחולצים ל-js/core/stringUtils.js, js/core/numberUtils.js, js/core/jsonUtils.js,

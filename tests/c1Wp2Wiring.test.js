@@ -32,12 +32,12 @@ test('all six WP2 adapter modules are registered in index.html, loaded before ap
 test('all six WP2 adapter modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   ADAPTER_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.33.0');
+  assert.equal(versionMatch[1], '2.34.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.33.0');
+  assert.equal(appVersionMatch[1], '2.34.0');
 });
 
 test('all six adapters are configured in app.js before first use', () => {
@@ -103,24 +103,34 @@ test('startCamera/startLabelCamera keep their photoMode product-state assignment
   assert.match(appJs, /function startLabelCamera\(\) \{ photoMode = 'label'; ImageAdapter\.triggerFileInput\('camera-input'\); \}/);
 });
 
-test('no direct Html5Qrcode/CDN references remain in app.js — scanner lifecycle routes through BarcodeScannerAdapter', () => {
+// C1-WP5F subsequently relocated the scanner start/stop sequence and lookupBarcode()'s body
+// into js/nutrition/barcodeFlowController.js (intentional — see tests/c1Wp5fWiring.test.js).
+// This test now only confirms app.js itself stays free of direct Html5Qrcode/CDN references
+// (still true — app.js only calls the facade, which delegates to the controller, which is the
+// only place that calls BarcodeScannerAdapter directly), and that the relocated calls exist in
+// their new home.
+test('no direct Html5Qrcode/CDN references remain in app.js — scanner lifecycle routes through BarcodeScannerAdapter (now via barcodeFlowController.js)', () => {
   assert.equal(appJs.indexOf('Html5Qrcode'), -1);
   assert.equal(appJs.indexOf('unpkg.com'), -1);
-  assert.match(appJs, /await BarcodeScannerAdapter\.loadLibrary\(\)/);
-  assert.match(appJs, /BarcodeScannerAdapter\.createScanner\('barcode-reader'\)/);
-  assert.match(appJs, /await BarcodeScannerAdapter\.start\(h5qr, \(decodedText\) => onBarcodeDetected\(decodedText, statusEl\)\)/);
-  assert.match(appJs, /BarcodeScannerAdapter\.stop\(r\)/);
+  const controllerJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/barcodeFlowController.js'), 'utf8');
+  assert.match(controllerJs, /await BarcodeScannerAdapter\.loadLibrary\(\)/);
+  assert.match(controllerJs, /BarcodeScannerAdapter\.createScanner\('barcode-reader'\)/);
+  assert.match(controllerJs, /await BarcodeScannerAdapter\.start\(h5qr, function \(decodedText\) \{ onBarcodeDetected\(decodedText, statusEl\); \}\)/);
+  assert.match(controllerJs, /BarcodeScannerAdapter\.stop\(r\)/);
 });
 
-test('lookupBarcode routes the Open Food Facts request through OpenFoodFactsClient, with UI branching preserved in app.js', () => {
-  assert.match(appJs, /await OpenFoodFactsClient\.lookupProduct\(code\)/);
-  assert.equal(appJs.indexOf('world.openfoodfacts.org'), -1);
-  const idx = appJs.indexOf('async function lookupBarcode(code)');
+// C1-WP5F subsequently relocated lookupBarcode()'s full body into barcodeFlowController.js —
+// this test now checks the relocated body, not app.js's one-line facade.
+test('lookupBarcode routes the Open Food Facts request through OpenFoodFactsClient, with UI branching preserved in barcodeFlowController.js', () => {
+  const controllerJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/barcodeFlowController.js'), 'utf8');
+  assert.match(controllerJs, /await OpenFoodFactsClient\.lookupProduct\(code\)/);
+  assert.equal(controllerJs.indexOf('world.openfoodfacts.org'), -1);
+  const idx = controllerJs.indexOf('async function lookupBarcode(code)');
   assert.notEqual(idx, -1);
-  const body = appJs.slice(idx, appJs.indexOf('\n}', idx));
+  const body = controllerJs.slice(idx, controllerJs.indexOf('\n  }', idx));
   assert.match(body, /showLabelPrompt\(code\)/);
-  assert.match(body, /showMealEditor\(/);
-  assert.match(body, /alert\('שגיאה בחיפוש המוצר/);
+  assert.match(body, /deps\.showMealEditor\(/);
+  assert.match(body, /deps\.alertFn\('שגיאה בחיפוש המוצר/);
 });
 
 test('no adapter file contains DOM/product-decision leakage: no alert()/confirm() calls', () => {

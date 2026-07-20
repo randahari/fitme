@@ -1,4 +1,4 @@
-const VERSION = 'v2.33.0';
+const VERSION = 'v2.34.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -40,6 +40,7 @@ const SHELL = [
   '/fitme/js/nutrition/mealEditorPresenter.js',
   '/fitme/js/nutrition/mealCommitService.js',
   '/fitme/js/nutrition/quickLogService.js',
+  '/fitme/js/nutrition/barcodeFlowController.js',
   '/fitme/js/app.js',
   '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',

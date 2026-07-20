@@ -29,12 +29,12 @@ test('mealDraft.js is registered in index.html, loaded after its dependencies an
 test('mealDraft.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.33.0');
+  assert.equal(versionMatch[1], '2.34.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.33.0');
+  assert.equal(appVersionMatch[1], '2.34.0');
 });
 
 test('mealDraft.js is a pure module: no configure(), no window/document/db/alert/confirm, and depends only on NutritionModel/AuthorityContract via direct require (matching the WP1 pure-module precedent)', () => {
@@ -104,9 +104,11 @@ test('addMeal/persistDaySnapshot (WP5D territory) still exist; buildMealFromEdit
 // of them or any WP5E-F name.
 // C1-WP5E legitimately added js/nutrition/quickLogService.js after this test was written —
 // the closed set below was updated in the same commit to include it.
-test('no WP5E-F vocabulary was introduced into mealDraft.js; only the C1-WP5C/5D/5E files were added', () => {
+// C1-WP5F legitimately added js/nutrition/barcodeFlowController.js after this test was written —
+// the closed set below was updated in the same commit to include it.
+test('no WP6+ vocabulary was introduced into mealDraft.js; only the C1-WP5C/5D/5E/5F files were added', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
+  assert.deepEqual(nutritionDirFiles, ['barcodeFlowController.js', 'mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
   assert.doesNotMatch(moduleContent, /mealCommitService|quickLogService|mealEditorPresenter|foodController|barcodeFlowController/);
 });
 

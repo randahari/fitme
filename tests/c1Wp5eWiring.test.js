@@ -27,12 +27,12 @@ test('quickLogService.js is registered in index.html, loaded after mealCommitSer
 test('quickLogService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.33.0');
+  assert.equal(versionMatch[1], '2.34.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.33.0');
+  assert.equal(appVersionMatch[1], '2.34.0');
 });
 
 test('QuickLogService is configured with closures for every collaborator (never bare references)', () => {
@@ -113,9 +113,12 @@ test('quickLogService.js does not own DOM rendering markup, AI requests, or Fire
   assert.doesNotMatch(code, /renderQuickStrip|MealDraft|mealCommitService/, 'must not own rendering, meal-draft math, or the addMeal commit sequence');
 });
 
-test('no WP5F vocabulary or unexpected files were introduced into js/nutrition/', () => {
+// C1-WP5F legitimately added js/nutrition/barcodeFlowController.js after this test was written —
+// the closed set below was updated in the same commit to include it. quickLogService.js itself
+// must still never reference it or any WP6+ name.
+test('no WP6+ vocabulary was introduced into quickLogService.js; only the C1-WP5F file was added', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
+  assert.deepEqual(nutritionDirFiles, ['barcodeFlowController.js', 'mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
   assert.doesNotMatch(moduleContent, /foodController|barcodeFlowController/);
 });
 

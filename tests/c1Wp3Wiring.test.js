@@ -34,12 +34,12 @@ test('all five WP3 repository modules are registered in index.html, loaded after
 test('all five WP3 repository modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   REPO_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.33.0');
+  assert.equal(versionMatch[1], '2.34.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.33.0');
+  assert.equal(appVersionMatch[1], '2.34.0');
 });
 
 test('all five repositories are configured in app.js before first use', () => {
@@ -75,10 +75,20 @@ test('getGroupMembers, joinGroup and finishOnboarding delegate to GroupRepositor
   assert.match(appJs, /await GroupRepository\.addMember\(groupCode, currentUser\.uid\);/);
 });
 
-test('lookupBarcodeInCache/saveBarcodeToCache delegate to BarcodeRepository, keeping getSharedBarcodeGroup() in app.js', () => {
-  assert.match(appJs, /return BarcodeRepository\.lookupInCache\(groupKey, code\);/);
-  assert.match(appJs, /return BarcodeRepository\.saveToCache\(groupKey, code, item, addedByName, userProfile \? userProfile\.name : ''\);/);
-  assert.notEqual(appJs.indexOf('function getSharedBarcodeGroup()'), -1, 'product-state accessor must remain in app.js');
+// C1-WP3 originally established that lookupBarcodeInCache/saveBarcodeToCache/getSharedBarcodeGroup
+// call BarcodeRepository directly from app.js. C1-WP5F subsequently relocated all three function
+// bodies into js/nutrition/barcodeFlowController.js as a group (intentional — see
+// tests/c1Wp5fWiring.test.js, "group cache persistence" in the WP5F spec) — app.js now only keeps
+// one-line facades. This test now checks the relocated bodies still call BarcodeRepository exactly
+// as before, and that app.js's own facades still exist and delegate.
+test('lookupBarcodeInCache/saveBarcodeToCache delegate to BarcodeRepository, with getSharedBarcodeGroup() now living in barcodeFlowController.js (WP5F)', () => {
+  const controllerJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/barcodeFlowController.js'), 'utf8');
+  assert.match(controllerJs, /return BarcodeRepository\.lookupInCache\(groupKey, code\);/);
+  assert.match(controllerJs, /return BarcodeRepository\.saveToCache\(groupKey, code, item, addedByName, userProfile \? userProfile\.name : ''\);/);
+  assert.notEqual(controllerJs.indexOf('function getSharedBarcodeGroup()'), -1, 'product-state accessor now lives in barcodeFlowController.js');
+  assert.match(appJs, /function getSharedBarcodeGroup\(\) \{ return BarcodeFlowController\.getSharedBarcodeGroup\(\); \}/);
+  assert.match(appJs, /async function lookupBarcodeInCache\(code\) \{ return BarcodeFlowController\.lookupBarcodeInCache\(code\); \}/);
+  assert.match(appJs, /async function saveBarcodeToCache\(code, item, existingAddedByName\) \{ return BarcodeFlowController\.saveBarcodeToCache\(code, item, existingAddedByName\); \}/);
 });
 
 test('the Day Navigation IIFE loads a specific day through DayRepository', () => {
