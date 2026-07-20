@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.32.0';
+const APP_VERSION = '2.33.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -213,6 +213,20 @@ MealCommitService.configure({
   renderQuickStrip: function () { renderQuickStrip(); },
   renderHome: function () { renderHome(); },
   renderEditor: function () { renderEditor(); },
+  alertFn: function (msg) { alert(msg); }
+});
+
+// C1-WP5E: מזריק closures לתלויות המשותפות עם addMeal (WP5D) — persistDaySnapshot,
+// SessionLifecycle/NutritionOutputValidator, saveProfile/updateStreak, renderFoodMeals/
+// renderHome (אין renderQuickStrip — logQuick המקורי לא קרא לו, ולא משנים זאת) — אין
+// שכפול לוגיקה. r1 מוזרק כדי ש-learnQuickItems ישתמש באותו עיגול כמו submitQuickLearn
+// (נשאר ב-app.js, לא בסקופ WP5E).
+QuickLogService.configure({
+  nutritionOutputValidator: window.NutritionOutputValidator,
+  logValidation: function (status, sourceType, errorCodes) { logNutritionValidation(status, sourceType, errorCodes); },
+  collectErrorCodes: function (gate) { return collectNutritionErrorCodes(gate); },
+  sessionLifecycle: SessionLifecycle,
+  persistDaySnapshot: function (meals, burned, steps, water, authority, gen) { return persistDaySnapshot(meals, burned, steps, water, authority, gen); },
   alertFn: function (msg) { alert(msg); }
 });
 
@@ -1144,42 +1158,23 @@ let quickManage = false;
 function r1(x) { return Math.round((+x || 0) * 10) / 10; }
 function qval(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
 
-// לומד כל פריט בארוחה כאטום לרישום מהיר (ערכים אפקטיביים לאחר qty)
+// C1-WP5E: חולץ ל-QuickLogService.learnQuickItems — פסאדה תואמת-לאחור. r1 מוזרק (עוגן
+// משותף עם submitQuickLearn, שנשאר כאן ומשתמש ב-r1 ישירות). השומר (guard) נשאר גם כאן,
+// זהה למקור — כדי שלא תתבצע כלל הקצאת userProfile.quickItems כשה-meal לא תקין.
 function learnQuickItems(meal) {
   if (!meal || !Array.isArray(meal.items)) return;
-  const now = Date.now(), hr = new Date().getHours();
-  meal.items.forEach(it => {
-    const name = (it.name || '').trim();
-    if (!name) return;
-    const q = it.qty || 1;
-    const eff = {
-      amount: r1((it.amount || 0) * q), unit: it.unit || '',
-      kcal: Math.round((it.kcal || 0) * q), protein: r1((it.protein || 0) * q), carbs: r1((it.carbs || 0) * q),
-      fat: r1((it.fat || 0) * q), fiber: r1((it.fiber || 0) * q), sugar: r1((it.sugar || 0) * q), sodium: Math.round((it.sodium || 0) * q)
-    };
-    let e = quickItems.find(x => x.name === name);
-    if (e) { e.count = (e.count || 0) + 1; e.lastUsed = now; e.lastHour = hr; Object.assign(e, eff); }
-    else { quickItems.push({ name, ...eff, count: 1, lastUsed: now, lastHour: hr, pinned: false }); }
-  });
-  capQuick();
+  quickItems = QuickLogService.learnQuickItems(meal, quickItems, r1);
   if (userProfile) userProfile.quickItems = quickItems;
 }
 
+// C1-WP5E: חולץ ל-QuickLogService.capQuick — פסאדה תואמת-לאחור.
 function capQuick() {
-  if (quickItems.length <= 40) return;
-  quickItems.sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || (b.count||0)-(a.count||0));
-  quickItems = quickItems.slice(0, 40);
+  quickItems = QuickLogService.capQuick(quickItems);
 }
 
 // ניקוד חכם: תדירות + התאמה לשעה + טריות + נעיצה
-function scoreQuick(q) {
-  const nowHr = new Date().getHours();
-  let s = (q.count || 0) * 3;
-  if (q.lastHour != null && Math.abs(q.lastHour - nowHr) <= 2) s += 8;
-  if (q.lastUsed) { const days = (Date.now() - q.lastUsed) / 86400000; if (days < 2) s += 4; else if (days < 7) s += 2; }
-  if (q.pinned) s += 1000;
-  return s;
-}
+// C1-WP5E: חולץ ל-QuickLogService.scoreQuick — פסאדה תואמת-לאחור.
+function scoreQuick(q) { return QuickLogService.scoreQuick(q); }
 
 function renderQuickStrip() {
   const sec = document.getElementById('quick-section');
@@ -1207,45 +1202,16 @@ function toggleQuickManage() {
   renderQuickStrip();
 }
 
+// C1-WP5E: חולץ ל-QuickLogService.commitQuickItem — פסאדה תואמת-לאחור. authorityOptions
+// זהה לחלוטין למה ש-addMeal מזריק (currentUser/APP_VERSION), ללא authoritySource (קבוע בתוך
+// המודול — logQuick המקורי תמיד השתמש ב-USER_CONFIRMED_AI_ESTIMATE, ללא פרמטריזציה).
 async function logQuick(gi, btn) {
   const q = quickItems[gi]; if (!q) return;
-  const now = new Date();
-  const item = { name:q.name, amount:q.amount, unit:q.unit, kcal:q.kcal, protein:q.protein, carbs:q.carbs, fat:q.fat, fiber:q.fiber, sugar:q.sugar, sodium:q.sodium, qty:1 };
-  // REM-003 §10 "Quick Learn" — הערכת AI שנוצרה ב-submitQuickLearn() (Generative Persistent Data,
-  // Level 2 בלבד) חייבת לעבור את אותו Authoritative Write Contract כמו כל מסלול AI אחר לפני
-  // שהיא הופכת לרשומה סמכותית ביומן (todayData.meals, הניזון ל-Adaptive TDEE/Habit/Pattern).
-  const gate = window.NutritionOutputValidator.validateNutritionMeal([item], 'quick-log');
-  logNutritionValidation(gate.overallStatus, 'quick-log', collectNutritionErrorCodes(gate));
-  if (gate.overallStatus !== 'VALID') {
-    alert('הפריט הזה לא עבר אימות תזונתי. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק/לתקן את הערכים.');
-    return;
-  }
-  const authority = window.AuthorityContract.buildAuthorityMetadata({
-    source: window.AuthorityContract.AUTHORITY_SOURCES.USER_CONFIRMED_AI_ESTIMATE,
-    createdBy: currentUser && currentUser.uid,
-    rule: 'logQuick.v1',
+  const committed = await QuickLogService.commitQuickItem(q, todayData, waterCount, {
+    createdByUid: currentUser && currentUser.uid,
     systemVersion: APP_VERSION
   });
-  const newMeal = {
-    name: q.name, kcal: q.kcal, protein: q.protein, carbs: q.carbs, fat: q.fat, fiber: q.fiber, sugar: q.sugar, sodium: q.sodium,
-    items: [item], time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),
-    authority: authority
-  };
-  // B4 §26: מוסיפים אופטימית מיד (סינכרונית) כמו addMeal() — למניעת race מול תוספת
-  // מקבילה; rollback מפורש (הסרת הרשומה) בכשל durable, במקום דחיית המוטציה עד אחרי ה-await.
-  const gen = SessionLifecycle.getGeneration();
-  todayData.meals.push(newMeal);
-  const snapshotMeals = todayData.meals.slice();
-  const result = await persistDaySnapshot(snapshotMeals, todayData.burned, todayData.steps, waterCount, authority, gen);
-  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
-    const idx = todayData.meals.indexOf(newMeal);
-    if (idx !== -1) todayData.meals.splice(idx, 1);
-    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
-    if (SessionLifecycle.isCurrent(gen)) alert('שמירת הפריט נכשלה. נסה שוב.');
-    return;
-  }
-  if (!SessionLifecycle.isCurrent(gen)) return; // REM-002: stale-on-completion — אין אפקטים
-  q.count = (q.count||0)+1; q.lastUsed = Date.now(); q.lastHour = now.getHours();
+  if (!committed) return;
   if (userProfile) userProfile.quickItems = quickItems;
   if (btn) { const o = btn.innerHTML; btn.innerHTML = '✓ נוסף'; btn.disabled = true; setTimeout(()=>{ btn.innerHTML = o; btn.disabled = false; }, 1200); }
   await saveProfile(); // quickItems/streak — legacy broad-save, מחוץ ל-scope B4 (Review Q17)
@@ -1254,16 +1220,17 @@ async function logQuick(gi, btn) {
   renderHome();
 }
 
+// C1-WP5E: חולץ ל-QuickLogService.togglePin — פסאדה תואמת-לאחור.
 async function pinQuick(gi) {
-  const q = quickItems[gi]; if (!q) return;
-  q.pinned = !q.pinned;
+  if (!QuickLogService.togglePin(quickItems, gi)) return;
   if (userProfile) userProfile.quickItems = quickItems;
   await saveProfile();
   renderQuickStrip();
 }
 
+// C1-WP5E: חולץ ל-QuickLogService.removeItem — פסאדה תואמת-לאחור.
 async function removeQuick(gi) {
-  quickItems.splice(gi, 1);
+  QuickLogService.removeItem(quickItems, gi);
   if (userProfile) userProfile.quickItems = quickItems;
   await saveProfile();
   renderQuickStrip();

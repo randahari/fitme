@@ -27,12 +27,12 @@ test('mealEditorPresenter.js is registered in index.html, loaded after mealDraft
 test('mealEditorPresenter.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.32.0');
+  assert.equal(versionMatch[1], '2.33.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.32.0');
+  assert.equal(appVersionMatch[1], '2.33.0');
 });
 
 test('MealEditorPresenter is configured in app.js with closures for showMealEditor (wrapped later by the Day Navigation IIFE)', () => {
@@ -85,9 +85,11 @@ test('mealEditorPresenter.js does not perform AI requests (WP5A) or reimplement 
 // C1-WP5D legitimately added js/nutrition/mealCommitService.js after this test was written —
 // the closed set below was updated in the same commit to include it. mealEditorPresenter.js
 // itself must still never reference it or any WP5E-F name.
-test('no WP5E-F vocabulary was introduced into mealEditorPresenter.js; only the C1-WP5D file was added', () => {
+// C1-WP5E legitimately added js/nutrition/quickLogService.js after this test was written —
+// the closed set below was updated in the same commit to include it.
+test('no WP5F vocabulary was introduced into mealEditorPresenter.js; only the C1-WP5D/5E files were added', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js']);
+  assert.deepEqual(nutritionDirFiles, ['mealCommitService.js', 'mealDraft.js', 'mealEditorPresenter.js', 'nutritionAnalysisService.js', 'quickLogService.js']);
   assert.doesNotMatch(moduleContent, /mealCommitService|quickLogService|foodController|barcodeFlowController/);
 });
 

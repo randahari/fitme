@@ -349,24 +349,33 @@ test('24. account switch cannot apply prior user completion state to the new ses
 // guarantee itself is unchanged (still gated by SessionLifecycle.isCurrent(gen), now via an
 // injected deps.sessionLifecycle so the module stays Node-testable — see
 // tests/mealCommitService.test.js's dedicated stale-completion tests for direct behavioral
-// proof). logQuick/applyAdaptiveUpdate have not moved and are still checked in js/app.js.
+// proof).
+//
+// C1-WP5E likewise relocated logQuick()'s failure-alert gating into
+// js/nutrition/quickLogService.js (QuickLogService.commitQuickItem) — same rationale, same
+// injected deps.sessionLifecycle pattern; see tests/quickLogService.test.js's dedicated
+// stale-completion tests. applyAdaptiveUpdate has not moved and is still checked in js/app.js.
 test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on session currency (regression, Implementation Review)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
   const mealCommitServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/mealCommitService.js'), 'utf8');
+  const quickLogServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/quickLogService.js'), 'utf8');
 
   const idx = mealCommitServiceJs.indexOf('שמירת הארוחה נכשלה');
   assert.notEqual(idx, -1, 'expected failure message not found in mealCommitService.js: שמירת הארוחה נכשלה');
   const prefix = mealCommitServiceJs.slice(Math.max(0, idx - 90), idx);
   assert.match(prefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הארוחה נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
 
-  ['שמירת הפריט נכשלה', 'שמירת היעד נכשלה'].forEach((msg) => {
-    const appIdx = appJs.indexOf(msg);
-    assert.notEqual(appIdx, -1, 'expected failure message not found: ' + msg);
-    const appPrefix = appJs.slice(Math.max(0, appIdx - 80), appIdx);
-    assert.match(appPrefix, /if \(SessionLifecycle\.isCurrent\(gen\)\)\s*alert\('$/, 'the alert for "' + msg + '" must be gated by SessionLifecycle.isCurrent(gen)');
-  });
+  const quickIdx = quickLogServiceJs.indexOf('שמירת הפריט נכשלה');
+  assert.notEqual(quickIdx, -1, 'expected failure message not found in quickLogService.js: שמירת הפריט נכשלה');
+  const quickPrefix = quickLogServiceJs.slice(Math.max(0, quickIdx - 90), quickIdx);
+  assert.match(quickPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הפריט נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
+
+  const appIdx = appJs.indexOf('שמירת היעד נכשלה');
+  assert.notEqual(appIdx, -1, 'expected failure message not found: שמירת היעד נכשלה');
+  const appPrefix = appJs.slice(Math.max(0, appIdx - 80), appIdx);
+  assert.match(appPrefix, /if \(SessionLifecycle\.isCurrent\(gen\)\)\s*alert\('$/, 'the alert for "שמירת היעד נכשלה" must be gated by SessionLifecycle.isCurrent(gen)');
 });
 
 // Implementation Review correction: writeReplaceDerivedHabitView (js/stateAccess.js) and
