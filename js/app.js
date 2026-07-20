@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.30.0';
+const APP_VERSION = '2.31.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -164,7 +164,7 @@ AuthSessionController.start();
 // C1-WP5A: מזריק את callClaude/parseModelJSON כ-closures (לא הפניות חשופות — callClaude
 // נעטף מאוחר יותר במונה שימוש, ראו "── Hooks: עטיפת פונקציות קיימות" בהמשך הקובץ), את
 // NutritionOutputValidator (B1, קבוע), ואת showAiRejectedRecovery/showMealEditor כ-closures
-// (showMealEditor נעטף מאוחר יותר ב-Day Navigation IIFE) — אלה נשארות UI/WP5C טרם חולץ.
+// (showMealEditor נעטף מאוחר יותר ב-Day Navigation IIFE) — אלה כעת פסאדות ל-WP5C.
 NutritionAnalysisService.configure({
   callClaude: function (body) { return callClaude(body); },
   parseModelJSON: function (raw) { return parseModelJSON(raw); },
@@ -173,6 +173,20 @@ NutritionAnalysisService.configure({
   collectErrorCodes: function (gate) { return collectNutritionErrorCodes(gate); },
   onRejected: function (retryFn, meal) { showAiRejectedRecovery(retryFn, meal); },
   onValid: function (meal) { showMealEditor(meal); }
+});
+
+// C1-WP5C: מזריק גישת DOM (getElementById), את mealRequiresNutritionValidation/
+// NutritionOutputValidator (משותפים גם עם addMeal ב-WP5D — אין שכפול לוגיקה), ואת
+// showMealEditor/cancelFood/alert כ-closures (showMealEditor נעטף מאוחר יותר ב-Day
+// Navigation IIFE) — כדי שהמודול תמיד יפעיל את ההגדרה הסופית-בזמן-ריצה.
+MealEditorPresenter.configure({
+  getElementById: function (id) { return document.getElementById(id); },
+  mealRequiresNutritionValidation: function (meal) { return mealRequiresNutritionValidation(meal); },
+  nutritionOutputValidator: window.NutritionOutputValidator,
+  showMealEditor: function (meal) { showMealEditor(meal); },
+  cancelFood: function () { cancelFood(); },
+  clearPendingMeal: function () { pendingMeal = null; },
+  alertFn: function (msg) { alert(msg); }
 });
 
 function showLogin() {
@@ -693,28 +707,9 @@ function routeAiMeal(meal, sourceType, retryFn) {
 }
 
 // §14.3 — REJECTED: נתיב התאוששות ברור (נסה שוב / הזן ידנית / בטל), בלי קוד טכני למשתמש.
+// C1-WP5C: חולץ ל-MealEditorPresenter.showAiRejectedRecovery — פסאדה תואמת-לאחור.
 function showAiRejectedRecovery(retryFn, originalMeal) {
-  document.getElementById('food-questionnaire').classList.add('hidden');
-  pendingMeal = null;
-  const box = document.getElementById('food-result');
-  if (!box) { alert('לא הצלחתי לוודא את הערכים התזונתיים. נסה שוב.'); return; }
-  box.classList.remove('hidden');
-  box.innerHTML =
-    '<div class="result-header"><div class="result-name">לא הצלחתי לוודא את הערכים</div></div>' +
-    '<div class="result-note">משהו בהערכה יצא לא הגיוני. אפשר לנסות שוב, להזין את הארוחה ידנית, או לבטל.</div>' +
-    '<div class="result-actions">' +
-      '<button class="btn-primary" id="rem001-retry-btn">נסה שוב</button>' +
-      '<button class="btn-ghost" id="rem001-manual-btn">הזן ידנית</button>' +
-      '<button class="btn-ghost" id="rem001-cancel-btn">בטל</button>' +
-    '</div>';
-  const retryBtn = document.getElementById('rem001-retry-btn');
-  const manualBtn = document.getElementById('rem001-manual-btn');
-  const cancelBtn = document.getElementById('rem001-cancel-btn');
-  if (retryBtn) retryBtn.onclick = () => { box.classList.add('hidden'); if (typeof retryFn === 'function') retryFn(); };
-  if (manualBtn) manualBtn.onclick = () => {
-    showMealEditor({ name: (originalMeal && originalMeal.name) || (foodSession && foodSession.originalInput) || 'ארוחה', items: [], suggestions: [], source: 'manual' });
-  };
-  if (cancelBtn) cancelBtn.onclick = () => { cancelFood(); };
+  return MealEditorPresenter.showAiRejectedRecovery(retryFn, originalMeal, foodSession && foodSession.originalInput);
 }
 
 async function calculateFoodResult() {
@@ -941,100 +936,28 @@ function showMealEditor(meal) {
 }
 
 // ── תג מקור המידע (מאגר עולמי / תווית / מאגר קבוצה) ──
+// C1-WP5C: חולץ ל-MealEditorPresenter.sourceBadge — פסאדה תואמת-לאחור.
 function sourceBadge() {
-  if (!pendingMeal || !pendingMeal.source) return '';
-  const map = {
-    off:   { icon: '🌐', text: 'מאגר עולמי (Open Food Facts)', bg: 'var(--teal-light)', fg: 'var(--teal)' },
-    label: { icon: '📷', text: 'נקרא מהתווית ע"י Claude',       bg: 'var(--gold-light)', fg: 'var(--gold)' },
-    group: { icon: '👥', text: 'מהמאגר של הקבוצה' + (pendingMeal.addedByName ? ' · הוסף ע"י ' + pendingMeal.addedByName : ''), bg: 'var(--gold-light)', fg: 'var(--gold)' }
-  };
-  const s = map[pendingMeal.source];
-  if (!s) return '';
-  return `<div style="display:inline-flex;align-items:center;gap:6px;background:${s.bg};color:${s.fg};border-radius:20px;padding:5px 12px;font-size:12px;font-weight:500;margin-bottom:10px">${s.icon} ${esc(s.text)}</div>`;
+  return MealEditorPresenter.sourceBadge(pendingMeal);
 }
 
 function mealTotals() {
   return MealDraft.computeTotals(pendingMeal ? pendingMeal.items : []);
 }
 
-function fmtQty(q) { return (q % 1 === 0 ? q : q.toFixed(2).replace(/0$/,'')); }
+// C1-WP5C: חולץ ל-MealEditorPresenter.fmtQty — פסאדה תואמת-לאחור.
+function fmtQty(q) { return MealEditorPresenter.fmtQty(q); }
 
 // REM-001 §16/ER-004 — "Validation banner": מחושב חי מתוך המצב הנוכחי של pendingMeal.items,
 // כך שהוספה/עריכה/מחיקה של פריט משקפות את הבאנר מיד, בלי דגל נפרד שעלול להתיישן.
+// C1-WP5C: חולץ ל-MealEditorPresenter.nutritionValidationBanner — פסאדה תואמת-לאחור.
 function nutritionValidationBanner() {
-  if (!pendingMeal || !pendingMeal.items.length || !mealRequiresNutritionValidation(pendingMeal)) return '';
-  const gate = window.NutritionOutputValidator.validateNutritionMeal(pendingMeal.items, pendingMeal.source || 'text');
-  if (gate.overallStatus === 'VALID') return '';
-  const text = gate.overallStatus === 'REJECTED'
-    ? 'אחד הערכים לא הגיוני (למשל שלילי או חסר). תקן אותו לפני השמירה.'
-    : 'FITME לא בטוח לגמרי בהערכה הזו. בדוק את הקלוריות והערכים לפני השמירה.';
-  return `<div class="result-note">🔎 ${esc(text)}</div>`;
+  return MealEditorPresenter.nutritionValidationBanner(pendingMeal);
 }
 
+// C1-WP5C: חולץ ל-MealEditorPresenter.renderEditor — פסאדה תואמת-לאחור.
 function renderEditor() {
-  const box = document.getElementById('food-result');
-  if (!box || !pendingMeal) return;
-  const t = mealTotals();
-  const fld = (lbl, id, val, type) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-3)">${lbl}<input id="${id}" ${type==='text'?'type="text"':'type="number" inputmode="decimal"'} value="${esc(val)}"></label>`;
-  const rows = pendingMeal.items.map((it, i) => {
-    if (editingItemIdx === i) {
-      return `<div class="ed-item" style="flex-direction:column;align-items:stretch;gap:8px">
-        ${fld('שם','edit-name',it.name,'text')}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${fld('כמות','edit-amount',it.amount)}
-          ${fld('יחידה','edit-unit',it.unit,'text')}
-          ${fld("קלוריות",'edit-kcal',it.kcal)}
-          ${fld('חלבון (g)','edit-protein',it.protein)}
-          ${fld('פחמימות (g)','edit-carbs',it.carbs)}
-          ${fld('שומן (g)','edit-fat',it.fat)}
-          ${fld('סיבים (g)','edit-fiber',it.fiber)}
-          ${fld('סוכר (g)','edit-sugar',it.sugar)}
-          ${fld('נתרן (mg)','edit-sodium',it.sodium)}
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-small" style="flex:1" onclick="editorSaveEdit(${i})">שמור ✓</button>
-          <button class="btn-ghost" style="flex:1;margin-top:0;padding:8px" onclick="editorCancelEdit()">בטל</button>
-        </div>
-      </div>`;
-    }
-    const amountTxt = it.amount ? `${fmtQty(Math.round(it.amount*it.qty*10)/10)} ${esc(it.unit)}` : '';
-    return `<div class="ed-item">
-      <button class="ed-del" onclick="editorDelete(${i})" aria-label="הסר פריט">×</button>
-      <div class="ed-info" onclick="editorEdit(${i})" style="cursor:pointer">
-        <div class="ed-name">${esc(it.name)} <span style="font-size:12px;color:var(--gold)">✏️</span></div>
-        <div class="ed-sub">${amountTxt}${amountTxt?' · ':''}${Math.round(it.kcal*it.qty)} קל' · ${Math.round(it.protein*it.qty)}g חלבון</div>
-      </div>
-      <div class="ed-qty">
-        <button onclick="editorQty(${i},-1)" aria-label="הפחת כמות">−</button>
-        <span>×${fmtQty(it.qty)}</span>
-        <button onclick="editorQty(${i},1)" aria-label="הגדל כמות">+</button>
-      </div>
-    </div>`;
-  }).join('');
-  const suggs = pendingMeal.suggestions.length
-    ? `<div class="ed-sugg-title">אולי היה גם?</div><div class="ed-suggs">` +
-      pendingMeal.suggestions.map((s,i)=>`<button class="ed-sugg" onclick="editorAddSuggestion(${i})">+ ${esc(s.name)} <span>(${Math.round(s.kcal)})</span></button>`).join('') + `</div>`
-    : '';
-  box.innerHTML = `
-    <div class="result-header"><div class="result-name">${esc(pendingMeal.name)}</div></div>
-    ${nutritionValidationBanner()}
-    ${sourceBadge()}
-    <div class="ed-items">${rows || '<div class="empty-state">אין פריטים — הוסף למטה</div>'}</div>
-    ${suggs}
-    <div class="ed-add-row">
-      <input type="text" id="ed-add-input" placeholder="הוסף פריט (למשל: כף טחינה)">
-      <button class="btn-small" id="ed-add-btn" onclick="editorAddCustom()">הוסף</button>
-    </div>
-    <div class="ed-total">
-      <div class="ed-total-kcal">${Math.round(t.kcal)} <span>קל'</span></div>
-      <div class="ed-total-macros">חלבון ${Math.round(t.protein)}g · פחמ' ${Math.round(t.carbs)}g · שומן ${Math.round(t.fat)}g<br><span>סיבים ${Math.round(t.fiber)}g · סוכר ${Math.round(t.sugar)}g · נתרן ${Math.round(t.sodium)}mg</span></div>
-    </div>
-    ${pendingMeal.note ? `<div class="result-note">${esc(pendingMeal.note)}</div>` : ''}
-    <div class="result-actions">
-      <button class="btn-primary" onclick="addMeal()">הוסף ליום ✓</button>
-      <button class="btn-ghost" onclick="addMealAndFavorite()">הוסף ושמור כמועדף</button>
-      <button class="btn-ghost" onclick="cancelFood()">בטל</button>
-    </div>`;
+  MealEditorPresenter.renderEditor(pendingMeal, editingItemIdx);
 }
 
 function editorQty(i, dir) {
