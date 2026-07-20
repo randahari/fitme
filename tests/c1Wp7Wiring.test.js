@@ -30,12 +30,12 @@ test('both adaptive modules are in the sw.js SHELL cache list, and VERSION was b
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeDomain.js'), -1);
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeController.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.37.0');
+  assert.equal(versionMatch[1], '2.38.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.37.0');
+  assert.equal(appVersionMatch[1], '2.38.0');
 });
 
 // ── adaptiveTdeeDomain.js: pure module ──────────────────────────────────────────────────
@@ -198,12 +198,16 @@ test('logWeight (core profile/weight tracking, out of WP7 scope) is untouched �
   assert.doesNotMatch(body, /AdaptiveTdeeController|AdaptiveTdeeDomain/);
 });
 
-test('the adaptiveTdeeEngine Engine Registry registration (B2, frozen) is untouched — still calls runAdaptiveCheck/renderAdaptiveCard/renderPartialPrompt by their app.js facade names', () => {
-  const idx = appJs.indexOf("id: 'adaptiveTdeeEngine',");
-  assert.notEqual(idx, -1);
-  const body = appJs.slice(idx, appJs.indexOf("id: 'triggerEngine'", idx) !== -1 ? appJs.indexOf("id: 'triggerEngine'", idx) : appJs.length);
-  assert.match(body, /await runAdaptiveCheck\(ctx\.state\);/);
-  assert.match(body, /renderAdaptiveCard\(\); renderPartialPrompt\(\);/);
+// C1-WP9 relocated the adaptiveTdeeEngine Engine Registry registration out of app.js's B2
+// STAGE 8 tail IIFE into js/engines/adaptiveTdeeEngineAdapter.js (intentional — see
+// tests/c1Wp9Wiring.test.js) — it now calls AdaptiveTdeeController.runAdaptiveCheck/
+// renderAdaptiveCard/renderPartialPrompt directly instead of via app.js facade names,
+// same tier as every other WP9 adapter calling its WP7/WP8 controller directly.
+test('the adaptiveTdeeEngine Engine Registry registration now lives in js/engines/adaptiveTdeeEngineAdapter.js (C1-WP9) — still calls AdaptiveTdeeController.runAdaptiveCheck/renderAdaptiveCard/renderPartialPrompt', () => {
+  const adapterJs = fs.readFileSync(path.join(__dirname, '../js/engines/adaptiveTdeeEngineAdapter.js'), 'utf8');
+  assert.match(adapterJs, /await AdaptiveTdeeController\.runAdaptiveCheck\(ctx\.state\);/);
+  assert.match(adapterJs, /AdaptiveTdeeController\.renderAdaptiveCard\(\); AdaptiveTdeeController\.renderPartialPrompt\(\);/);
+  assert.equal(appJs.indexOf("id: 'adaptiveTdeeEngine'"), -1, 'the registration itself must no longer be inline in app.js');
 });
 
 test('the _s4_renderProfile/_s4_renderSettings override chains are untouched — still call the (now-facaded) renderMeasurements/renderAdaptiveSettings by their global names', () => {

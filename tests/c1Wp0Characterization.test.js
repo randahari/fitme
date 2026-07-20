@@ -146,9 +146,16 @@ test('6. window assignments in app.js match the closed WP0 inventory exactly', (
 // 7. IIFE boundary map (docs/architecture/C1_WP0_INVENTORY.md §4)
 // ══════════════════════════════════════════════════════════════════
 
-test('7. exactly four top-level IIFEs exist in app.js', () => {
+// C1-WP9 relocated the Habit Engine, Pattern Engine, and B2 Engine Registration IIFEs out
+// of app.js into js/engines/habitEngine.js, js/engines/patternEngine.js, and
+// js/engines/registerEngines.js (+ js/engines/adaptiveTdeeEngineAdapter.js /
+// js/engines/triggerEngineAdapter.js) — intentional, per docs/specs/C1_SPEC_v1.0.md
+// §C1-WP9. Only the Day Navigation IIFE remains a top-level IIFE in app.js; the four
+// relocated modules each keep their own single top-level IIFE (verified in
+// tests/c1Wp9Wiring.test.js), so this is a straight move, not a removal, of the pattern.
+test('7. exactly one top-level IIFE exists in app.js (Day Navigation — the other three moved to js/engines/*.js in C1-WP9)', () => {
   const count = countMatches(/^\(function\s*\(\s*\)\s*\{/gm);
-  assert.equal(count, 4, 'expected the Day Navigation, Habit Engine, Pattern Engine, and B2 Engine Registration IIFEs only');
+  assert.equal(count, 1, 'expected only the Day Navigation IIFE; Habit Engine/Pattern Engine/B2 Engine Registration IIFEs relocated to js/engines/*.js');
 });
 
 test('8. the Day Navigation IIFE (js/app.js:3071 region) contains its full documented compatibility and override surface, entirely before the Habit Engine IIFE begins', () => {

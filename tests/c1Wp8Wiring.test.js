@@ -30,12 +30,12 @@ test('both trigger modules are in the sw.js SHELL cache list, and VERSION was bu
   assert.notEqual(swJs.indexOf('/fitme/js/trigger/triggerDomain.js'), -1);
   assert.notEqual(swJs.indexOf('/fitme/js/trigger/triggerController.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.37.0');
+  assert.equal(versionMatch[1], '2.38.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.37.0');
+  assert.equal(appVersionMatch[1], '2.38.0');
 });
 
 // ── triggerDomain.js: pure module ───────────────────────────────────────────────────────
@@ -173,12 +173,16 @@ test('computeProteinTarget/proteinTarget (WP1 permanent facade, out of WP8 scope
   assert.doesNotMatch(domainJs, /computeProteinTarget\s*:\s*function|function computeProteinTarget/);
 });
 
-test('the triggerEngine Engine Registry registration (B2, frozen) is untouched — still calls runCoachTriggers/presentTriggerCard by their app.js facade names', () => {
-  const idx = appJs.indexOf("id: 'triggerEngine'");
-  assert.notEqual(idx, -1);
-  const body = appJs.slice(idx, idx + 2600);
-  assert.match(body, /await runCoachTriggers\(ctx\.state\)/);
-  assert.match(body, /presentTriggerCard\(/);
+// C1-WP9 relocated the triggerEngine Engine Registry registration out of app.js's B2
+// STAGE 8 tail IIFE into js/engines/triggerEngineAdapter.js (intentional — see
+// tests/c1Wp9Wiring.test.js) — it now calls TriggerController.runCoachTriggers/
+// presentTriggerCard directly instead of via app.js facade names, same tier as every
+// other WP9 adapter calling its WP7/WP8 controller directly.
+test('the triggerEngine Engine Registry registration now lives in js/engines/triggerEngineAdapter.js (C1-WP9) — still calls TriggerController.runCoachTriggers/presentTriggerCard', () => {
+  const adapterJs = fs.readFileSync(path.join(__dirname, '../js/engines/triggerEngineAdapter.js'), 'utf8');
+  assert.match(adapterJs, /await TriggerController\.runCoachTriggers\(ctx\.state\)/);
+  assert.match(adapterJs, /TriggerController\.presentTriggerCard\(/);
+  assert.equal(appJs.indexOf("id: 'triggerEngine'"), -1, 'the registration itself must no longer be inline in app.js');
 });
 
 test('no repository/domain module is duplicated: NotificationAdapter/ProfileMetrics each still have exactly one require() inside triggerController.js, and NotificationAdapter is not required by triggerDomain.js', () => {

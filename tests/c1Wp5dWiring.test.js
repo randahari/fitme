@@ -27,12 +27,12 @@ test('mealCommitService.js is registered in index.html, loaded after mealEditorP
 test('mealCommitService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.37.0');
+  assert.equal(versionMatch[1], '2.38.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.37.0');
+  assert.equal(appVersionMatch[1], '2.38.0');
 });
 
 test('MealCommitService is configured with closures for every collaborator (never bare references)', () => {

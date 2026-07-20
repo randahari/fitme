@@ -256,12 +256,22 @@ test('15. two createEngineAccess calls for the same engine/action never return t
 });
 
 // ── 16. No adapter with a two-capability-channel signature (static source check) ──
-test('16. no dual capability-channel pattern (run(context, access)) exists in app.js', () => {
+// C1-WP9 relocated the four engine run(ctx) adapters out of app.js's B2 STAGE 8 tail IIFE
+// into js/engines/habitEngine.js / js/engines/patternEngine.js /
+// js/engines/adaptiveTdeeEngineAdapter.js / js/engines/triggerEngineAdapter.js (intentional
+// — see tests/c1Wp9Wiring.test.js) — this check now covers app.js plus those four files.
+test('16. no dual capability-channel pattern (run(context, access)) exists in app.js or js/engines/*.js', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
-  assert.equal(/run:\s*async function\s*\(\s*ctx\s*,\s*\w+\s*\)/.test(appJs), false, 'no adapter run(ctx, access) signature should exist');
-  assert.match(appJs, /ctx\.state\s*=\s*StateAccess\.createEngineAccess/, 'context.state must be the channel adapters use to attach the capability');
+  const files = [
+    '../js/app.js', '../js/engines/habitEngine.js', '../js/engines/patternEngine.js',
+    '../js/engines/adaptiveTdeeEngineAdapter.js', '../js/engines/triggerEngineAdapter.js'
+  ].map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8'));
+  files.forEach((src) => {
+    assert.equal(/run:\s*async function\s*\(\s*ctx\s*,\s*\w+\s*\)/.test(src), false, 'no adapter run(ctx, access) signature should exist');
+  });
+  const anyAttachesState = files.some((src) => /ctx\.state\s*=\s*StateAccess\.createEngineAccess/.test(src));
+  assert.ok(anyAttachesState, 'context.state must be the channel adapters use to attach the capability, somewhere in the engine/adapter modules');
 });
 
 // ── 17. payload is not a State escape hatch ──

@@ -1,4 +1,4 @@
-const VERSION = 'v2.37.0';
+const VERSION = 'v2.38.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -49,6 +49,11 @@ const SHELL = [
   '/fitme/js/adaptive/adaptiveTdeeController.js',
   '/fitme/js/trigger/triggerDomain.js',
   '/fitme/js/trigger/triggerController.js',
+  '/fitme/js/engines/habitEngine.js',
+  '/fitme/js/engines/patternEngine.js',
+  '/fitme/js/engines/adaptiveTdeeEngineAdapter.js',
+  '/fitme/js/engines/triggerEngineAdapter.js',
+  '/fitme/js/engines/registerEngines.js',
   '/fitme/js/app.js',
   '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',

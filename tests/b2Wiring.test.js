@@ -13,7 +13,21 @@ const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8')
 const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
 const triggerControllerJs = fs.readFileSync(path.join(__dirname, '../js/trigger/triggerController.js'), 'utf8');
 
-test('1. all four B2 engines are registered with the approved id/triggers', () => {
+// C1-WP9 relocated all four engines' EngineRegistry registration (id/version/triggers/
+// dependsOn/run) out of app.js's B2 STAGE 8 tail IIFE into js/engines/registerEngines.js
+// (the id/version/triggers/dependsOn literals) plus js/engines/habitEngine.js,
+// js/engines/patternEngine.js, js/engines/adaptiveTdeeEngineAdapter.js, and
+// js/engines/triggerEngineAdapter.js (the run(ctx) bodies) — intentional, per
+// docs/specs/C1_SPEC_v1.0.md §C1-WP9. See tests/c1Wp9Wiring.test.js for the up-to-date
+// module-contract assertions. This file's registration-shaped tests (1, 2, 6d, 7, 7b, and
+// part of 9) now read those new files instead of app.js.
+const registerEnginesJs = fs.readFileSync(path.join(__dirname, '../js/engines/registerEngines.js'), 'utf8');
+const habitEngineJs = fs.readFileSync(path.join(__dirname, '../js/engines/habitEngine.js'), 'utf8');
+const patternEngineJs = fs.readFileSync(path.join(__dirname, '../js/engines/patternEngine.js'), 'utf8');
+const adaptiveAdapterJs = fs.readFileSync(path.join(__dirname, '../js/engines/adaptiveTdeeEngineAdapter.js'), 'utf8');
+const triggerAdapterJs = fs.readFileSync(path.join(__dirname, '../js/engines/triggerEngineAdapter.js'), 'utf8');
+
+test('1. all four B2 engines are registered with the approved id/triggers (in js/engines/registerEngines.js, C1-WP9)', () => {
   const expectations = [
     { id: 'habitEngine', triggers: ["triggers: ['APP_READY']"] },
     { id: 'patternEngine', triggers: ["triggers: ['APP_READY']"] },
@@ -22,9 +36,9 @@ test('1. all four B2 engines are registered with the approved id/triggers', () =
   ];
   expectations.forEach((exp) => {
     const idPattern = new RegExp("id:\\s*'" + exp.id + "'");
-    assert.match(appJs, idPattern, exp.id + ' must be registered');
-    const idIndex = appJs.search(idPattern);
-    const nearby = appJs.slice(idIndex, idIndex + 300);
+    assert.match(registerEnginesJs, idPattern, exp.id + ' must be registered');
+    const idIndex = registerEnginesJs.search(idPattern);
+    const nearby = registerEnginesJs.slice(idIndex, idIndex + 300);
     const hasExpectedTriggers = exp.triggers.some((t) => nearby.indexOf(t) !== -1);
     assert.ok(hasExpectedTriggers, exp.id + ' must declare its approved triggers[] near its id');
   });
@@ -33,8 +47,8 @@ test('1. all four B2 engines are registered with the approved id/triggers', () =
 test('2. all four engines declare dependsOn: [] (locked, per B2 SPEC §11 Rule 10)', () => {
   const ids = ['habitEngine', 'patternEngine', 'adaptiveTdeeEngine', 'triggerEngine'];
   ids.forEach((id) => {
-    const idIndex = appJs.search(new RegExp("id:\\s*'" + id + "'"));
-    const nearby = appJs.slice(idIndex, idIndex + 300);
+    const idIndex = registerEnginesJs.search(new RegExp("id:\\s*'" + id + "'"));
+    const nearby = registerEnginesJs.slice(idIndex, idIndex + 300);
     assert.match(nearby, /dependsOn:\s*\[\]/, id + ' must declare dependsOn: []');
   });
 });
@@ -99,44 +113,39 @@ test('6b. runAppReadyEngines() supplies an explicit, distinct action for all fou
 });
 
 test('6c. no adapter uses the old lenient "ctx.action &&" default-on-undefined pattern', () => {
-  assert.equal(appJs.indexOf("if (ctx.action &&"), -1, 'no adapter may treat a missing action as "run my default" any more — the Registry itself now gates on NO_ACTION_FOR_ENGINE');
+  [appJs, habitEngineJs, patternEngineJs, adaptiveAdapterJs, triggerAdapterJs].forEach((src) => {
+    assert.equal(src.indexOf("if (ctx.action &&"), -1, 'no adapter may treat a missing action as "run my default" any more — the Registry itself now gates on NO_ACTION_FOR_ENGINE');
+  });
 });
 
-test('6d. Habit Engine single-flight wrapper exists and is used by both the registered adapter and Pattern\'s internal call', () => {
-  assert.match(appJs, /function runHabitEngineSingleFlight\s*\(/);
-  assert.match(appJs, /var _habitInFlight/);
-  // registered habitEngine adapter must call the single-flight wrapper, not the raw function directly
-  // (B3: now passed ctx.state as an explicit argument — runHabitEngineSingleFlight(ctx.state))
-  const habitAdapterIndex = appJs.search(/id:\s*'habitEngine'/);
-  const habitAdapterBody = appJs.slice(habitAdapterIndex, habitAdapterIndex + 1200);
-  assert.match(habitAdapterBody, /runHabitEngineSingleFlight\(/);
-  assert.equal(/await runHabitEngine\(ctx\.state\)/.test(habitAdapterBody), false, 'the adapter must go through the single-flight wrapper, not call runHabitEngine directly');
-  // Pattern's internal call site must also go through the single-flight wrapper (no access
-  // argument available there — B3: it self-provisions its own habitEngine capability)
-  const patternFnIndex = appJs.search(/async function runPatternEngine\s*\(/);
-  const patternFnBody = appJs.slice(patternFnIndex, patternFnIndex + 1200);
-  assert.match(patternFnBody, /runHabitEngineSingleFlight\(\)/);
+test('6d. Habit Engine single-flight wrapper exists (js/engines/habitEngine.js, C1-WP9) and is used by both the registered adapter and Pattern\'s internal call', () => {
+  assert.match(habitEngineJs, /function runHabitEngineSingleFlight\s*\(/);
+  assert.match(habitEngineJs, /var _habitInFlight/);
+  // the habitEngine module's own run(ctx) adapter must call the single-flight wrapper, not the raw function directly
+  const runIndex = habitEngineJs.search(/async function run\s*\(ctx\)/);
+  assert.notEqual(runIndex, -1);
+  const runBody = habitEngineJs.slice(runIndex, runIndex + 1200);
+  assert.match(runBody, /runHabitEngineSingleFlight\(/);
+  assert.equal(/await runHabitEngine\(ctx\.state\)/.test(runBody), false, 'the adapter must go through the single-flight wrapper, not call runHabitEngine directly');
+  // Pattern's internal call site (js/engines/patternEngine.js) must also go through the
+  // single-flight wrapper (no access argument available there — B3: it self-provisions its
+  // own habitEngine capability), now via the HabitEngine module reference.
+  const patternFnIndex = patternEngineJs.search(/async function runPatternEngine\s*\(/);
+  const patternFnBody = patternEngineJs.slice(patternFnIndex, patternFnIndex + 1200);
+  assert.match(patternFnBody, /HabitEngine\.runHabitEngineSingleFlight\(\)/);
   assert.equal(/await runHabitEngine\(effectiveAccess\)|await runHabitEngine\(\)/.test(patternFnBody), false, 'Pattern must no longer call the raw runHabitEngine() directly');
 });
 
-test('7. adaptiveTdeeEngine and triggerEngine declare exactly the SPEC-approved actions', () => {
+test('7. adaptiveTdeeEngine and triggerEngine declare exactly the SPEC-approved actions (js/engines/*Adapter.js, C1-WP9)', () => {
   const adaptiveActions = ['ADAPTIVE_CHECK', 'WEIGHT_CHANGED', 'ADAPTIVE_RECHECK'];
   const triggerActions = ['DAILY_COACH_CHECK', 'WORKOUT_COMPLETED', 'LOCAL_NOTIFICATION_SCHEDULE'];
-  const adaptiveIndex = appJs.search(/id:\s*'adaptiveTdeeEngine'/);
-  const adaptiveBody = appJs.slice(adaptiveIndex, adaptiveIndex + 2600);
-  adaptiveActions.forEach((a) => assert.ok(adaptiveBody.indexOf(a) !== -1, 'adaptiveTdeeEngine must reference action ' + a));
-
-  const triggerIndex = appJs.search(/id:\s*'triggerEngine'/);
-  const triggerBody = appJs.slice(triggerIndex, triggerIndex + 2600);
-  triggerActions.forEach((a) => assert.ok(triggerBody.indexOf(a) !== -1, 'triggerEngine must reference action ' + a));
+  adaptiveActions.forEach((a) => assert.ok(adaptiveAdapterJs.indexOf(a) !== -1, 'adaptiveTdeeEngine adapter must reference action ' + a));
+  triggerActions.forEach((a) => assert.ok(triggerAdapterJs.indexOf(a) !== -1, 'triggerEngine adapter must reference action ' + a));
 });
 
 test('7b. habitEngine and patternEngine adapters check the explicit RECOMPUTE action', () => {
-  ['habitEngine', 'patternEngine'].forEach((id) => {
-    const idIndex = appJs.search(new RegExp("id:\\s*'" + id + "'"));
-    const body = appJs.slice(idIndex, idIndex + 500);
-    assert.match(body, /ctx\.action !== 'RECOMPUTE'/, id + ' adapter must check for the explicit RECOMPUTE action');
-  });
+  assert.match(habitEngineJs, /ctx\.action !== 'RECOMPUTE'/, 'habitEngine adapter must check for the explicit RECOMPUTE action');
+  assert.match(patternEngineJs, /ctx\.action !== 'RECOMPUTE'/, 'patternEngine adapter must check for the explicit RECOMPUTE action');
 });
 
 test('8. applyAdaptiveUpdate is not registered with the Engine Registry (stays manual, per B2 SPEC §17)', () => {
@@ -151,7 +160,11 @@ test('8. applyAdaptiveUpdate is not registered with the Engine Registry (stays m
 
 // C1-WP8 extracted fireWorkoutTrigger's implementation into js/trigger/triggerController.js
 // — app.js's fireWorkoutTrigger is now a one-line facade. The State-Access-only write
-// behavior this test originally locked in now lives in triggerController.js itself.
+// behavior this test originally locked in now lives in triggerController.js itself. C1-WP9
+// then relocated the triggerEngine adapter's call site (previously inline in app.js) into
+// js/engines/triggerEngineAdapter.js, which calls TriggerController.fireWorkoutTrigger
+// directly instead of going through the app.js facade (same tier as every other WP9 adapter
+// calling its WP7/WP8 controller directly) — the app.js facade itself is untouched.
 test('9. fireWorkoutTrigger accepts a State Access capability and writes only through it (B3: session guard now enforced by the access layer)', () => {
   const fnIndex = appJs.search(/async function fireWorkoutTrigger\s*\(/);
   assert.notEqual(fnIndex, -1);
@@ -159,12 +172,10 @@ test('9. fireWorkoutTrigger accepts a State Access capability and writes only th
   assert.match(fnBody, /fireWorkoutTrigger\s*\(\s*burn\s*,\s*access\s*\)/);
   assert.match(fnBody, /return TriggerController\.fireWorkoutTrigger\(burn, access\);/);
   assert.match(triggerControllerJs, /access\.write\.recordTriggerOutcome/, 'fireWorkoutTrigger must write only through the State Access capability, not saveProfile()/logCoachEvent() directly');
-  const callSiteIndex = appJs.search(/await fireWorkoutTrigger\(burn, ctx\.state\)/);
-  assert.notEqual(callSiteIndex, -1, 'the triggerEngine adapter must pass its State Access capability into fireWorkoutTrigger');
-  // the adapter itself still guards before/after with SessionLifecycle, independent of the access layer's own internal check
-  const adapterIndex = appJs.search(/id:\s*'triggerEngine'/);
-  const adapterBody = appJs.slice(adapterIndex, adapterIndex + 2600);
-  assert.match(adapterBody, /if \(!SessionLifecycle\.isCurrent\(gen\)\) return \{ status: 'SKIPPED', error: \{ code: 'STALE_SESSION'/);
+  const callSiteIndex = triggerAdapterJs.search(/await TriggerController\.fireWorkoutTrigger\(burn, ctx\.state\)/);
+  assert.notEqual(callSiteIndex, -1, 'the triggerEngine adapter must pass its State Access capability into TriggerController.fireWorkoutTrigger');
+  // the adapter itself still guards before/after with SessionLifecycle (injected as deps.sessionLifecycle), independent of the access layer's own internal check
+  assert.match(triggerAdapterJs, /if \(!deps\.sessionLifecycle\.isCurrent\(gen\)\) return \{ status: 'SKIPPED', error: \{ code: 'STALE_SESSION'/);
 });
 
 test('10. index.html loads engineRegistry.js before app.js', () => {
@@ -179,13 +190,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.37.0');
+  assert.equal(versionMatch[1], '2.38.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.37.0');
+  assert.equal(appVersionMatch[1], '2.38.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

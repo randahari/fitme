@@ -34,12 +34,12 @@ test('all five WP3 repository modules are registered in index.html, loaded after
 test('all five WP3 repository modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   REPO_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.37.0');
+  assert.equal(versionMatch[1], '2.38.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.37.0');
+  assert.equal(appVersionMatch[1], '2.38.0');
 });
 
 test('all five repositories are configured in app.js before first use', () => {
