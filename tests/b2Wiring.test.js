@@ -193,13 +193,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.39.0');
+  assert.equal(versionMatch[1], '2.40.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.39.0');
+  assert.equal(appVersionMatch[1], '2.40.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

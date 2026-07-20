@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.39.0';
+const APP_VERSION = '2.40.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -591,10 +591,6 @@ async function requestNotificationPermission() {
 function sendLocalNotification(title, body) {
   return NotificationAdapter.showNotification(title, body);
 }
-
-// B2: scheduleLocalNotifications() consolidated to a single definition — see the
-// Trigger Engine adapter section near the end of this file (previously this name
-// had a base definition here plus a full replacement later in the file).
 
 function scheduleAt(hour, min, callback) { return NotificationAdapter.scheduleAt(hour, min, callback); }
 
@@ -1602,11 +1598,6 @@ function renderAdaptiveSettings() { return AdaptiveTdeeController.renderAdaptive
 async function setAdaptiveRate(v) { return AdaptiveTdeeController.setAdaptiveRate(v); }
 async function toggleAdaptive() { return AdaptiveTdeeController.toggleAdaptive(); }
 
-// B2: Adaptive TDEE Engine orchestration no longer wraps showApp/logWeight here —
-// see runAppReadyEngines() (showApp) and runEngineAction() (logWeight),
-// wired through the Engine Registry near the end of this file.
-
-
 // ══════════════════════════════════════════════════════════════════
 // ── STAGE 5 (v2.10.0): מנוע טריגרים + תשתית זיכרון + מונה שימוש ──
 // המאמן מגיב לאירועים אמיתיים, לא לשעון. מנותק מ-UI ככל האפשר.
@@ -1727,18 +1718,6 @@ callClaude = async function(body) {
   try { trackUsage(body); } catch (e) {}
   return await _s5_callClaude(body);
 };
-
-// C1-WP6: buildCoachSystemPrompt's two historical layers here (the synchronous base
-// definition, and this async override that injected coachMemory + B5 Derived Intelligence)
-// were consolidated into CoachPromptComposer.buildSystemPrompt() — one function, same
-// behavior, no more override chain (see the coachMessage()/buildCoachSystemPrompt()
-// facades near the COACH ENGINE section). See tests/coachPromptComposer.test.js and
-// tests/c1Wp6Wiring.test.js for direct behavioral comparison against this removed code.
-
-// B2: Trigger Engine orchestration no longer wraps showApp/saveWorkout here —
-// see runAppReadyEngines() (showApp, action DAILY_COACH_CHECK) and the
-// runEngineAction() call inside saveWorkout() itself (action
-// WORKOUT_COMPLETED), wired through the Engine Registry near the end of this file.
 
 // scheduleLocalNotifications — C1-WP8: חולץ ל-TriggerController — פסאדה תואמת-לאחור.
 // נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY / LOCAL_NOTIFICATION_SCHEDULE) —
