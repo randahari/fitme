@@ -45,12 +45,12 @@ test('all four coach modules are in the sw.js SHELL cache list, and VERSION was 
     assert.notEqual(swJs.indexOf('/fitme/' + file), -1, file + ' must be in the SHELL cache list');
   });
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.35.0');
+  assert.equal(versionMatch[1], '2.36.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.35.0');
+  assert.equal(appVersionMatch[1], '2.36.0');
 });
 
 // ── coachProfile.js: pure module ────────────────────────────────────────────────────────
@@ -224,12 +224,19 @@ test('runCoachTriggers/fireWorkoutTrigger/triggerLocalText/triggerLiveText/prese
   assert.doesNotMatch(section, /CoachProfile|CoachPromptComposer|CoachClient|CoachPresenter/, 'the Trigger Engine section must keep calling the app.js coach facades, not the new modules directly');
 });
 
-test('coachAdaptiveMessage (WP7 Adaptive TDEE territory) is untouched — still calls coachName()/coachMessage() unchanged, not the new modules directly', () => {
-  const idx = appJs.indexOf('async function coachAdaptiveMessage(p) {');
+// C1-WP7 subsequently relocated coachAdaptiveMessage()'s own body into
+// js/adaptive/adaptiveTdeeController.js (intentional — "AI explanation request" is explicit
+// C1-WP7 scope; see tests/c1Wp7Wiring.test.js) — app.js now holds a one-line facade. The
+// relocated body still calls the coachName/coachMessage facades this WP established
+// (as deps.coachNameFn/deps.coachMessageFn closures), not the coach modules directly.
+test('coachAdaptiveMessage is now a one-line facade delegating to AdaptiveTdeeController (C1-WP7) — the relocated body still calls the coachName/coachMessage facades via injected closures, not the coach modules directly', () => {
+  assert.match(appJs, /async function coachAdaptiveMessage\(p\) \{ return AdaptiveTdeeController\.coachAdaptiveMessage\(p\); \}/);
+  const controllerJs = fs.readFileSync(path.join(__dirname, '../js/adaptive/adaptiveTdeeController.js'), 'utf8');
+  const idx = controllerJs.indexOf('async function coachAdaptiveMessage(p) {');
   assert.notEqual(idx, -1);
-  const body = appJs.slice(idx, appJs.indexOf('\n}', idx));
-  assert.match(body, /coachName\(\)/);
-  assert.match(body, /return await coachMessage\(ctx\);/);
+  const body = controllerJs.slice(idx, controllerJs.indexOf('\n  }', idx));
+  assert.match(body, /deps\.coachNameFn\(\)/);
+  assert.match(body, /return await deps\.coachMessageFn\(ctx\);/);
   assert.doesNotMatch(body, /CoachProfile|CoachPromptComposer|CoachClient|CoachPresenter/);
 });
 

@@ -33,12 +33,12 @@ test('all three WP4 modules are registered in index.html, loaded after the WP3 r
 test('all three WP4 modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   WP4_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.35.0');
+  assert.equal(versionMatch[1], '2.36.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.35.0');
+  assert.equal(appVersionMatch[1], '2.36.0');
 });
 
 test('the authentication lifecycle routes through AuthSessionController — no direct AuthAdapter.onAuthStateChanged call remains in app.js', () => {
@@ -139,10 +139,12 @@ test('no repository/adapter is duplicated or re-implemented by the WP4 modules; 
 // C1-WP6 legitimately added js/coach/ (coachProfile.js/coachPromptComposer.js/coachClient.js/
 // coachPresenter.js) after this test was written — the closed set below was updated in the
 // same commit to include it.
-test('no WP7+ vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6 directories were added', () => {
+// C1-WP7 legitimately added js/adaptive/ (adaptiveTdeeDomain.js/adaptiveTdeeController.js)
+// after this test was written — the closed set below was updated in the same commit.
+test('no WP8+ vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6/WP7 directories were added', () => {
   const dirs = fs.readdirSync(path.join(__dirname, '../js'));
   assert.deepEqual(dirs.filter((d) => fs.statSync(path.join(__dirname, '../js', d)).isDirectory()).sort(),
-    ['adapters', 'app', 'coach', 'core', 'domain', 'nutrition', 'repositories']);
+    ['adaptive', 'adapters', 'app', 'coach', 'core', 'domain', 'nutrition', 'repositories'].sort());
   const appDirFiles = fs.readdirSync(path.join(__dirname, '../js/app')).sort();
   assert.deepEqual(appDirFiles, ['authSessionController.js', 'bootstrapController.js', 'runtimeState.js']);
   [fs.readFileSync(path.join(__dirname, '..', 'js/app/runtimeState.js'), 'utf8'),

@@ -1,4 +1,4 @@
-const VERSION = 'v2.35.0';
+const VERSION = 'v2.36.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -45,6 +45,8 @@ const SHELL = [
   '/fitme/js/coach/coachPromptComposer.js',
   '/fitme/js/coach/coachClient.js',
   '/fitme/js/coach/coachPresenter.js',
+  '/fitme/js/adaptive/adaptiveTdeeDomain.js',
+  '/fitme/js/adaptive/adaptiveTdeeController.js',
   '/fitme/js/app.js',
   '/fitme/js/memory.js',
   '/fitme/assets/icon-192.png',

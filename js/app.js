@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.35.0';
+const APP_VERSION = '2.36.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -260,6 +260,32 @@ CoachPresenter.configure({
   setCoachCardShown: function (v) { coachCardShown = v; },
   saveProfile: function () { return saveProfile(); },
   coachMessageFn: function (context) { return coachMessage(context); }
+});
+
+// C1-WP7: מזריק DOM/state/callbacks. renderHome/renderSettings/runEngineAction עטופים
+// כ-closures (renderHome/renderSettings נעטפים מאוחר יותר בקובץ — אותו כלל כמו בכל
+// WP קודם). _adaptProposal נשאר משתנה משותף ב-app.js (הסטר שלו מוזרק ל-StateAccess דרך
+// setAdaptProposal — B3 §§; ראה למטה) — מוזרק כ-getter/clearer. coachNameFn/coachMessageFn
+// עוטפים את הפסאדות שכבר קיימות (WP6) — אין שכפול לוגיקה.
+AdaptiveTdeeController.configure({
+  documentRef: document,
+  sessionLifecycle: SessionLifecycle,
+  appVersion: APP_VERSION,
+  daysHe: DAYS_HE,
+  goalLabels: GOAL_LABELS,
+  getUserProfile: function () { return userProfile; },
+  getTodayData: function () { return todayData; },
+  getCurrentUser: function () { return currentUser; },
+  getAdaptProposal: function () { return _adaptProposal; },
+  clearAdaptProposal: function () { _adaptProposal = null; },
+  getAdaptHistoryCache: function () { return window._adaptHistoryCache; },
+  saveProfile: function () { return saveProfile(); },
+  renderHome: function () { renderHome(); },
+  renderSettings: function () { renderSettings(); },
+  runEngineAction: function (trigger, engineId, action, payload) { return runEngineAction(trigger, engineId, action, payload); },
+  coachNameFn: function () { return coachName(); },
+  coachMessageFn: function (context) { return coachMessage(context); },
+  alertFn: function (msg) { alert(msg); }
 });
 
 function showLogin() {
@@ -1620,237 +1646,28 @@ renderSettings = function() {
 // שכבת תצוגה דקה (hooks) למטה. עוצב פונקציונלית בלבד — יעוצב מחדש בהמשך.
 // ══════════════════════════════════════════════════════════════════
 
-// ── קונפיגורציית קצב (המשתמש בוחר) ──
-// step = כמה מעמיקים את הגירעון בכל שבוע מוצלח.
-// target = הגירעון/עודף הסופי שאליו זוחלים.
-const ADAPT_RATES = {
-  gentle:     { label: 'עדין',     step: 100, cutTarget: -250, bulkTarget: 200 },
-  balanced:   { label: 'מאוזן',    step: 150, cutTarget: -400, bulkTarget: 300 },
-  aggressive: { label: 'אגרסיבי',  step: 200, cutTarget: -500, bulkTarget: 400 }
-};
-const KCAL_PER_KG = 7700;      // ק"ג משקל גוף בקלוריות
-const ADAPT_WINDOW_DAYS = 14;  // חלון מתגלגל
-const ADAPT_MIN_DAYS = 7;      // מינימום ימי צריכה מאושרים בחלון
-const ADAPT_MIN_WEIGHTS = 3;   // מינימום שקילות
-const ADAPT_MIN_SPAN = 10;     // השקילות חייבות להתפרס על לפחות כך ימים
-const ADAPT_CADENCE_DAYS = 7;  // כל כמה זמן מציעים עדכון
-const ADAPT_MAX_STEP = 250;    // ריכוך: שינוי TDEE מקסימלי לשבוע
-const PARTIAL_FRACTION = 0.5;  // יום מתחת ל-50% מהיעד נחשד כרישום חלקי
-
-function adaptRate() {
-  const r = (userProfile && userProfile.rate) || 'balanced';
-  return ADAPT_RATES[r] ? r : 'balanced';
-}
-function adaptEnabled() {
-  return !userProfile || userProfile.adaptiveEnabled !== false; // ברירת מחדל: פעיל
-}
-
-// ── עזר: הפרש ימים בין שני מפתחות תאריך (YYYY-MM-DD) ──
-// C1-WP1: מחולצים ל-js/core/dateUtils.js, js/core/numberUtils.js, js/domain/nutritionModel.js
-// — פסאדות תואמות-לאחור, ללא שינוי התנהגות.
+// C1-WP1: daysBetween/linearSlope/dayKcal — פסאדות תואמות-לאחור קבועות (חלק מה"closed
+// compatibility surface" שנקבע ב-WP1, כמו dateKey/getTodayKey/esc) — נשארות כאן ללא שינוי
+// גם אחרי שהקוד היחיד שהשתמש בהן (STAGE 4) חולץ; ראה tests/c1Wp1Wiring.test.js.
 function daysBetween(k1, k2) { return DateUtils.daysBetween(k1, k2); }
 function linearSlope(points) { return NumberUtils.linearSlope(points); }
 function dayKcal(dayData) { return NutritionModel.dayKcal(dayData); }
 
-// ── בונה מפת ימים בחלון (כולל היום מ-todayData) ──
-function daysInWindow(history, windowDays) {
-  const out = [];
-  const today = new Date();
-  for (let i = 0; i < windowDays; i++) {
-    const d = new Date(today); d.setDate(today.getDate() - i);
-    const key = dateKey(d);
-    const data = (i === 0) ? todayData : (history[key] || null);
-    out.push({ key, kcal: dayKcal(data), hasMeals: !!(data && data.meals && data.meals.length) });
-  }
-  return out; // מהיום אחורה
-}
-
-// ── סיווג יום: full / light-confirmed / partial-suspect / empty ──
-function classifyDay(day, goalKcal, confirmedLight) {
-  if (!day.hasMeals || day.kcal <= 0) return 'empty';
-  if (day.kcal >= goalKcal * PARTIAL_FRACTION) return 'full';
-  if (confirmedLight && confirmedLight.indexOf(day.key) >= 0) return 'light';
-  return 'partial'; // חשוד — נחסום מהחישוב עד שהמשתמש יטפל
-}
-
-// ── ימים חשודים כרישום חלקי (לפניית המאמן) ──
-function pendingPartialDays() {
-  if (!userProfile) return [];
-  const history = window._adaptHistoryCache || {};
-  const goal = userProfile.goalKcal || 2000;
-  const confirmed = userProfile.confirmedLightDays || [];
-  const days = daysInWindow(history, ADAPT_WINDOW_DAYS);
-  return days.filter(d => classifyDay(d, goal, confirmed) === 'partial');
-}
-
-// ══ הליבה: חישוב TDEE אמיתי מהנתונים ══
-// מחזיר אובייקט תיאור מלא (בלי לגעת בפרופיל).
-// B3: profile הוא State Access snapshot מוגבל (adaptiveProfile) — לא userProfile
-// חי. החישוב עצמו (הפורמולות/הספים) ללא שינוי.
-function computeAdaptiveTdee(history, profile) {
-  const p = profile || {};
-  const goal = p.goalKcal || 2000;
-  const confirmed = p.confirmedLightDays || [];
-
-  // 1) צריכה — רק ימים מאושרים (full / light)
-  const days = daysInWindow(history, ADAPT_WINDOW_DAYS);
-  const counted = days.filter(d => {
-    const c = classifyDay(d, goal, confirmed);
-    return c === 'full' || c === 'light';
-  });
-  const nDays = counted.length;
-  const avgIntake = nDays ? Math.round(counted.reduce((s, d) => s + d.kcal, 0) / nDays) : 0;
-
-  // 2) מגמת משקל — רגרסיה על שקילות בחלון
-  const wh = (p.weightHistory || []).filter(w => w && w.date && typeof w.weight === 'number');
-  const cutoff = dateKey(new Date(Date.now() - ADAPT_WINDOW_DAYS * 86400000));
-  const winW = wh.filter(w => w.date >= cutoff);
-  const nWeights = winW.length;
-  let slopeKgPerDay = 0, spanDays = 0;
-  if (nWeights >= 2) {
-    const base = winW[0].date;
-    const pts = winW.map(w => ({ x: daysBetween(w.date, base), y: w.weight }));
-    slopeKgPerDay = linearSlope(pts);
-    spanDays = daysBetween(winW[nWeights - 1].date, winW[0].date);
-  }
-
-  // 3) בדיקת מספיק נתונים
-  const enoughDays = nDays >= ADAPT_MIN_DAYS;
-  const enoughWeights = nWeights >= ADAPT_MIN_WEIGHTS && spanDays >= ADAPT_MIN_SPAN;
-  const enoughData = enoughDays && enoughWeights;
-
-  // 4) TDEE = צריכה − (שיפוע ק"ג/יום × 7700)
-  let tdee = avgIntake - slopeKgPerDay * KCAL_PER_KG;
-
-  // 5) ריכוך מול הערך הקודם (±250)
-  const prev = p.adaptiveTdee || p.tdee || null;
-  if (prev) tdee = Math.max(prev - ADAPT_MAX_STEP, Math.min(prev + ADAPT_MAX_STEP, tdee));
-  tdee = Math.round(Math.max(1200, Math.min(5000, tdee)));
-
-  return {
-    enoughData, enoughDays, enoughWeights,
-    nDays, nWeights, spanDays, avgIntake,
-    slopeKgPerDay, slopeKgPerWeek: slopeKgPerDay * 7,
-    tdee,
-    need: { days: Math.max(0, ADAPT_MIN_DAYS - nDays), weights: Math.max(0, ADAPT_MIN_WEIGHTS - nWeights) }
-  };
-}
-
-// ══ ניתוח היקפים ══
-// measurementHistory: [{date, waist, arm, chest}] — waist חובה, השאר אופציונלי.
-function analyzeMeasurements(profile) {
-  const p = profile || {};
-  const mh = (p.measurementHistory || []).filter(m => m && m.date);
-  const cutoff = dateKey(new Date(Date.now() - 28 * 86400000)); // חודש אחורה להיקפים
-  const recent = mh.filter(m => m.date >= cutoff);
-  function trend(field) {
-    const pts = recent.filter(m => typeof m[field] === 'number');
-    if (pts.length < 2) return null;
-    const base = pts[0].date;
-    const slope = linearSlope(pts.map(m => ({ x: daysBetween(m.date, base), y: m[field] })));
-    return slope * 7; // ס"מ לשבוע
-  }
-  return { waist: trend('waist'), arm: trend('arm'), chest: trend('chest'), count: recent.length };
-}
-
-// ══ שילוב שלושת האותות → תרחיש + הסבר אנושי ══
-// עקרון מפתח: היקפים מנצחים משקל.
-function buildWeeklySignals(calc, meas, profile) {
-  const p = profile || {};
-  const goal = p.goal;
-  const wkg = p.currentWeight || p.weight || 75;
-  const slopePctWeek = (calc.slopeKgPerWeek / wkg) * 100; // אחוז ממשקל הגוף לשבוע
-
-  const waistDown = meas.waist != null && meas.waist < -0.2;
-  const waistUp   = meas.waist != null && meas.waist > 0.2;
-  const armDown   = meas.arm != null && meas.arm < -0.2;
-  const armUp     = meas.arm != null && meas.arm > 0.2;
-  const weightDown = calc.slopeKgPerWeek < -0.1;
-  const weightUp   = calc.slopeKgPerWeek > 0.1;
-  const weightFlat = Math.abs(calc.slopeKgPerWeek) <= 0.1;
-
-  let scenario = 'steady', redFlag = false;
-  if (goal === 'cut') {
-    if (slopePctWeek < -1.2 && armDown) { scenario = 'losing-muscle'; redFlag = true; }
-    else if (waistDown && !armDown)     { scenario = 'clean-cut'; }
-    else if (weightFlat && waistDown)   { scenario = 'recomp'; }     // משקל תקוע, מותן יורד = הצלחה
-    else if (weightFlat && !waistDown)  { scenario = 'stalled'; }
-    else if (weightDown)                { scenario = 'progress'; }
-  } else if (goal === 'bulk') {
-    if (weightUp && waistUp && !armUp)  { scenario = 'dirty-bulk'; redFlag = true; }
-    else if (armUp && !waistUp)         { scenario = 'clean-bulk'; }
-    else if (weightFlat)                { scenario = 'stalled-bulk'; }
-    else if (weightUp)                  { scenario = 'gaining'; }
-  } else { // maintain
-    if (Math.abs(slopePctWeek) > 0.8) scenario = 'drift';
-    else scenario = 'holding';
-  }
-  return { scenario, redFlag, slopePctWeek, waistDown, waistUp, armDown, armUp, weightFlat };
-}
-
-// ══ חישוב הגירעון הבא (הזחילה ההדרגתית) ══
-function computeNextDeficit(signals, profile) {
-  const p = profile || {};
-  const rate = ADAPT_RATES[adaptRate()];
-  const goal = p.goal;
-  const target = goal === 'cut' ? rate.cutTarget : goal === 'bulk' ? rate.bulkTarget : 0;
-  let cur = (typeof p.currentDeficit === 'number') ? p.currentDeficit : 0;
-
-  if (goal === 'maintain') return 0;
-
-  // דגל אדום → מרככים (מקטינים גירעון / מאטים עודף)
-  if (signals.redFlag) {
-    if (goal === 'cut')  cur = Math.min(0, cur + 100);   // פחות גירעון
-    else                 cur = Math.max(0, cur - 100);   // פחות עודף
-    return cur;
-  }
-
-  // תקיעות → מעמיקים צעד נוסף לכיוון היעד
-  // התקדמות תקינה → זוחלים צעד לכיוון היעד עד שמגיעים אליו
-  if (goal === 'cut') {
-    cur = Math.max(target, cur - rate.step); // גירעון שלילי, זוחל למטה
-  } else {
-    cur = Math.min(target, cur + rate.step); // עודף חיובי, זוחל למעלה
-  }
-  return cur;
-}
-
-// ══ בונה הצעת עדכון מלאה (בלי להחיל) ══
-function buildAdaptiveProposal(history, profile) {
-  const calc = computeAdaptiveTdee(history, profile);
-  if (!calc.enoughData) return { ready: false, calc };
-  const meas = analyzeMeasurements(profile);
-  const signals = buildWeeklySignals(calc, meas, profile);
-  const nextDeficit = computeNextDeficit(signals, profile);
-  const newGoal = Math.round(Math.max(1200, Math.min(5000, calc.tdee + nextDeficit)));
-  const oldGoal = (profile || {}).goalKcal;
-  return {
-    ready: true, calc, meas, signals,
-    nextDeficit, newGoal, oldGoal,
-    delta: newGoal - oldGoal
-  };
-}
-
-// ── הסבר קצר מקומי (fallback אם אין רשת למאמן) ──
-function adaptiveLocalExplain(prop) {
-  const s = prop.signals.scenario;
-  const map = {
-    'clean-cut': 'המשקל יורד, המותן קטֵן והזרוע נשמרת — בדיוק מה שרצינו.',
-    'recomp': 'המשקל כמעט לא זז אבל המותן יורד — זה שריר שמחליף שומן. הצלחה.',
-    'progress': 'המשקל יורד בקצב יפה. ממשיכים.',
-    'stalled': 'המשקל נתקע — הגוף הסתגל, מורידים עוד קצת.',
-    'losing-muscle': 'יורד מהר מדי והזרוע קטֵנה — מוסיפים קצת קלוריות ומאטים כדי לשמור על השריר.',
-    'clean-bulk': 'הזרוע גדלה והמותן יציב — עלייה נקייה. ממשיכים לבנות.',
-    'dirty-bulk': 'המשקל והמותן עולים מהר — מרככים קצת את העודף.',
-    'stalled-bulk': 'העלייה נתקעה — מוסיפים עוד קצת דלק.',
-    'gaining': 'עולה יפה במשקל. בכיוון.',
-    'drift': 'יש סטייה קלה מהמשקל — מיישרים את היעד.',
-    'holding': 'שומר יפה על המשקל. מכוונים מדויק.',
-    'steady': 'לומד את הקצב שלך ומכייל את היעד.'
-  };
-  const dir = prop.delta > 0 ? 'מעלה' : prop.delta < 0 ? 'מוריד' : 'משאיר';
-  return `${map[s] || map.steady} השבוע אני ${dir} את היעד ל-${prop.newGoal} קל׳. נראה איך המשקל וההיקפים מגיבים ונתקדם.`;
-}
+// ── C1-WP7: פונקציות החישוב הטהורות (ADAPT_RATES ושאר הקבועים, בחירת קצב, בניית חלון
+// ימים, סיווג יום, זיהוי ימי-רישום-חלקי, חישוב TDEE, ניתוח היקפים, אותות שבועיים,
+// התאמת גירעון, בניית הצעה, הסבר מקומי) חולצו ל-js/adaptive/adaptiveTdeeDomain.js —
+// פסאדות תואמות-לאחור בלבד.
+function adaptRate() { return AdaptiveTdeeDomain.adaptRate(userProfile); }
+function adaptEnabled() { return AdaptiveTdeeDomain.adaptEnabled(userProfile); }
+function daysInWindow(history, windowDays) { return AdaptiveTdeeDomain.daysInWindow(history, todayData, windowDays); }
+function classifyDay(day, goalKcal, confirmedLight) { return AdaptiveTdeeDomain.classifyDay(day, goalKcal, confirmedLight); }
+function pendingPartialDays() { return AdaptiveTdeeDomain.pendingPartialDays(window._adaptHistoryCache, todayData, userProfile); }
+function computeAdaptiveTdee(history, profile) { return AdaptiveTdeeDomain.computeAdaptiveTdee(history, profile, todayData); }
+function analyzeMeasurements(profile) { return AdaptiveTdeeDomain.analyzeMeasurements(profile); }
+function buildWeeklySignals(calc, meas, profile) { return AdaptiveTdeeDomain.buildWeeklySignals(calc, meas, profile); }
+function computeNextDeficit(signals, profile) { return AdaptiveTdeeDomain.computeNextDeficit(signals, profile); }
+function buildAdaptiveProposal(history, profile) { return AdaptiveTdeeDomain.buildAdaptiveProposal(history, profile, todayData); }
+function adaptiveLocalExplain(prop) { return AdaptiveTdeeDomain.adaptiveLocalExplain(prop); }
 
 // ══════════════════════════════════════════════════════════════════
 // ── שכבת UI (דקה) — hooks על פונקציות קיימות ──
@@ -1858,240 +1675,22 @@ function adaptiveLocalExplain(prop) {
 
 let _adaptProposal = null; // ההצעה הממתינה לאישור
 
-// B3: access (EngineStateAccess) מגיע מהאדפטר. UI (renderAdaptiveCard/
-// renderPartialPrompt) הוסרו מכאן — הן נקראות על ידי האדפטר, אחרי החישוב,
-// בדיוק כמו קודם מבחינת תוכן/תזמון (§17: "Engine computation / state
-// command → ... → UI adapter renders"). session checks עברו ל-State Access.
-async function runAdaptiveCheck(access) {
-  if (!userProfile || !access) return;
-  if (!adaptEnabled()) return; // האדפטר עדיין יקרא render כדי להסתיר כרטיס קיים
-  const profile = access.read.adaptiveProfile();
-  const history = await access.read.nutritionActivityHistory();
-  await access.write.markAdaptiveCheckCompleted({ history }); // לשימוש פניית המאמן על ימים חלקיים
-
-  // בדיקת קצב זמן — מציעים רק אם עברו ≥7 ימים
-  const last = profile.lastTdeeUpdate;
-  const dueByTime = !last || daysBetween(getTodayKey(), last) >= ADAPT_CADENCE_DAYS;
-
-  if (dueByTime) {
-    const prop = buildAdaptiveProposal(history, profile);
-    if (prop.ready && prop.delta !== 0) await access.write.storeAdaptiveProposal({ proposal: prop });
-  }
-}
-
-// כרטיס ההצעה במסך הבית
-async function renderAdaptiveCard() {
-  const card = document.getElementById('adaptive-card');
-  if (!card) return;
-  if (!_adaptProposal) { card.classList.add('hidden'); return; }
-  const p = _adaptProposal;
-  const arrow = p.delta > 0 ? '↑' : '↓';
-  const textEl = document.getElementById('adaptive-card-text');
-  const metaEl = document.getElementById('adaptive-card-meta');
-  if (metaEl) metaEl.textContent =
-    `${p.oldGoal.toLocaleString()} → ${p.newGoal.toLocaleString()} קל׳ ${arrow} · TDEE נלמד: ${p.calc.tdee.toLocaleString()} · על סמך ${p.calc.nDays} ימי רישום ו-${p.calc.nWeights} שקילות`;
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-  if (textEl) {
-    textEl.textContent = adaptiveLocalExplain(p); // מיידי
-    try { const msg = await coachAdaptiveMessage(p); if (msg && SessionLifecycle.isCurrent(_gen)) textEl.textContent = msg; } catch(e) {}
-  }
-  if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא חושפים את הכרטיס
-  card.classList.remove('hidden');
-}
-
-// המאמן מבשר על העדכון בקול/אופי שלו
-async function coachAdaptiveMessage(p) {
-  const s = p.signals;
-  const measTxt = [
-    s.waistDown ? 'המותן יורד' : s.waistUp ? 'המותן עולה' : null,
-    s.armDown ? 'הזרוע קטֵנה' : s.armUp ? 'הזרוע גדלה' : null
-  ].filter(Boolean).join(', ') || 'אין עדיין מספיק היקפים';
-  const ctx = `סיכום שבועי של המנוע המסתגל עבור ${coachName()}: מטרה ${GOAL_LABELS[userProfile.goal]}. `
-    + `TDEE אמיתי שנלמד מהנתונים: ${p.calc.tdee} קל׳ (ממוצע צריכה ${p.calc.avgIntake}, שינוי משקל ${p.calc.slopeKgPerWeek.toFixed(2)} ק"ג/שבוע). `
-    + `היקפים: ${measTxt}. היעד עובר מ-${p.oldGoal} ל-${p.newGoal} קל׳. `
-    + `הסבר בקצרה למה השינוי הזה נכון עכשיו, בגובה העיניים, בלי לדקלם מספרים מיותרים. עודד להמשיך.`;
-  return await coachMessage(ctx);
-}
-
-// B4 §16.3/§26: applyAdaptiveUpdate() נשאר מחוץ ל-Registry (B2 SPEC §17/§19, פעולה
-// ידנית מאושרת ע"י המשתמש — ללא שינוי לגבול הזה). candidate state מחושב מקומית ואינו
-// נכתב ל-userProfile לפני הצלחה durable (§26 כלל 2/3/6) — בעבר userProfile עודכן
-// באופן אופטימי לפני saveProfile() שבלע שגיאות בשקט; כעת הצלחה/כשל מדווחים בכנות,
-// ו-goalKcal/adaptiveTdee/currentDeficit/lastTdeeUpdate נכתבים field-scoped
-// (owner: profileGoalsState, B3 §6: Authoritative Adaptive Target) במקום saveProfile()
-// המלא. הפורמולה/הרשאות/תוכן ההודעה למשתמש ללא שינוי — נוספה רק הודעת כשל מינימלית
-// (B4 §37: "minimal save/error recovery required by persistence outcomes" מותר במפורש).
-async function applyAdaptiveUpdate() {
-  if (!_adaptProposal || !userProfile || !currentUser) return;
-  const p = _adaptProposal;
-  const gen = SessionLifecycle.getGeneration(); // REM-002: נלכד לפני העבודה האסינכרונית
-  const authority = window.AuthorityContract.buildAuthorityMetadata({
-    // Correction (post-REM-003 Product Approval feedback): הרשומה מחושבת ע"י מנוע דטרמיניסטי
-    // (Adaptive TDEE), לא ע"י הצהרת משתמש — authoritySource הוא SYSTEM. אישור המשתמש (לחיצת
-    // "אשר") מתועד דרך ה-rule עצמו, לא דרך authoritySource.
-    source: window.AuthorityContract.AUTHORITY_SOURCES.SYSTEM,
-    createdBy: currentUser.uid,
-    rule: 'ADAPTIVE_TDEE_USER_APPROVED',
-    systemVersion: APP_VERSION
-  });
-  const historyEntry = { date: getTodayKey(), tdee: p.calc.tdee, goalKcal: p.newGoal, deficit: p.nextDeficit, authority: authority };
-  const nextTdeeHistory = (Array.isArray(userProfile.tdeeHistory) ? userProfile.tdeeHistory : []).concat([historyEntry]);
-
-  const result = await PersistenceGateway.persist({
-    requestId: 'adaptive-apply-' + currentUser.uid + '-' + Date.now(),
-    operation: 'DERIVED_ADAPTIVE_PROPOSAL_APPLY',
-    domain: 'USER_PROFILE',
-    owner: 'profileGoalsState',
-    userId: currentUser.uid,
-    sessionGeneration: gen,
-    payload: {
-      goalKcal: p.newGoal, adaptiveTdee: p.calc.tdee, currentDeficit: p.nextDeficit,
-      lastTdeeUpdate: getTodayKey(), tdeeHistory: nextTdeeHistory
-    },
-    authority: authority,
-    expectedVersion: null,
-    idempotencyKey: null,
-    createdAt: Date.now(),
-    metadata: { engineId: null, trigger: 'MANUAL', runId: null }
-  });
-
-  if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
-    // B4 §16.3: "Not mark the update applied if persistence fails" — proposal נשאר פעיל, לא ננקה.
-    // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי — Implementation Review correction:
-    // בעבר הכשל הוצג תמיד, גם למשתמש שכבר התנתק/החליף חשבון בזמן ההמתנה.
-    if (SessionLifecycle.isCurrent(gen)) alert('שמירת היעד נכשלה. נסה שוב.');
-    return;
-  }
-  if (!SessionLifecycle.isCurrent(gen)) return; // REM-002: stale-on-completion — אין אפקטים
-
-  userProfile.adaptiveTdee = p.calc.tdee;
-  userProfile.goalKcal = p.newGoal;
-  userProfile.currentDeficit = p.nextDeficit;
-  userProfile.lastTdeeUpdate = getTodayKey();
-  userProfile.tdeeHistory = nextTdeeHistory;
-  _adaptProposal = null;
-  renderAdaptiveCard();
-  renderHome();
-  renderSettings();
-  alert('היעד עודכן ל-' + p.newGoal.toLocaleString() + ' קל׳ ✓');
-}
-
-async function dismissAdaptiveUpdate() {
-  if (!userProfile) return;
-  // דוחים לשבוע — מסמנים שבדקנו היום כדי שלא ינדנד שוב מיד
-  userProfile.lastTdeeUpdate = getTodayKey();
-  await saveProfile();
-  _adaptProposal = null;
-  renderAdaptiveCard();
-}
-
-// ── פניית המאמן על ימים חלקיים ──
-function renderPartialPrompt() {
-  const el = document.getElementById('partial-prompt');
-  if (!el) return;
-  const suspects = pendingPartialDays();
-  if (!suspects.length) { el.classList.add('hidden'); return; }
-  const list = suspects.map(d => {
-    const dt = new Date(d.key + 'T00:00:00');
-    const label = DAYS_HE[dt.getDay()] + ' ' + dt.getDate() + '/' + (dt.getMonth() + 1);
-    return `<div class="partial-row">
-      <span>${label} — נרשמו רק ${d.kcal} קל׳</span>
-      <span style="display:flex;gap:6px">
-        <button class="btn-small" onclick="goToScreen('food')">השלם</button>
-        <button class="btn-ghost" style="width:auto;padding:6px 10px;margin:0" onclick="confirmDayLight('${d.key}')">אכלתי קליל</button>
-      </span>
-    </div>`;
-  }).join('');
-  const txtEl = document.getElementById('partial-prompt-text');
-  if (txtEl) txtEl.textContent = 'ראיתי ימים עם מעט מאוד רישום. עדכן אותי כדי שאדייק לך את היעד:';
-  const listEl = document.getElementById('partial-prompt-list');
-  if (listEl) listEl.innerHTML = list;
-  el.classList.remove('hidden');
-}
-
-async function confirmDayLight(key) {
-  if (!userProfile) return;
-  if (!Array.isArray(userProfile.confirmedLightDays)) userProfile.confirmedLightDays = [];
-  if (userProfile.confirmedLightDays.indexOf(key) < 0) userProfile.confirmedLightDays.push(key);
-  await saveProfile();
-  renderPartialPrompt();
-  await runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED'); // day-classification affects the TDEE window
-}
-
-// ── רישום היקפים ──
-async function logMeasurements() {
-  if (!userProfile) return;
-  const waist = parseFloat(document.getElementById('meas-waist')?.value);
-  const arm   = parseFloat(document.getElementById('meas-arm')?.value);
-  const chest = parseFloat(document.getElementById('meas-chest')?.value);
-  if (!waist || waist < 30 || waist > 200) { alert('הכנס היקף מותן תקין (ס"מ)'); return; }
-  const entry = { date: getTodayKey(), waist };
-  if (arm && arm > 10 && arm < 80) entry.arm = arm;
-  if (chest && chest > 40 && chest < 200) entry.chest = chest;
-  if (!Array.isArray(userProfile.measurementHistory)) userProfile.measurementHistory = [];
-  // דריסה אם כבר נרשם היום
-  userProfile.measurementHistory = userProfile.measurementHistory.filter(m => m.date !== entry.date);
-  userProfile.measurementHistory.push(entry);
-  ['meas-waist','meas-arm','meas-chest'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
-  await saveProfile();
-  renderMeasurements();
-  alert('ההיקפים נשמרו ✓');
-}
-
-function renderMeasurements() {
-  const el = document.getElementById('measurements-data');
-  if (!el || !userProfile) return;
-  const mh = userProfile.measurementHistory || [];
-  if (!mh.length) { el.innerHTML = '<div class="empty-state">רשום היקף מותן שבועי כדי שהמאמן יוכל לוודא שהחיטוב בריא</div>'; return; }
-  const last = mh[mh.length - 1];
-  const meas = analyzeMeasurements();
-  function trendTxt(v, goodDown) {
-    if (v == null) return '';
-    const dir = v < -0.05 ? '↓' : v > 0.05 ? '↑' : '=';
-    const good = goodDown ? v < 0 : v > 0;
-    const col = Math.abs(v) < 0.05 ? 'var(--text-3)' : good ? '#1D9E75' : '#BA7517';
-    return `<span style="color:${col};font-size:11px"> ${dir} ${Math.abs(v).toFixed(1)} ס"מ/שבוע</span>`;
-  }
-  const goalCut = userProfile.goal === 'cut';
-  el.innerHTML =
-    `<div class="health-row"><span class="health-label">מותן</span><span class="health-val">${last.waist} ס"מ${trendTxt(meas.waist, goalCut)}</span></div>` +
-    (last.arm != null ? `<div class="health-row"><span class="health-label">זרוע</span><span class="health-val">${last.arm} ס"מ${trendTxt(meas.arm, false)}</span></div>` : '') +
-    (last.chest != null ? `<div class="health-row"><span class="health-label">חזה/ירך</span><span class="health-val">${last.chest} ס"מ${trendTxt(meas.chest, false)}</span></div>` : '');
-}
-
-// ── הגדרות: קטע יעד מסתגל ──
-function renderAdaptiveSettings() {
-  if (!userProfile) return;
-  const r = adaptRate();
-  document.querySelectorAll('#set-adapt-rate .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === r));
-  const tog = document.getElementById('adapt-toggle');
-  if (tog) tog.classList.toggle('on', adaptEnabled());
-  const info = document.getElementById('adapt-info');
-  if (info) {
-    const t = userProfile.adaptiveTdee;
-    const last = userProfile.lastTdeeUpdate;
-    info.innerHTML =
-      `<div class="settings-row"><span>TDEE נלמד</span><span class="settings-val">${t ? t.toLocaleString() + ' קל׳' : 'לומד...'}</span></div>` +
-      `<div class="settings-row"><span>עודכן לאחרונה</span><span class="settings-val">${last ? 'לפני ' + daysBetween(getTodayKey(), last) + ' ימים' : '—'}</span></div>`;
-  }
-}
-
-async function setAdaptiveRate(v) {
-  if (!userProfile || !ADAPT_RATES[v]) return;
-  userProfile.rate = v;
-  document.querySelectorAll('#set-adapt-rate .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
-  await saveProfile();
-  await runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
-}
-
-async function toggleAdaptive() {
-  if (!userProfile) return;
-  userProfile.adaptiveEnabled = !adaptEnabled();
-  const tog = document.getElementById('adapt-toggle');
-  if (tog) tog.classList.toggle('on', userProfile.adaptiveEnabled);
-  await saveProfile();
-  await runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
-}
+// ── C1-WP7: "Application/UI Responsibilities" חולצו ל-js/adaptive/adaptiveTdeeController.js
+// — פסאדות תואמות-לאחור בלבד. session checks/State Access/PersistenceGateway path ללא
+// שינוי (רק מיקום הקוד). _adaptProposal נשאר משתנה משותף כאן (ה-setter שלו עדיין מוזרק
+// ל-StateAccess דרך setAdaptProposal, ללא שינוי).
+async function runAdaptiveCheck(access) { return AdaptiveTdeeController.runAdaptiveCheck(access); }
+async function renderAdaptiveCard() { return AdaptiveTdeeController.renderAdaptiveCard(); }
+async function coachAdaptiveMessage(p) { return AdaptiveTdeeController.coachAdaptiveMessage(p); }
+async function applyAdaptiveUpdate() { return AdaptiveTdeeController.applyAdaptiveUpdate(); }
+async function dismissAdaptiveUpdate() { return AdaptiveTdeeController.dismissAdaptiveUpdate(); }
+function renderPartialPrompt() { return AdaptiveTdeeController.renderPartialPrompt(); }
+async function confirmDayLight(key) { return AdaptiveTdeeController.confirmDayLight(key); }
+async function logMeasurements() { return AdaptiveTdeeController.logMeasurements(); }
+function renderMeasurements() { return AdaptiveTdeeController.renderMeasurements(); }
+function renderAdaptiveSettings() { return AdaptiveTdeeController.renderAdaptiveSettings(); }
+async function setAdaptiveRate(v) { return AdaptiveTdeeController.setAdaptiveRate(v); }
+async function toggleAdaptive() { return AdaptiveTdeeController.toggleAdaptive(); }
 
 // B2: Adaptive TDEE Engine orchestration no longer wraps showApp/logWeight here —
 // see runAppReadyEngines() (showApp) and runEngineAction() (logWeight),

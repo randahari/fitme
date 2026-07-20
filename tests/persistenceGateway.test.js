@@ -355,12 +355,16 @@ test('24. account switch cannot apply prior user completion state to the new ses
 // js/nutrition/quickLogService.js (QuickLogService.commitQuickItem) — same rationale, same
 // injected deps.sessionLifecycle pattern; see tests/quickLogService.test.js's dedicated
 // stale-completion tests. applyAdaptiveUpdate has not moved and is still checked in js/app.js.
+// C1-WP7 relocated applyAdaptiveUpdate()'s failure-alert gating into
+// js/adaptive/adaptiveTdeeController.js (intentional — "proposal application" is explicit
+// C1-WP7 scope; see tests/c1Wp7Wiring.test.js) — same injected deps.sessionLifecycle pattern
+// as mealCommitService.js/quickLogService.js.
 test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on session currency (regression, Implementation Review)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
   const mealCommitServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/mealCommitService.js'), 'utf8');
   const quickLogServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/quickLogService.js'), 'utf8');
+  const adaptiveControllerJs = fs.readFileSync(path.join(__dirname, '../js/adaptive/adaptiveTdeeController.js'), 'utf8');
 
   const idx = mealCommitServiceJs.indexOf('שמירת הארוחה נכשלה');
   assert.notEqual(idx, -1, 'expected failure message not found in mealCommitService.js: שמירת הארוחה נכשלה');
@@ -372,10 +376,10 @@ test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on sess
   const quickPrefix = quickLogServiceJs.slice(Math.max(0, quickIdx - 90), quickIdx);
   assert.match(quickPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הפריט נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
 
-  const appIdx = appJs.indexOf('שמירת היעד נכשלה');
-  assert.notEqual(appIdx, -1, 'expected failure message not found: שמירת היעד נכשלה');
-  const appPrefix = appJs.slice(Math.max(0, appIdx - 80), appIdx);
-  assert.match(appPrefix, /if \(SessionLifecycle\.isCurrent\(gen\)\)\s*alert\('$/, 'the alert for "שמירת היעד נכשלה" must be gated by SessionLifecycle.isCurrent(gen)');
+  const adaptIdx = adaptiveControllerJs.indexOf('שמירת היעד נכשלה');
+  assert.notEqual(adaptIdx, -1, 'expected failure message not found in adaptiveTdeeController.js: שמירת היעד נכשלה');
+  const adaptPrefix = adaptiveControllerJs.slice(Math.max(0, adaptIdx - 90), adaptIdx);
+  assert.match(adaptPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת היעד נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
 });
 
 // Implementation Review correction: writeReplaceDerivedHabitView (js/stateAccess.js) and
@@ -531,16 +535,20 @@ test('38. matching expectedVersion (or first-ever write, expectedVersion null) a
 // ══════════════════════════════════════════════════════════════════
 // ── Engine Integration (39-45) — covered by wiring + regression, documented here ──
 // ══════════════════════════════════════════════════════════════════
+// C1-WP7 relocated applyAdaptiveUpdate()'s body (including its DERIVED_ADAPTIVE_PROPOSAL_APPLY
+// gateway call) into js/adaptive/adaptiveTdeeController.js — Habit/Pattern/Trigger are
+// untouched, still checked in app.js directly.
 test('39-42. Habit/Pattern/Adaptive-apply/Trigger operations all resolve through this gateway, not direct Firestore (static source check)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+  const adaptiveControllerJs = fs.readFileSync(path.join(__dirname, '../js/adaptive/adaptiveTdeeController.js'), 'utf8');
   assert.match(appJs, /persistHabitsView:\s*function/, 'Habit write must be injected as a gateway-calling dependency');
   assert.match(appJs, /persistPatternView:\s*function\s*\(\s*identity\s*,\s*command\s*\)/, 'Pattern write must accept (identity, command), not raw db access');
-  assert.match(appJs, /operation:\s*'DERIVED_ADAPTIVE_PROPOSAL_APPLY'/, 'Adaptive apply must submit through the gateway');
+  assert.match(adaptiveControllerJs, /operation:\s*'DERIVED_ADAPTIVE_PROPOSAL_APPLY'/, 'Adaptive apply must submit through the gateway');
   assert.match(appJs, /operation:\s*'TRIGGER_RECORD_EVENT'/);
   assert.match(appJs, /operation:\s*'TRIGGER_UPDATE_BUDGET'/);
-  assert.equal(/async function applyAdaptiveUpdate[\s\S]{0,400}await saveProfile\(\)/.test(appJs), false, 'applyAdaptiveUpdate must no longer call the broad saveProfile() directly');
+  assert.equal(/async function applyAdaptiveUpdate[\s\S]{0,400}deps\.saveProfile\(\)/.test(adaptiveControllerJs), false, 'applyAdaptiveUpdate must no longer call the broad saveProfile() directly');
 });
 
 test('43. engine computation success with persistence failure is represented accurately (not collapsed into a false success)', async () => {

@@ -63,20 +63,26 @@ test('5. scheduleLocalNotifications has exactly one definition (no base + replac
   assert.equal(appJs.indexOf('scheduleLocalNotifications = function'), -1, 'no bare reassignment (override-chain) form should remain');
 });
 
+// C1-WP7 legitimately relocated confirmDayLight/setAdaptiveRate/toggleAdaptive's own bodies
+// (including their runEngineAction calls) into js/adaptive/adaptiveTdeeController.js
+// (intentional — see tests/c1Wp7Wiring.test.js); app.js now holds one-line facades for all
+// three. showApp/initNotifications/logWeight/saveWorkout are untouched, still checked in
+// app.js directly.
 test('6. Registry orchestration calls exist at the six approved invocation points (B2 Code Review Round 4 API)', () => {
+  const adaptiveControllerJs = fs.readFileSync(path.join(__dirname, '../js/adaptive/adaptiveTdeeController.js'), 'utf8');
   const expectations = [
-    { fn: 'showApp', call: 'runAppReadyEngines()' },
-    { fn: 'initNotifications', call: 'runAuthSessionReadyEngines()' },
-    { fn: 'logWeight', call: "runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED')" },
-    { fn: 'saveWorkout', call: "runEngineAction('SOURCE_DATA_CHANGED', 'triggerEngine', 'WORKOUT_COMPLETED'" },
-    { fn: 'confirmDayLight', call: "runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED')" },
-    { fn: 'setAdaptiveRate', call: "runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK')" },
-    { fn: 'toggleAdaptive', call: "runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK')" }
+    { source: appJs, fn: 'showApp', call: 'runAppReadyEngines()' },
+    { source: appJs, fn: 'initNotifications', call: 'runAuthSessionReadyEngines()' },
+    { source: appJs, fn: 'logWeight', call: "runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED')" },
+    { source: appJs, fn: 'saveWorkout', call: "runEngineAction('SOURCE_DATA_CHANGED', 'triggerEngine', 'WORKOUT_COMPLETED'" },
+    { source: adaptiveControllerJs, fn: 'confirmDayLight', call: "deps.runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED')" },
+    { source: adaptiveControllerJs, fn: 'setAdaptiveRate', call: "deps.runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK')" },
+    { source: adaptiveControllerJs, fn: 'toggleAdaptive', call: "deps.runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK')" }
   ];
   expectations.forEach((exp) => {
-    const fnIndex = appJs.search(new RegExp('function ' + exp.fn + '\\s*\\('));
+    const fnIndex = exp.source.search(new RegExp('function ' + exp.fn + '\\s*\\('));
     assert.notEqual(fnIndex, -1, exp.fn + ' must exist');
-    const fnBody = appJs.slice(fnIndex, fnIndex + 1200);
+    const fnBody = exp.source.slice(fnIndex, fnIndex + 1200);
     assert.ok(fnBody.indexOf(exp.call) !== -1, exp.fn + '() must call ' + exp.call);
   });
 });
@@ -168,13 +174,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.35.0');
+  assert.equal(versionMatch[1], '2.36.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.35.0');
+  assert.equal(appVersionMatch[1], '2.36.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

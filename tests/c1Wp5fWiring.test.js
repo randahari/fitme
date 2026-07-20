@@ -27,12 +27,12 @@ test('barcodeFlowController.js is registered in index.html, loaded after quickLo
 test('barcodeFlowController.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.35.0');
+  assert.equal(versionMatch[1], '2.36.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.35.0');
+  assert.equal(appVersionMatch[1], '2.36.0');
 });
 
 test('BarcodeFlowController is configured with closures for its DOM/app.js collaborators (never bare references)', () => {
