@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.28.0';
+const APP_VERSION = '2.29.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -160,6 +160,20 @@ AuthSessionController.configure({
   }
 });
 AuthSessionController.start();
+
+// C1-WP5A: מזריק את callClaude/parseModelJSON כ-closures (לא הפניות חשופות — callClaude
+// נעטף מאוחר יותר במונה שימוש, ראו "── Hooks: עטיפת פונקציות קיימות" בהמשך הקובץ), את
+// NutritionOutputValidator (B1, קבוע), ואת showAiRejectedRecovery/showMealEditor כ-closures
+// (showMealEditor נעטף מאוחר יותר ב-Day Navigation IIFE) — אלה נשארות UI/WP5C טרם חולץ.
+NutritionAnalysisService.configure({
+  callClaude: function (body) { return callClaude(body); },
+  parseModelJSON: function (raw) { return parseModelJSON(raw); },
+  nutritionOutputValidator: window.NutritionOutputValidator,
+  logValidation: function (status, sourceType, errorCodes) { logNutritionValidation(status, sourceType, errorCodes); },
+  collectErrorCodes: function (gate) { return collectNutritionErrorCodes(gate); },
+  onRejected: function (retryFn, meal) { showAiRejectedRecovery(retryFn, meal); },
+  onValid: function (meal) { showMealEditor(meal); }
+});
 
 function showLogin() {
   document.getElementById('loading-screen').classList.add('hidden');
@@ -602,14 +616,7 @@ async function analyzeFood() {
   document.getElementById('food-result').classList.add('hidden');
   document.getElementById('food-questionnaire').classList.add('hidden');
   try {
-    const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 600, messages: [{ role: 'user', content: `המשתמש רשם: "${input}". צור שאלון קצר לחישוב תזונתי מדויק. החזר JSON בלבד:
-{"questions":[{"q":"שאלה בעברית","options":["אפשרות 1","אפשרות 2","אפשרות 3"]}]}
-כללים חשובים:
-- אם זו מנה מורכבת מכמה רכיבים (כמו פסטה ברוטב, אורז עם עוף, כריך) — השאלות חייבות לברר את הכמות של כל רכיב מרכזי בנפרד (למשל: "כמה ספגטי?" ו"כמה רוטב בשר?"), לא רק "גודל מנה" כללי.
-- אפשרויות הכמות חייבות להיות מוחשיות: גרמים, כפות, כוסות, יחידות ("צלחת קטנה ~150 גרם").
-- אם רלוונטי, שאל על סוג (בשר בקר/הודו) או שיטת בישול (מטוגן/אפוי).
-- עד 3 שאלות. אל תשאל על מה שכבר ברור מהטקסט. אל תוסיף טקסט מחוץ ל-JSON.` }] });
-    const parsed = parseModelJSON(data.content[0].text);
+    const parsed = await NutritionAnalysisService.requestQuestionnaire(input);
     foodSession.questions = parsed.questions;
     showNextQuestion();
   } catch(e) { alert('שגיאה: ' + e.message); }
@@ -634,7 +641,7 @@ function answerQuestion(answer) {
   setTimeout(()=>showNextQuestion(), 200);
 }
 
-const ITEMS_JSON_SPEC = `{"name":"שם המנה בעברית","items":[{"name":"רכיב","amount":150,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"suggestions":[{"name":"תוספת","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}],"note":"הערה קצרה על בסיס ההערכה"}`;
+// C1-WP5A: ITEMS_JSON_SPEC חולץ ל-NutritionAnalysisService.ITEMS_JSON_SPEC.
 
 // ══════════════════════════════════════════════════════════════════
 // ── REM-001: LLM Nutrition Output Validation Layer — integration glue ──
@@ -680,13 +687,9 @@ function logNutritionValidation(status, sourceType, errorCodes) {
 
 // שער ראשון (REM-001 §15/ER-001): מיד אחרי parseModelJSON, לפני שהעורך נפתח בכלל.
 // meal: {name, items, suggestions, note, source?}. retryFn: הרצה חוזרת של הניתוח המקורי.
+// C1-WP5A: הניתוב עצמו חולץ ל-NutritionAnalysisService.routeMeal — פסאדה תואמת-לאחור.
 function routeAiMeal(meal, sourceType, retryFn) {
-  const V = window.NutritionOutputValidator;
-  const items = (meal && Array.isArray(meal.items)) ? meal.items : [];
-  const gate = V.validateNutritionMeal(items, sourceType);
-  logNutritionValidation(gate.overallStatus, sourceType, collectNutritionErrorCodes(gate));
-  if (gate.overallStatus === 'REJECTED') { showAiRejectedRecovery(retryFn, meal); return; }
-  showMealEditor(meal);
+  return NutritionAnalysisService.routeMeal(meal, sourceType, retryFn);
 }
 
 // §14.3 — REJECTED: נתיב התאוששות ברור (נסה שוב / הזן ידנית / בטל), בלי קוד טכני למשתמש.
@@ -720,10 +723,8 @@ async function calculateFoodResult() {
   const answersText = foodSession.answers.map(a=>`${a.q}: ${a.a}`).join(', ');
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
-    const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: `חשב ערכים תזונתיים: מאכל: "${foodSession.originalInput}", פרטים: ${answersText}.
-פרק את המנה לרכיבים נפרדים (כל רכיב בשורה משלו עם כמות וערכים משלו). ב-suggestions כלול 2-4 "קלוריות נסתרות" אופייניות למנה כזו שהמשתמש אולי שכח (שמן בבישול, גבינה מגוררת, לחם ליד, רוטב) — עם ערכים לכמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד במבנה: ${ITEMS_JSON_SPEC}` }] });
+    const meal = await NutritionAnalysisService.requestCalculation(foodSession.originalInput, answersText);
     if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי קריאת ה-AI
-    const meal = parseModelJSON(data.content[0].text);
     meal.source = meal.source || 'text';
     routeAiMeal(meal, 'text', calculateFoodResult);
   } catch(e) { alert('שגיאה בחישוב.'); }
@@ -733,19 +734,7 @@ async function calculateFoodResult() {
 function startCamera() { photoMode = 'plate'; ImageAdapter.triggerFileInput('camera-input'); }
 function startLabelCamera() { photoMode = 'label'; ImageAdapter.triggerFileInput('camera-input'); }
 
-const PLATE_PROMPT = `זהה כל פריט מאכל בצלחת בנפרד — כל רכיב בשורה משלו עם הערכת כמות (גרם/יחידות/כפות) וערכים תזונתיים משלו. אל תאחד הכל לשורה אחת.
-ב-suggestions כלול 2-4 "קלוריות נסתרות" שהמצלמה לא רואה אבל אופייניות למנה כזו (שמן בבישול/בטיגון, גבינה מגוררת, רוטב, חמאה) — עם ערכים לכמות טיפוסית.
-sodium במ"ג, השאר בגרם. אם התמונה לא ברורה ציין זאת ב-note. חשוב: החזר JSON תקין בלבד — בלי שום טקסט, הסבר או הקדמה לפני או אחרי ה-JSON. התו הראשון בתשובה חייב להיות { והתו האחרון }. המבנה: `;
-
-const LABEL_PROMPT = `בתמונה תווית ערכים תזונתיים של מוצר מזון. קרא את הטבלה בזהירות והחזר פריט אחד מדויק.
-כללים מחייבים:
-1. קרא קודם את משקל הנטו של המוצר (מופיע כ"משקל נטו" / "תכולה"). זו הכמות של מנה שלמה.
-2. בטבלה יש לרוב שתי עמודות: "ל-100 גרם" ו"למנה"/"ליחידה". קח את כל הערכים מ*אותה עמודה בלבד* — אל תערבב בין העמודות. העדף את עמודת המנה (לפי משקל הנטו). אם קיימת רק עמודת 100 גרם — השתמש בה וציין זאת ב-note.
-3. amount = הכמות בגרם של הבסיס שבחרת (למשל משקל הנטו), unit = "גרם". name = שם המוצר אם מופיע, אחרת "מוצר מהתווית".
-4. sodium במ"ג. אם רשום רק מלח: נתרן(מ"ג) = מלח(גרם) ÷ 2.5 × 1000.
-5. בדיקה עצמית לפני החזרה: חומצות שומן רוויות ≤ שומן כולל; סוכר ≤ פחמימות; והקלוריות בערך שוות ל: חלבון×4 + פחמימות×4 + שומן×9. אם משהו לא מסתדר — קרא שוב את הטבלה ותקן.
-6. ב-note ציין על איזה בסיס חושבו הערכים (כמה גרם).
-suggestions = מערך ריק. אם התווית לא קריאה החזר {"error":"לא קריא"}. חשוב: החזר JSON תקין בלבד — בלי שום טקסט, הסבר או הקדמה לפני או אחרי ה-JSON. התו הראשון בתשובה חייב להיות { והתו האחרון }. המבנה: `;
+// C1-WP5A: PLATE_PROMPT/LABEL_PROMPT חולצו ל-NutritionAnalysisService.
 
 // C1-WP2: מחולץ ל-js/adapters/imageAdapter.js — פסאדה תואמת-לאחור, ללא שינוי התנהגות.
 function compressImageForUpload(file, maxDim, quality) { return ImageAdapter.compressImageForUpload(file, maxDim, quality); }
@@ -759,9 +748,8 @@ async function analyzePhoto(input) {
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     const img = await compressImageForUpload(file);
-    const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.b64 } },{ type: 'text', text: (mode==='label' ? LABEL_PROMPT : PLATE_PROMPT) + ITEMS_JSON_SPEC }] }] });
+    const meal = await NutritionAnalysisService.requestPhotoAnalysis(mode, img.b64, img.mediaType);
     if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הניתוח
-    const meal = parseModelJSON(data.content[0].text);
     if (meal.error) { alert('לא הצלחתי לקרוא את התווית. נסה לצלם שוב מקרוב, באור טוב.'); return; }
     if (mode === 'label') {
       // צילום תווית שהגיע ממסלול ברקוד — נשייך את הברקוד כדי שהתיקון יישמר למאגר הקבוצה
@@ -1116,9 +1104,8 @@ async function editorAddCustom() {
   btn.disabled = true; btn.textContent = '...';
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
-    const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: `הערך תזונתית פריט בודד: "${val}". אם לא צוינה כמות הנח כמות טיפוסית. sodium במ"ג, השאר בגרם. החזר JSON בלבד: {"name":"שם","amount":0,"unit":"גרם","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}` }] });
+    const it = await NutritionAnalysisService.requestItemEstimate(val);
     if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הקריאה ל-AI (pendingMeal כבר אינו רלוונטי)
-    const it = parseModelJSON(data.content[0].text);
     // REM-001 §15/ER-002 — "meal editor AI item insertion": פריט בודד, אימות ראשון מיד אחרי הפענוח,
     // בלתי-תלוי במקור pendingMeal הכולל (גם אם עורכים מנה שהגיעה מברקוד, הפריט החדש הזה כן AI טרי).
     const gate = window.NutritionOutputValidator.validateNutritionMeal([it], 'editor-item');

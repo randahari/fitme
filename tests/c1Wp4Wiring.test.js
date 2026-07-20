@@ -33,12 +33,12 @@ test('all three WP4 modules are registered in index.html, loaded after the WP3 r
 test('all three WP4 modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   WP4_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.28.0');
+  assert.equal(versionMatch[1], '2.29.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.28.0');
+  assert.equal(appVersionMatch[1], '2.29.0');
 });
 
 test('the authentication lifecycle routes through AuthSessionController — no direct AuthAdapter.onAuthStateChanged call remains in app.js', () => {
@@ -133,13 +133,16 @@ test('no repository/adapter is duplicated or re-implemented by the WP4 modules; 
   });
 });
 
-test('no WP5+ vocabulary or directories were introduced', () => {
+// C1-WP5A legitimately added js/nutrition/ (nutritionAnalysisService.js) after this test was
+// written — the closed set below was updated in the same commit to include it. The three WP4
+// modules themselves must still never reference nutritionAnalysisService or any WP5B-F name.
+test('no WP5B+ vocabulary was introduced into the WP4 modules; only the C1-WP5A directory was added', () => {
   const dirs = fs.readdirSync(path.join(__dirname, '../js'));
   assert.deepEqual(dirs.filter((d) => fs.statSync(path.join(__dirname, '../js', d)).isDirectory()).sort(),
-    ['adapters', 'app', 'core', 'domain', 'repositories']);
+    ['adapters', 'app', 'core', 'domain', 'nutrition', 'repositories']);
   const appDirFiles = fs.readdirSync(path.join(__dirname, '../js/app')).sort();
   assert.deepEqual(appDirFiles, ['authSessionController.js', 'bootstrapController.js', 'runtimeState.js']);
-  [appJs, fs.readFileSync(path.join(__dirname, '..', 'js/app/runtimeState.js'), 'utf8'),
+  [fs.readFileSync(path.join(__dirname, '..', 'js/app/runtimeState.js'), 'utf8'),
     fs.readFileSync(path.join(__dirname, '..', 'js/app/bootstrapController.js'), 'utf8'),
     fs.readFileSync(path.join(__dirname, '..', 'js/app/authSessionController.js'), 'utf8')
   ].forEach((content) => {
