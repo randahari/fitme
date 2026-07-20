@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.36.0';
+const APP_VERSION = '2.37.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -286,6 +286,24 @@ AdaptiveTdeeController.configure({
   coachNameFn: function () { return coachName(); },
   coachMessageFn: function (context) { return coachMessage(context); },
   alertFn: function (msg) { alert(msg); }
+});
+
+// C1-WP8: מזריק DOM/state/callbacks. persistenceSummaryFn/scheduleAtFn/sendLocalNotificationFn
+// עוטפים פסאדות/פונקציות משותפות קיימות (persistenceSummary משותף עם Habit/Pattern — B4 §27;
+// scheduleAt/sendLocalNotification הן פסאדות WP2 קבועות) — אין שכפול לוגיקה.
+// coachNameFn/coachMessageFn/coachLineFn עוטפים את הפסאדות שכבר קיימות (WP6).
+TriggerController.configure({
+  documentRef: document,
+  sessionLifecycle: SessionLifecycle,
+  goalLabels: GOAL_LABELS,
+  getUserProfile: function () { return userProfile; },
+  getTodayData: function () { return todayData; },
+  persistenceSummaryFn: function (result) { return persistenceSummary(result); },
+  scheduleAtFn: function (hour, min, callback) { return scheduleAt(hour, min, callback); },
+  sendLocalNotificationFn: function (title, body) { return sendLocalNotification(title, body); },
+  coachNameFn: function () { return coachName(); },
+  coachMessageFn: function (context) { return coachMessage(context); },
+  coachLineFn: function (kind, d) { return coachLine(kind, d); }
 });
 
 function showLogin() {
@@ -1715,9 +1733,10 @@ renderSettings = function() {
 // עוצב פונקציונלית בלבד — יעוצב מחדש בשלב העיצוב.
 // ══════════════════════════════════════════════════════════════════
 
-const COACH_DAILY_BUDGET = 3;   // מקסימום טריגרים ביום (בריאותי פורץ)
+// C1-WP8: COACH_DAILY_BUDGET/PRIO חולצו ל-js/trigger/triggerDomain.js (משמשים רק את
+// אלגוריתם בדיקת התקציב/מעריכי הטריגרים, שם). COACH_EVENTS_CAP נשאר כאן — עדיין בשימוש
+// ישיר בתוך StateAccess.configure() (recordCoachEvent, B3 קפוא) למטה בקובץ.
 const COACH_EVENTS_CAP = 200;   // גודל יומן האירועים
-const PRIO = { health: 3, opportunity: 2, encouragement: 1 };
 
 // ── תשתית זיכרון: מבטיח שהמבנה קיים (נזרע ריק, ימולא בשלב הבא) ──
 function ensureCoachMemory() {
@@ -1740,12 +1759,9 @@ function coachDay() {
   }
   return userProfile.coachDay;
 }
-function canFire(type, priority) {
-  const cd = coachDay();
-  if (cd.fired.indexOf(type) >= 0) return false;          // בלי כפילות באותו יום
-  if (priority < PRIO.health && cd.count >= COACH_DAILY_BUDGET) return false; // תקציב מוצה
-  return true;
-}
+// C1-WP8: אלגוריתם ההשוואה הטהור חולץ ל-TriggerDomain.canFire — coachDay() (סטטפולי,
+// שזור ב-StateAccess.configure() הקפוא של B3) נשאר כאן ללא שינוי.
+function canFire(type, priority) { return TriggerDomain.canFire(coachDay(), type, priority); }
 
 // ══ הערכת טריגרים — פונקציות תנאי טהורות ══
 // כל אחת מחזירה אובייקט טריגר {type, priority, live, kind, data} או null.
@@ -1756,195 +1772,23 @@ function todayProtein() { return Math.round(todayData.meals.reduce((s, m) => s +
 function computeProteinTarget(weight) { return ProfileMetrics.computeProteinTarget(weight); }
 function proteinTarget() { return computeProteinTarget(userProfile.weight); }
 
-// מאכל חלבוני מהרשימה של המשתמש (אחרת ברירת מחדל)
-function proteinFoodHint() {
-  const foods = (userProfile && userProfile.foods) || [];
-  const rich = ['עוף','ביצים','דג','קוטג\'','יוגורט','בשר','טונה','גבינה','חלבון','שניצל'];
-  const hit = foods.find(f => rich.some(r => f.includes(r)));
-  return hit || 'ביצה, קוטג׳ או עוף';
-}
-
-// B3: כל evalXxx מקבל snapshots מוגבלים (State Access) במקום קריאה ישירה
-// ל-userProfile/todayData — הלוגיקה/הספים עצמם ללא שינוי.
-
-// 🔴 דגל אדום בריאותי — מהמנוע המסתגל (שלב 4)
-function evalRedFlag(history, profile) {
-  if (typeof computeAdaptiveTdee !== 'function') return null;
-  try {
-    const calc = computeAdaptiveTdee(history, profile);
-    if (!calc.enoughData) return null;
-    const meas = analyzeMeasurements(profile);
-    const sig = buildWeeklySignals(calc, meas, profile);
-    if (sig.redFlag) return { type: 'redflag', priority: PRIO.health, live: true, data: { sig, calc } };
-  } catch (e) {}
-  return null;
-}
-
-// 🟡 שכחת לאכול — 14:00–19:00 ופחות מ-400 קל׳
-function evalForgotToEat(todayNutrition) {
-  const h = new Date().getHours();
-  const consumed = todayNutrition.consumed;
-  if (h >= 14 && h < 20 && consumed < 400) {
-    return { type: 'forgot-eat', priority: PRIO.opportunity, live: false, data: { have: consumed } };
-  }
-  return null;
-}
-
-// 🟡 חלבון נמוך יומיים ברצף
-function evalLowProtein(history, triggerProfile, todayNutrition) {
-  const target = computeProteinTarget(triggerProfile.weight);
-  const todayP = todayNutrition.protein;
-  const y = new Date(); y.setDate(y.getDate() - 1);
-  const yData = history[dateKey(y)];
-  if (!yData) return null;
-  const yP = Math.round((yData.meals || []).reduce((s, m) => s + (m.protein || 0), 0));
-  if (todayNutrition.consumed > 500 && todayP < target * 0.6 && yP < target * 0.6) {
-    return { type: 'low-protein', priority: PRIO.opportunity, live: false, data: { have: todayP, target } };
-  }
-  return null;
-}
-
-// 🟡 לא התאמנת כבר כמה ימים (לפי תדירות היעד)
-function evalNoWorkout(history, triggerProfile, todayNutrition) {
-  if (!triggerProfile.totalWorkouts) return null; // משתמש חדש — לא מנדנדים
-  const gap = triggerProfile.workoutFrequency === '6' ? 2 : triggerProfile.workoutFrequency === '4' ? 3 : 4;
-  const d = new Date();
-  let since = 0;
-  for (let i = 0; i < 14; i++) {
-    const key = dateKey(d);
-    const burned = (i === 0) ? todayNutrition.burned : ((history[key] || {}).burned || 0);
-    if (burned > 0) break;
-    since++; d.setDate(d.getDate() - 1);
-  }
-  if (since > gap) return { type: 'no-workout', priority: PRIO.opportunity, live: false, data: { since } };
-  return null;
-}
-
-// 🟡 קרוב מאוד ליעד בערב
-function evalCloseToGoal(triggerProfile, todayNutrition) {
-  const h = new Date().getHours();
-  const remain = triggerProfile.goalKcal - todayNutrition.consumed;
-  if (h >= 19 && remain >= 100 && remain <= 300) {
-    return { type: 'close-goal', priority: PRIO.opportunity, live: false, data: { remain } };
-  }
-  return null;
-}
-
-// 🟢 אבן דרך בסטריק
-function evalStreakMilestone(triggerProfile) {
-  const s = triggerProfile.streak || 0;
-  if ([7, 14, 30, 60, 100].indexOf(s) >= 0) {
-    return { type: 'streak-' + s, priority: PRIO.encouragement, live: s >= 30, data: { streak: s } };
-  }
-  return null;
-}
-
-// ── טקסט מקומי לכל טריגר (חינם) ──
-function triggerLocalText(t) {
-  const n = coachName();
-  const warm = coachChatter() === 'gentle';
-  switch (t.type) {
-    case 'forgot-eat':
-      return warm ? `${n}, עוד לא ראיתי הרבה רישום היום — מה אכלת עד עכשיו? בוא נעדכן.` : `לא שכחת לרשום? עד עכשיו רק ${t.data.have} קל׳. מה אכלת היום?`;
-    case 'low-protein':
-      return `${n}, יומיים שהחלבון נמוך (${t.data.have}g מתוך ${t.data.target}g). ${proteinFoodHint()} יסגור את הפער יפה.`;
-    case 'no-workout':
-      return warm ? `${n}, כבר ${t.data.since} ימים בלי אימון — הגוף שלך מוכן, גם 20 דקות זה ניצחון.` : `${t.data.since} ימים בלי אימון. מה דעתך על אימון קצר היום?`;
-    case 'close-goal':
-      return `${n}, נותרו רק ${t.data.remain} קל׳ ליעד — עוד ארוחה קטנה וסגרת יום מושלם.`;
-    default:
-      if (t.type.indexOf('streak-') === 0) return `${n}, ${t.data.streak} ימים ברצף! 🔥 אתה במומנטום מעולה.`;
-      return '';
-  }
-}
-
-// ── בקשת טקסט חי מהמאמן לטריגר (רגעים גדולים) ──
-async function triggerLiveText(t) {
-  let ctx = '';
-  if (t.type === 'redflag') {
-    ctx = `דגל אדום מהמנוע המסתגל: ${coachName()} יורד במשקל מהר מדי והזרוע מצטמקת — סימן לאובדן שריר. הרגע אותו, הסבר בקצרה שנאט את הקצב ונוסיף קצת קלוריות כדי לשמור על השריר. טון תומך.`;
-  } else if (t.type.indexOf('streak-') === 0) {
-    ctx = `${coachName()} הגיע ל-${t.data.streak} ימים ברצף באפליקציה. חגוג את זה איתו בחום, משפט קצר.`;
-  } else {
-    ctx = `אירוע: ${t.type}. תגיב בקצרה בהתאם לאופי.`;
-  }
-  try { return await coachMessage(ctx); } catch (e) { return triggerLocalText(t); }
-}
-
-// ══ הרצת המנוע בכניסה — בוחר טריגר אחד (הכי גבוה בעדיפות) ══
-// B3: חישוב + state-write בלבד — אין תלות ב-DOM (§17: engine computation לא
-// רשאי להיות תלוי בקיום DOM element). session checks עברו ל-State Access.
-// מחזיר את הטריגר שנבחר (או null) לצורך הצגה — ראה presentTriggerCard().
-// B4 §27: מחזיר { trigger, persistence } במקום trigger בלבד — persistence מדווח
-// ל-output.persistence של האדפטר (worst-of-two: אם אחת משתי הכתיבות לא APPLIED,
-// זו המדווחת, כדי לא להסתיר כשל/CONFLICT מאחורי הצלחת האחרת).
-async function runCoachTriggers(access) {
-  if (!userProfile || !access) return { trigger: null, persistence: persistenceSummary(null) };
-  const history = await access.read.nutritionActivityHistory();
-  const profile = access.read.adaptiveProfile();
-  const triggerProfile = access.read.triggerProfile();
-  const todayNutrition = access.read.todayNutrition();
-
-  const candidates = [
-    evalRedFlag(history, profile),
-    evalForgotToEat(todayNutrition),
-    evalLowProtein(history, triggerProfile, todayNutrition),
-    evalNoWorkout(history, triggerProfile, todayNutrition),
-    evalCloseToGoal(triggerProfile, todayNutrition),
-    evalStreakMilestone(triggerProfile)
-  ].filter(Boolean).filter(t => access.read.canFire(t.type, t.priority));
-
-  if (!candidates.length) return { trigger: null, persistence: persistenceSummary(null) };
-  candidates.sort((a, b) => b.priority - a.priority);
-  const t = candidates[0];
-
-  const budgetResult = await access.write.updateDailyTriggerBudget({ type: t.type });
-  const eventResult = await access.write.recordTriggerOutcome({ type: t.type, data: t.data });
-  const worst = (eventResult.status !== 'APPLIED') ? eventResult : budgetResult;
-  return { trigger: t, persistence: persistenceSummary(worst) };
-}
-
-// ── UI (B3 §17): מציגה את ה-trigger-card לפי תוצאת runCoachTriggers().
-// זהה בתוכן/תזמון לקוד הקודם — רק הועברה מחוץ לחישוב ה-engine עצמו. ──
-async function presentTriggerCard(t, sessionGeneration) {
-  const card = document.getElementById('trigger-card');
-  if (!card) return;
-  if (!t) { card.classList.add('hidden'); return; }
-  const textEl = document.getElementById('trigger-card-text');
-  if (textEl) textEl.textContent = triggerLocalText(t) || '...';
-  card.classList.remove('hidden');
-  if (t.live && textEl) {
-    try {
-      const msg = await triggerLiveText(t);
-      if (msg && (typeof sessionGeneration === 'undefined' || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
-    } catch (e) {}
-  }
-}
-
-// ── טריגר מיידי אחרי אימון (תגובה ישירה לפעולת המשתמש) ──
-// B3: state-write בלבד (recordTriggerOutcome, session check פנימי ב-access.write
-// כבר לפני ה-mutation). DOM הועבר ל-presentWorkoutTriggerCard(), הנקראת מהאדפטר
-// רק אם ה-session עדיין נוכחי אחרי הכתיבה (כפי שהאדפטר כבר בודק). אין שינוי
-// עסקי — רק מיקום ה-guard/ה-DOM.
-async function fireWorkoutTrigger(burn, access) {
-  if (!access) return null;
-  return await access.write.recordTriggerOutcome({ type: 'workout-logged', data: { burn } });
-}
-
-// ── UI (B3 §17): מציגה את trigger-card לאחר אימון. זהה בתוכן/תזמון לקוד
-// הקודם — רק הועברה מחוץ לחישוב/כתיבת ה-state עצמם. ──
-async function presentWorkoutTriggerCard(burn, goal, sessionGeneration) {
-  const card = document.getElementById('trigger-card');
-  const textEl = document.getElementById('trigger-card-text');
-  if (!card || !textEl) return;
-  textEl.textContent = coachLine('workout', { burn: (burn || 0).toLocaleString() });
-  card.classList.remove('hidden');
-  try {
-    const ctx = `${coachName()} בדיוק סיים אימון ושרף ${burn} קל׳ (מטרה: ${GOAL_LABELS[goal]}). תן לו קרדיט קצר שמחבר את האימון למטרה שלו.`;
-    const msg = await coachMessage(ctx);
-    if (msg && (typeof sessionGeneration === 'undefined' || SessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
-  } catch (e) {}
-}
+// ── C1-WP8: מעריכי הטריגרים, בחירת הטריגר, רמז המאכל החלבוני, וטקסט הטריגר המקומי
+// חולצו ל-js/trigger/triggerDomain.js — פסאדות תואמות-לאחור בלבד. runCoachTriggers/
+// presentTriggerCard/triggerLiveText/fireWorkoutTrigger/presentWorkoutTriggerCard
+// (Application Responsibilities) חולצו ל-js/trigger/triggerController.js.
+function proteinFoodHint() { return TriggerDomain.proteinFoodHint(userProfile); }
+function evalRedFlag(history, profile) { return TriggerDomain.evalRedFlag(history, profile, todayData); }
+function evalForgotToEat(todayNutrition) { return TriggerDomain.evalForgotToEat(todayNutrition); }
+function evalLowProtein(history, triggerProfile, todayNutrition) { return TriggerDomain.evalLowProtein(history, triggerProfile, todayNutrition); }
+function evalNoWorkout(history, triggerProfile, todayNutrition) { return TriggerDomain.evalNoWorkout(history, triggerProfile, todayNutrition); }
+function evalCloseToGoal(triggerProfile, todayNutrition) { return TriggerDomain.evalCloseToGoal(triggerProfile, todayNutrition); }
+function evalStreakMilestone(triggerProfile) { return TriggerDomain.evalStreakMilestone(triggerProfile); }
+function triggerLocalText(t) { return TriggerDomain.triggerLocalText(userProfile, t); }
+async function triggerLiveText(t) { return TriggerController.triggerLiveText(t); }
+async function runCoachTriggers(access) { return TriggerController.runCoachTriggers(access); }
+async function presentTriggerCard(t, sessionGeneration) { return TriggerController.presentTriggerCard(t, sessionGeneration); }
+async function fireWorkoutTrigger(burn, access) { return TriggerController.fireWorkoutTrigger(burn, access); }
+async function presentWorkoutTriggerCard(burn, goal, sessionGeneration) { return TriggerController.presentWorkoutTriggerCard(burn, goal, sessionGeneration); }
 
 // ══════════════════════════════════════════════════════════════════
 // ── מונה שימוש (שקיפות עלויות) ──
@@ -2023,69 +1867,10 @@ renderSettings = function() {
   renderUsage();
 };
 
-// scheduleLocalNotifications — גרסה מודעת-תקציב, ההגדרה היחידה (B2: אוחדה,
-// הבסיסית שהוחלפה בעבר הוסרה). התראות מתוזמנות מכבדות את אותו תקציב
-// ואי-כפילות כמו הכרטיסים. נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY
-// / LOCAL_NOTIFICATION_SCHEDULE) — ראה סוף הקובץ.
-// B3: access נקרא מחדש בתוך כל scheduleAt callback (לא snapshot יחיד בזמן
-// התזמון) — כדי לשמר בדיוק את ההתנהגות הקודמת של קריאת נתונים "טריים" בזמן
-// ההפעלה בפועל (שעות אחרי התזמון), לא נתונים ישנים שנתפסו מראש. כל read/write
-// עצמו כבר בודק session פנימית (stateAccess.js) — try/catch כאן הוא רק כדי
-// שלא "לשבור" callback של setTimeout אם ה-session הפך stale בינתיים.
-function scheduleLocalNotifications(access) {
-  if (NotificationAdapter.getPermission() !== 'granted' || !userProfile || !access) return;
-  const now = new Date();
-  const hour = now.getHours();
-
-  async function push(type, priority, title, body) {
-    try {
-      if (!access.read.canFire(type, priority)) return;
-      sendLocalNotification(title, body);
-      await access.write.updateDailyTriggerBudget({ type });
-      await access.write.recordTriggerOutcome({ type, data: { via: 'notification' } });
-    } catch (e) { /* session הפך stale בין התזמון להפעלה — לעולם לא שובר */ }
-  }
-
-  // בוקר (עידוד)
-  if (hour < 7) scheduleAt(7, 0, () => {
-    try { const p = access.read.triggerProfile(); push('morning', PRIO.encouragement, 'בוקר טוב ' + coachName() + ' ☀️', coachLine('morning', { goal: p.goalKcal })); } catch (e) {}
-  });
-
-  // שכחת לאכול (הזדמנות)
-  if (hour < 14) scheduleAt(14, 0, () => {
-    try {
-      const t = access.read.todayNutrition();
-      if (t.consumed < 400) push('forgot-eat', PRIO.opportunity, '🍽️ לא שכחת לאכול?', triggerLocalText({ type: 'forgot-eat', data: { have: t.consumed } }));
-    } catch (e) {}
-  });
-
-  // חלבון (הזדמנות)
-  if (hour < 17) scheduleAt(17, 0, () => {
-    try {
-      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
-      const tgt = computeProteinTarget(pf.weight);
-      if (t.protein < tgt * 0.6) push('protein', PRIO.opportunity, '📊 בדיקת תזונה', coachLine('protein', { have: t.protein, target: tgt }));
-    } catch (e) {}
-  });
-
-  // ערב — קרוב ליעד (הזדמנות)
-  if (hour < 20) scheduleAt(20, 0, () => {
-    try {
-      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
-      const remain = pf.goalKcal - t.consumed;
-      if (remain >= 100 && remain <= 300) push('close-goal', PRIO.opportunity, '⚡ ' + coachName(), triggerLocalText({ type: 'close-goal', data: { remain } }));
-      else if (remain > 300) push('evening', PRIO.opportunity, '⚡ ' + coachName(), coachLine('evening', { remain }));
-    } catch (e) {}
-  });
-
-  // הגנת סטריק (בריאותי-רך — פורץ תקציב כי חשוב)
-  if (hour < 21) scheduleAt(21, 0, () => {
-    try {
-      const t = access.read.todayNutrition(), pf = access.read.triggerProfile();
-      if (t.consumed < 100 && (pf.streak || 0) > 2) push('streak-guard', PRIO.health, '🔥 הסטריק שלך', coachLine('streak', { streak: pf.streak }));
-    } catch (e) {}
-  });
-}
+// scheduleLocalNotifications — C1-WP8: חולץ ל-TriggerController — פסאדה תואמת-לאחור.
+// נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY / LOCAL_NOTIFICATION_SCHEDULE) —
+// ראה סוף הקובץ.
+function scheduleLocalNotifications(access) { return TriggerController.scheduleLocalNotifications(access); }
 
 // ══════════════════════════════════════════════════════════════════
 // שלב 2 — ניווט תאריך + עריכת ארוחות עבר + רישום ליום קודם

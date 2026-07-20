@@ -11,6 +11,7 @@ const path = require('node:path');
 const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+const triggerControllerJs = fs.readFileSync(path.join(__dirname, '../js/trigger/triggerController.js'), 'utf8');
 
 test('1. all four B2 engines are registered with the approved id/triggers', () => {
   const expectations = [
@@ -148,12 +149,16 @@ test('8. applyAdaptiveUpdate is not registered with the Engine Registry (stays m
   assert.equal(fnBody.indexOf('EngineRegistry'), -1, 'applyAdaptiveUpdate() must not touch EngineRegistry');
 });
 
+// C1-WP8 extracted fireWorkoutTrigger's implementation into js/trigger/triggerController.js
+// — app.js's fireWorkoutTrigger is now a one-line facade. The State-Access-only write
+// behavior this test originally locked in now lives in triggerController.js itself.
 test('9. fireWorkoutTrigger accepts a State Access capability and writes only through it (B3: session guard now enforced by the access layer)', () => {
   const fnIndex = appJs.search(/async function fireWorkoutTrigger\s*\(/);
   assert.notEqual(fnIndex, -1);
   const fnBody = appJs.slice(fnIndex, fnIndex + 300);
   assert.match(fnBody, /fireWorkoutTrigger\s*\(\s*burn\s*,\s*access\s*\)/);
-  assert.match(fnBody, /access\.write\.recordTriggerOutcome/, 'fireWorkoutTrigger must write only through the State Access capability, not saveProfile()/logCoachEvent() directly');
+  assert.match(fnBody, /return TriggerController\.fireWorkoutTrigger\(burn, access\);/);
+  assert.match(triggerControllerJs, /access\.write\.recordTriggerOutcome/, 'fireWorkoutTrigger must write only through the State Access capability, not saveProfile()/logCoachEvent() directly');
   const callSiteIndex = appJs.search(/await fireWorkoutTrigger\(burn, ctx\.state\)/);
   assert.notEqual(callSiteIndex, -1, 'the triggerEngine adapter must pass its State Access capability into fireWorkoutTrigger');
   // the adapter itself still guards before/after with SessionLifecycle, independent of the access layer's own internal check
@@ -174,13 +179,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.36.0');
+  assert.equal(versionMatch[1], '2.37.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.36.0');
+  assert.equal(appVersionMatch[1], '2.37.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

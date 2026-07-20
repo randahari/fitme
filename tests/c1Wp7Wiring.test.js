@@ -30,12 +30,12 @@ test('both adaptive modules are in the sw.js SHELL cache list, and VERSION was b
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeDomain.js'), -1);
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeController.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.36.0');
+  assert.equal(versionMatch[1], '2.37.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.36.0');
+  assert.equal(appVersionMatch[1], '2.37.0');
 });
 
 // ── adaptiveTdeeDomain.js: pure module ──────────────────────────────────────────────────
@@ -180,14 +180,13 @@ test('_adaptProposal remains a shared app.js module-level variable (its setter i
 
 // ── governing boundaries: WP8/WP6/frozen B2/B4 territory left untouched ────────────────
 
-test('evalRedFlag (Trigger Engine, WP8 territory) is untouched — still calls computeAdaptiveTdee/analyzeMeasurements/buildWeeklySignals by their app.js facade names, never AdaptiveTdeeDomain directly', () => {
-  const idx = appJs.indexOf('function evalRedFlag(history, profile) {');
-  assert.notEqual(idx, -1);
-  const body = appJs.slice(idx, appJs.indexOf('\n}', idx));
-  assert.match(body, /computeAdaptiveTdee\(history, profile\)/);
-  assert.match(body, /analyzeMeasurements\(profile\)/);
-  assert.match(body, /buildWeeklySignals\(calc, meas, profile\)/);
-  assert.doesNotMatch(body, /AdaptiveTdeeDomain|AdaptiveTdeeController/);
+// C1-WP8 extracted evalRedFlag into js/trigger/triggerDomain.js, which calls
+// AdaptiveTdeeDomain.computeAdaptiveTdee/analyzeMeasurements/buildWeeklySignals directly
+// (a legitimate pure-to-pure cross-domain dependency, same tier as WP7 requiring
+// core/dateUtils.js) — app.js's evalRedFlag is now a one-line facade to TriggerDomain.
+// See tests/c1Wp8Wiring.test.js for the up-to-date wiring assertions on this facade.
+test('evalRedFlag is a one-line facade to TriggerDomain (WP8) — no longer references AdaptiveTdeeDomain/computeAdaptiveTdee by name in app.js', () => {
+  assert.match(appJs, /function evalRedFlag\(history, profile\) \{ return TriggerDomain\.evalRedFlag\(history, profile, todayData\); \}/);
 });
 
 test('logWeight (core profile/weight tracking, out of WP7 scope) is untouched — still a full implementation in app.js, only triggering the engine via the unchanged runEngineAction global', () => {
