@@ -32,12 +32,12 @@ test('all six WP2 adapter modules are registered in index.html, loaded before ap
 test('all six WP2 adapter modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   ADAPTER_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.29.0');
+  assert.equal(versionMatch[1], '2.30.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.29.0');
+  assert.equal(appVersionMatch[1], '2.30.0');
 });
 
 test('all six adapters are configured in app.js before first use', () => {

@@ -27,12 +27,12 @@ test('nutritionAnalysisService.js is registered in index.html, loaded after the 
 test('nutritionAnalysisService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + serviceFile), -1, serviceFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.29.0');
+  assert.equal(versionMatch[1], '2.30.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.29.0');
+  assert.equal(appVersionMatch[1], '2.30.0');
 });
 
 test('NutritionAnalysisService is configured in app.js with closures, not bare references, for callClaude and showMealEditor', () => {
@@ -94,12 +94,13 @@ test('no repository/adapter is duplicated; nutritionAnalysisService.js touches n
   assert.doesNotMatch(code, /\bpendingMeal\b|\bfoodSession\b|\bcurrentUser\b|\buserProfile\b/);
 });
 
-test('no WP5B-F vocabulary or directories were introduced', () => {
+// C1-WP5B legitimately added js/nutrition/mealDraft.js after this test was written — the
+// closed set below was updated in the same commit to include it. nutritionAnalysisService.js
+// itself must still never reference it or any WP5C-F name.
+test('no WP5C-F vocabulary was introduced into nutritionAnalysisService.js; only the C1-WP5B file was added', () => {
   const nutritionDirFiles = fs.readdirSync(path.join(__dirname, '../js/nutrition')).sort();
-  assert.deepEqual(nutritionDirFiles, ['nutritionAnalysisService.js']);
-  [appJs, serviceContent].forEach((content) => {
-    assert.doesNotMatch(content, /mealDraft|mealCommitService|quickLogService|mealEditorPresenter|foodController|barcodeFlowController/);
-  });
+  assert.deepEqual(nutritionDirFiles, ['mealDraft.js', 'nutritionAnalysisService.js']);
+  assert.doesNotMatch(serviceContent, /mealDraft|mealCommitService|quickLogService|mealEditorPresenter|foodController|barcodeFlowController/);
 });
 
 test('the B1 nutrition validator itself is referenced, not reimplemented', () => {

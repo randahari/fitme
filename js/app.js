@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.29.0';
+const APP_VERSION = '2.30.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -935,15 +935,7 @@ let editingItemIdx = null;
 let editingExisting = null; // {idx, time} כשעורכים ארוחה שכבר נרשמה (שלב 2)
 function showMealEditor(meal) {
   editingItemIdx = null;
-  pendingMeal = {
-    name: meal.name || 'ארוחה',
-    note: meal.note || '',
-    source: meal.source || null,        // 'off' | 'label' | 'group' | 'plate' | null
-    barcode: meal.barcode || null,      // אם מלא — שמירה למאגר הקבוצה בעת ההוספה
-    addedByName: meal.addedByName || '',
-    items: (meal.items||[]).map(normalizeItem),
-    suggestions: (meal.suggestions||[]).map(normalizeItem)
-  };
+  pendingMeal = MealDraft.buildDraft(meal);
   renderEditor();
   document.getElementById('food-result').classList.remove('hidden');
 }
@@ -962,13 +954,7 @@ function sourceBadge() {
 }
 
 function mealTotals() {
-  const t = { kcal:0, protein:0, carbs:0, fat:0, fiber:0, sugar:0, sodium:0 };
-  if (!pendingMeal) return t;
-  pendingMeal.items.forEach(it => {
-    t.kcal += it.kcal*it.qty; t.protein += it.protein*it.qty; t.carbs += it.carbs*it.qty;
-    t.fat += it.fat*it.qty; t.fiber += it.fiber*it.qty; t.sugar += it.sugar*it.qty; t.sodium += it.sodium*it.qty;
-  });
-  return t;
+  return MealDraft.computeTotals(pendingMeal ? pendingMeal.items : []);
 }
 
 function fmtQty(q) { return (q % 1 === 0 ? q : q.toFixed(2).replace(/0$/,'')); }
@@ -1053,8 +1039,7 @@ function renderEditor() {
 
 function editorQty(i, dir) {
   const it = pendingMeal.items[i]; if (!it) return;
-  const step = 0.25;
-  it.qty = Math.max(step, Math.round((it.qty + dir*step)*100)/100);
+  MealDraft.changeQty(it, dir);
   renderEditor();
 }
 
@@ -1071,29 +1056,29 @@ function editorCancelEdit() {
 function editorSaveEdit(i) {
   const it = pendingMeal.items[i]; if (!it) return;
   const g = id => document.getElementById(id);
-  it.name = (g('edit-name').value || 'פריט').trim();
-  it.amount = num(g('edit-amount').value);
-  it.unit = g('edit-unit').value.trim();
-  it.kcal = num(g('edit-kcal').value);
-  it.protein = num(g('edit-protein').value);
-  it.carbs = num(g('edit-carbs').value);
-  it.fat = num(g('edit-fat').value);
-  it.fiber = num(g('edit-fiber').value);
-  it.sugar = num(g('edit-sugar').value);
-  it.sodium = num(g('edit-sodium').value);
+  MealDraft.applyEdit(it, {
+    name: (g('edit-name').value || 'פריט').trim(),
+    amount: num(g('edit-amount').value),
+    unit: g('edit-unit').value.trim(),
+    kcal: num(g('edit-kcal').value),
+    protein: num(g('edit-protein').value),
+    carbs: num(g('edit-carbs').value),
+    fat: num(g('edit-fat').value),
+    fiber: num(g('edit-fiber').value),
+    sugar: num(g('edit-sugar').value),
+    sodium: num(g('edit-sodium').value)
+  });
   editingItemIdx = null;
   renderEditor();
 }
 
 function editorDelete(i) {
-  pendingMeal.items.splice(i, 1);
+  MealDraft.removeItem(pendingMeal.items, i);
   renderEditor();
 }
 
 function editorAddSuggestion(i) {
-  const s = pendingMeal.suggestions[i]; if (!s) return;
-  pendingMeal.items.push({ ...s, qty: 1 });
-  pendingMeal.suggestions.splice(i, 1);
+  MealDraft.promoteSuggestion(pendingMeal.items, pendingMeal.suggestions, i);
   renderEditor();
 }
 
@@ -1122,25 +1107,16 @@ async function editorAddCustom() {
   } catch(e) { alert('שגיאה: ' + e.message); btn.disabled = false; btn.textContent = 'הוסף'; }
 }
 
+// REM-003 §9/Recommended Additions — Authority Metadata + Audit Trail. נצמד כאן (מקום יחיד),
+// כך ש-addMeal() וגם saveFavoriteFromPending() (ששניהם קוראים לפונקציה הזו) יורשים אותו באופן עקבי.
+// C1-WP5B: החישוב/העיגול/בניית האובייקט חולצו ל-MealDraft.buildAuthoritativeMeal — פסאדה
+// תואמת-לאחור, מזרימה אותם ערכים בדיוק (authoritySourceForMeal/currentUser/APP_VERSION).
 function buildMealFromEditor() {
-  const t = mealTotals();
-  const now = new Date();
-  return {
-    name: pendingMeal.name,
-    kcal: Math.round(t.kcal),
-    protein: Math.round(t.protein*10)/10, carbs: Math.round(t.carbs*10)/10, fat: Math.round(t.fat*10)/10,
-    fiber: Math.round(t.fiber*10)/10, sugar: Math.round(t.sugar*10)/10, sodium: Math.round(t.sodium),
-    items: pendingMeal.items.map(it => ({ ...it })),
-    time: now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),
-    // REM-003 §9/Recommended Additions — Authority Metadata + Audit Trail. נצמד כאן (מקום יחיד),
-    // כך ש-addMeal() וגם saveFavoriteFromPending() (ששניהם קוראים לפונקציה הזו) יורשים אותו באופן עקבי.
-    authority: window.AuthorityContract.buildAuthorityMetadata({
-      source: authoritySourceForMeal(pendingMeal),
-      createdBy: currentUser && currentUser.uid,
-      rule: 'meal-editor.addMeal.v1',
-      systemVersion: APP_VERSION
-    })
-  };
+  return MealDraft.buildAuthoritativeMeal(pendingMeal, {
+    authoritySource: authoritySourceForMeal(pendingMeal),
+    createdByUid: currentUser && currentUser.uid,
+    systemVersion: APP_VERSION
+  });
 }
 
 async function addMeal() {
