@@ -643,8 +643,9 @@ test('64. cache disabled produces same semantic output (no caching layer — pur
 });
 
 // ── Bonus robustness (supports 57.9 items 78/79/80): a state-access read failure
-// never throws out of build() — it degrades to FAILED, which app.js's integration
-// (js/app.js buildCoachSystemPrompt) catches and treats as "no derived intelligence". ──
+// never throws out of build() — it degrades to FAILED, which the Coach integration
+// (js/coach/coachPromptComposer.js buildSystemPrompt, relocated by C1-WP6) catches and
+// treats as "no derived intelligence". ──
 test('bonus. a readHabitSnapshot rejection does not throw — build() resolves FAILED', async () => {
   makeEnv({ readHabitSnapshot: async () => { throw new Error('boom'); }, patterns: [] });
   const result = await Consumer.build(baseRequest());

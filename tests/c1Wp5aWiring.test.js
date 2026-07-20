@@ -27,12 +27,12 @@ test('nutritionAnalysisService.js is registered in index.html, loaded after the 
 test('nutritionAnalysisService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + serviceFile), -1, serviceFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.34.0');
+  assert.equal(versionMatch[1], '2.35.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.34.0');
+  assert.equal(appVersionMatch[1], '2.35.0');
 });
 
 test('NutritionAnalysisService is configured in app.js with closures, not bare references, for callClaude and showMealEditor', () => {
@@ -70,10 +70,15 @@ test('PLATE_PROMPT/LABEL_PROMPT/ITEMS_JSON_SPEC no longer exist as app.js consta
   assert.equal(appJs.indexOf('const ITEMS_JSON_SPEC ='), -1);
 });
 
+// C1-WP6 subsequently relocated coachMessage()'s own `await callClaude(...)` call into
+// js/coach/coachClient.js (intentional — see tests/c1Wp6Wiring.test.js), so the app.js count
+// dropped from 5 to 4. The "אתה \"המאמן\"" system-prompt text also relocated, into
+// js/coach/coachPromptComposer.js.
 test('coach-domain callClaude call sites are untouched (out of WP5A scope)', () => {
   const coachCallSites = (appJs.match(/await callClaude\(/g) || []).length;
-  assert.equal(coachCallSites, 5, 'expected exactly 5 remaining direct callClaude call sites: coachMessage, submitQuickLearn (WP5E), and 3 coach weekly-summary/menu/letter functions');
-  assert.match(appJs, /אתה "המאמן"/, 'coachSystemPrompt-related content must remain untouched');
+  assert.equal(coachCallSites, 4, 'expected exactly 4 remaining direct callClaude call sites: submitQuickLearn (WP5E) and 3 coach weekly-summary/menu/letter functions');
+  const composerJs = fs.readFileSync(path.join(__dirname, '../js/coach/coachPromptComposer.js'), 'utf8');
+  assert.match(composerJs, /אתה "המאמן"/, 'coachSystemPrompt-related content must remain intact, now in coachPromptComposer.js');
 });
 
 test('submitQuickLearn (WP5E territory) is untouched — still calls callClaude/parseModelJSON directly, not the new service', () => {

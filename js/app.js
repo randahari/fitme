@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.34.0';
+const APP_VERSION = '2.35.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -28,17 +28,8 @@ const DAYS_HE = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
 // ── COACH (המאמן) ──
 const COACH_STYLE_LABELS = { friendly: 'חברי', supportive: 'תומך', professional: 'מקצועי', mixed: 'מעורב' };
 const COACH_CHATTER_LABELS = { minimal: 'קצר ולעניין', balanced: 'מאוזן', gentle: 'עדין' };
-const COACH_STYLE_GUIDE = {
-  friendly: 'דבר בטון חם, יומיומי וקליל, כמו חבר טוב. מותר הומור עדין.',
-  supportive: 'דבר בטון תומך, מעודד ורגיש. שים דגש על חיזוק והבנה.',
-  professional: 'דבר בטון ענייני, מדויק וממוקד. בלי סלנג, בלי קישוטים מיותרים.',
-  mixed: 'שלב חום ידידותי עם דיוק ענייני — נעים אבל לא מתחנחן.'
-};
-const COACH_CHATTER_GUIDE = {
-  minimal: 'משפט אחד קצר בלבד. בלי פתיח, בלי סיכום. רק העיקר.',
-  balanced: 'עד 2 משפטים. נעים וקולע.',
-  gentle: '2–3 משפטים חמים ומלווים, עם מילת עידוד אמיתית.'
-};
+// C1-WP6: COACH_STYLE_GUIDE/COACH_CHATTER_GUIDE חולצו ל-js/coach/coachPromptComposer.js
+// (משמשים רק את הרכבת הפרומפט, שם).
 const ACHIEVEMENTS = [
   { id: 'streak7', icon: '🔥', title: '7 ימים ברצף', check: p => (p.streak||0) >= 7 },
   { id: 'streak30', icon: '🏆', title: '30 ימים ברצף', check: p => (p.streak||0) >= 30 },
@@ -244,6 +235,33 @@ BarcodeFlowController.configure({
   setPendingBarcode: function (code) { pendingBarcode = code; }
 });
 
+// C1-WP6: מזריק goalLabels (קבוע משותף עם domains אחרים מחוץ ל-coach) ו-sessionLifecycle
+// (עבור B5 Derived Intelligence session guard).
+CoachPromptComposer.configure({
+  sessionLifecycle: SessionLifecycle,
+  goalLabels: GOAL_LABELS
+});
+
+// C1-WP6: מזריק closure ל-callClaude (עטוף מאוחר יותר למעקב שימוש — אותו דפוס בדיוק
+// כמו NutritionAnalysisService.configure ב-WP5A).
+CoachClient.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// C1-WP6: מזריק DOM/state/callbacks. coachMessageFn עוטף כ-closure את coachMessage
+// (פסאדה ב-app.js המאצילה ל-CoachClient.sendMessage) — אין שכפול לוגיקה. coachCardShown
+// נשאר משתנה משותף ב-app.js (מאופס גם ב-_resetAppCoreState) — מוזרק כ-getter/setter.
+CoachPresenter.configure({
+  documentRef: document,
+  sessionLifecycle: SessionLifecycle,
+  getUserProfile: function () { return userProfile; },
+  getTodayData: function () { return todayData; },
+  getCoachCardShown: function () { return coachCardShown; },
+  setCoachCardShown: function (v) { coachCardShown = v; },
+  saveProfile: function () { return saveProfile(); },
+  coachMessageFn: function (context) { return coachMessage(context); }
+});
+
 function showLogin() {
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -403,86 +421,18 @@ function sendLocalNotification(title, body) {
 
 function scheduleAt(hour, min, callback) { return NotificationAdapter.scheduleAt(hour, min, callback); }
 
-// ── COACH ENGINE (המאמן) ──
-function coachName() {
-  return (userProfile && userProfile.coachName) || (userProfile && userProfile.name) || 'חבר';
-}
-function coachStyle() { return (userProfile && userProfile.coachStyle) || 'mixed'; }
-function coachChatter() { return (userProfile && userProfile.coachChatter) || 'balanced'; }
-
-// הוראת מערכת קצרה שמרכיבה את הדמות מההעדפות — כדי שהמאמן עקבי בכל האפליקציה
-function buildCoachSystemPrompt() {
-  const p = userProfile || {};
-  const f = [];
-  if (p.gender) f.push('מין: ' + (p.gender === 'male' ? 'זכר' : 'נקבה'));
-  if (p.age) f.push('גיל: ' + p.age);
-  const w = p.currentWeight || p.weight;
-  if (w) f.push('משקל: ' + w + ' ק"ג');
-  if (p.height) f.push('גובה: ' + p.height + ' ס"מ');
-  if (p.goal) f.push('מטרה: ' + (GOAL_LABELS[p.goal] || p.goal));
-  if (p.goalKcal) f.push('יעד קלוריות יומי: ' + p.goalKcal);
-  if (p.days) { const dm = { '2': '2-3', '4': '4-5', '6': '6+' }; f.push('ימי אימון בשבוע: ' + (dm[p.days] || p.days)); }
-  if (p.workoutType) f.push('סוג אימון מועדף: ' + p.workoutType);
-  if (Array.isArray(p.foods) && p.foods.length) f.push('מאכלים אהובים: ' + p.foods.join(', '));
-  if (p.streak) f.push('סטריק נוכחי: ' + p.streak + ' ימים');
-  return [
-    'אתה "המאמן" — נוכחות אישית באפליקציית תזונה וכושר בשם FitMe.',
-    'אתה מדבר עברית בלבד, בגוף ראשון, ופונה למשתמש בשם: ' + coachName() + '.',
-    f.length ? ('הכר את מי שאתה מלווה — ' + f.join(' · ') + '. התאם את דבריך למצב ולמטרה שלו, אך אל תדקלם את הנתונים אלא אם הם רלוונטיים להודעה.') : '',
-    'אופי: ' + (COACH_STYLE_GUIDE[coachStyle()] || COACH_STYLE_GUIDE.mixed),
-    'אורך: ' + (COACH_CHATTER_GUIDE[coachChatter()] || COACH_CHATTER_GUIDE.balanced),
-    'לעולם אל תמציא נתונים שלא נמסרו לך. אל תשתמש בכותרות, רשימות או Markdown — טקסט רץ בלבד.',
-    'אל תפתח ב"שלום" חוזר בכל הודעה. היה טבעי.'
-  ].filter(Boolean).join(' ');
-}
-
-// מייצר הודעת מאמן דרך ה-proxy. context = תיאור מצב קצר בעברית.
-async function coachMessage(context) {
-  const data = await callClaude({
-    model: 'claude-sonnet-4-6',
-    max_tokens: coachChatter() === 'gentle' ? 220 : 120,
-    system: await buildCoachSystemPrompt(),
-    messages: [{ role: 'user', content: 'המצב כרגע: ' + context + '\nכתוב הודעת מאמן אחת בהתאם לאופי ולאורך שהוגדרו.' }]
-  });
-  return (data.content && data.content[0] && data.content[0].text || '').trim();
-}
-
-// כרטיס המאמן במסך הבית — הודעה חכמה לפי מצב היום (פעם אחת לפתיחה)
-async function refreshCoachCard() {
-  if (coachCardShown || !userProfile) return;
-  coachCardShown = true;
-  const card = document.getElementById('coach-card');
-  const textEl = document.getElementById('coach-card-text');
-  if (!card || !textEl) return;
-  const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-  const protein = Math.round(todayData.meals.reduce((s,m)=>s+(m.protein||0),0));
-  const targetProtein = Math.round((userProfile.weight||75)*1.8);
-  const remain = Math.max(0, userProfile.goalKcal - consumed);
-  const hour = new Date().getHours();
-  const partOfDay = hour < 11 ? 'בוקר' : hour < 17 ? 'צהריים' : 'ערב';
-  const ctx = `עכשיו ${partOfDay}. ${coachName()} פתח את מסך הבית. צרך ${consumed} קל׳ מתוך ${userProfile.goalKcal} (נותרו ${remain}). חלבון ${protein}g מתוך ${targetProtein}g. סטריק ${userProfile.streak||0} ימים. מטרה: ${GOAL_LABELS[userProfile.goal]}. תן משפט מלווה שמתאים לשעה ולמצב — עידוד או טיפ קטן.`;
-  const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-  try {
-    const msg = await coachMessage(ctx);
-    if (msg && SessionLifecycle.isCurrent(_gen)) { textEl.textContent = msg; card.classList.remove('hidden'); }
-  } catch(e) { /* שקט — אם אין רשת פשוט לא מציגים כרטיס */ }
-}
-
-// טקסט מקומי (בלי רשת) לפי אופי — לתזכורות מיידיות/התראות, לאמינות ומהירות
-function coachLine(kind, d) {
-  const n = coachName();
-  const warm = coachChatter() === 'gentle';
-  const pro = coachStyle() === 'professional' || coachChatter() === 'minimal';
-  const T = {
-    morning:   pro ? `בוקר טוב. יעד היום: ${d.goal} קל׳.` : warm ? `בוקר טוב ${n} ☀️ יום חדש, הזדמנות חדשה. היעד שלך היום: ${d.goal} קל׳.` : `בוקר טוב ${n}! היעד שלך היום: ${d.goal} קל׳.`,
-    protein:   pro ? `חלבון: ${d.have}g מתוך ${d.target}g.` : warm ? `${n}, שים לב לחלבון — ${d.have}g מתוך ${d.target}g. ביצה, עוף או קוטג׳ יסגרו את הפער יפה.` : `חסר קצת חלבון: ${d.have}g מתוך ${d.target}g. אולי ביצים או קוטג׳?`,
-    evening:   pro ? `נותרו ${d.remain} קל׳ להיום.` : warm ? `${n}, יש לך עוד זמן — נותרו ${d.remain} קל׳ להיום, אתה בכיוון טוב.` : `${n}, נותרו ${d.remain} קל׳ להיום. תספיק!`,
-    streak:    pro ? `סטריק ${d.streak} ימים — טרם נרשמה ארוחה היום.` : warm ? `${n}, הסטריק היפה שלך (${d.streak} ימים) מחכה — רישום קטן אחד וזה נשמר 🔥` : `אל תשבור את הסטריק! ${d.streak} ימים בסכנה — רשום משהו 🔥`,
-    achieve:   pro ? `הישג חדש: ${d.title}.` : warm ? `${n}, כל הכבוד! פתחת הישג: ${d.title} ${d.icon}` : `הישג חדש ${d.icon} — ${d.title}!`,
-    workout:   pro ? `אימון נשמר. ${d.burn} קל׳.` : warm ? `${n}, אלוף! אימון נשמר ושרפת ${d.burn} קל׳ 💪` : `אימון נשמר! שרפת ${d.burn} קל׳ 💪`
-  };
-  return T[kind] || '';
-}
+// ── COACH ENGINE (המאמן) — C1-WP6: חולץ ל-js/coach/{coachProfile,coachPromptComposer,
+// coachClient,coachPresenter}.js — פסאדות תואמות-לאחור. buildCoachSystemPrompt מאחדת
+// כעת (בתוך CoachPromptComposer.buildSystemPrompt) את שתי השכבות ההיסטוריות שהיו קיימות
+// כאן (ההגדרה הבסיסית הסינכרונית + ה-override האסינכרוני שהזריק B5) — ראה
+// tests/c1Wp6Wiring.test.js/tests/coachPromptComposer.test.js להשוואה מול המקור.
+function coachName() { return CoachProfile.coachName(userProfile); }
+function coachStyle() { return CoachProfile.coachStyle(userProfile); }
+function coachChatter() { return CoachProfile.coachChatter(userProfile); }
+async function buildCoachSystemPrompt() { return CoachPromptComposer.buildSystemPrompt(userProfile, todayData, currentUser); }
+async function coachMessage(context) { return CoachClient.sendMessage(context, userProfile, todayData, currentUser); }
+async function refreshCoachCard() { return CoachPresenter.refreshCoachCard(); }
+function coachLine(kind, d) { return CoachPromptComposer.coachLine(userProfile, kind, d); }
 
 // ── ONBOARDING ──
 function selectSeg(btn, group) {
@@ -1521,50 +1471,12 @@ function renderSettings() {
   renderCoachSettings();
 }
 
-// ── COACH SETTINGS ──
-function renderCoachSettings() {
-  if (!userProfile) return;
-  const nameEl = document.getElementById('set-coach-name');
-  if (nameEl) nameEl.value = userProfile.coachName || userProfile.name || '';
-  const st = userProfile.coachStyle || 'mixed';
-  const ch = userProfile.coachChatter || 'balanced';
-  document.querySelectorAll('#set-coach-style .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === st));
-  document.querySelectorAll('#set-coach-chatter .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === ch));
-}
-
-async function saveCoachSettings() {
-  if (!userProfile) return;
-  const nameEl = document.getElementById('set-coach-name');
-  if (nameEl) userProfile.coachName = nameEl.value.trim() || userProfile.name;
-  await saveProfile();
-}
-
-async function setCoachStyle(v) {
-  if (!userProfile) return;
-  userProfile.coachStyle = v;
-  document.querySelectorAll('#set-coach-style .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
-  await saveProfile();
-}
-
-async function setCoachChatter(v) {
-  if (!userProfile) return;
-  userProfile.coachChatter = v;
-  document.querySelectorAll('#set-coach-chatter .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.val === v));
-  await saveProfile();
-}
-
-async function testCoachMessage() {
-  await saveCoachSettings();
-  const out = document.getElementById('coach-test-out');
-  if (!out) return;
-  out.classList.remove('hidden');
-  out.textContent = 'המאמן כותב...';
-  try {
-    const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-    const msg = await coachMessage(`${coachName()} פתח את מסך ההגדרות. היום צרך ${consumed} קל׳ מתוך ${userProfile.goalKcal}, סטריק ${userProfile.streak||0} ימים. תגיד שלום קצר שמדגים את האופי שלך.`);
-    out.textContent = msg || 'לא התקבלה תשובה.';
-  } catch(e) { out.textContent = 'שגיאה: ' + e.message; }
-}
+// ── COACH SETTINGS — C1-WP6: חולץ ל-CoachPresenter — פסאדות תואמות-לאחור.
+function renderCoachSettings() { return CoachPresenter.renderCoachSettings(); }
+async function saveCoachSettings() { return CoachPresenter.saveCoachSettings(); }
+async function setCoachStyle(v) { return CoachPresenter.setCoachStyle(v); }
+async function setCoachChatter(v) { return CoachPresenter.setCoachChatter(v); }
+async function testCoachMessage() { return CoachPresenter.testCoachMessage(); }
 
 // saveApiKey — הוסר: המפתח יושב עכשיו בענן, המשתמשים לא צריכים להזין כלום
 
@@ -2217,21 +2129,8 @@ function ensureCoachMemory() {
   if (!Array.isArray(userProfile.coachEvents)) userProfile.coachEvents = [];
 }
 
-// ── ניסוח קצר של הזיכרון לתוך הוראת המערכת (ריק כרגע → יתמלא בשלב הבא) ──
-function coachMemoryPromptFragment() {
-  const m = userProfile && userProfile.coachMemory;
-  if (!m) return '';
-  const parts = [];
-  if (Array.isArray(m.observations) && m.observations.length) {
-    const obs = m.observations.slice(-8).map(o => (o && o.text) || o).filter(Boolean);
-    if (obs.length) parts.push('מה שלמדתי עליו עד כה: ' + obs.join('; ') + '.');
-  }
-  if (m.preferences && Object.keys(m.preferences).length) {
-    const pref = Object.entries(m.preferences).map(([k, v]) => `${k}: ${v}`).join('; ');
-    if (pref) parts.push('העדפות שנלמדו: ' + pref + '.');
-  }
-  return parts.join(' ');
-}
+// ── ניסוח קצר של הזיכרון לתוך הוראת המערכת — C1-WP6: חולץ ל-CoachPromptComposer.
+function coachMemoryPromptFragment() { return CoachPromptComposer.coachMemoryFragment(userProfile); }
 
 // ── תקציב הטון: מעקב יומי (מתאפס בכל יום) ──
 function coachDay() {
@@ -2506,56 +2405,12 @@ callClaude = async function(body) {
   return await _s5_callClaude(body);
 };
 
-// buildCoachSystemPrompt → מזריק את הזיכרון + B5 Derived Intelligence (Habit/Pattern),
-// דרך derivedIntelligenceConsumer.js — הצרכן היחיד המאושר בפועל של Habit/Pattern Derived
-// Intelligence Views לפרומפט המאמן (B5 §12.3: AI_COACH_PROMPT/COACH_PROMPT_V1). הופכת
-// לאסינכרונית כי build() קורא State Access (async); הקורא היחיד (coachMessage) כבר async.
-// כשל כלשהו ב-B5 (state access/session/build) לעולם לא חוסם את הפרומפט — B5 הוא מקור
-// תוספתי בלבד, לא תלות קריטית (SPEC §19.5 session safety / graceful degradation).
-function _s5TimeSegment(h) {
-  if (h >= 5 && h < 11) return 'MORNING';
-  if (h >= 11 && h < 16) return 'MIDDAY';
-  if (h >= 16 && h < 22) return 'EVENING';
-  return 'NIGHT';
-}
-function _s5ContextEvents() {
-  const events = [];
-  const today = getTodayKey();
-  if (todayData && todayData.burned > 0) events.push('WORKOUT_COMPLETED');
-  if (todayData && Array.isArray(todayData.meals) && todayData.meals.length) events.push('MEAL_LOGGED');
-  if (userProfile && Array.isArray(userProfile.weightHistory) && userProfile.weightHistory.some(w => w.date === today)) events.push('WEIGH_IN_RECORDED');
-  if (userProfile && Array.isArray(userProfile.measurementHistory) && userProfile.measurementHistory.some(m => m.date === today)) events.push('MEASUREMENT_RECORDED');
-  return events;
-}
-const _s5_buildCoachSystemPrompt = buildCoachSystemPrompt;
-buildCoachSystemPrompt = async function() {
-  const base = _s5_buildCoachSystemPrompt();
-  const mem = coachMemoryPromptFragment();
-  let derived = '';
-  try {
-    if (currentUser && currentUser.uid) {
-      const now = new Date();
-      const result = await DerivedIntelligenceConsumer.build({
-        requestId: 'coach-prompt-' + Date.now(),
-        consumer: 'AI_COACH_PROMPT',
-        policyId: 'COACH_PROMPT_V1',
-        session: { uid: currentUser.uid, generation: SessionLifecycle.getGeneration() },
-        intent: {
-          domain: 'GENERAL_COACHING',
-          purpose: 'IMMEDIATE',
-          weekday: now.getDay(),
-          localTimeSegment: _s5TimeSegment(now.getHours()),
-          contextEvents: _s5ContextEvents()
-        }
-      });
-      if (result && (result.status === 'SUCCESS' || result.status === 'PARTIAL')) {
-        derived = DerivedIntelligencePrompt.project(result.context);
-      }
-    }
-  } catch (e) { /* B5 תוספתי בלבד — לעולם לא חוסם את הפרומפט */ }
-  const withMem = mem ? (base + ' ' + mem) : base;
-  return derived ? (withMem + ' ' + derived) : withMem;
-};
+// C1-WP6: buildCoachSystemPrompt's two historical layers here (the synchronous base
+// definition, and this async override that injected coachMemory + B5 Derived Intelligence)
+// were consolidated into CoachPromptComposer.buildSystemPrompt() — one function, same
+// behavior, no more override chain (see the coachMessage()/buildCoachSystemPrompt()
+// facades near the COACH ENGINE section). See tests/coachPromptComposer.test.js and
+// tests/c1Wp6Wiring.test.js for direct behavioral comparison against this removed code.
 
 // B2: Trigger Engine orchestration no longer wraps showApp/saveWorkout here —
 // see runAppReadyEngines() (showApp, action DAILY_COACH_CHECK) and the

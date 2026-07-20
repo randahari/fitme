@@ -34,7 +34,7 @@ For every identified override chain: the original definition, each later replace
 | Function | Base definition | Wrap 1 | Wrap 2 | Wrap 3 | Final runtime definition |
 |---|---|---|---|---|---|
 | `callClaude` | `js/app.js:6` | `js/app.js:2935` (`_s5_callClaude`, usage tracking) | — | — | line 2935 |
-| `buildCoachSystemPrompt` | `js/app.js:349` | `js/app.js:2962` (`_s5_buildCoachSystemPrompt`, B5 derived-intelligence fragment) | — | — | line 2962 |
+| `buildCoachSystemPrompt` | `js/app.js:349` | `js/app.js:2962` (`_s5_buildCoachSystemPrompt`, B5 derived-intelligence fragment) | — | — | **[C1-WP6]** No longer an override chain. Both layers were consolidated into `js/coach/coachPromptComposer.js`'s `buildSystemPrompt()`; `js/app.js` now has a single one-line facade (`async function buildCoachSystemPrompt() { return CoachPromptComposer.buildSystemPrompt(userProfile, todayData, currentUser); }`), no reassignment. See `tests/c1Wp6Wiring.test.js`. |
 | `renderProfile` | `js/app.js:1834` | `js/app.js:2621` (`_s4_renderProfile`, adds `renderMeasurements()`) | — | — | line 2621 |
 | `renderSettings` | `js/app.js:1924` | `js/app.js:2091` (`_origRenderSettings`, adds plan targets) | `js/app.js:2627` (`_s4_renderSettings`, adds adaptive settings) | `js/app.js:2998` (`_s5_renderSettings_u`, adds usage display) | line 2998 |
 | `showMealEditor` | `js/app.js:1075` | `js/app.js:3204` (`_showMealEditor`, resets edit-mode flag) | — | — | line 3204 |

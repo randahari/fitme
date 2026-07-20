@@ -59,9 +59,19 @@ assertChain('callClaude', { declPattern: /async function callClaude\(body\)/ }, 
   { captureName: '_s5_callClaude', capturePattern: /const _s5_callClaude = callClaude;/, callsPriorPattern: /await _s5_callClaude\(body\)/ }
 ]);
 
-assertChain('buildCoachSystemPrompt', { declPattern: /function buildCoachSystemPrompt\(\)/ }, [
-  { captureName: '_s5_buildCoachSystemPrompt', capturePattern: /const _s5_buildCoachSystemPrompt = buildCoachSystemPrompt;/, callsPriorPattern: /_s5_buildCoachSystemPrompt\(\)/ }
-]);
+// C1-WP6 legitimately consolidated buildCoachSystemPrompt's two historical layers (this
+// override chain) into one function, CoachPromptComposer.buildSystemPrompt() (intentional —
+// "B5 derived-intelligence prompt-fragment integration" is explicit C1-WP6 scope; see
+// tests/c1Wp6Wiring.test.js and docs/architecture/C1_WP0_INVENTORY.md §2.1, updated in the
+// same commit). It is no longer an override chain in app.js at all — just a single
+// one-line async facade, like capQuick()/getSharedBarcodeGroup() and the other WP5-series
+// facades. This replaces the assertChain('buildCoachSystemPrompt', ...) call that used to
+// live here.
+test('2. "buildCoachSystemPrompt" is now a single plain facade (no override chain) — relocated by C1-WP6', () => {
+  assert.match(appJs, /async function buildCoachSystemPrompt\(\) \{ return CoachPromptComposer\.buildSystemPrompt\(userProfile, todayData, currentUser\); \}/);
+  const assignCount = countMatches(/^\s*buildCoachSystemPrompt\s*=\s*(async\s+)?function/gm);
+  assert.equal(assignCount, 0, 'buildCoachSystemPrompt must have zero reassignments now — the override chain was consolidated into CoachPromptComposer.buildSystemPrompt()');
+});
 
 assertChain('renderProfile', { declPattern: /async function renderProfile\(\)/ }, [
   { captureName: '_s4_renderProfile', capturePattern: /const _s4_renderProfile = renderProfile;/, callsPriorPattern: /await _s4_renderProfile\(\)/ }

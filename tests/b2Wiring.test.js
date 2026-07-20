@@ -45,8 +45,13 @@ test('3. old Engine orchestration override-chain symbols are gone', () => {
   });
 });
 
+// C1-WP6 legitimately consolidated _s5_buildCoachSystemPrompt's two historical layers into
+// one function inside js/coach/coachPromptComposer.js (intentional — see
+// tests/c1Wp6Wiring.test.js) — it no longer exists in app.js at all, so it was removed from
+// this list. The other three non-engine wrappers are untouched, still out of scope for both
+// B2 and WP6.
 test('4. non-engine wrappers were left untouched', () => {
-  const preserved = ['_s4_renderProfile', '_s5_callClaude', '_s5_buildCoachSystemPrompt', '_s5_renderSettings_u'];
+  const preserved = ['_s4_renderProfile', '_s5_callClaude', '_s5_renderSettings_u'];
   preserved.forEach((sym) => {
     assert.notEqual(appJs.indexOf(sym), -1, sym + ' must still exist (non-engine wrapper, out of B2 scope)');
   });
@@ -163,13 +168,13 @@ test('11. service worker SHELL includes engineRegistry.js and cache version was 
   assert.match(swJs, /\/fitme\/js\/engineRegistry\.js/, 'engineRegistry.js must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.34.0');
+  assert.equal(versionMatch[1], '2.35.0');
 });
 
 test('12. APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.34.0');
+  assert.equal(appVersionMatch[1], '2.35.0');
 });
 
 test('13. engineRegistry.js stays a pure orchestration module — no Firestore/DOM API calls (only doc comments may mention them)', () => {

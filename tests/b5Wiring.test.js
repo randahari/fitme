@@ -14,12 +14,19 @@ const consumerJs = fs.readFileSync(path.join(__dirname, '../js/derivedIntelligen
 const promptJs = fs.readFileSync(path.join(__dirname, '../js/derivedIntelligencePrompt.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+const composerJs = fs.readFileSync(path.join(__dirname, '../js/coach/coachPromptComposer.js'), 'utf8');
 
+// C1-WP6 legitimately consolidated app.js's buildCoachSystemPrompt override chain (the
+// synchronous base definition + this async wrap that injected coachMemory + B5 Derived
+// Intelligence) into one function, CoachPromptComposer.buildSystemPrompt() — intentional,
+// "B5 derived-intelligence prompt-fragment integration" is explicit C1-WP6 scope (see
+// tests/c1Wp6Wiring.test.js). Every behavioral guarantee below (75-80) is checked against
+// the new location; the request shape and fallback logic are unchanged.
 function wrapperBody() {
-  const start = appJs.indexOf('buildCoachSystemPrompt = async function()');
-  assert.notEqual(start, -1, 'buildCoachSystemPrompt wrapper must exist and be async');
-  const end = appJs.indexOf('\n};', start);
-  return appJs.slice(start, end);
+  const start = composerJs.indexOf('async function buildSystemPrompt(userProfile, todayData, currentUser)');
+  assert.notEqual(start, -1, 'CoachPromptComposer.buildSystemPrompt must exist and be async');
+  const end = composerJs.indexOf('\n  }', start);
+  return composerJs.slice(start, end);
 }
 
 test('75. Coach consumes the B5 adapter (buildCoachSystemPrompt calls DerivedIntelligenceConsumer.build)', () => {
@@ -47,8 +54,8 @@ test('78-79. Habit-source and Pattern-source failures do not block Coach (B5 cal
 
 test('80. total B5 failure does not block the existing Coach fallback (base/mem prompt still returned)', () => {
   const body = wrapperBody();
-  assert.match(body, /const base = _s5_buildCoachSystemPrompt\(\);/);
-  assert.match(body, /const mem = coachMemoryPromptFragment\(\);/);
+  assert.match(body, /var base = buildBasePrompt\(userProfile\);/);
+  assert.match(body, /var mem = coachMemoryFragment\(userProfile\);/);
   assert.match(body, /return derived \? \(withMem \+ ' ' \+ derived\) : withMem;/);
 });
 
