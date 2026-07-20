@@ -30,12 +30,12 @@ test('both adaptive modules are in the sw.js SHELL cache list, and VERSION was b
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeDomain.js'), -1);
   assert.notEqual(swJs.indexOf('/fitme/js/adaptive/adaptiveTdeeController.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 // ── adaptiveTdeeDomain.js: pure module ──────────────────────────────────────────────────
@@ -210,11 +210,25 @@ test('the adaptiveTdeeEngine Engine Registry registration now lives in js/engine
   assert.equal(appJs.indexOf("id: 'adaptiveTdeeEngine'"), -1, 'the registration itself must no longer be inline in app.js');
 });
 
-test('the _s4_renderProfile/_s4_renderSettings override chains are untouched — still call the (now-facaded) renderMeasurements/renderAdaptiveSettings by their global names', () => {
-  assert.match(appJs, /const _s4_renderProfile = renderProfile;/);
-  assert.match(appJs, /renderMeasurements\(\);\s*\};/);
-  assert.match(appJs, /const _s4_renderSettings = renderSettings;/);
-  assert.match(appJs, /renderAdaptiveSettings\(\);\s*\};/);
+// C1-WP10 consolidated the _s4_renderProfile/_s4_renderSettings override chains (base +
+// this wrap) into single authoritative implementations inside js/ui/profilePresenter.js and
+// js/ui/settingsPresenter.js (intentional — see tests/c1Wp10Wiring.test.js and
+// docs/architecture/C1_WP0_INVENTORY.md §2.1). renderMeasurements/renderAdaptiveSettings
+// (still WP7 facades, untouched) are now called via injected closures instead of an
+// override-chain reassignment.
+test('ProfilePresenter/SettingsPresenter are configured with renderMeasurements/renderAdaptiveSettings closures pointing at the (still-facaded) app.js global names', () => {
+  const profileConfigureIdx = appJs.indexOf('ProfilePresenter.configure({');
+  const profileBody = appJs.slice(profileConfigureIdx, appJs.indexOf('});', profileConfigureIdx));
+  assert.match(profileBody, /renderMeasurements: function \(\) \{ return renderMeasurements\(\); \}/);
+
+  const settingsConfigureIdx = appJs.indexOf('SettingsPresenter.configure({');
+  const settingsBody = appJs.slice(settingsConfigureIdx, appJs.indexOf('});', settingsConfigureIdx));
+  assert.match(settingsBody, /renderAdaptiveSettings: function \(\) \{ return renderAdaptiveSettings\(\); \}/);
+
+  const profilePresenterJs = fs.readFileSync(path.join(__dirname, '../js/ui/profilePresenter.js'), 'utf8');
+  assert.match(profilePresenterJs, /deps\.renderMeasurements\(\);/);
+  const settingsPresenterJs = fs.readFileSync(path.join(__dirname, '../js/ui/settingsPresenter.js'), 'utf8');
+  assert.match(settingsPresenterJs, /deps\.renderAdaptiveSettings\(\);/);
 });
 
 test('no repository/domain module is duplicated: PersistenceGateway/AuthorityContract/DateUtils each still have exactly one require() inside adaptiveTdeeController.js, and are not required by adaptiveTdeeDomain.js', () => {

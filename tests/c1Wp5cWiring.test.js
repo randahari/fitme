@@ -27,12 +27,12 @@ test('mealEditorPresenter.js is registered in index.html, loaded after mealDraft
 test('mealEditorPresenter.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 test('MealEditorPresenter is configured in app.js with closures for showMealEditor (wrapped later by the Day Navigation IIFE)', () => {
@@ -45,12 +45,22 @@ test('MealEditorPresenter is configured in app.js with closures for showMealEdit
   assert.match(body, /nutritionOutputValidator: window\.NutritionOutputValidator/);
 });
 
-test('sourceBadge/fmtQty/nutritionValidationBanner/renderEditor/showAiRejectedRecovery are all one-line facades delegating to MealEditorPresenter', () => {
+// C1-WP10 legitimately consolidated renderEditor's base body (MealEditorPresenter.renderEditor
+// call) with the Day Navigation IIFE's edit-mode-buttons wrap into one function inside
+// js/ui/dayNavigationController.js (intentional — see tests/c1Wp10Wiring.test.js and
+// docs/architecture/C1_WP0_INVENTORY.md §2.1). app.js's renderEditor() is now a one-line
+// facade delegating to DayNavigationController.renderEditor(), which itself calls
+// MealEditorPresenter.renderEditor(pendingMeal, editingItemIdx) directly. The other four
+// facades (sourceBadge/fmtQty/nutritionValidationBanner/showAiRejectedRecovery), untouched by
+// WP10, still delegate to MealEditorPresenter straight from app.js.
+test('sourceBadge/fmtQty/nutritionValidationBanner/showAiRejectedRecovery are one-line facades delegating to MealEditorPresenter; renderEditor delegates to DayNavigationController, which itself calls MealEditorPresenter', () => {
   assert.match(appJs, /function sourceBadge\(\) \{\s*return MealEditorPresenter\.sourceBadge\(pendingMeal\);\s*\}/);
   assert.match(appJs, /function fmtQty\(q\) \{ return MealEditorPresenter\.fmtQty\(q\); \}/);
   assert.match(appJs, /function nutritionValidationBanner\(\) \{\s*return MealEditorPresenter\.nutritionValidationBanner\(pendingMeal\);\s*\}/);
-  assert.match(appJs, /function renderEditor\(\) \{\s*MealEditorPresenter\.renderEditor\(pendingMeal, editingItemIdx\);\s*\}/);
   assert.match(appJs, /function showAiRejectedRecovery\(retryFn, originalMeal\) \{\s*return MealEditorPresenter\.showAiRejectedRecovery\(retryFn, originalMeal, foodSession && foodSession\.originalInput\);\s*\}/);
+  assert.match(appJs, /function renderEditor\(\) \{ return DayNavigationController\.renderEditor\(\); \}/);
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  assert.match(dayNavJs, /MealEditorPresenter\.renderEditor\(deps\.getPendingMeal\(\), deps\.getEditingItemIdx\(\)\);/);
 });
 
 test('every renderEditor() call site in app.js still exists unchanged (the facade is called the same way everywhere)', () => {
@@ -60,9 +70,13 @@ test('every renderEditor() call site in app.js still exists unchanged (the facad
   assert.ok(callCount >= 10, 'expected at least the ~10 known call sites (editorQty/editorEdit/editorSaveEdit/editorDelete/editorAddSuggestion/editorAddCustom/addMeal-gate/showMealEditor/Day-Nav wrap) to remain present');
 });
 
-test('the Day Navigation IIFE override chain for renderEditor is untouched: _renderEditor capture and the edit-mode action-button wrap still exist', () => {
-  assert.match(appJs, /const _renderEditor = renderEditor;/);
-  assert.match(appJs, /renderEditor = function \(\) \{\s*_renderEditor\(\);/);
+// C1-WP10 consolidated the base renderEditor() + the Day Navigation IIFE's edit-mode wrap
+// into one function in js/ui/dayNavigationController.js — there is no override-chain capture
+// left in app.js at all (see the previous test). See tests/c1Wp10Wiring.test.js.
+test('the edit-mode action-button behaviour (formerly the Day Navigation IIFE wrap) still exists, now inside js/ui/dayNavigationController.js', () => {
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  assert.match(dayNavJs, /if \(deps\.getEditingExisting\(\)\) \{/);
+  assert.match(dayNavJs, /'<button class="btn-primary" onclick="addMeal\(\)">שמור שינויים ✓<\/button>' \+/);
 });
 
 test('mealEditorPresenter.js must not own durable writes: no db., no PersistenceGateway, no SessionLifecycle, no direct commit/rollback vocabulary', () => {

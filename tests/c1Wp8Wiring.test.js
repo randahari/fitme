@@ -30,12 +30,12 @@ test('both trigger modules are in the sw.js SHELL cache list, and VERSION was bu
   assert.notEqual(swJs.indexOf('/fitme/js/trigger/triggerDomain.js'), -1);
   assert.notEqual(swJs.indexOf('/fitme/js/trigger/triggerController.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 // ── triggerDomain.js: pure module ───────────────────────────────────────────────────────

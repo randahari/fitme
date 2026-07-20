@@ -27,12 +27,12 @@ test('mealCommitService.js is registered in index.html, loaded after mealEditorP
 test('mealCommitService.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 test('MealCommitService is configured with closures for every collaborator (never bare references)', () => {
@@ -60,8 +60,14 @@ test('MealCommitService is configured with closures for every collaborator (neve
   assert.match(body, /nutritionOutputValidator: window\.NutritionOutputValidator,/);
 });
 
-test('addMeal() is a facade delegating to MealCommitService.commitMeal with the exact authorityOptions buildMealFromEditor also uses', () => {
-  assert.match(appJs, /async function addMeal\(\) \{\s*return MealCommitService\.commitMeal\(pendingMeal, todayData, waterCount, \{\s*authoritySource: authoritySourceForMeal\(pendingMeal\),\s*createdByUid: currentUser && currentUser\.uid,\s*systemVersion: APP_VERSION\s*\}\);\s*\}/);
+// C1-WP10 consolidated addMeal()'s base body (this MealCommitService.commitMeal call) with the
+// Day Navigation IIFE's edit-mode routing wrap into one function inside
+// js/ui/dayNavigationController.js (intentional — see tests/c1Wp10Wiring.test.js and
+// docs/architecture/C1_WP0_INVENTORY.md §2.1). app.js's addMeal() is now a one-line facade.
+test('addMeal() is a facade delegating to DayNavigationController.addMeal(), which itself calls MealCommitService.commitMeal with the exact authorityOptions buildMealFromEditor also uses', () => {
+  assert.match(appJs, /async function addMeal\(\) \{ return DayNavigationController\.addMeal\(\); \}/);
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  assert.match(dayNavJs, /return MealCommitService\.commitMeal\(pendingMeal, deps\.getTodayData\(\), deps\.getWaterCount\(\), \{\s*authoritySource: deps\.authoritySourceForMeal\(pendingMeal\),\s*createdByUid: deps\.getCurrentUser\(\) && deps\.getCurrentUser\(\)\.uid,\s*systemVersion: deps\.appVersion\s*\}\);/);
 });
 
 test('persistDaySnapshot, learnQuickItems, updateStreak, and saveBarcodeToCache are not duplicated: each still has exactly one function declaration in app.js', () => {

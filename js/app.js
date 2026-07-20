@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.38.0';
+const APP_VERSION = '2.39.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -335,6 +335,105 @@ TriggerEngineAdapter.configure({
   persistenceSummaryFn: function (result) { return persistenceSummary(result); }
 });
 
+// C1-WP10: מזריק closures ל-js/ui/*.js — navigation/home/profile/settings/food-screen
+// presenters + Day Navigation controller. כל אחד מהם היה קודם override chain (או
+// IIFE) בתוך app.js; כעת יש לו מימוש סופי-בזמן-ריצה יחיד במודול הייעודי שלו, ו-app.js
+// מזריק closures לכל מה שהמודול צריך מ-state/פונקציות משותפות — בדיוק אותו דפוס
+// כמו כל WP קודם (הפניות "קדימה" לפונקציות המוגדרות בהמשך הקובץ תקינות: כל
+// הפסאדות הן function declarations שנעשות hoisted, ונקראות רק בזמן ריצה בפועל,
+// לא בזמן ה-configure עצמו). ראה docs/specs/C1_SPEC_v1.0.md §C1-WP10.
+NavigationController.configure({
+  documentRef: document,
+  renderHome: function () { renderHome(); },
+  renderFoodMeals: function () { renderFoodMeals(); },
+  renderFavoritesList: function () { renderFavoritesList(); },
+  renderQuickStrip: function () { renderQuickStrip(); },
+  maybeShowQuickLearn: function () { maybeShowQuickLearn(); },
+  renderProfile: function () { renderProfile(); },
+  renderSettings: function () { renderSettings(); },
+  updateWorkout: function () { updateWorkout(); },
+  updateFoodDateBanner: function () { return DayNavigationController.updateFoodDateBanner(); }
+});
+
+HomePresenter.configure({
+  documentRef: document,
+  getUserProfile: function () { return userProfile; },
+  getTodayData: function () { return todayData; },
+  setTodayDate: function () { setTodayDate(); },
+  renderMealsInHome: function () { renderMealsInHome(); },
+  buildWater: function () { buildWater(); },
+  buildWeekChart: function () { buildWeekChart(); },
+  refreshCoachCard: function () { return refreshCoachCard(); },
+  applyDateNavChrome: function () { return DayNavigationController.applyHomeChrome(); }
+});
+
+ProfilePresenter.configure({
+  documentRef: document,
+  getUserProfile: function () { return userProfile; },
+  getTodayData: function () { return todayData; },
+  getHistoryData: function () { return getHistoryData(); },
+  goalLabels: GOAL_LABELS,
+  achievements: ACHIEVEMENTS,
+  renderMeasurements: function () { return renderMeasurements(); }
+});
+
+SettingsPresenter.configure({
+  documentRef: document,
+  getUserProfile: function () { return userProfile; },
+  getDarkMode: function () { return darkMode; },
+  goalLabels: GOAL_LABELS,
+  appVersion: APP_VERSION,
+  renderCoachSettings: function () { return renderCoachSettings(); },
+  renderAdaptiveSettings: function () { return renderAdaptiveSettings(); },
+  renderUsage: function () { renderUsage(); }
+});
+
+FoodScreenPresenter.configure({
+  documentRef: document,
+  getTodayData: function () { return todayData; },
+  getFavoriteMeals: function () { return favoriteMeals; }
+});
+
+// C1-WP10: הממשיך של ה-Day Navigation IIFE. currentDayKey/realTodayData/
+// realWaterCount/editingExisting נשארים משתני state ב-app.js (בדיוק כמו
+// _adaptProposal/coachCardShown בדומיינים אחרים) — מוזרקים כ-getter/setter.
+// authoritySourceForMeal/buildMealFromEditor (חתומים בהמשך הקובץ) ו-
+// loadUserDataCore (ההגדרה הבסיסית של loadUserData, ששונה שמה כדי לפנות את השם
+// הציבורי לפסאדה — ראה סעיף ה-FIRESTORE למטה) מוזרקים כ-closures.
+DayNavigationController.configure({
+  documentRef: document,
+  alertFn: function (msg) { alert(msg); },
+  confirmFn: function (msg) { return confirm(msg); },
+  sessionLifecycle: SessionLifecycle,
+  appVersion: APP_VERSION,
+  dayRepository: DayRepository,
+  getCurrentUser: function () { return currentUser; },
+  getCurrentDayKey: function () { return currentDayKey; },
+  setCurrentDayKey: function (v) { currentDayKey = v; },
+  getTodayData: function () { return todayData; },
+  setTodayData: function (v) { todayData = v; },
+  getWaterCount: function () { return waterCount; },
+  setWaterCount: function (v) { waterCount = v; },
+  getRealTodayData: function () { return realTodayData; },
+  setRealTodayData: function (v) { realTodayData = v; },
+  getRealWaterCount: function () { return realWaterCount; },
+  setRealWaterCount: function (v) { realWaterCount = v; },
+  getEditingExisting: function () { return editingExisting; },
+  setEditingExisting: function (v) { editingExisting = v; },
+  getEditingItemIdx: function () { return editingItemIdx; },
+  setEditingItemIdx: function (v) { editingItemIdx = v; },
+  getPendingMeal: function () { return pendingMeal; },
+  setPendingMeal: function (v) { pendingMeal = v; },
+  saveTodayData: function () { return saveTodayData(); },
+  updateStreak: function () { return updateStreak(); },
+  renderHome: function () { renderHome(); },
+  renderFoodMeals: function () { if (typeof renderFoodMeals === 'function') renderFoodMeals(); },
+  goToScreen: function (name) { return goToScreen(name); },
+  authoritySourceForMeal: function (meal) { return authoritySourceForMeal(meal); },
+  buildMealFromEditor: function () { return buildMealFromEditor(); },
+  loadUserDataCore: function () { return _loadUserDataCore(); }
+});
+
 function showLogin() {
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -371,7 +470,12 @@ async function signOut() {
 }
 
 // ── FIRESTORE ──
-async function loadUserData() {
+// C1-WP10: ההגדרה הבסיסית של loadUserData שונה שמה ל-_loadUserDataCore — מוזרקת
+// ל-DayNavigationController.configure (loadUserDataCore) שם היא נקראת מתוך
+// loadUserData המאוחדת (בסיס + איפוס מצב ניווט התאריך, ראה docs/architecture/
+// C1_WP0_INVENTORY.md §2.1 ו-js/ui/dayNavigationController.js). הפסאדה הציבורית
+// loadUserData() נמצאת כעת בסוף הקובץ, לצד שאר פסאדות ניווט התאריך.
+async function _loadUserDataCore() {
   if (!currentUser) return;
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
@@ -602,36 +706,11 @@ function setTodayDate() {
   el.textContent = 'יום ' + days[d.getDay()] + ', ' + d.getDate() + '/' + (d.getMonth()+1);
 }
 
-function renderHome() {
-  if (!userProfile) return;
-  document.getElementById('greeting').textContent = 'שלום, ' + userProfile.name + '!';
-  setTodayDate();
-  const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-  const target = userProfile.goalKcal;
-  const pct = Math.min(100, Math.round(consumed/target*100));
-  document.getElementById('kcal-consumed').textContent = consumed.toLocaleString();
-  document.getElementById('kcal-target').textContent = target.toLocaleString();
-  document.getElementById('kcal-bar').style.width = pct + '%';
-  document.getElementById('kcal-remain').textContent = 'נותרו ' + Math.max(0,target-consumed).toLocaleString() + ' קל\'';
-  document.getElementById('m-protein').textContent = Math.round(todayData.meals.reduce((s,m)=>s+(m.protein||0),0)) + 'g';
-  document.getElementById('m-carbs').textContent = Math.round(todayData.meals.reduce((s,m)=>s+(m.carbs||0),0)) + 'g';
-  document.getElementById('m-fat').textContent = Math.round(todayData.meals.reduce((s,m)=>s+(m.fat||0),0)) + 'g';
-  document.getElementById('burned-val').textContent = (todayData.burned||0).toLocaleString();
-  document.getElementById('steps-val').textContent = (todayData.steps||0).toLocaleString();
-  document.getElementById('weight-val').textContent = userProfile.currentWeight || userProfile.weight || '--';
-  document.getElementById('streak-num').textContent = userProfile.streak || 0;
-  renderMealsInHome();
-  buildWater();
-  buildWeekChart();
-}
-
-function renderMealsInHome() {
-  const list = document.getElementById('meals-list');
-  if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות עדיין</div>'; return; }
-  list.innerHTML = '<div class="meals-card">' + todayData.meals.map(m =>
-    `<div class="meal-row"><div><div class="meal-name">${m.name}</div><div class="meal-time">${m.time}</div></div><div class="meal-kcal">${m.kcal} קל'</div></div>`
-  ).join('') + '</div>';
-}
+// C1-WP10: renderHome/renderMealsInHome חולצו ל-js/ui/homePresenter.js — כל אחת
+// מאחדת את שכבות ה-override שהיו קיימות כאן (docs/architecture/
+// C1_WP0_INVENTORY.md §2.2) למימוש סופי-בזמן-ריצה יחיד. פסאדות תואמות-לאחור בלבד.
+function renderHome() { return HomePresenter.renderHome(); }
+function renderMealsInHome() { return HomePresenter.renderMealsInHome(); }
 
 // ── WATER ──
 function buildWater() {
@@ -687,18 +766,10 @@ async function logWeight() {
 }
 
 // ── FOOD ──
-function goToScreen(name) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('screen-'+name).classList.add('active');
-  
-  if (name==='home') renderHome();
-  if (name==='food') { renderFoodMeals(); renderFavoritesList(); }
-  
-  
-  if (name==='profile') renderProfile();
-  
-}
+// C1-WP10: goToScreen חולץ ל-js/ui/navigationController.js — מאחד את שכבות
+// ה-override שהיו קיימות כאן (docs/architecture/C1_WP0_INVENTORY.md §2.2)
+// למימוש סופי-בזמן-ריצה יחיד. פסאדה תואמת-לאחור בלבד.
+function goToScreen(name) { return NavigationController.goToScreen(name); }
 
 async function analyzeFood() {
   const input = document.getElementById('food-input').value.trim();
@@ -868,12 +939,11 @@ function normalizeItem(it) { return NutritionModel.normalizeItem(it); }
 
 let editingItemIdx = null;
 let editingExisting = null; // {idx, time} כשעורכים ארוחה שכבר נרשמה (שלב 2)
-function showMealEditor(meal) {
-  editingItemIdx = null;
-  pendingMeal = MealDraft.buildDraft(meal);
-  renderEditor();
-  document.getElementById('food-result').classList.remove('hidden');
-}
+// C1-WP10: showMealEditor חולצה ל-js/ui/dayNavigationController.js — מאחדת את
+// ההגדרה הבסיסית עם ה-wrap שהוסיפה ה-Day Navigation IIFE (איפוס editingExisting,
+// docs/architecture/C1_WP0_INVENTORY.md §2.1) למימוש סופי-בזמן-ריצה יחיד. פסאדה
+// תואמת-לאחור בלבד.
+function showMealEditor(meal) { return DayNavigationController.showMealEditor(meal); }
 
 // ── תג מקור המידע (מאגר עולמי / תווית / מאגר קבוצה) ──
 // C1-WP5C: חולץ ל-MealEditorPresenter.sourceBadge — פסאדה תואמת-לאחור.
@@ -895,10 +965,11 @@ function nutritionValidationBanner() {
   return MealEditorPresenter.nutritionValidationBanner(pendingMeal);
 }
 
-// C1-WP5C: חולץ ל-MealEditorPresenter.renderEditor — פסאדה תואמת-לאחור.
-function renderEditor() {
-  MealEditorPresenter.renderEditor(pendingMeal, editingItemIdx);
-}
+// C1-WP5C: הרינדור הבסיסי (MealEditorPresenter.renderEditor) עבר עם ה-wrap שהוסיפה
+// ה-Day Navigation IIFE (כפתורי עריכה כשעורכים ארוחה קיימת) לאיחוד סופי-בזמן-ריצה
+// יחיד ב-C1-WP10 — ראה js/ui/dayNavigationController.js ו-docs/architecture/
+// C1_WP0_INVENTORY.md §2.1. פסאדה תואמת-לאחור בלבד.
+function renderEditor() { return DayNavigationController.renderEditor(); }
 
 function editorQty(i, dir) {
   const it = pendingMeal.items[i]; if (!it) return;
@@ -982,15 +1053,13 @@ function buildMealFromEditor() {
   });
 }
 
-// C1-WP5D: חולץ ל-MealCommitService.commitMeal — פסאדה תואמת-לאחור. authorityOptions
-// זהה לחלוטין למה ש-buildMealFromEditor() כבר מזריק (authoritySourceForMeal/currentUser/APP_VERSION).
-async function addMeal() {
-  return MealCommitService.commitMeal(pendingMeal, todayData, waterCount, {
-    authoritySource: authoritySourceForMeal(pendingMeal),
-    createdByUid: currentUser && currentUser.uid,
-    systemVersion: APP_VERSION
-  });
-}
+// C1-WP5D: הקריאה הבסיסית ל-MealCommitService.commitMeal עברה עם ה-wrap שהוסיפה
+// ה-Day Navigation IIFE (ניתוב ל-saveEditedMeal כשעורכים ארוחה קיימת) לאיחוד
+// סופי-בזמן-ריצה יחיד ב-C1-WP10 — ראה js/ui/dayNavigationController.js ו-
+// docs/architecture/C1_WP0_INVENTORY.md §2.1. authorityOptions זהה לחלוטין למה
+// ש-buildMealFromEditor() כבר מזריק (authoritySourceForMeal/currentUser/APP_VERSION).
+// פסאדה תואמת-לאחור בלבד.
+async function addMeal() { return DayNavigationController.addMeal(); }
 
 async function addMealAndFavorite() {
   if (!pendingMeal || !pendingMeal.items.length) return;
@@ -1036,14 +1105,9 @@ async function removeFavorite(idx) {
   renderFavoritesList();
 }
 
-function renderFavoritesList() {
-  const el = document.getElementById('favorites-list');
-  if (!el) return;
-  if (!favoriteMeals.length) { el.innerHTML = '<div class="empty-state">אין עדיין מועדפים<br><small>לחץ ⭐ בעת הוספת מאכל</small></div>'; return; }
-  el.innerHTML = '<div class="meals-card">' + favoriteMeals.map((m,i) =>
-    `<div class="meal-row"><div><div class="meal-name">${m.name}</div><div class="meal-time">${m.kcal} קל' · ${Math.round(m.protein)}g חלבון</div></div><div style="display:flex;gap:6px;align-items:center"><button class="fav-add-btn btn-small" onclick="addFavoriteToToday(${i})">+</button><button onclick="removeFavorite(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:16px">×</button></div></div>`
-  ).join('') + '</div>';
-}
+// C1-WP10: חולצה ל-js/ui/foodScreenPresenter.js (ללא override chain — הגדרה
+// יחידה, "food screen rendering"). פסאדה תואמת-לאחור בלבד.
+function renderFavoritesList() { return FoodScreenPresenter.renderFavoritesList(); }
 
 function cancelFood() {
   pendingMeal = null;
@@ -1182,14 +1246,9 @@ async function dismissQuickLearn() {
   if (card) card.classList.add('hidden');
 }
 
-function renderFoodMeals() {
-  const list = document.getElementById('food-meals-list');
-  if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות עדיין</div>'; return; }
-  list.innerHTML = '<div class="meals-card">' + todayData.meals.map((m,i) => {
-    const isFav = favoriteMeals.some(f => f.name === m.name);
-    return `<div class="meal-row"><div><div class="meal-name">${m.name}</div><div class="meal-time">${m.time}</div></div><div style="display:flex;align-items:center;gap:4px"><div class="meal-kcal">${m.kcal} קל'</div><button onclick="toggleMealFavorite(${i}, this)" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px">${isFav ? '⭐' : '☆'}</button><button onclick="deleteMeal(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;padding:2px">×</button></div></div>`;
-  }).join('') + '</div>';
-}
+// C1-WP10: חולצה ל-js/ui/foodScreenPresenter.js (ללא override chain — הגדרה
+// יחידה, "food screen rendering"). פסאדה תואמת-לאחור בלבד.
+function renderFoodMeals() { return FoodScreenPresenter.renderFoodMeals(); }
 
 async function toggleMealFavorite(idx, btn) {
   const meal = todayData.meals[idx];
@@ -1422,99 +1481,16 @@ function calcBMI(weight, height) { return ProfileMetrics.calcBMI(weight, height)
 function getBMICategory(bmi) { return ProfileMetrics.getBMICategory(bmi); }
 function calcBodyFat(weight, height, age, gender) { return ProfileMetrics.calcBodyFat(weight, height, age, gender); }
 
-function getAvatarSVG(bmi, gender) {
-  const isMale = gender !== 'female';
-  let bodyWidth = bmi < 18.5 ? 28 : bmi < 25 ? 36 : bmi < 30 ? 44 : 52;
-  let color = bmi < 18.5 ? '#AFA9EC' : bmi < 25 ? '#534AB7' : bmi < 30 ? '#BA7517' : '#E24B4A';
-  return `<svg viewBox="0 0 80 120" width="80" height="120" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="40" cy="20" r="14" fill="${color}" opacity="0.9"/>
-    <rect x="${40 - bodyWidth/2}" y="36" width="${bodyWidth}" height="48" rx="${bodyWidth/4}" fill="${color}" opacity="0.8"/>
-    <rect x="${40 - bodyWidth/2 - 8}" y="38" width="10" height="36" rx="5" fill="${color}" opacity="0.7"/>
-    <rect x="${40 + bodyWidth/2 - 2}" y="38" width="10" height="36" rx="5" fill="${color}" opacity="0.7"/>
-    <rect x="${40 - bodyWidth/4 - 4}" y="84" width="12" height="32" rx="6" fill="${color}" opacity="0.7"/>
-    <rect x="${40 + bodyWidth/4 - 8}" y="84" width="12" height="32" rx="6" fill="${color}" opacity="0.7"/>
-  </svg>`;
-}
-
-async function renderProfile() {
-  if (!userProfile) return;
-  const history = await getHistoryData();
-
-  const weight = userProfile.currentWeight || userProfile.weight;
-  const height = userProfile.height;
-  const age = userProfile.age;
-  const gender = userProfile.gender;
-
-  const bmi = calcBMI(weight, height);
-  const bmiCat = getBMICategory(bmi);
-  const bodyFat = calcBodyFat(weight, height, age, gender);
-  const bmr = gender === 'male'
-    ? Math.round(88.36 + (13.4*weight) + (4.8*height) - (5.7*age))
-    : Math.round(447.6 + (9.2*weight) + (3.1*height) - (4.3*age));
-  const tdee = userProfile.goalKcal;
-  const idealWeight = gender === 'male' ? Math.round(22.5 * (height/100) * (height/100)) : Math.round(21 * (height/100) * (height/100));
-  const toGoal = Math.round((weight - idealWeight) * 10) / 10;
-  const totalKcalBurned = Object.values(history).reduce((s,d)=>s+(d.burned||0),0) + (todayData.burned||0);
-
-  // Avatar
-  const avatarEl = document.getElementById('prof-avatar-svg');
-  if (avatarEl) avatarEl.innerHTML = getAvatarSVG(bmi, gender);
-
-  document.getElementById('prof-name').textContent = userProfile.name;
-  document.getElementById('prof-goal').textContent = GOAL_LABELS[userProfile.goal] || '';
-
-  // Health data
-  const healthEl = document.getElementById('health-data');
-  if (healthEl) {
-    const progressPct = idealWeight > 0 ? Math.min(100, Math.max(0, 100 - Math.abs(toGoal/idealWeight*100))) : 100;
-    healthEl.innerHTML = `
-      <div class="health-row"><span class="health-label">משקל נוכחי</span><span class="health-val">${weight} ק"ג</span></div>
-      <div class="health-row"><span class="health-label">BMI</span><span class="health-val" style="color:${bmiCat.color}">${bmi} — ${bmiCat.label}</span></div>
-      <div class="health-row"><span class="health-label">% שומן משוער</span><span class="health-val">${bodyFat}%</span></div>
-      <div class="health-row"><span class="health-label">BMR (מנוחה)</span><span class="health-val">${bmr.toLocaleString()} קל'</span></div>
-      <div class="health-row"><span class="health-label">TDEE (יומי)</span><span class="health-val">${tdee.toLocaleString()} קל'</span></div>
-      <div class="health-row"><span class="health-label">משקל אידיאלי</span><span class="health-val">${idealWeight} ק"ג</span></div>
-      <div class="health-row"><span class="health-label">${toGoal > 0 ? 'עודף' : 'חסר'} ממשקל אידיאלי</span><span class="health-val">${Math.abs(toGoal)} ק"ג</span></div>
-      <div style="margin-top:8px">
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">התקדמות למשקל יעד</div>
-        <div style="height:6px;background:var(--bg-3);border-radius:3px"><div style="height:6px;background:#1D9E75;border-radius:3px;width:${progressPct}%"></div></div>
-      </div>`;
-  }
-
-  // Stats
-  document.getElementById('stat-burned').textContent = totalKcalBurned.toLocaleString();
-  document.getElementById('stat-workouts').textContent = userProfile.totalWorkouts || 0;
-  document.getElementById('stat-streak-best').textContent = Math.max(userProfile.streak||0, userProfile.bestStreak||0);
-  document.getElementById('stat-streak-cur').textContent = userProfile.streak || 0;
-
-  renderAchievements();
-}
-
-function renderWeightChart(history) {
-  const el = document.getElementById('weight-chart');
-  if (!el) return;
-  const weights = userProfile.weightHistory || [];
-  if (weights.length < 2) { el.innerHTML = '<div class="empty-state">הוסף לפחות 2 מדידות משקל לראות גרף</div>'; return; }
-  const vals = weights.slice(-14);
-  const min = Math.min(...vals.map(v=>v.weight)) - 1;
-  const max = Math.max(...vals.map(v=>v.weight)) + 1;
-  const w = 300, h = 80;
-  const points = vals.map((v,i) => {
-    const x = (i/(vals.length-1))*w;
-    const y = h - ((v.weight-min)/(max-min))*h;
-    return `${x},${y}`;
-  }).join(' ');
-  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:80px"><polyline points="${points}" fill="none" stroke="#534AB7" stroke-width="2" stroke-linejoin="round"/>${vals.map((v,i)=>{const x=(i/(vals.length-1))*w;const y=h-((v.weight-min)/(max-min))*h;return `<circle cx="${x}" cy="${y}" r="3" fill="#534AB7"/>`;}).join('')}</svg>`;
-}
-
-function renderAchievements() {
-  const el = document.getElementById('achievements-list');
-  if (!el||!userProfile) return;
-  el.innerHTML = ACHIEVEMENTS.map(a => {
-    const earned = userProfile['ach_'+a.id];
-    return `<div class="achievement ${earned?'earned':'locked'}"><div class="ach-icon">${earned?a.icon:'🔒'}</div><div class="ach-title">${a.title}</div></div>`;
-  }).join('');
-}
+// C1-WP10: getAvatarSVG/renderProfile/renderWeightChart/renderAchievements חולצו
+// ל-js/ui/profilePresenter.js. renderProfile מאחדת את ההגדרה הבסיסית עם ה-wrap
+// שהוסיף C1-WP7 (renderMeasurements — safely-chained, docs/architecture/
+// C1_WP0_INVENTORY.md §2.1) למימוש סופי-בזמן-ריצה יחיד. פסאדות תואמות-לאחור בלבד
+// (calcBMI/getBMICategory/calcBodyFat, למעלה, נשארות כפי שהן — משטח תאימות סגור
+// של C1-WP1, כמו daysBetween/linearSlope/dayKcal, גם בלי קוראים שנותרו ב-app.js).
+function getAvatarSVG(bmi, gender) { return ProfilePresenter.getAvatarSVG(bmi, gender); }
+async function renderProfile() { return ProfilePresenter.renderProfile(); }
+function renderWeightChart(history) { return ProfilePresenter.renderWeightChart(history); }
+function renderAchievements() { return ProfilePresenter.renderAchievements(); }
 
 async function getWeeklyLetter() {
   document.getElementById('weekly-letter').textContent = 'Claude כותב...';
@@ -1526,23 +1502,11 @@ async function getWeeklyLetter() {
 }
 
 // ── SETTINGS ──
-function renderSettings() {
-  if (!userProfile) return;
-  const el = document.getElementById('profile-avatar');
-  if (el) el.textContent = (userProfile.name||'?').slice(0,2);
-  const pn = document.getElementById('profile-name');
-  if (pn) pn.textContent = userProfile.name;
-  const ps = document.getElementById('profile-sub');
-  if (ps) ps.textContent = `${userProfile.weight} ק"ג · ${userProfile.height} ס"מ · גיל ${userProfile.age} · ${GOAL_LABELS[userProfile.goal]||''}`;
-  const sk = document.getElementById('s-kcal');
-  if (sk) sk.textContent = (userProfile.goalKcal||0).toLocaleString()+' קל\'';
-  const favEl = document.getElementById('fav-foods-display');
-  if (favEl&&userProfile.foods) favEl.innerHTML = userProfile.foods.map(f=>`<span class="fav-tag">${f}</span>`).join('');
-  if (darkMode) { const dt = document.getElementById('dark-toggle'); if (dt) dt.classList.add('on'); }
-  const gc = document.getElementById('settings-group-code');
-  if (gc) gc.textContent = userProfile.groupId || '--';
-  renderCoachSettings();
-}
+// C1-WP10: renderSettings חולצה ל-js/ui/settingsPresenter.js — מאחדת את ארבע
+// השכבות ה-safely-chained שהיו כאן (בסיס + 3 wraps: יעדי תוכנית/תווית גרסה,
+// הגדרות Adaptive TDEE, מונה שימוש — docs/architecture/C1_WP0_INVENTORY.md §2.1)
+// למימוש סופי-בזמן-ריצה יחיד, באותו סדר קריאות מדויק. פסאדה תואמת-לאחור בלבד.
+function renderSettings() { return SettingsPresenter.renderSettings(); }
 
 // ── COACH SETTINGS — C1-WP6: חולץ ל-CoachPresenter — פסאדות תואמות-לאחור.
 function renderCoachSettings() { return CoachPresenter.renderCoachSettings(); }
@@ -1570,76 +1534,8 @@ async function resetApp() {
 }
 
 // ── FOOD TABS ──
-function switchFoodTab(tab) {
-  document.querySelectorAll('.food-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('ftab-' + tab).classList.add('active');
-  document.getElementById('food-tab-today').classList.toggle('hidden', tab !== 'today');
-  document.getElementById('food-tab-favorites').classList.toggle('hidden', tab !== 'favorites');
-}
-
-// ── OVERRIDE: goToScreen (4-tab version) ──
-goToScreen = function(name) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const screen = document.getElementById('screen-'+name);
-  if (screen) screen.classList.add('active');
-  const nav = document.getElementById('nav-'+name);
-  if (nav) nav.classList.add('active');
-  if (name==='home') renderHome();
-  if (name==='food') { renderFoodMeals(); renderFavoritesList(); renderQuickStrip(); maybeShowQuickLearn(); }
-  if (name==='profile') renderProfile();
-  if (name==='settings') renderSettings();
-  if (name==='workout') updateWorkout();
-};
-
-// ── OVERRIDE: renderHome with ring ──
-renderHome = function() {
-  if (!userProfile) return;
-  document.getElementById('greeting').textContent = 'שלום, ' + userProfile.name;
-  setTodayDate();
-  const consumed = todayData.meals.reduce((s,m)=>s+(m.kcal||0),0);
-  const target = userProfile.goalKcal || 2000;
-  const pct = Math.min(100, Math.round(consumed/target*100));
-
-  // Ring arc — circumference of r=46 is ~289
-  const circ = 2 * Math.PI * 46;
-  const fill = (pct / 100) * circ;
-  const arc = document.getElementById('ring-arc');
-  if (arc) arc.style.strokeDasharray = fill + ' ' + circ;
-
-  const pctEl = document.getElementById('ring-pct');
-  if (pctEl) pctEl.textContent = pct + '%';
-  document.getElementById('kcal-consumed').textContent = consumed.toLocaleString();
-  document.getElementById('kcal-target').textContent = target.toLocaleString();
-  document.getElementById('kcal-remain').textContent = 'נותרו ' + Math.max(0,target-consumed).toLocaleString() + ' קל׳';
-
-  const protein = todayData.meals.reduce((s,m)=>s+(m.protein||0),0);
-  const carbs = todayData.meals.reduce((s,m)=>s+(m.carbs||0),0);
-  const fat = todayData.meals.reduce((s,m)=>s+(m.fat||0),0);
-  document.getElementById('m-protein').textContent = Math.round(protein)+'g';
-  document.getElementById('m-carbs').textContent = Math.round(carbs)+'g';
-  document.getElementById('m-fat').textContent = Math.round(fat)+'g';
-
-  const tP = Math.round((userProfile.weight||75)*1.8);
-  const tC = Math.round((target - tP*4 - Math.round(target*0.25/9)*9)/4);
-  const tF = Math.round(target*0.25/9);
-  const bp = document.getElementById('bar-protein');
-  const bc = document.getElementById('bar-carbs');
-  const bf = document.getElementById('bar-fat');
-  if (bp) bp.style.width = Math.min(100,Math.round(protein/tP*100))+'%';
-  if (bc) bc.style.width = Math.min(100,Math.round(carbs/Math.max(tC,1)*100))+'%';
-  if (bf) bf.style.width = Math.min(100,Math.round(fat/Math.max(tF,1)*100))+'%';
-
-  document.getElementById('burned-val').textContent = (todayData.burned||0).toLocaleString();
-  document.getElementById('steps-val').textContent = (todayData.steps||0).toLocaleString();
-  document.getElementById('weight-val').textContent = userProfile.currentWeight || userProfile.weight || '--';
-  document.getElementById('streak-num').textContent = userProfile.streak || 0;
-
-  renderMealsInHome();
-  buildWater();
-  buildWeekChart();
-  refreshCoachCard();
-};
+// C1-WP10: חולצה ל-js/ui/foodScreenPresenter.js. פסאדה תואמת-לאחור בלבד.
+function switchFoodTab(tab) { return FoodScreenPresenter.switchFoodTab(tab); }
 
 // ── Settings: plan section ──
 function generatePlanFromSettings() {
@@ -1652,39 +1548,6 @@ function generatePlanFromSettings() {
     }
   });
 }
-
-// Plan targets in settings
-const _origRenderSettings = renderSettings;
-renderSettings = function() {
-  _origRenderSettings();
-  if (!userProfile) return;
-  const p = Math.round(userProfile.weight*(userProfile.goal==='bulk'?2:userProfile.goal==='cut'?2.2:1.8));
-  const f = Math.round(userProfile.goalKcal*0.25/9);
-  const c = Math.round((userProfile.goalKcal-p*4-f*9)/4);
-  const el = document.getElementById('plan-targets-settings');
-  if (el) el.innerHTML = `<div class="stats-row"><div class="stat-item"><div class="stat-v">${userProfile.goalKcal}</div><div class="stat-l">קל׳</div></div><div class="stat-item"><div class="stat-v">${p}g</div><div class="stat-l">חלבון</div></div><div class="stat-item"><div class="stat-v">${c}g</div><div class="stat-l">פחמ׳</div></div><div class="stat-item"><div class="stat-v">${f}g</div><div class="stat-l">שומן</div></div></div>`;
-  if (userProfile.weeklyMenu) {
-    const wm = document.getElementById('weekly-menu-settings');
-    if (wm) wm.innerHTML = userProfile.weeklyMenu.map(d =>
-      `<div class="menu-day"><div class="menu-day-title">${d.day}</div><div class="menu-meal"><span class="menu-meal-label">בוקר: </span>${d.breakfast}</div><div class="menu-meal"><span class="menu-meal-label">צהריים: </span>${d.lunch}</div><div class="menu-meal"><span class="menu-meal-label">ערב: </span>${d.dinner}</div><div class="menu-meal"><span class="menu-meal-label">חטיף: </span>${d.snack}</div></div>`
-    ).join('');
-  }
-
-  // ── תווית גרסה (לאבחון) ──
-  const settingsScreen = document.getElementById('screen-settings');
-  if (settingsScreen && !document.getElementById('fitme-version-tag')) {
-    const scroll = settingsScreen.querySelector('.scroll-content');
-    if (scroll) {
-      const tag = document.createElement('div');
-      tag.id = 'fitme-version-tag';
-      tag.style.cssText = 'text-align:center;padding:16px 0 8px;color:var(--text-3);font-size:11px;letter-spacing:2px;opacity:0.7';
-      tag.textContent = 'FitMe · v' + APP_VERSION;
-      scroll.appendChild(tag);
-    }
-  } else if (document.getElementById('fitme-version-tag')) {
-    document.getElementById('fitme-version-tag').textContent = 'FitMe · v' + APP_VERSION;
-  }
-};
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -1742,18 +1605,6 @@ async function toggleAdaptive() { return AdaptiveTdeeController.toggleAdaptive()
 // B2: Adaptive TDEE Engine orchestration no longer wraps showApp/logWeight here —
 // see runAppReadyEngines() (showApp) and runEngineAction() (logWeight),
 // wired through the Engine Registry near the end of this file.
-
-const _s4_renderProfile = renderProfile;
-renderProfile = async function() {
-  await _s4_renderProfile();
-  renderMeasurements();
-};
-
-const _s4_renderSettings = renderSettings;
-renderSettings = function() {
-  _s4_renderSettings();
-  renderAdaptiveSettings();
-};
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -1889,13 +1740,6 @@ callClaude = async function(body) {
 // runEngineAction() call inside saveWorkout() itself (action
 // WORKOUT_COMPLETED), wired through the Engine Registry near the end of this file.
 
-// renderSettings → מציג את מונה השימוש
-const _s5_renderSettings_u = renderSettings;
-renderSettings = function() {
-  _s5_renderSettings_u();
-  renderUsage();
-};
-
 // scheduleLocalNotifications — C1-WP8: חולץ ל-TriggerController — פסאדה תואמת-לאחור.
 // נקראת דרך Trigger Engine adapter (AUTH_SESSION_READY / LOCAL_NOTIFICATION_SCHEDULE) —
 // ראה סוף הקובץ.
@@ -1903,250 +1747,25 @@ function scheduleLocalNotifications(access) { return TriggerController.scheduleL
 
 // ══════════════════════════════════════════════════════════════════
 // שלב 2 — ניווט תאריך + עריכת ארוחות עבר + רישום ליום קודם
-// מודול עצמאי: עוטף פונקציות קיימות בלי לשכתב אותן.
+// C1-WP10: ה-IIFE העצמאי שהיה כאן חולץ במלואו ל-js/ui/dayNavigationController.js
+// (docs/architecture/C1_WP0_INVENTORY.md §4 — "Day Navigation IIFE"; ראה גם
+// docs/specs/C1_SPEC_v1.0.md §C1-WP10). מה שנשאר כאן הן אך ורק פסאדות
+// תואמות-לאחור: הפונקציה הציבורית loadUserData (המסלול הסמכותי היחיד —
+// בסיס + איפוס מצב ניווט התאריך, ראה _loadUserDataCore למעלה) ותשעת
+// ה-window facades שה-HTML הדינמי (onclick המוטבע ע"י renderMealsInHome/
+// ensureDateNav/ensureFoodDateBanner) תלוי בהם.
 // ══════════════════════════════════════════════════════════════════
-(function () {
-  const MAX_PAST_DAYS = 7; // עד כמה אחורה מותר לצפות ולערוך
+async function loadUserData() { return DayNavigationController.loadUserData(); }
 
-  function keyToDate(key) {
-    const [y, m, d] = key.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  }
-  function viewingToday() { return currentDayKey === getTodayKey(); }
-  function daysBack(key) {
-    const ms = keyToDate(getTodayKey()) - keyToDate(key);
-    return Math.round(ms / 86400000);
-  }
-  function formatDayLabel(key) {
-    const back = daysBack(key);
-    if (back === 0) return 'היום';
-    if (back === 1) return 'אתמול';
-    const d = keyToDate(key);
-    const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
-    return 'יום ' + days[d.getDay()] + ', ' + d.getDate() + '/' + (d.getMonth() + 1);
-  }
-
-  // ── סרגל ניווט התאריך (מוזרק פעם אחת לראש מסך הבית) ──
-  function ensureDateNav() {
-    if (document.getElementById('date-nav')) return;
-    const sc = document.querySelector('#screen-home .scroll-content');
-    if (!sc) return;
-    const bar = document.createElement('div');
-    bar.id = 'date-nav';
-    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg-2,#fff);border-radius:14px;padding:8px 10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)';
-    bar.innerHTML =
-      '<button id="date-prev" onclick="dayNavPrev()" aria-label="יום קודם" style="border:none;background:var(--bg-3,#f0eee9);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer">▶</button>' +
-      '<div style="text-align:center;flex:1"><div id="date-nav-label" style="font-weight:700;font-size:15px">היום</div><div id="date-nav-back" class="link-btn" style="font-size:12px;color:var(--gold);cursor:pointer;display:none" onclick="dayNavToday()">חזרה להיום</div></div>' +
-      '<button id="date-next" onclick="dayNavNext()" aria-label="יום הבא" style="border:none;background:var(--bg-3,#f0eee9);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer">◀</button>';
-    sc.insertBefore(bar, sc.firstChild);
-  }
-  function updateDateNav() {
-    ensureDateNav();
-    const label = document.getElementById('date-nav-label');
-    const back = document.getElementById('date-nav-back');
-    const prev = document.getElementById('date-prev');
-    const next = document.getElementById('date-next');
-    if (label) label.textContent = formatDayLabel(currentDayKey);
-    if (back) back.style.display = viewingToday() ? 'none' : 'block';
-    // prev = אחורה בזמן; חסום כשהגענו לגבול
-    if (prev) { const atLimit = daysBack(currentDayKey) >= MAX_PAST_DAYS; prev.disabled = atLimit; prev.style.opacity = atLimit ? '.35' : '1'; }
-    // next = קדימה בזמן; חסום כשאנחנו על היום (אין עתיד)
-    if (next) { const atToday = viewingToday(); next.disabled = atToday; next.style.opacity = atToday ? '.35' : '1'; }
-  }
-
-  // ── טעינת יום לצפייה/עריכה ──
-  async function loadDay(key) {
-    if (key === currentDayKey) return;
-    if (key === getTodayKey()) {
-      // חזרה להיום — משחזרים את נתוני היום האמיתי
-      todayData = realTodayData;
-      waterCount = realWaterCount;
-      currentDayKey = getTodayKey();
-    } else {
-      // עוזבים את היום — שומרים את נתוני היום האמיתי לפני ההחלפה
-      if (viewingToday()) { realTodayData = todayData; realWaterCount = waterCount; }
-      let data = { meals: [], burned: 0, steps: 0 }, water = 0;
-      try {
-        const doc = await DayRepository.loadDay(currentUser.uid, key);
-        if (doc.exists) { const d = doc.data(); data = { meals: d.meals || [], burned: d.burned || 0, steps: d.steps || 0 }; water = d.water || 0; }
-      } catch (e) { console.error('loadDay:', e); }
-      todayData = data;
-      waterCount = water;
-      currentDayKey = key;
-    }
-    renderHome();
-    updateFoodDateBanner();
-  }
-
-  function shiftDay(deltaDays) {
-    const d = keyToDate(currentDayKey);
-    d.setDate(d.getDate() + deltaDays);
-    let key = dateKey(d);
-    // מגבלות: לא לעתיד, ולא מעבר ל-MAX_PAST_DAYS אחורה
-    if (keyToDate(key) > keyToDate(getTodayKey())) key = getTodayKey();
-    if (daysBack(key) > MAX_PAST_DAYS) return;
-    loadDay(key);
-  }
-  window.dayNavPrev = () => shiftDay(-1);   // אחורה בזמן
-  window.dayNavNext = () => shiftDay(1);     // קדימה בזמן
-  window.dayNavToday = () => loadDay(getTodayKey());
-
-  // ── כרום מסך הבית לפי היום המוצג ──
-  function applyDayViewChrome() {
-    const today = viewingToday();
-    const setHidden = (id, cond) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', cond); };
-    // מקטעים ששייכים ל"היום" בלבד — מוסתרים בימי עבר
-    ['week-header', 'week-chart', 'body-metrics-section'].forEach(id => setHidden(id, !today));
-    // כרטיסי מאמן/יעד — לא רצים על ימי עבר
-    if (!today) ['trigger-card', 'coach-card', 'adaptive-card', 'partial-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    const mt = document.getElementById('meals-title');
-    if (mt) mt.textContent = today ? 'ארוחות היום' : ('ארוחות · ' + formatDayLabel(currentDayKey));
-    updateDateNav();
-  }
-
-  // ── עטיפת renderHome: מוסיפה סרגל תאריך + כרום עבר ──
-  const _renderHome = renderHome;
-  renderHome = function () {
-    _renderHome();
-    ensureDateNav();
-    applyDayViewChrome();
-  };
-
-  // ── עטיפת renderMealsInHome: שורות לחיצות לעריכה + כפתור מחיקה, בכל יום ──
-  renderMealsInHome = function () {
-    const list = document.getElementById('meals-list');
-    if (!list) return;
-    if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות</div>'; return; }
-    list.innerHTML = '<div class="meals-card">' + todayData.meals.map((m, i) =>
-      '<div class="meal-row">' +
-        '<div style="flex:1;cursor:pointer" onclick="editHomeMeal(' + i + ')"><div class="meal-name">' + esc(m.name) + ' <span style="font-size:11px;color:var(--gold)">✏️</span></div><div class="meal-time">' + esc(m.time || '') + '</div></div>' +
-        '<div class="meal-kcal">' + (m.kcal || 0) + ' קל\'</div>' +
-        '<button onclick="deleteHomeMeal(' + i + ')" aria-label="מחק" style="border:none;background:none;color:var(--text-3,#999);font-size:20px;cursor:pointer;padding:0 4px;margin-inline-start:6px">×</button>' +
-      '</div>'
-    ).join('') + '</div>';
-  };
-
-  window.deleteHomeMeal = async function (idx) {
-    if (!todayData.meals[idx]) return;
-    if (!confirm('למחוק את הארוחה?')) return;
-    todayData.meals.splice(idx, 1);
-    await saveTodayData();
-    await updateStreak();
-    renderHome();
-    if (typeof renderFoodMeals === 'function') renderFoodMeals();
-  };
-
-  // ── עטיפת showMealEditor: איפוס מצב עריכה בכל פתיחה של ארוחה חדשה ──
-  const _showMealEditor = showMealEditor;
-  showMealEditor = function (meal) { editingExisting = null; _showMealEditor(meal); };
-
-  // ── עריכת ארוחה קיימת דרך המסך האחיד ──
-  window.editHomeMeal = function (idx) {
-    const meal = todayData.meals[idx];
-    if (!meal) return;
-    const time = meal.time || '';
-    const items = (meal.items && meal.items.length)
-      ? meal.items.map(it => ({ ...it }))
-      : [{ name: meal.name || 'פריט', amount: 0, unit: '', qty: 1, kcal: meal.kcal || 0, protein: meal.protein || 0, carbs: meal.carbs || 0, fat: meal.fat || 0, fiber: meal.fiber || 0, sugar: meal.sugar || 0, sodium: meal.sodium || 0 }];
-    goToScreen('food');
-    showMealEditor({ name: meal.name, items: items, source: meal.source || null, note: meal.note || '' }); // מאפס את הדגל ומרנדר כרגיל
-    editingExisting = { idx: idx, time: time };  // מפעיל מצב עריכה
-    renderEditor();                               // מרנדר מחדש עם כפתורי העריכה
-  };
-
-  // ── מצב עריכה קיים: addMeal מנותב לשמירת שינויים ──
-  const _addMeal = addMeal;
-  addMeal = async function () {
-    if (editingExisting) return saveEditedMeal();
-    return _addMeal();
-  };
-
-  window.saveEditedMeal = async function () {
-    if (!pendingMeal || !pendingMeal.items.length) { alert('אין פריטים בארוחה'); return; }
-    const finalMeal = buildMealFromEditor();
-    if (editingExisting.time) finalMeal.time = editingExisting.time; // שמירה על שעת הרישום המקורית
-    todayData.meals[editingExisting.idx] = finalMeal;
-    editingExisting = null;
-    pendingMeal = null;
-    document.getElementById('food-result').classList.add('hidden');
-    await saveTodayData();
-    await updateStreak();
-    if (typeof renderFoodMeals === 'function') renderFoodMeals();
-    goToScreen('home');
-  };
-
-  window.deleteEditedMeal = async function () {
-    if (!editingExisting) return;
-    if (!confirm('למחוק את הארוחה?')) return;
-    todayData.meals.splice(editingExisting.idx, 1);
-    editingExisting = null;
-    pendingMeal = null;
-    document.getElementById('food-result').classList.add('hidden');
-    await saveTodayData();
-    await updateStreak();
-    if (typeof renderFoodMeals === 'function') renderFoodMeals();
-    goToScreen('home');
-  };
-
-  window.cancelEditedMeal = function () {
-    editingExisting = null;
-    pendingMeal = null;
-    document.getElementById('food-result').classList.add('hidden');
-    goToScreen('home');
-  };
-
-  // ── עטיפת renderEditor: כשעורכים ארוחה קיימת — כפתורי פעולה מותאמים ──
-  const _renderEditor = renderEditor;
-  renderEditor = function () {
-    _renderEditor();
-    if (editingExisting) {
-      const actions = document.querySelector('#food-result .result-actions');
-      if (actions) actions.innerHTML =
-        '<button class="btn-primary" onclick="addMeal()">שמור שינויים ✓</button>' +
-        '<button class="btn-ghost" onclick="deleteEditedMeal()">מחק ארוחה 🗑</button>' +
-        '<button class="btn-ghost" onclick="cancelEditedMeal()">בטל</button>';
-    }
-  };
-
-  // ── באנר במסך האוכל: מיידע לאיזה יום נרשם (כשלא היום) ──
-  function ensureFoodDateBanner() {
-    if (document.getElementById('food-date-banner')) return;
-    const sc = document.querySelector('#screen-food .scroll-content');
-    if (!sc) return;
-    const b = document.createElement('div');
-    b.id = 'food-date-banner';
-    b.style.cssText = 'display:none;align-items:center;justify-content:space-between;gap:8px;background:var(--gold-light,#faece0);color:var(--gold,#8a5a00);border-radius:12px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:600';
-    b.innerHTML = '<span id="food-date-banner-text"></span><span class="link-btn" style="cursor:pointer;text-decoration:underline" onclick="dayNavToday();goToScreen(\'home\')">להיום</span>';
-    sc.insertBefore(b, sc.firstChild);
-  }
-  function updateFoodDateBanner() {
-    ensureFoodDateBanner();
-    const b = document.getElementById('food-date-banner');
-    const t = document.getElementById('food-date-banner-text');
-    if (!b || !t) return;
-    if (viewingToday()) { b.style.display = 'none'; }
-    else { t.textContent = '📅 רושם ליום: ' + formatDayLabel(currentDayKey); b.style.display = 'flex'; }
-  }
-  window.updateFoodDateBanner = updateFoodDateBanner;
-
-  // ── עטיפת goToScreen: מרעננת את באנר האוכל ──
-  const _goToScreen = goToScreen;
-  goToScreen = function (name) {
-    _goToScreen(name);
-    if (name === 'food') updateFoodDateBanner();
-  };
-
-  // ── עטיפת loadUserData: איפוס מצב הניווט להיום בכל טעינה ──
-  const _loadUserData = loadUserData;
-  loadUserData = async function () {
-    const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
-    await _loadUserData();
-    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא עוקפים את מצב הניווט הנוכחי
-    currentDayKey = getTodayKey();
-    realTodayData = todayData;
-    realWaterCount = waterCount;
-  };
-})();
+window.dayNavPrev = function () { return DayNavigationController.dayNavPrev(); };
+window.dayNavNext = function () { return DayNavigationController.dayNavNext(); };
+window.dayNavToday = function () { return DayNavigationController.dayNavToday(); };
+window.deleteHomeMeal = function (idx) { return DayNavigationController.deleteHomeMeal(idx); };
+window.editHomeMeal = function (idx) { return DayNavigationController.editHomeMeal(idx); };
+window.saveEditedMeal = function () { return DayNavigationController.saveEditedMeal(); };
+window.deleteEditedMeal = function () { return DayNavigationController.deleteEditedMeal(); };
+window.cancelEditedMeal = function () { return DayNavigationController.cancelEditedMeal(); };
+window.updateFoodDateBanner = function () { return DayNavigationController.updateFoodDateBanner(); };
 
 
 // B4 §27: ממפה StateCommandResult (B3) לצורת ה-persistence המצומצמת שאדפטרי ה-Registry

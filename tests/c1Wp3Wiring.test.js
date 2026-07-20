@@ -34,12 +34,12 @@ test('all five WP3 repository modules are registered in index.html, loaded after
 test('all five WP3 repository modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   REPO_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 test('all five repositories are configured in app.js before first use', () => {
@@ -91,8 +91,14 @@ test('lookupBarcodeInCache/saveBarcodeToCache delegate to BarcodeRepository, wit
   assert.match(appJs, /async function saveBarcodeToCache\(code, item, existingAddedByName\) \{ return BarcodeFlowController\.saveBarcodeToCache\(code, item, existingAddedByName\); \}/);
 });
 
-test('the Day Navigation IIFE loads a specific day through DayRepository', () => {
-  assert.match(appJs, /const doc = await DayRepository\.loadDay\(currentUser\.uid, key\);/);
+// C1-WP10 relocated the Day Navigation IIFE (including this loadDay() call) out of app.js
+// into js/ui/dayNavigationController.js, with DayRepository injected via configure() instead
+// of referenced as a bare global — intentional, per docs/specs/C1_SPEC_v1.0.md §C1-WP10. See
+// tests/c1Wp10Wiring.test.js for the up-to-date module-contract assertions.
+test('the Day Navigation Controller loads a specific day through the injected DayRepository', () => {
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  assert.match(dayNavJs, /var doc = await deps\.dayRepository\.loadDay\(currentUser\.uid, key\);/);
+  assert.equal(appJs.indexOf('DayRepository.loadDay('), -1, 'app.js must no longer call DayRepository.loadDay() directly');
 });
 
 test('no direct db.collection()/db.runTransaction() calls remain in app.js outside the two documented exclusions (resetApp, PersistenceGateway.configure)', () => {

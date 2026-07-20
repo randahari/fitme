@@ -42,12 +42,12 @@ test('all five js/engines/*.js modules are in the sw.js SHELL cache list, and VE
     assert.notEqual(swJs.indexOf('/fitme/js/engines/' + f), -1, f + ' must be in the SHELL cache list');
   });
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 // ── js/engines/habitEngine.js ───────────────────────────────────────────────────────────

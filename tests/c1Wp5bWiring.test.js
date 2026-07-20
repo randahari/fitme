@@ -29,12 +29,12 @@ test('mealDraft.js is registered in index.html, loaded after its dependencies an
 test('mealDraft.js is in the sw.js SHELL cache list, and VERSION was bumped', () => {
   assert.notEqual(swJs.indexOf('/fitme/' + moduleFile), -1, moduleFile + ' must be in the SHELL cache list');
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.38.0');
+  assert.equal(versionMatch[1], '2.39.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.38.0');
+  assert.equal(appVersionMatch[1], '2.39.0');
 });
 
 test('mealDraft.js is a pure module: no configure(), no window/document/db/alert/confirm, and depends only on NutritionModel/AuthorityContract via direct require (matching the WP1 pure-module precedent)', () => {
@@ -50,8 +50,13 @@ test('mealDraft.js is a pure module: no configure(), no window/document/db/alert
   assert.match(moduleContent, /require\('\.\.\/authorityContract\.js'\)/);
 });
 
+// C1-WP10 relocated showMealEditor (including this MealDraft.buildDraft call) out of app.js
+// into js/ui/dayNavigationController.js (intentional — see tests/c1Wp10Wiring.test.js and
+// docs/architecture/C1_WP0_INVENTORY.md §2.1). The other five call sites, untouched by WP10,
+// remain directly in app.js.
 test('showMealEditor/mealTotals/editorQty/editorSaveEdit/editorDelete/editorAddSuggestion/buildMealFromEditor delegate to MealDraft', () => {
-  assert.match(appJs, /pendingMeal = MealDraft\.buildDraft\(meal\);/);
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  assert.match(dayNavJs, /deps\.setPendingMeal\(MealDraft\.buildDraft\(meal\)\);/);
   assert.match(appJs, /return MealDraft\.computeTotals\(pendingMeal \? pendingMeal\.items : \[\]\);/);
   assert.match(appJs, /MealDraft\.changeQty\(it, dir\);/);
   assert.match(appJs, /MealDraft\.applyEdit\(it, \{/);
@@ -60,12 +65,17 @@ test('showMealEditor/mealTotals/editorQty/editorSaveEdit/editorDelete/editorAddS
   assert.match(appJs, /return MealDraft\.buildAuthoritativeMeal\(pendingMeal, \{/);
 });
 
-test('DOM/state/rendering responsibilities remain in app.js facades: editingItemIdx reset, renderEditor() calls, and the food-result visibility toggle are all still present', () => {
-  const showMealEditorIdx = appJs.indexOf('function showMealEditor(meal) {');
-  const showMealEditorBody = appJs.slice(showMealEditorIdx, appJs.indexOf('\n}', showMealEditorIdx));
-  assert.match(showMealEditorBody, /editingItemIdx = null;/);
+// C1-WP10 relocated showMealEditor's body (including editingItemIdx reset, renderEditor()
+// call, and the food-result visibility toggle) out of app.js into
+// js/ui/dayNavigationController.js — see the prior test and tests/c1Wp10Wiring.test.js. The
+// editor* call sites below, untouched by WP10, remain directly in app.js.
+test('DOM/state/rendering responsibilities remain in app.js facades / js/ui/dayNavigationController.js: editingItemIdx reset, renderEditor() calls, and the food-result visibility toggle are all still present', () => {
+  const dayNavJs = fs.readFileSync(path.join(__dirname, '../js/ui/dayNavigationController.js'), 'utf8');
+  const showMealEditorIdx = dayNavJs.indexOf('function showMealEditor(meal) {');
+  const showMealEditorBody = dayNavJs.slice(showMealEditorIdx, dayNavJs.indexOf('\n  }', showMealEditorIdx));
+  assert.match(showMealEditorBody, /deps\.setEditingItemIdx\(null\);/);
   assert.match(showMealEditorBody, /renderEditor\(\);/);
-  assert.match(showMealEditorBody, /document\.getElementById\('food-result'\)\.classList\.remove\('hidden'\);/);
+  assert.match(showMealEditorBody, /deps\.documentRef\.getElementById\('food-result'\)\.classList\.remove\('hidden'\);/);
 
   ['function editorQty(i, dir) {', 'function editorDelete(i) {', 'function editorAddSuggestion(i) {'].forEach((sig) => {
     const idx = appJs.indexOf(sig);

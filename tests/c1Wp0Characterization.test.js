@@ -73,57 +73,42 @@ test('2. "buildCoachSystemPrompt" is now a single plain facade (no override chai
   assert.equal(assignCount, 0, 'buildCoachSystemPrompt must have zero reassignments now — the override chain was consolidated into CoachPromptComposer.buildSystemPrompt()');
 });
 
-assertChain('renderProfile', { declPattern: /async function renderProfile\(\)/ }, [
-  { captureName: '_s4_renderProfile', capturePattern: /const _s4_renderProfile = renderProfile;/, callsPriorPattern: /await _s4_renderProfile\(\)/ }
-]);
+// C1-WP10 legitimately consolidated all six of these override chains — each into a single
+// authoritative implementation inside a new js/ui/*.js module (intentional — "UI Controllers
+// and Override Consolidation" is explicit C1-WP10 scope; see tests/c1Wp10Wiring.test.js and
+// docs/architecture/C1_WP0_INVENTORY.md §2.1, updated in the same commit). None of them are
+// override chains in app.js any more — each is now a single one-line facade, exactly like
+// buildCoachSystemPrompt() was after C1-WP6. This replaces the six assertChain(...) calls
+// that used to live here (renderProfile, renderSettings, showMealEditor, renderEditor,
+// addMeal, loadUserData).
+function assertSingleFacade(section, name, declPattern) {
+  test(section + '. "' + name + '" is now a single plain facade (no override chain) — relocated by C1-WP10', () => {
+    assert.match(appJs, declPattern, name + ' facade declaration must exist');
+    const assignCount = countMatches(new RegExp('^\\s*' + name + '\\s*=\\s*(async\\s+)?function', 'gm'));
+    assert.equal(assignCount, 0, name + ' must have zero reassignments now — the override chain was consolidated into a js/ui/*.js module');
+  });
+}
 
-assertChain('renderSettings', { declPattern: /function renderSettings\(\)/ }, [
-  { captureName: '_origRenderSettings', capturePattern: /const _origRenderSettings = renderSettings;/, callsPriorPattern: /_origRenderSettings\(\)/ },
-  { captureName: '_s4_renderSettings', capturePattern: /const _s4_renderSettings = renderSettings;/, callsPriorPattern: /_s4_renderSettings\(\)/ },
-  { captureName: '_s5_renderSettings_u', capturePattern: /const _s5_renderSettings_u = renderSettings;/, callsPriorPattern: /_s5_renderSettings_u\(\)/ }
-]);
-
-assertChain('showMealEditor', { declPattern: /function showMealEditor\(meal\)/ }, [
-  { captureName: '_showMealEditor', capturePattern: /const _showMealEditor = showMealEditor;/, callsPriorPattern: /_showMealEditor\(meal\)/ }
-]);
-
-assertChain('renderEditor', { declPattern: /function renderEditor\(\)/ }, [
-  { captureName: '_renderEditor', capturePattern: /const _renderEditor = renderEditor;/, callsPriorPattern: /_renderEditor\(\)/ }
-]);
-
-assertChain('addMeal', { declPattern: /async function addMeal\(\)/ }, [
-  { captureName: '_addMeal', capturePattern: /const _addMeal = addMeal;/, callsPriorPattern: /_addMeal\(\)/ }
-]);
-
-assertChain('loadUserData', { declPattern: /async function loadUserData\(\)/ }, [
-  { captureName: '_loadUserData', capturePattern: /const _loadUserData = loadUserData;/, callsPriorPattern: /await _loadUserData\(\)/ }
-]);
+assertSingleFacade(2, 'renderProfile', /async function renderProfile\(\) \{ return ProfilePresenter\.renderProfile\(\); \}/);
+assertSingleFacade(2, 'renderSettings', /function renderSettings\(\) \{ return SettingsPresenter\.renderSettings\(\); \}/);
+assertSingleFacade(2, 'showMealEditor', /function showMealEditor\(meal\) \{ return DayNavigationController\.showMealEditor\(meal\); \}/);
+assertSingleFacade(2, 'renderEditor', /function renderEditor\(\) \{ return DayNavigationController\.renderEditor\(\); \}/);
+assertSingleFacade(2, 'addMeal', /async function addMeal\(\) \{ return DayNavigationController\.addMeal\(\); \}/);
+assertSingleFacade(2, 'loadUserData', /async function loadUserData\(\) \{ return DayNavigationController\.loadUserData\(\); \}/);
 
 // ══════════════════════════════════════════════════════════════════
-// 3. Silent-replacement overrides — known, frozen dead code (docs/architecture/C1_WP0_INVENTORY.md §2.2)
+// 3. Silent-replacement overrides (docs/architecture/C1_WP0_INVENTORY.md §2.2) —
+// C1-WP10 legitimately consolidated all three into single authoritative implementations
+// inside js/ui/navigationController.js and js/ui/homePresenter.js (intentional — see
+// tests/c1Wp10Wiring.test.js and docs/architecture/C1_WP0_INVENTORY.md §2.2, updated in the
+// same commit). The dead base declarations and the silent-replacement/wrap layers are gone
+// from app.js entirely — each is now a single one-line facade, same pattern as section 2
+// above. This replaces the three tests that used to live here.
 // ══════════════════════════════════════════════════════════════════
 
-test('3. goToScreen: base declaration is dead code; final runtime definition is the day-navigation-wrapped version', () => {
-  assert.match(appJs, /function goToScreen\(name\)/, 'base declaration must still exist (frozen, unreachable)');
-  const assignCount = countMatches(/^\s*goToScreen\s*=\s*function/gm);
-  assert.equal(assignCount, 2, 'goToScreen must have exactly 2 reassignments: one silent replacement, one proper wrap');
-  assert.match(appJs, /const _goToScreen = goToScreen;/, 'the final layer must preserve a reference to the silently-replaced layer');
-  assert.match(appJs, /_goToScreen\(name\)/, 'the final layer must call the preserved reference');
-});
-
-test('4. renderHome: base declaration is dead code; final runtime definition is the day-navigation-wrapped version', () => {
-  assert.match(appJs, /function renderHome\(\)/, 'base declaration must still exist (frozen, unreachable)');
-  const assignCount = countMatches(/^\s*renderHome\s*=\s*function/gm);
-  assert.equal(assignCount, 2, 'renderHome must have exactly 2 reassignments: one silent replacement, one proper wrap');
-  assert.match(appJs, /const _renderHome = renderHome;/, 'the final layer must preserve a reference to the silently-replaced layer');
-  assert.match(appJs, /_renderHome\(\)/, 'the final layer must call the preserved reference');
-});
-
-test('5. renderMealsInHome: base declaration is dead code; single silent-replacement layer is the final runtime definition', () => {
-  assert.match(appJs, /function renderMealsInHome\(\)/, 'base declaration must still exist (frozen, unreachable)');
-  const assignCount = countMatches(/^\s*renderMealsInHome\s*=\s*function/gm);
-  assert.equal(assignCount, 1, 'renderMealsInHome must have exactly 1 reassignment (no third layer exists today)');
-});
+assertSingleFacade(3, 'goToScreen', /function goToScreen\(name\) \{ return NavigationController\.goToScreen\(name\); \}/);
+assertSingleFacade(3, 'renderHome', /function renderHome\(\) \{ return HomePresenter\.renderHome\(\); \}/);
+assertSingleFacade(3, 'renderMealsInHome', /function renderMealsInHome\(\) \{ return HomePresenter\.renderMealsInHome\(\); \}/);
 
 // ══════════════════════════════════════════════════════════════════
 // 6. window assignment inventory — closed set (docs/architecture/C1_WP0_INVENTORY.md §3)
@@ -150,39 +135,38 @@ test('6. window assignments in app.js match the closed WP0 inventory exactly', (
 // of app.js into js/engines/habitEngine.js, js/engines/patternEngine.js, and
 // js/engines/registerEngines.js (+ js/engines/adaptiveTdeeEngineAdapter.js /
 // js/engines/triggerEngineAdapter.js) — intentional, per docs/specs/C1_SPEC_v1.0.md
-// §C1-WP9. Only the Day Navigation IIFE remains a top-level IIFE in app.js; the four
-// relocated modules each keep their own single top-level IIFE (verified in
-// tests/c1Wp9Wiring.test.js), so this is a straight move, not a removal, of the pattern.
-test('7. exactly one top-level IIFE exists in app.js (Day Navigation — the other three moved to js/engines/*.js in C1-WP9)', () => {
+// §C1-WP9. C1-WP10 then relocated the last remaining top-level IIFE — the Day Navigation
+// IIFE — into js/ui/dayNavigationController.js (intentional, per docs/specs/C1_SPEC_v1.0.md
+// §C1-WP10; see tests/c1Wp10Wiring.test.js for the up-to-date module-contract assertions and
+// docs/architecture/C1_WP0_INVENTORY.md §4, updated in the same commit). app.js therefore now
+// contains zero top-level IIFEs — every extracted module keeps its own single top-level IIFE
+// instead (verified in tests/c1Wp9Wiring.test.js / tests/c1Wp10Wiring.test.js).
+test('7. app.js contains zero top-level IIFEs (Day Navigation — the last one — moved to js/ui/dayNavigationController.js in C1-WP10)', () => {
   const count = countMatches(/^\(function\s*\(\s*\)\s*\{/gm);
-  assert.equal(count, 1, 'expected only the Day Navigation IIFE; Habit Engine/Pattern Engine/B2 Engine Registration IIFEs relocated to js/engines/*.js');
+  assert.equal(count, 0, 'expected no top-level IIFEs left in app.js; Day Navigation/Habit Engine/Pattern Engine/B2 Engine Registration IIFEs all relocated out of app.js');
 });
 
-test('8. the Day Navigation IIFE (js/app.js:3071 region) contains its full documented compatibility and override surface, entirely before the Habit Engine IIFE begins', () => {
-  const dayNavAnchorIdx = appJs.indexOf('window.dayNavPrev');
-  const habitEngineAnchorIdx = appJs.indexOf('STAGE 6 / TASK-002');
-  assert.notEqual(dayNavAnchorIdx, -1, 'window.dayNavPrev must exist');
-  assert.notEqual(habitEngineAnchorIdx, -1, 'Habit Engine STAGE 6 marker must exist');
-  assert.ok(dayNavAnchorIdx < habitEngineAnchorIdx, 'Day Navigation IIFE must appear entirely before the Habit Engine IIFE');
-
-  // functions the Day Navigation IIFE wraps with a preserved capture (renderMealsInHome is
-  // excluded — its wrap in this IIFE is the silent replacement itself, no capture exists).
-  const wrappedWithCapture = {
-    renderHome: '_renderHome', goToScreen: '_goToScreen', showMealEditor: '_showMealEditor',
-    renderEditor: '_renderEditor', addMeal: '_addMeal', loadUserData: '_loadUserData'
-  };
-  Object.keys(wrappedWithCapture).forEach((fn) => {
-    const captureName = wrappedWithCapture[fn];
-    const idx = appJs.indexOf('const ' + captureName + ' = ' + fn + ';');
-    assert.ok(idx !== -1, 'expected "const ' + captureName + ' = ' + fn + ';" inside the Day Navigation IIFE');
-    assert.ok(idx > dayNavAnchorIdx - 200 && idx < habitEngineAnchorIdx,
-      captureName + ' capture must sit within the Day Navigation IIFE region');
+// C1-WP10 relocated the entire Day Navigation IIFE (date-nav bar, food-date banner,
+// loadDay/shiftDay, dayNavPrev/Next/Today, deleteHomeMeal/editHomeMeal/saveEditedMeal/
+// deleteEditedMeal/cancelEditedMeal, and the showMealEditor/renderEditor/addMeal/
+// loadUserData consolidations) out of app.js into js/ui/dayNavigationController.js — see the
+// prior test and tests/c1Wp10Wiring.test.js. What remains in app.js is only the public
+// loadUserData() facade and the nine window.* compatibility facades the WP0 inventory locks
+// in (test 6, above) — this test replaces the old "Day Navigation IIFE region" test.
+test('8. app.js keeps only loadUserData() and the nine Day Navigation window facades — no IIFE body remains', () => {
+  assert.match(appJs, /async function loadUserData\(\) \{ return DayNavigationController\.loadUserData\(\); \}/);
+  const windowFacades = [
+    'dayNavPrev', 'dayNavNext', 'dayNavToday', 'deleteHomeMeal', 'editHomeMeal',
+    'saveEditedMeal', 'deleteEditedMeal', 'cancelEditedMeal', 'updateFoodDateBanner'
+  ];
+  windowFacades.forEach((name) => {
+    const pattern = new RegExp('window\\.' + name + ' = function [\\s\\S]{0,20}?\\{ return DayNavigationController\\.' + name + '\\(');
+    assert.match(appJs, pattern, 'window.' + name + ' must be a one-line facade delegating to DayNavigationController.' + name + '()');
   });
-
-  // renderMealsInHome's silent-replacement layer must also sit in this same region.
-  const renderMealsIdx = appJs.lastIndexOf('renderMealsInHome = function ()');
-  assert.ok(renderMealsIdx > dayNavAnchorIdx - 200 && renderMealsIdx < habitEngineAnchorIdx,
-    'renderMealsInHome silent-replacement layer must sit within the Day Navigation IIFE region');
+  // none of the IIFE's internal helpers (private to the module now) leak back into app.js
+  ['MAX_PAST_DAYS', 'function keyToDate', 'function ensureDateNav', 'function applyDayViewChrome'].forEach((needle) => {
+    assert.equal(appJs.indexOf(needle), -1, needle + ' must no longer appear in js/app.js');
+  });
 });
 
 test('9. Habit Engine and Pattern Engine IIFEs each expose exactly one run function to window', () => {
