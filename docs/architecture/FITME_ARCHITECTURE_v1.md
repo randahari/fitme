@@ -568,3 +568,222 @@ attached to `addMeal()`/`logQuick()` (only their day-document write moved to the
 Adaptive TDEE Engine's own proposal-storage step (`storeAdaptiveProposal`/
 `markAdaptiveCheckCompleted`) remains in-memory only — it was never persisted before B4 and
 still isn't. No new direct-Firestore-write path was added anywhere in the migration.
+
+---
+
+## 20. C1 — Final Modularization Architecture (WP1–WP11, v2.40.0)
+
+**Added by C1.** Prior to C1, `js/app.js` was 4,453 lines carrying most of the application's
+domain logic, UI rendering, and platform mechanics directly. C1 (`docs/specs/C1_SPEC_v1.0.md`)
+performed eleven incremental, contract-preserving extractions (WP1–WP11) that moved this logic
+into dedicated modules, leaving `js/app.js` as a composition root. B1–B5 (§5–§19 above) are
+unchanged by C1 and are not re-described here.
+
+### 20.1 Composition Root (`js/app.js`, 2,008 lines post-WP11)
+
+`js/app.js` now holds only:
+
+- **Version constants** — `APP_VERSION` (`2.40.0`) and the fixed label tables (`GOAL_LABELS`,
+  `DAYS_HE`, `COACH_STYLE_LABELS`/`COACH_CHATTER_LABELS`, `ACHIEVEMENTS`) that have no natural
+  owning module.
+- **Module configuration** — roughly three dozen `SomeModule.configure({...})` calls, each
+  injecting the real platform object (`auth`, `Notification`, `navigator.serviceWorker`,
+  `document`), the real Firestore handle (`db`, `firebase.firestore.FieldValue.serverTimestamp`),
+  or a same-file closure (e.g. `getUserProfile: function () { return userProfile; }`) so every
+  extracted module always observes the current runtime value, never a stale copy.
+- **Physical runtime state** — the `let` variables (`currentUser`, `userProfile`, `todayData`,
+  `waterCount`, `currentDayKey`, `realTodayData`, `realWaterCount`, `darkMode`, `workoutType`,
+  `workoutInt`, `pendingMeal`, `photoMode`, `pendingBarcode`, `obData`, `quickItems`,
+  `coachCardShown`, `foodSession`, `favoriteMeals`, `editingItemIdx`, `editingExisting`,
+  `quickManage`, `_adaptProposal`) still physically live here — see §20.3.
+- **Backward-compatible facades** — one-line functions (e.g. `function renderHome() { return
+  HomePresenter.renderHome(); }`) preserved for every name inline HTML `onclick`/`window.*`
+  handlers still call, per C1_SPEC §10's mandatory facade pattern.
+- **Startup calls** — `AuthSessionController.start()` and `RegisterEngines.registerAll()`.
+- **Small cross-module orchestration that does not belong to a domain module** — e.g.
+  `runAppReadyEngines()`/`runEngineAction()`/`runAuthSessionReadyEngines()` (building an
+  `EngineRunRequest` and calling `EngineRegistry.run()`), and `_resetAppCoreState()` (session
+  cleanup registered with `SessionLifecycle`).
+
+Not yet extracted (explicitly out of C1's approved scope — see `docs/roadmap/Changelog.md`'s
+C1 entry): onboarding, the food questionnaire flow, meal-editor interaction handlers, workout
+logging, streaks/achievements, group leaderboard/join, weekly plan generation, quick-log UI
+handlers, water/week-chart rendering, and usage tracking still run as direct `js/app.js`
+functions rather than dedicated modules. This is a scope decision, not an oversight — C1-WP11
+(§11) sets no line-count target and defines success as responsibility reduction, not a fully
+empty composition root.
+
+### 20.2 Final Layer Diagram
+
+```mermaid
+flowchart TB
+    HTML["index.html<br/>inline onclick handlers"]
+
+    subgraph UI["UI Presenters / Controllers — js/ui/*, js/nutrition/*Presenter*,<br/>js/coach/coachPresenter, js/adaptive/*Controller, js/trigger/*Controller"]
+        NAV["navigationController<br/>homePresenter · profilePresenter<br/>settingsPresenter · foodScreenPresenter<br/>dayNavigationController"]
+    end
+
+    subgraph APPSVC["Application Services — js/nutrition/*Service*, js/coach/coachClient,<br/>js/app/*Controller"]
+        SVC["nutritionAnalysisService · mealCommitService<br/>quickLogService · barcodeFlowController<br/>coachClient · bootstrapController<br/>authSessionController"]
+    end
+
+    subgraph ROOT["Composition Root — js/app.js"]
+        APPJS["version constants · configure() wiring<br/>physical runtime state · facades · startup calls"]
+    end
+
+    subgraph DOMAIN["Pure Domain Services — js/core/*, js/domain/*,<br/>js/nutrition/mealDraft, js/coach/coachProfile,<br/>js/adaptive/adaptiveTdeeDomain, js/trigger/triggerDomain"]
+        PURE["zero DOM/window/Firebase — Node-loadable, no configure()"]
+    end
+
+    subgraph ENGINES["Engine Registry + Engines — js/engineRegistry.js (B2),<br/>js/engines/*, js/stateAccess.js (B3),<br/>js/derivedIntelligenceConsumer.js (B5)"]
+        ENG["habitEngine · patternEngine<br/>adaptiveTdeeEngineAdapter · triggerEngineAdapter"]
+    end
+
+    subgraph REPO["Repository / Platform Adapters — js/repositories/*, js/adapters/*,<br/>js/persistenceGateway.js (B4)"]
+        ADAPT["profileRepository · dayRepository · favoritesRepository<br/>groupRepository · barcodeRepository<br/>authAdapter · notificationAdapter · imageAdapter<br/>barcodeScannerAdapter · openFoodFactsClient · claudeProxyClient"]
+    end
+
+    FIRESTORE[("Firestore / Firebase Auth /<br/>browser & native APIs / external HTTP")]
+
+    HTML --> NAV
+    NAV --> SVC
+    SVC --> DOMAIN
+    SVC --> ENG
+    SVC --> REPO
+    ROOT -->|configure&#40;&#41;| UI
+    ROOT -->|configure&#40;&#41;| APPSVC
+    ROOT -->|configure&#40;&#41;| ENGINES
+    ROOT -->|configure&#40;&#41;| REPO
+    ENG --> REPO
+    REPO --> FIRESTORE
+
+    style ROOT fill:#eef,stroke:#448
+    style DOMAIN fill:#efe,stroke:#484
+    style REPO fill:#fee,stroke:#844
+```
+
+This matches the target architecture in C1_SPEC §9/§14 exactly: pure domain modules never
+reference DOM/`window`/Firebase/`currentUser`/`userProfile`/`todayData` directly; only the
+Repository/Platform Adapter tier and `js/app.js` itself (the sole caller of every
+`.configure()`) touch real platform objects.
+
+### 20.3 Runtime State Ownership
+
+Confirms the C1_SPEC §13 ownership map against the actual repository:
+
+| State | Physical storage | Access-contract owner | Notes |
+|---|---|---|---|
+| `currentUser` / `userProfile` / displayed-day (`todayData`) | `let` in `js/app.js` | `js/app/runtimeState.js` (`getCurrentUser`/`setAuthenticatedUser`/`getProfile`/`replaceProfile`/`getDisplayedDay`/`replaceDisplayedDay`/`resetForSession`) | Deliberately **not** physically moved: `js/memory.js` reads `currentUser`/`userProfile`/`saveProfile` as bare lexical globals, so RuntimeState wraps them via injected closures instead (its own header comment documents this explicitly). No generic `get(key)`/`set(key,value)`. |
+| `currentDayKey`, `realTodayData`, `realWaterCount`, `waterCount`, `editingExisting`, `editingItemIdx`, `pendingMeal` | `let` in `js/app.js` | `js/ui/dayNavigationController.js` via injected getter/setter closure pairs | Day-navigation/meal-edit state; consolidated from the former Day Navigation IIFE (WP10). |
+| `_adaptProposal`, `window._adaptHistoryCache` | `let`/`window` in `js/app.js` | `js/adaptive/adaptiveTdeeController.js` (read/clear via injected closures); `js/stateAccess.js` (`setAdaptProposal`/`setAdaptHistoryCache`, engine-facing write only) | Proposal is runtime-only — never persisted until user-confirmed apply (B4 `DERIVED_ADAPTIVE_PROPOSAL_APPLY`). |
+| `coachCardShown` | `let` in `js/app.js` | `js/coach/coachPresenter.js` via injected getter/setter | Prevents duplicate coach-card generation per app open. |
+| `quickItems` | `let` array in `js/app.js` | `js/nutrition/quickLogService.js` (pure scoring/learning/cap/pin/remove operations); `js/app.js` reassigns the array and mirrors it onto `userProfile.quickItems` | Matches C1_SPEC §13's "quick items … owner: quick-log owner/profile". |
+| Habit view / Pattern view / trigger daily budget / typed memories / favourites | Unchanged from B3/B5 | `js/stateAccess.js`, `js/memory.js` | Not touched by C1. |
+| `obData`, `foodSession`, `pendingBarcode`, `photoMode`, `workoutType`, `workoutInt`, `darkMode`, `favoriteMeals`, `quickManage` | `let` in `js/app.js` | Still directly read/written by the not-yet-extracted `js/app.js` functions listed in §20.1 | Out of C1's approved scope. |
+
+No extracted module was given a generic `get(path)`/`set(path)` operation, and no engine-facing
+snapshot is a mutable live reference — both prohibited by C1_SPEC §5.3/§12.4.
+
+### 20.4 Repository Adapters (`js/repositories/*.js`, C1-WP3)
+
+| Repository | Firestore path(s) | Methods | Notes |
+|---|---|---|---|
+| `ProfileRepository` | `users/{uid}` | `loadProfile`, `mergeProfile` | Document delete (`resetApp`) intentionally stays a direct `js/app.js` Firestore call — not in the WP3-approved behaviour list. |
+| `DayRepository` | `users/{uid}/days/{key}` | `loadDay`, `saveLegacyDay`, `fetchHistory` | `fetchHistory` reproduces BUGFIX-001 exactly: no `orderBy`/`limit` (avoids a manual Firestore index), client-side sort by document ID, last 400 kept. |
+| `FavoritesRepository` | `users/{uid}/data/favorites` | `load`, `save` | |
+| `GroupRepository` | `groups/{code}`, `groups/{code}/members` | `getMembers`, `groupExists`, `addMember` | `getMembers` reproduces the original serial `for`/`await` profile+day lookup per member, including its empty-array failure fallback. |
+| `BarcodeRepository` | `groupBarcodes/{groupKey}/products/{code}` | `lookupInCache`, `saveToCache` | `saveToCache` reproduces the original "don't cache an all-zero item" guard. |
+
+Every repository is `configure({db, serverTimestamp})`-injected; none reference the global `db`
+or `firebase` directly, and none changed a Firestore path, document shape, or query. The
+authoritative day/meal write (`SOURCE_HISTORY_SAVE_DAY`) is not duplicated here — it remains
+exclusively behind `PersistenceGateway` (§19).
+
+### 20.5 Platform Adapters and the Native-Portability Boundary
+
+Per C1_SPEC §14.3's test — *"Can the module run under Node tests without DOM, browser globals,
+Firebase, or service worker?"* — grep evidence for literal `document.`/`canvas`/`FileReader`/
+`Notification.`/`navigator.`/`firebase.`/`html5-qrcode` usage (excluding the standard
+`if (typeof window !== 'undefined') window.Foo = API` export line every module has) against the
+six WP2 adapters:
+
+| Adapter (`js/adapters/*.js`) | Wraps | Real platform tokens in module body |
+|---|---|---|
+| `authAdapter.js` | Firebase Auth subscribe/sign-in/sign-out/token | 0 — `auth`/`googleProvider` injected via `configure()` |
+| `claudeProxyClient.js` | Authenticated POST to the Cloud Function proxy | 0 — reuses `AuthAdapter.getIdToken`, `fetch` injected |
+| `openFoodFactsClient.js` | Open Food Facts HTTP + response mapping | 0 — `fetch` injected |
+| `notificationAdapter.js` | Notification permission/display, SW readiness, timers | 1 |
+| `barcodeScannerAdapter.js` | `html5-qrcode` dynamic load, scanner lifecycle | 3 |
+| `imageAdapter.js` | `FileReader`/`Image`/canvas compression, camera input | 12 |
+
+All six are loaded and `configure()`d once, at composition time, in `js/app.js` (§20.1); none
+decide product policy or UI text, per C1_SPEC §11 (C1-WP2) rules.
+
+### 20.6 UI / Application / Domain Separation
+
+The same grep-based evidence, applied repository-wide, gives a four-tier classification (the
+dependency direction is enforced exactly as in C1_SPEC §9.1 — arrows only point downward):
+
+| Tier | Modules | Evidence |
+|---|---|---|
+| **Pure Domain** (no `configure()`; zero DOM/`window`/Firebase reference) | `js/core/dateUtils.js`, `numberUtils.js`, `jsonUtils.js`, `stringUtils.js`; `js/domain/nutritionModel.js`, `profileMetrics.js`; `js/nutrition/mealDraft.js`; `js/coach/coachProfile.js`; `js/adaptive/adaptiveTdeeDomain.js`; `js/trigger/triggerDomain.js` | Each module's own header states "אין כאן configure() כי אין תלות בפלטפורמה" ("no `configure()` — no platform dependency"); 0 platform-token grep hits. |
+| **Application Services** (`configure()`-injected callbacks/session/DOM references, but the module itself contains no literal DOM/Firebase token) | `js/nutrition/nutritionAnalysisService.js`, `quickLogService.js`, `mealCommitService.js`; `js/coach/coachPromptComposer.js`, `coachClient.js`; `js/app/runtimeState.js`, `bootstrapController.js`, `authSessionController.js` | `mealCommitService.js`'s only DOM-shaped calls are `deps.getElementById(...)` — an injected function, not the global `document`. |
+| **UI Presenters / Controllers** (own rendering; injected `documentRef`, never write durably themselves) | `js/ui/navigationController.js`, `homePresenter.js`, `profilePresenter.js`, `settingsPresenter.js`, `foodScreenPresenter.js`, `dayNavigationController.js`; `js/nutrition/mealEditorPresenter.js`, `barcodeFlowController.js`; `js/coach/coachPresenter.js`; `js/adaptive/adaptiveTdeeController.js`; `js/trigger/triggerController.js` | `mealEditorPresenter.js`'s own header states it is explicitly **not** a pure module ("אינו מודול טהור") — it owns `configure()`-injected DOM access. |
+| **Engine Registry, Engines, State/Persistence** (unchanged B1–B5 contracts; C1 only relocated Habit/Pattern producer code) | `js/engineRegistry.js`, `stateAccess.js`, `persistenceGateway.js`, `derivedIntelligenceConsumer.js`, `derivedIntelligencePrompt.js`; `js/engines/habitEngine.js`, `patternEngine.js`, `adaptiveTdeeEngineAdapter.js`, `triggerEngineAdapter.js`, `registerEngines.js` | 0 platform-token grep hits across all five `js/engines/*.js` files — confirms WP9's "now-Node-requirable engines" claim. |
+
+Forbidden directions from C1_SPEC §9.1 (pure domain → DOM/`window`/Firebase/`currentUser`;
+UI renderer → direct durable write; engine → persistence bypassing StateAccess/PersistenceGateway)
+were checked against this same grep evidence and are not present.
+
+### 20.7 Final Module Map
+
+```text
+js/
+  app.js                              — composition root (§20.1)
+  firebase-config.js                  — pre-C1
+  memory.js                           — pre-C1 (B1), independent SessionLifecycle registration
+
+  core/                     (WP1)      dateUtils.js · numberUtils.js · jsonUtils.js · stringUtils.js
+  domain/                   (WP1)      profileMetrics.js · nutritionModel.js
+  adapters/                 (WP2)      authAdapter.js · notificationAdapter.js · imageAdapter.js
+                                        barcodeScannerAdapter.js · openFoodFactsClient.js · claudeProxyClient.js
+  repositories/             (WP3)      profileRepository.js · dayRepository.js · favoritesRepository.js
+                                        groupRepository.js · barcodeRepository.js
+  app/                      (WP4)      runtimeState.js · bootstrapController.js · authSessionController.js
+  nutrition/                (WP5A–F)   nutritionAnalysisService.js · mealDraft.js · mealEditorPresenter.js
+                                        mealCommitService.js · quickLogService.js · barcodeFlowController.js
+  coach/                    (WP6)      coachProfile.js · coachPromptComposer.js · coachClient.js · coachPresenter.js
+  adaptive/                 (WP7)      adaptiveTdeeDomain.js · adaptiveTdeeController.js
+  trigger/                  (WP8)      triggerDomain.js · triggerController.js
+  engines/                  (WP9)      habitEngine.js · patternEngine.js · adaptiveTdeeEngineAdapter.js
+                                        triggerEngineAdapter.js · registerEngines.js
+  ui/                       (WP10)     navigationController.js · homePresenter.js · profilePresenter.js
+                                        settingsPresenter.js · foodScreenPresenter.js · dayNavigationController.js
+
+  sessionLifecycle.js                  — pre-C1 (REM-002)
+  nutritionValidator.js                — pre-C1 (REM-001)
+  authorityContract.js                 — pre-C1 (REM-003)
+  engineRegistry.js                    — pre-C1 (B2)
+  stateAccess.js                       — pre-C1 (B3)
+  persistenceGateway.js                — pre-C1 (B4)
+  derivedIntelligenceConsumer.js       — pre-C1 (B5)
+  derivedIntelligencePrompt.js         — pre-C1 (B5)
+```
+
+56 files under `js/` in total (verified against `index.html` script order and `sw.js` `SHELL`,
+which are kept in identical, matching order — a WP11 verification step). This is the actual
+final structure, not the C1_SPEC §26 *suggested* structure — it differs in some naming
+(`triggerDomain.js`/`triggerController.js` instead of a `triggers/` folder split identically to
+`adaptive/`, no separate `plan`/`workout`/`group`/`engagement` folders since those domains were
+not in C1's approved extraction scope per §20.1) but follows the same layering and dependency
+rules throughout.
+
+### 20.8 Native Migration Readiness
+
+Per the grep evidence in §20.5/§20.6, every module listed under **Pure Domain** and **Engine
+Registry, Engines, State/Persistence** in §20.6 already satisfies C1_SPEC §14.3/Appendix C
+(loads and runs under `node --test` with no DOM, `window`, Firebase, Notification, or
+service-worker dependency) — matching the C1_SPEC §27 Native Migration Contract's list of what
+should be reusable unchanged in a future native shell. Everything under **UI Presenters /
+Controllers** and the six `js/adapters/*.js` platform adapters is exactly what §27 expects to be
+replaced by native-specific implementations.
