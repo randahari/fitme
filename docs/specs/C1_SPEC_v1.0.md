@@ -2,7 +2,7 @@
 
 ## Phase C — Modularization and Tests
 
-**Status:** CANONICAL SPECIFICATION — READY FOR EXTERNAL ENGINEERING READINESS REVIEW  
+**Status:** CANONICAL SPECIFICATION — CLOSED  
 **Version:** 1.1  
 **Product / Architecture Authority:** FITME Head of Product + AI Architect  
 **Engineering Role:** Claude Code — Lead Engineer, implementation authority only  
@@ -1821,16 +1821,24 @@ Claude must not implement during this review.
 
 # 31. Closure Record
 
-**Status:** Not yet implemented  
-**Engineering Readiness Review:** Revision review pending after canonical corrections  
+**Status:** Implemented — WP0 through WP11, incrementally, per §11  
 **Pre-Implementation Regression Baseline:** `262` passed / `0` failed (`node --test`, canonical root-level `tests/` layout)  
-**Implementation Review:** Pending  
-**Product Review:** Pending  
-**Architecture Review:** Pending  
-**Final Test Result:** Pending  
-**Release Version:** Pending  
-**Commit:** Pending  
-**Task Status:** OPEN
+**Implementation Summary:** `js/app.js` (4,453 lines at the reviewed baseline) modularized into
+`js/core/`, `js/domain/`, `js/adapters/`, `js/repositories/`, `js/app/`, `js/nutrition/`,
+`js/coach/`, `js/adaptive/`, `js/trigger/`, `js/engines/` and `js/ui/` — see
+`docs/roadmap/Changelog.md` ("C1 — Modularization and Tests (WP1–WP11)") for the full
+per-package module list. `app.js` retains composition/configuration, backward-compatible
+facades required by inline HTML, and startup orchestration only.  
+**Implementation Review:** Completed — external engineering review performed per work package,
+per §19.2.  
+**Product Review:** Completed — Product and Architecture approval granted.  
+**Architecture Review:** Completed — B1–B5 contracts confirmed preserved unchanged; no
+prohibited item from §4/§24 introduced.  
+**Final Test Result:** `995` passed / `0` failed (`node --test`, canonical root-level `tests/` layout)  
+**Release Version:** `2.40.0`  
+**Commit:** `5890a1a` (WP11, final composition-root cleanup); full WP0–WP11 commit range
+`2d1b2c7`..`5890a1a` on `main`  
+**Task Status:** CLOSED
 
 ---
 

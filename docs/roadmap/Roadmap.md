@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-18
+**Last Updated:** 2026-07-21
 
 ---
 
@@ -291,6 +291,52 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
+# Phase C — Maintainability and Scale
+
+## C1 — Modularization and Tests
+
+**Status:** 🟢 APPROVED AND MERGED
+**Completion Date:** 2026-07-21
+**Implementation Versions:** 2.25.0–2.40.0 (WP1–WP11)
+
+### Deliverables
+
+- ✅ Approved `docs/specs/C1_SPEC_v1.0.md` (v1.1)
+- ✅ WP0 — Characterization harness and repository inventory (pre-implementation baseline: 262 tests passed)
+- ✅ WP1 — Shared pure utilities (`js/core/*`, `js/domain/*`)
+- ✅ WP2 — Platform adapters (`js/adapters/*`)
+- ✅ WP3 — Repository layer (`js/repositories/*`)
+- ✅ WP4 — Session and application bootstrap (`js/app/*`)
+- ✅ WP5A–F — Nutrition application domain (`js/nutrition/*`)
+- ✅ WP6 — Coach and prompt composition (`js/coach/*`)
+- ✅ WP7 — Adaptive TDEE domain (`js/adaptive/*`)
+- ✅ WP8 — Trigger and notification domain (`js/trigger/*`)
+- ✅ WP9 — Habit and Pattern engine extraction (`js/engines/*`)
+- ✅ WP10 — UI controllers and override consolidation (`js/ui/*`)
+- ✅ WP11 — Final composition root cleanup
+- ✅ B1–B5 contracts preserved unchanged throughout
+- ✅ 995 automated tests passed / 0 failed
+- ✅ No product behaviour, UX, Firestore schema or Firestore Security Rules changes
+- ✅ Commit and push to `main`
+
+## C2 — Rejection and Suppression Feedback
+
+**Status:** ⏳ PENDING
+
+## C3 — Event Model Decision
+
+**Status:** ⏳ PENDING
+
+## C4 — Typed Memory Server Write Path
+
+**Status:** ⏳ PENDING
+
+---
+
+**Phase C — C1 complete.** C2, C3 and C4 remain pending, per the Architecture Remediation Plan.
+
+---
+
 # Blocked Until Remediation Foundations Are Complete
 
 ## TASK-004 — Recommendation Engine
@@ -325,5 +371,7 @@ B2 — Engine Contract and Registry is approved, implemented (v2.21.0) and close
 B3 — State Ownership and Access Boundaries is approved, implemented (v2.22.0) and closed.
 B4 — Persistence Contract is approved, implemented (v2.23.0) and closed.
 B5 — Habit and Pattern Consumption Path is approved, implemented (v2.24.0) and closed.
+C1 — Modularization and Tests is approved, implemented (WP1–WP11, v2.25.0–v2.40.0) and closed.
 
-Begin Phase C (maintainability/scale) items, per the Architecture Remediation Plan.
+Current Work Item: none — Phase C1 closure complete.
+Next Work Item: C2 — Rejection and Suppression Feedback, pending its own approved specification. Implementation has not begun.

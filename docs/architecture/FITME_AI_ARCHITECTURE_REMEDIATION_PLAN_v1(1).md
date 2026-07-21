@@ -3,7 +3,7 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-19 (B5 closure)  
+**Last Updated:** 2026-07-21 (C1 closure)  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
@@ -210,9 +210,13 @@ Recorded outcomes:
 ### C1 — Modularization and Tests
 
 **Finding:** F12  
-**Status:** 🟡 STARTED INCREMENTALLY
+**Status:** ✅ COMPLETE — v2.25.0–v2.40.0, WP1–WP11, closed 2026-07-21
 
-REM-001 established the first standalone pure module and automated test suite. Broader modularization remains pending.
+REM-001 established the first standalone pure module and automated test suite. `docs/specs/C1_SPEC_v1.0.md`
+(approved) then drove the full incremental modularization of `js/app.js` across eleven work packages
+(WP0 characterization through WP11 final composition-root cleanup), preserving B1–B5 contracts and
+product behaviour unchanged. 995 automated tests passed / 0 failed. See
+`docs/roadmap/Roadmap.md` and `docs/roadmap/Changelog.md` for full deliverables.
 
 ### C2 — Rejection and Suppression Feedback
 
@@ -243,10 +247,12 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-Phase B (B1-B5) is complete. Current work item: Phase C (maintainability/scale) items —
-C1 (Modularization and Tests, started incrementally), C2 (Rejection and Suppression
-Feedback), C3 (Event Model Decision), C4 (Typed Memory Server Write Path) — scheduled
-incrementally per §3, provided they do not compromise Phase A or Phase B guarantees.
+Phase B (B1-B5) is complete. C1 (Modularization and Tests) is complete. Current work item:
+none — C1 closure complete, awaiting Product/Architecture direction on Phase C continuation.
+Next work item: C2 (Rejection and Suppression Feedback), pending its own approved
+specification; implementation has not begun. C3 (Event Model Decision) and C4 (Typed Memory
+Server Write Path) remain pending, scheduled incrementally per §3, provided they do not
+compromise Phase A or Phase B guarantees.
 
 ---
 

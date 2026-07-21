@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-19
+**Last Updated:** 2026-07-21
 
 ---
 
@@ -19,7 +19,72 @@
 - 🟢 B3 — State Ownership and Access Boundaries approved, tested and merged
 - 🟢 B4 — Persistence Contract approved, tested and merged
 - 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
-- ⏭️ Next task: C-series maintainability/scale items (per Remediation Plan Phase C)
+- 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
+- ⏭️ Next task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+
+---
+
+## C1 — Modularization and Tests (WP1–WP11)
+
+**Date:** 2026-07-21
+**Status:** Merged to `main`
+**Implementation Versions:** 2.25.0–2.40.0
+
+### Summary
+
+Incremental, contract-preserving modularization of `js/app.js` (4,453 lines at the reviewed
+B5-era baseline) into independently testable modules, per `docs/specs/C1_SPEC_v1.0.md`. Zero
+intended product-behaviour change; B1–B5 contracts (Canonical Memory, Engine Registry, State
+Access, Persistence Gateway, Derived Intelligence Consumption) preserved unchanged throughout.
+
+### Added
+
+- `js/core/` — `dateUtils.js`, `numberUtils.js`, `jsonUtils.js`, `stringUtils.js` (WP1)
+- `js/domain/` — `profileMetrics.js`, `nutritionModel.js` (WP1)
+- `js/adapters/` — `authAdapter.js`, `notificationAdapter.js`, `imageAdapter.js`,
+  `barcodeScannerAdapter.js`, `openFoodFactsClient.js`, `claudeProxyClient.js` (WP2)
+- `js/repositories/` — `profileRepository.js`, `dayRepository.js`, `favoritesRepository.js`,
+  `groupRepository.js`, `barcodeRepository.js` (WP3)
+- `js/app/` — `runtimeState.js`, `bootstrapController.js`, `authSessionController.js` (WP4)
+- `js/nutrition/` — `nutritionAnalysisService.js`, `mealDraft.js`, `mealEditorPresenter.js`,
+  `mealCommitService.js`, `quickLogService.js`, `barcodeFlowController.js` (WP5A–F)
+- `js/coach/` — `coachProfile.js`, `coachPromptComposer.js`, `coachClient.js`,
+  `coachPresenter.js` (WP6)
+- `js/adaptive/` — `adaptiveTdeeDomain.js`, `adaptiveTdeeController.js` (WP7)
+- `js/trigger/` — `triggerDomain.js`, `triggerController.js` (WP8)
+- `js/engines/` — `habitEngine.js`, `patternEngine.js`, `adaptiveTdeeEngineAdapter.js`,
+  `triggerEngineAdapter.js`, `registerEngines.js` (WP9)
+- `js/ui/` — `navigationController.js`, `homePresenter.js`, `profilePresenter.js`,
+  `settingsPresenter.js`, `foodScreenPresenter.js`, `dayNavigationController.js` (WP10)
+
+### Changed
+
+- `js/app.js` reduced to composition/configuration, thin backward-compatible facades required
+  by inline HTML handlers, and startup orchestration; all extracted domain logic runs unchanged
+  and independently unit-testable in Node.
+- Every override/wrapper chain identified in `docs/architecture/C1_WP0_INVENTORY.md` (navigation,
+  home rendering, the Day Navigation IIFE, `buildCoachSystemPrompt`, engine orchestration
+  overrides on `showApp`/`logWeight`/`saveWorkout`/`scheduleLocalNotifications`) consolidated
+  into a single authoritative runtime definition per WP10/WP11, with no change to call order,
+  DOM IDs, visual copy, or persistence/event vocabulary.
+- `index.html` script order and `sw.js` SHELL updated for every new module, in each WP's own
+  commit; `APP_VERSION`/service-worker `VERSION` advanced in lockstep from `2.25.0` (WP1) to
+  `2.40.0` (WP11).
+
+### Verification
+
+- WP0 pre-implementation regression baseline: `262 passed / 0 failed`.
+- Final regression suite after WP11: `995 passed / 0 failed`.
+- B1, B2, B3, B4 and B5 preserved unchanged throughout; REM-001, REM-002 and REM-003 preserved
+  unchanged.
+- No Firestore schema, Firestore Security Rules or Firebase Functions changes.
+- No product behaviour, UX, or copy changes.
+- Product/Architecture approval: `APPROVED`. C1 is `CLOSED`.
+
+### Next
+
+C2 — Rejection and Suppression Feedback is `NEXT`, pending its own approved specification.
+Implementation has not begun.
 
 ---
 
@@ -398,4 +463,4 @@ B3 — State Ownership and Access Boundaries is `NEXT`.
 
 ## Next
 
-B3 — State Ownership and Access Boundaries.
+C2 — Rejection and Suppression Feedback, pending its own approved specification. Implementation has not begun.
