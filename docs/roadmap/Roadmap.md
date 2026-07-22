@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-21
+**Last Updated:** 2026-07-22
 
 ---
 
@@ -11,6 +11,17 @@
 - 🟡 **Implemented** — Engineering implementation and automated checks are complete.
 - 🟢 **Approved** — Product, architecture and engineering reviews passed.
 - 🔵 **Validated** — Correct behavior was confirmed during real-world use.
+
+---
+
+# Governance Documentation
+
+## Coach Bible — Chapter 1
+
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-07-22
+
+`docs/governance/FITME_Coach_Bible.md` is the canonical coaching doctrine document (Chapter 1: "How Humans Actually Change" — approved). `docs/governance/FITME_Coach_Knowledge_Base.md` remains the living research/pre-canonical repository that future Bible chapters are derived from. Referenced from the Product Bible and the Engineering Workflow's Source of Truth hierarchy. Documentation-only change; no product behaviour, UX, or code affected.
 
 ---
 

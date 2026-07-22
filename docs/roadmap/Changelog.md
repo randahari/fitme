@@ -1,11 +1,12 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-21
+**Last Updated:** 2026-07-22
 
 ---
 
 ## Current Status
 
+- 🟢 Coach Bible Chapter 1 approved and integrated into project governance (docs-only)
 - ✅ Sprint 1 closed
 - 🟢 TASK-001 approved
 - 🟢 TASK-002 approved
@@ -21,6 +22,26 @@
 - 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
 - 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
 - ⏭️ Next task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+
+---
+
+## Governance — Coach Bible Integration
+
+**Date:** 2026-07-22
+**Status:** Documentation-only, merged to `main`
+
+### Summary
+
+`docs/governance/FITME_Coach_Bible.md` (Chapter 1 — canonical coaching doctrine, approved) and
+`docs/governance/FITME_Coach_Knowledge_Base.md` (living research repository) were referenced from
+the documents that should point to them: `docs/product/Product_Bible.md.docx` (new "Governance
+References" section), `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` (Source of Truth
+hierarchy, §3), and this Roadmap/Changelog.
+
+### Verification
+
+- Coach Bible and Coach Knowledge Base content unchanged.
+- No application code, Firestore schema, or product behaviour changes.
 
 ---
 

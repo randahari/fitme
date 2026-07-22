@@ -17,8 +17,13 @@ This document is the engineering operating manual for FITME.
 
 # 3. Source of Truth
 
-Priority: 1. AI Constitution 2. Product Bible 3. Architecture 4.
-Engineering Workflow 5. Task SPEC 6. Roadmap 7. Changelog
+Priority: 1. AI Constitution 2. Product Bible 3. Coach Bible
+(docs/governance/FITME_Coach_Bible.md — canonical coaching doctrine) 4.
+Architecture 5. Engineering Workflow 6. Task SPEC 7. Roadmap 8. Changelog
+
+The Coach Knowledge Base (docs/governance/FITME_Coach_Knowledge_Base.md) is
+a living research document, not a source of truth; it feeds future Coach
+Bible chapters but does not itself govern implementation.
 
 # 4. Standard Task Lifecycle
 
