@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-22
+**Last Updated:** 2026-07-23
 
 ---
 
@@ -21,7 +21,32 @@
 - 🟢 B4 — Persistence Contract approved, tested and merged
 - 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
 - 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
-- ⏭️ Next task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+- 🟢 Coach Knowledge Base Foundation approved — Topic 01 "Why do people fail?" Gold Standard (v1.1)
+- ⏭️ Knowledge Base next: Topic 02 — "Why do people succeed?" (not started)
+- ⏭️ Next engineering task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+
+---
+
+## Governance — Coach Knowledge Base Foundation and Topic 01 Gold Standard
+
+**Date:** 2026-07-23
+**Status:** Documentation-only, merged to `main`
+
+### Summary
+
+`docs/governance/FITME_Coach_Knowledge_Base.md` (v2.0) was completed as the canonical professional knowledge reference: its Canonical Rules, the unchanged Knowledge Map, the Canonical Topic Structure, and the Knowledge Authoring Standard were finalized and approved. Topic 01 — "Why do people fail?" was reviewed against the Canonical Review Checklist, received narrow editorial corrections (cross-reference consistency, a completed Related Knowledge Topics list, and a strengthened closing synthesis in FITME Interpretation), and was approved as v1.1 — the Gold Standard reference Topic that Topics 02–36 must match in structure, depth and writing style.
+
+### Verification
+
+- No application code, Firestore schema, or product behaviour changes.
+- No Coach Bible, Product Bible, AI Constitution, Architecture or Engineering Workflow changes.
+- Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard unchanged by this entry.
+- Topic 02 and Topics 03–36 not started.
+
+### Next
+
+Knowledge Base: Topic 02 — "Why do people succeed?", pending authoring.
+Engineering: C2 — Rejection and Suppression Feedback remains the next engineering task, unaffected by this documentation work.
 
 ---
 

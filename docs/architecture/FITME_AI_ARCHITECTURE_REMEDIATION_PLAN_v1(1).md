@@ -8,6 +8,12 @@
 
 ---
 
+## Coordination Note — Knowledge Base Authoring Program
+
+The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is an active workstream, separate from this remediation plan. Its foundation — Canonical Rules, Canonical Topic Structure and Knowledge Authoring Standard — is approved, and Topic 01 — "Why do people fail?" is approved as the Gold Standard reference Topic (v1.1). Topics 02–36 remain pending. This program does not change the engineering execution order below: C2 — Rejection and Suppression Feedback remains the next engineering task.
+
+---
+
 # 1. Objective
 
 Stabilize the current FITME AI architecture without performing an unnecessary full rewrite.
