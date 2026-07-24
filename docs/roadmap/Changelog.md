@@ -21,9 +21,33 @@
 - 🟢 B4 — Persistence Contract approved, tested and merged
 - 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
 - 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
-- 🟢 Coach Knowledge Base Foundation approved — Topic 01 "Why do people fail?" Gold Standard (v1.1)
-- ⏭️ Knowledge Base next: Topic 02 — "Why do people succeed?" (not started)
+- 🟢 Coach Knowledge Base — Authoring Program complete: Topics 01–36 (all four Parts) approved, Topic 01 Gold Standard (v1.1)
 - ⏭️ Next engineering task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+
+---
+
+## Governance — Coach Knowledge Base Complete (Topics 01–36)
+
+**Date:** 2026-07-23
+**Status:** Documentation-only, merged to `main`
+
+### Summary
+
+`docs/governance/FITME_Coach_Knowledge_Base.md` (v2.0) is now complete. Topics 02–36 were authored across Part 1 (Human Nature), Part 2 (Health Psychology), Part 3 (The FITME Coach) and Part 4 (Product Translation), each grounded in its corresponding FITME Coach Bible chapter(s) and matching the structure, depth and writing style of the approved Topic 01 Gold Standard (v1.1). All 36 Topics are Canonical. The Knowledge Base authoring program is closed.
+
+### Verification
+
+- All 36 Topics present, sequentially numbered, matching the Knowledge Map exactly — no missing Topics, no broken numbering, no placeholders, no duplicated content.
+- Every Related Knowledge Topics cross-reference validated programmatically against the canonical Knowledge Map (topic number and name).
+- No application code, Firestore schema, or product behaviour changes.
+- No Coach Bible, Product Bible, AI Constitution, Architecture or Engineering Workflow changes.
+- Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard unchanged.
+- Topics 31–36 (Product Translation) contain knowledge-level canonical implications only; no product, UX, AI or architecture decisions were introduced.
+
+### Next
+
+Knowledge Base: none — authoring program complete.
+Engineering: C2 — Rejection and Suppression Feedback remains the next engineering task, unaffected by this documentation work.
 
 ---
 
