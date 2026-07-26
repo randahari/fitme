@@ -30,7 +30,7 @@
 **Status:** 🟢 COMPLETED
 **Completion Date:** 2026-07-23
 
-`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 is closed and C4 is the next engineering task (C3 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
+`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 and C4 are both closed, completing Phase C (C4 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
 
 ---
 
@@ -392,11 +392,27 @@ refactored.
 
 ## C4 — Typed Memory Server Write Path
 
-**Status:** ⏳ PENDING
+**Status:** 🟢 APPROVED AND CLOSED
+**Completion Date:** 2026-07-26
+**Implementation Version:** 2.41.0 (unchanged — server-side only; no client script or `APP_VERSION` change)
+
+### Deliverables
+
+- ✅ Approved `docs/specs/C4_SPEC_v1.0.md`
+- ✅ New trusted server-side Typed Memory write capability, `functions/typedMemoryServerWrite.js` (`configure`/`write`), restricted to `source ∈ {inferred_event, inferred_pattern, coach_generated}`, targeting `users/{uid}/memories/{memoryId}` only
+- ✅ Every created record written with `status: 'candidate'` unconditionally — the REM-003/B1 Generative-vs-Authoritative compliance mechanism; no request-supplied `status` value is ever honored
+- ✅ `source`, `status` and `type` immutable after creation; deterministic identity derived from `(uid, source, idempotencyKey)`; timestamps server-computed only
+- ✅ No client-reachable interface added — no new `exports.*` in `functions/index.js`; no caller/producer wired (a complete, tested, unconsumed capability, the same status the Habit and Pattern Engines already have for their own output)
+- ✅ `js/memory.js`, `js/stateAccess.js`, `js/persistenceGateway.js`, `js/authorityContract.js`, `js/app.js`, `firestore.rules`, `index.html`, `sw.js`, and every existing Engine preserved unchanged
+- ✅ B1–B5, REM-003 and C1–C3 contracts preserved unchanged
+- ✅ 1082 automated tests passed / 0 failed (1044 baseline + 38 new)
+- ✅ No Firestore schema, Firestore Rules, or client-permission changes
+- ✅ No new engines, memory models, event models, or persistence models
+- ✅ Commit `f026123` on `main`
 
 ---
 
-**Phase C — C1, C2 and C3 complete.** C4 remains pending, per the Architecture Remediation Plan.
+**Phase C — C1, C2, C3 and C4 complete.**
 
 ---
 
@@ -437,6 +453,7 @@ B5 — Habit and Pattern Consumption Path is approved, implemented (v2.24.0) and
 C1 — Modularization and Tests is approved, implemented (WP1–WP11, v2.25.0–v2.40.0) and closed.
 C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0) and closed.
 C3 — Event Model Decision is approved and closed (canonical decision, no production code changes).
+C4 — Typed Memory Server Write Path is approved, implemented and closed (server-side only, no `APP_VERSION` change).
 
-Current Work Item: none — C3 closure complete.
-Next Work Item: C4 — Typed Memory Server Write Path, pending its own approved specification. Implementation has not begun.
+Current Work Item: none — C4 closure complete. Phase C (C1–C4) is complete.
+Next Work Item: not yet named. No Phase C item beyond C4 is currently defined in the Architecture Remediation Plan; the next canonical task is pending Product/Architecture direction.

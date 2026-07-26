@@ -24,7 +24,59 @@
 - 🟢 Coach Knowledge Base — Authoring Program complete: Topics 01–36 (all four Parts) approved, Topic 01 Gold Standard (v1.1)
 - 🟢 C2 — Rejection and Suppression Feedback approved, implemented, verified and closed
 - 🟢 C3 — Event Model Decision approved and closed (canonical decision, no production code changes)
-- ⏭️ Next engineering task: C4 — Typed Memory Server Write Path, pending its own approved specification (not started)
+- 🟢 C4 — Typed Memory Server Write Path approved, implemented, verified and closed (server-side only, no `APP_VERSION` change)
+- ⏭️ Next engineering task: not yet named — Phase C (C1–C4) complete; pending Product/Architecture direction
+
+---
+
+## C4 — Typed Memory Server Write Path
+
+**Date:** 2026-07-26
+**Status:** Approved, implemented and closed
+**Implementation Version:** 2.41.0 (unchanged — server-side only; no client script or `APP_VERSION` change)
+**Commit:** `f026123`
+
+### Summary
+
+Closes the typed-memory server write-path gap left open since B1 and named explicitly by B1, B5,
+C1, C2, and C3 as "remains C4's": `firestore.rules` and `js/memory.js` already anticipated three
+server-only typed-memory `source` values (`inferred_event`, `inferred_pattern`, `coach_generated`)
+but no server process existed to write them (remediation-plan Finding F10). Per
+`docs/specs/C4_SPEC_v1.0.md` (approved), a trusted, server-side write capability was implemented:
+every created record is written with `status: 'candidate'` unconditionally — the REM-003/B1
+Generative-vs-Authoritative compliance mechanism — and `source`/`status`/`type` are immutable
+after creation. No client-reachable interface was added; no caller/producer was wired, matching
+this SPEC's own scope (a complete, tested, unconsumed capability, the same status the Habit and
+Pattern Engines already have for their own output). No existing module was modified.
+
+### Added
+
+- `functions/typedMemoryServerWrite.js` — `configure(deps)` / `write(request)`, restricted to
+  `source ∈ {inferred_event, inferred_pattern, coach_generated}`, targeting
+  `users/{uid}/memories/{memoryId}` only. Deterministic identity derived from
+  `(uid, source, idempotencyKey)`. Not registered as any `exports.*` in `functions/index.js` — no
+  client-reachable interface exists for this capability.
+- `tests/typedMemoryServerWrite.test.js` — 38 tests covering validation, source enforcement,
+  idempotency, deterministic identity, timestamps, create/update behavior, and failure handling.
+
+### Changed
+
+- Nothing in `js/`, `firestore.rules`, `index.html`, or `sw.js`. No client permission changed. No
+  existing Cloud Function (`anthropicProxy`) changed.
+
+### Verification
+
+- `1082` passed / `0` failed (`node --test tests/*.test.js`) — `1044` pre-existing plus `38` new,
+  zero existing tests modified.
+- B1–B5, REM-003 and C1–C3 contracts preserved unchanged.
+- No Firestore schema, Firestore Security Rules, or client-permission changes.
+- No new engines, memory models, event models, or persistence models; no caller/producer wired.
+- Product/Architecture approval: `APPROVED`. C4 is `CLOSED`.
+
+### Next
+
+Phase C (C1–C4) is complete. No next Phase C item is currently named in the Architecture
+Remediation Plan; the next canonical task is pending Product/Architecture direction.
 
 ---
 
@@ -73,8 +125,8 @@ refactored; `coachEvents` remains exactly where it is, governed exactly as it al
 
 ### Next
 
-C4 — Typed Memory Server Write Path is `NEXT`, pending its own approved specification.
-Implementation has not begun.
+C4 — Typed Memory Server Write Path is approved, implemented and closed (2026-07-26). Phase C
+(C1–C4) is complete; the next canonical task is pending Product/Architecture direction.
 
 ---
 
@@ -136,8 +188,9 @@ models, event models, or persistence models; B1–B5 and C1 contracts preserved 
 ### Next
 
 C3 — Event Model Decision is approved and closed (2026-07-26, canonical decision, no production
-code changes). C4 — Typed Memory Server Write Path is `NEXT`, pending its own approved
-specification. Implementation has not begun.
+code changes). C4 — Typed Memory Server Write Path is approved, implemented and closed
+(2026-07-26). Phase C (C1–C4) is complete; the next canonical task is pending Product/Architecture
+direction.
 
 ---
 
@@ -650,5 +703,6 @@ B3 — State Ownership and Access Boundaries is `NEXT`.
 
 C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0, commit `14755fc`) and
 closed (2026-07-26). C3 — Event Model Decision is approved and closed (2026-07-26, canonical
-decision, no production code changes). C4 — Typed Memory Server Write Path, pending its own
-approved specification. Implementation has not begun.
+decision, no production code changes). C4 — Typed Memory Server Write Path is approved,
+implemented (commit `f026123`) and closed (2026-07-26, server-side only, no `APP_VERSION` change).
+Phase C (C1–C4) is complete; the next canonical task is pending Product/Architecture direction.

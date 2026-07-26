@@ -3,14 +3,14 @@
 **Status:** Active  
 **Authority:** Architecture Remediation Plan  
 **Source:** Independent AI Architecture Review  
-**Last Updated:** 2026-07-23 (Coach Knowledge Base authoring program complete)  
+**Last Updated:** 2026-07-26 (C4 — Typed Memory Server Write Path closed)  
 **Scope:** Required corrections before continuing ENG-011 or implementing the Recommendation Engine
 
 ---
 
 ## Coordination Note — Knowledge Base Authoring Program
 
-The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C3 — Event Model Decision is complete (canonical decision, closed 2026-07-26); C4 — Typed Memory Server Write Path is now the next engineering task (C2 closed 2026-07-26).
+The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C3 — Event Model Decision is complete (canonical decision, closed 2026-07-26); C4 — Typed Memory Server Write Path is also complete (closed 2026-07-26). Phase C (C1–C4) is complete; the next engineering task is pending Product/Architecture direction.
 
 ---
 
@@ -259,7 +259,19 @@ and C1/C2 contracts preserved unchanged.
 ### C4 — Typed Memory Server Write Path
 
 **Finding:** F10  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETE — closed 2026-07-26, server-side only, no `APP_VERSION` change
+
+`docs/specs/C4_SPEC_v1.0.md` (approved) closed the typed-memory server write-path gap Finding F10
+identified: `firestore.rules` and `js/memory.js` already anticipated three server-only typed-memory
+`source` values (`inferred_event`, `inferred_pattern`, `coach_generated`) but no server process
+existed to write them. A trusted, server-side write capability (`functions/typedMemoryServerWrite.js`)
+was implemented, restricted to those three sources and to `users/{uid}/memories/{memoryId}` only.
+Every created record is written with `status: 'candidate'` unconditionally — the REM-003/B1
+Generative-vs-Authoritative compliance mechanism — and `source`/`status`/`type` are immutable after
+creation. No client-reachable interface was added and no caller/producer was wired, consistent with
+the SPEC's own scope. No existing module, engine, Firestore Rule, or client permission was changed.
+`1082` automated tests passed / `0` failed (`1044` baseline + `38` new). B1–B5, REM-003 and C1–C3
+contracts preserved unchanged.
 
 ---
 
@@ -277,10 +289,11 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 Phase B (B1-B5) is complete. C1 (Modularization and Tests) is complete. C2 (Rejection and
 Suppression Feedback) is complete (v2.41.0, closed 2026-07-26). C3 (Event Model Decision) is
-complete (canonical decision, closed 2026-07-26, no production code changes). Current work item:
-none — C3 closure complete, awaiting Product/Architecture direction on Phase C continuation.
-Next work item: C4 (Typed Memory Server Write Path), remains pending, scheduled incrementally
-per §3, provided it does not compromise Phase A or Phase B guarantees.
+complete (canonical decision, closed 2026-07-26, no production code changes). C4 (Typed Memory
+Server Write Path) is complete (closed 2026-07-26, server-side only, no `APP_VERSION` change).
+Phase C (C1–C4) is complete. Current work item: none — C4 closure complete, awaiting
+Product/Architecture direction on next steps. Next work item: not yet named — no further Phase C
+item is currently defined in this plan.
 
 ---
 
