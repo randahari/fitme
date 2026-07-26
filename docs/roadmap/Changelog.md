@@ -23,7 +23,58 @@
 - 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
 - 🟢 Coach Knowledge Base — Authoring Program complete: Topics 01–36 (all four Parts) approved, Topic 01 Gold Standard (v1.1)
 - 🟢 C2 — Rejection and Suppression Feedback approved, implemented, verified and closed
-- ⏭️ Next engineering task: C3 — Event Model Decision, pending its own approved specification (not started)
+- 🟢 C3 — Event Model Decision approved and closed (canonical decision, no production code changes)
+- ⏭️ Next engineering task: C4 — Typed Memory Server Write Path, pending its own approved specification (not started)
+
+---
+
+## C3 — Event Model Decision
+
+**Date:** 2026-07-26
+**Status:** Approved and closed — canonical decision, no production code changes
+
+### Summary
+
+Closes the event-model question opened by Architecture Remediation Finding F7. Per
+`docs/specs/C3_SPEC_v1.0.md` (approved), the recommendation-feedback family (`kind:'feedback'`,
+introduced by C2) is confirmed as FITME's canonical behavioral-event model, formalized with a
+closed event vocabulary and a versioned entry schema (version 1: `kind`, `surface`, `contextId`,
+`feedbackType`, `date`, `ts`). The pre-existing ordinary Trigger-fired record family
+(`recordCoachEvent`/`TRIGGER_RECORD_EVENT`, no `kind` field) is reclassified as legacy
+bookkeeping, outside the canonical event model — no new architectural consumer may be built
+against it. Whether its producer continues to run, is deprecated, or is removed is left as an
+implementation-strategy question for a future, separately-approved task. A retention policy —
+feedback evidence has priority over legacy bookkeeping within the existing 200-entry cap — is
+recorded canonically; its implementation mechanism is intentionally left unspecified. No Trigger
+Engine, Persistence Gateway, StateAccess, or Engine Registry code was added, removed, or
+refactored; `coachEvents` remains exactly where it is, governed exactly as it already is.
+
+### Added
+
+- Canonical event vocabulary and schema (documentation-level; no new code artifact mandated).
+- Permanent documentation of six known, accepted, unresolved-by-C3 limitations from the C3
+  Discovery Report: C3-F01 (non-transactional concurrent writes to `coachEvents`), C3-F04 (no
+  notification delivery/open tracking), C3-F05 (dual ownership of `coachEvents`), C3-F06
+  (feedback events share `SYSTEM_METADATA` domain tier with pure bookkeeping), C3-F07 (no
+  server-side validation of `coachEvents` content/timestamps), C3-F08 (idempotency ledger is
+  in-memory only, non-durable).
+
+### Changed
+
+- Nothing in `js/`. No Trigger Engine, Persistence Gateway, StateAccess, or Engine Registry
+  behavior changed. No Firestore schema, Firestore Security Rules, or Firebase Functions changes.
+
+### Verification
+
+- `1044` passed / `0` failed (`node --test tests/*.test.js`), unmodified from the C2 baseline.
+- B1–B5 and C1/C2 contracts preserved unchanged.
+- No new engines, memory models, event models, or persistence models.
+- Product/Architecture approval: `APPROVED`. C3 is `CLOSED`.
+
+### Next
+
+C4 — Typed Memory Server Write Path is `NEXT`, pending its own approved specification.
+Implementation has not begun.
 
 ---
 
@@ -597,5 +648,6 @@ B3 — State Ownership and Access Boundaries is `NEXT`.
 ## Next
 
 C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0, commit `14755fc`) and
-closed (2026-07-26). C3 — Event Model Decision, pending its own approved specification.
-Implementation has not begun.
+closed (2026-07-26). C3 — Event Model Decision is approved and closed (2026-07-26, canonical
+decision, no production code changes). C4 — Typed Memory Server Write Path, pending its own
+approved specification. Implementation has not begun.

@@ -360,7 +360,36 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ## C3 — Event Model Decision
 
-**Status:** ⏳ PENDING
+**Status:** 🟢 APPROVED AND CLOSED
+**Completion Date:** 2026-07-26
+**Production Code Changes:** None
+
+### Canonical Decision
+
+The recommendation-feedback family (`kind:'feedback'`, introduced by C2) is confirmed as FITME's
+canonical behavioral-event model, formalized with a closed event vocabulary and a versioned entry
+schema (version 1). The pre-existing ordinary Trigger-fired record family
+(`recordCoachEvent`/`TRIGGER_RECORD_EVENT`) is reclassified as legacy bookkeeping, outside the
+canonical event model — no new architectural consumer may be built against it. A retention policy
+(feedback evidence has priority over legacy bookkeeping within the existing cap) is recorded
+canonically; its implementation mechanism is intentionally left unspecified for future engineering.
+No Trigger Engine, Persistence Gateway, StateAccess, or Engine Registry code was added, removed, or
+refactored.
+
+### Deliverables
+
+- ✅ Approved `docs/architecture/...Discovery Report` (input only)
+- ✅ Approved `docs/specs/C3_SPEC_v1.0.md`
+- ✅ Canonical event vocabulary and schema (version 1) recorded
+- ✅ Ordinary Trigger-fired records reclassified as legacy bookkeeping — no new consumer permitted
+- ✅ Retention policy recorded (feedback prioritized over legacy bookkeeping); mechanism left to future engineering
+- ✅ Known limitations (C3-F01 concurrency, C3-F04 delivery/open tracking, C3-F05/F06/F07/F08/F09) recorded as accepted, unresolved
+- ✅ B1–B5 and C1/C2 contracts preserved unchanged
+- ✅ No Trigger Engine, Persistence Gateway, StateAccess, or Engine Registry changes
+- ✅ 1044 automated tests passed / 0 failed, unmodified
+- ✅ No Firestore schema, Firestore rules or Firebase Functions changes
+- ✅ No new engines, memory models, event models, or persistence models
+- ✅ Commit and push to `main`
 
 ## C4 — Typed Memory Server Write Path
 
@@ -368,7 +397,7 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase C — C1 and C2 complete.** C3 and C4 remain pending, per the Architecture Remediation Plan.
+**Phase C — C1, C2 and C3 complete.** C4 remains pending, per the Architecture Remediation Plan.
 
 ---
 
@@ -408,6 +437,7 @@ B4 — Persistence Contract is approved, implemented (v2.23.0) and closed.
 B5 — Habit and Pattern Consumption Path is approved, implemented (v2.24.0) and closed.
 C1 — Modularization and Tests is approved, implemented (WP1–WP11, v2.25.0–v2.40.0) and closed.
 C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0) and closed.
+C3 — Event Model Decision is approved and closed (canonical decision, no production code changes).
 
-Current Work Item: none — Phase C2 closure complete.
-Next Work Item: C3 — Event Model Decision, pending its own approved specification. Implementation has not begun.
+Current Work Item: none — C3 closure complete.
+Next Work Item: C4 — Typed Memory Server Write Path, pending its own approved specification. Implementation has not begun.

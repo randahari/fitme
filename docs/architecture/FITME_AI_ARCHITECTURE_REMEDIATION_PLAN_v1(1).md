@@ -10,7 +10,7 @@
 
 ## Coordination Note — Knowledge Base Authoring Program
 
-The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C3 — Event Model Decision is now the next engineering task (C2 closed 2026-07-26).
+The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C3 — Event Model Decision is complete (canonical decision, closed 2026-07-26); C4 — Typed Memory Server Write Path is now the next engineering task (C2 closed 2026-07-26).
 
 ---
 
@@ -241,7 +241,20 @@ unchanged. 1044 automated tests passed / 0 failed. See `docs/roadmap/Roadmap.md`
 ### C3 — Event Model Decision
 
 **Finding:** F7  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETE — canonical decision, closed 2026-07-26, no production code changes
+
+`docs/specs/C3_SPEC_v1.0.md` (approved) closed the canonical event-model question opened by
+Finding F7: the recommendation-feedback family (`kind:'feedback'`, introduced by C2) is the
+canonical behavioral-event model, formalized with a closed event vocabulary and schema (version
+1). The ordinary Trigger-fired record family (`recordCoachEvent`/`TRIGGER_RECORD_EVENT`) is
+reclassified as legacy bookkeeping, outside the canonical event model — no new architectural
+consumer may be built against it; its producer's disposition (keep, deprecate, or remove) is left
+as a future, unmandated engineering decision. A retention policy (feedback evidence has priority
+over legacy bookkeeping within the existing cap) is recorded canonically, with its implementation
+mechanism intentionally left unspecified. No Trigger Engine, Persistence Gateway, StateAccess, or
+Engine Registry code was added, removed, or refactored. No new engine, memory model, event model,
+or persistence surface was introduced. `1044` automated tests passed / `0` failed, unmodified. B1–B5
+and C1/C2 contracts preserved unchanged.
 
 ### C4 — Typed Memory Server Write Path
 
@@ -263,11 +276,11 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 # 4. Current Work Item
 
 Phase B (B1-B5) is complete. C1 (Modularization and Tests) is complete. C2 (Rejection and
-Suppression Feedback) is complete (v2.41.0, closed 2026-07-26). Current work item:
-none — C2 closure complete, awaiting Product/Architecture direction on Phase C continuation.
-Next work item: C3 (Event Model Decision), pending its own approved specification;
-implementation has not begun. C4 (Typed Memory Server Write Path) remains pending, scheduled
-incrementally per §3, provided it does not compromise Phase A or Phase B guarantees.
+Suppression Feedback) is complete (v2.41.0, closed 2026-07-26). C3 (Event Model Decision) is
+complete (canonical decision, closed 2026-07-26, no production code changes). Current work item:
+none — C3 closure complete, awaiting Product/Architecture direction on Phase C continuation.
+Next work item: C4 (Typed Memory Server Write Path), remains pending, scheduled incrementally
+per §3, provided it does not compromise Phase A or Phase B guarantees.
 
 ---
 
