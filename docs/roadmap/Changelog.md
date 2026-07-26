@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-23
+**Last Updated:** 2026-07-26
 
 ---
 
@@ -22,7 +22,70 @@
 - 🟢 B5 — Habit and Pattern Consumption Path approved, implemented, verified and closed
 - 🟢 C1 — Modularization and Tests (WP1–WP11) approved, implemented, verified and closed
 - 🟢 Coach Knowledge Base — Authoring Program complete: Topics 01–36 (all four Parts) approved, Topic 01 Gold Standard (v1.1)
-- ⏭️ Next engineering task: C2 — Rejection and Suppression Feedback, pending its own approved specification (not started)
+- 🟢 C2 — Rejection and Suppression Feedback approved, implemented, verified and closed
+- ⏭️ Next engineering task: C3 — Event Model Decision, pending its own approved specification (not started)
+
+---
+
+## C2 — Rejection and Suppression Feedback
+
+**Date:** 2026-07-26
+**Status:** Merged to `main`
+**Implementation Version:** 2.41.0
+**Commit:** `14755fc`
+
+### Summary
+
+Gives FITME a retained, structured record of how a user responds to the two existing
+recommendation-like surfaces (Trigger cards/notifications, Adaptive TDEE proposals), and uses it
+to temporarily and reversibly suppress recommendations a repeated-decline pattern shows aren't
+landing — per `docs/specs/C2_SPEC_v1.1.md`. A single decline never independently suppresses
+anything (CD-02); suppression is always temporary, reversible, and never punitive (CD-07); an
+explicit positive action immediately restores eligibility (CD-03/CD-07). No new engines, memory
+models, event models, or persistence models; B1–B5 and C1 contracts preserved unchanged.
+
+### Added
+
+- `js/feedback/feedbackDomain.js` — new shared pure utility (same tier as `ProfileMetrics`,
+  `DateUtils`, `CoachProfile`; not an Engine, not registered with `EngineRegistry`): classifies a
+  gesture into one of the 8 canonical CD-04 feedback types, and recomputes suppression from
+  source via a named/versioned recovery policy (`SUPPRESSION_RECOVERY_POLICY_V1`), following the
+  same policy-catalog pattern already established by B5's `DerivedIntelligenceConsumer`.
+- One new Persistence Gateway closed-catalog operation, `RECOMMENDATION_FEEDBACK_RECORD` — reuses
+  the existing `coachEvents` durable surface and the existing `triggerState`/`profileGoalsState`
+  owner identifiers (no new owner, no new Firestore field/collection).
+- Two new StateAccess capabilities, `recommendationFeedbackHistory` (read) /
+  `recordRecommendationFeedback` (write), scoped only to `triggerEngine/DAILY_COACH_CHECK` and
+  `adaptiveTdeeEngine/ADAPTIVE_CHECK`.
+- A dismiss gesture on the Trigger card (none existed previously).
+
+### Changed
+
+- `js/trigger/triggerController.js` — `runCoachTriggers` filters candidates through
+  `FeedbackDomain.evaluateSuppression`; `presentTriggerCard` adds the dismiss gesture.
+  `TriggerDomain.canFire` is unchanged.
+- `js/adaptive/adaptiveTdeeController.js` — `applyAdaptiveUpdate`/`dismissAdaptiveUpdate` now
+  record `Accepted`/`Dismissed` feedback (`dismissAdaptiveUpdate` keeps its existing
+  `saveProfile()` defer-write, preserving external behaviour unchanged); `runAdaptiveCheck`
+  consults the suppression gate for the `ADAPTIVE_CHECK` action only.
+- `index.html` script order and `sw.js` SHELL updated for `js/feedback/feedbackDomain.js`;
+  `APP_VERSION`/service-worker `VERSION` advanced from `2.40.0` to `2.41.0`.
+
+### Verification
+
+- `1044` passed / `0` failed (`node --test tests/*.test.js`).
+- New coverage: `tests/feedbackDomain.test.js`, `tests/c2Wiring.test.js`, plus C2-numbered cases
+  added to `tests/persistenceGateway.test.js`, `tests/stateAccess.test.js`,
+  `tests/triggerController.test.js`, `tests/adaptiveTdeeController.test.js`.
+- B1, B2, B3, B4, B5 and C1 preserved unchanged; REM-001, REM-002 and REM-003 preserved unchanged.
+- No Firestore schema, Firestore Security Rules or Firebase Functions changes.
+- No new engines, memory models, event models, or persistence models.
+- Product/Architecture approval: `APPROVED`. C2 is `CLOSED`.
+
+### Next
+
+C3 — Event Model Decision is `NEXT`, pending its own approved specification. Implementation has
+not begun.
 
 ---
 
@@ -533,4 +596,6 @@ B3 — State Ownership and Access Boundaries is `NEXT`.
 
 ## Next
 
-C2 — Rejection and Suppression Feedback, pending its own approved specification. Implementation has not begun.
+C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0, commit `14755fc`) and
+closed (2026-07-26). C3 — Event Model Decision, pending its own approved specification.
+Implementation has not begun.

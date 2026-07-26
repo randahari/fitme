@@ -30,7 +30,7 @@
 **Status:** 🟢 COMPLETED
 **Completion Date:** 2026-07-23
 
-`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C2 remains the next engineering task. Documentation-only change; no product behaviour, UX, or code affected.
+`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 is now the next engineering task (C2 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
 
 ---
 
@@ -341,7 +341,22 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ## C2 — Rejection and Suppression Feedback
 
-**Status:** ⏳ PENDING
+**Status:** 🟢 APPROVED AND MERGED
+**Completion Date:** 2026-07-26
+**Implementation Version:** 2.41.0
+
+### Deliverables
+
+- ✅ Approved `docs/specs/C2_SPEC_v1.1.md`
+- ✅ New shared pure utility `js/feedback/feedbackDomain.js` (feedback classification + named/versioned suppression-recovery policy, same tier as `ProfileMetrics`/`DateUtils`/`CoachProfile`)
+- ✅ Persistence Gateway closed catalog extended with `RECOMMENDATION_FEEDBACK_RECORD` (reuses the existing `coachEvents` durable surface and the existing `triggerState`/`profileGoalsState` owners — no new owner, no new field)
+- ✅ StateAccess permission matrix extended with `recommendationFeedbackHistory` / `recordRecommendationFeedback`, scoped only to `triggerEngine/DAILY_COACH_CHECK` and `adaptiveTdeeEngine/ADAPTIVE_CHECK`
+- ✅ Trigger card dismiss gesture added; `runCoachTriggers` filters suppressed candidates (`TriggerDomain.canFire` unchanged)
+- ✅ Adaptive TDEE `applyAdaptiveUpdate`/`dismissAdaptiveUpdate` record Accepted/Dismissed feedback; `runAdaptiveCheck` consults the suppression gate for `ADAPTIVE_CHECK` only
+- ✅ B1–B5 and C1 contracts preserved unchanged throughout
+- ✅ 1044 automated tests passed / 0 failed
+- ✅ No new engines, memory models, event models, or persistence models
+- ✅ Commit `14755fc` on `main`
 
 ## C3 — Event Model Decision
 
@@ -353,7 +368,7 @@ are classified as Derived Intelligence Views, not independent memory authorities
 
 ---
 
-**Phase C — C1 complete.** C2, C3 and C4 remain pending, per the Architecture Remediation Plan.
+**Phase C — C1 and C2 complete.** C3 and C4 remain pending, per the Architecture Remediation Plan.
 
 ---
 
@@ -392,6 +407,7 @@ B3 — State Ownership and Access Boundaries is approved, implemented (v2.22.0) 
 B4 — Persistence Contract is approved, implemented (v2.23.0) and closed.
 B5 — Habit and Pattern Consumption Path is approved, implemented (v2.24.0) and closed.
 C1 — Modularization and Tests is approved, implemented (WP1–WP11, v2.25.0–v2.40.0) and closed.
+C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0) and closed.
 
-Current Work Item: none — Phase C1 closure complete.
-Next Work Item: C2 — Rejection and Suppression Feedback, pending its own approved specification. Implementation has not begun.
+Current Work Item: none — Phase C2 closure complete.
+Next Work Item: C3 — Event Model Decision, pending its own approved specification. Implementation has not begun.

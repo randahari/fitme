@@ -10,7 +10,7 @@
 
 ## Coordination Note — Knowledge Base Authoring Program
 
-The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C2 — Rejection and Suppression Feedback remains the next engineering task.
+The FITME Coach Knowledge Base authoring program (`docs/governance/FITME_Coach_Knowledge_Base.md`) is complete. All 36 Topics across all four Parts — Human Nature, Health Psychology, The FITME Coach, and Product Translation — are authored and Canonical, matching the approved Topic 01 Gold Standard (v1.1). This program was a separate workstream from this remediation plan and its completion does not change the engineering execution order below: C3 — Event Model Decision is now the next engineering task (C2 closed 2026-07-26).
 
 ---
 
@@ -227,7 +227,16 @@ product behaviour unchanged. 995 automated tests passed / 0 failed. See
 ### C2 — Rejection and Suppression Feedback
 
 **Finding:** F8  
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETE — v2.41.0, closed 2026-07-26
+
+`docs/specs/C2_SPEC_v1.1.md` (approved, applying Product/Architecture Canonical Decisions
+CD-01–CD-11) drove the implementation: a new shared pure utility (`js/feedback/feedbackDomain.js`),
+one Persistence Gateway catalog extension (`RECOMMENDATION_FEEDBACK_RECORD`, reusing existing
+owners and the existing `coachEvents` durable surface), and two new StateAccess capabilities
+scoped to `triggerEngine/DAILY_COACH_CHECK` and `adaptiveTdeeEngine/ADAPTIVE_CHECK`. No new
+engines, memory models, event models, or persistence models. B1–B5 and C1 contracts preserved
+unchanged. 1044 automated tests passed / 0 failed. See `docs/roadmap/Roadmap.md` and
+`docs/roadmap/Changelog.md` for full deliverables.
 
 ### C3 — Event Model Decision
 
@@ -253,12 +262,12 @@ Phase C items may be scheduled incrementally, provided they do not compromise Ph
 
 # 4. Current Work Item
 
-Phase B (B1-B5) is complete. C1 (Modularization and Tests) is complete. Current work item:
-none — C1 closure complete, awaiting Product/Architecture direction on Phase C continuation.
-Next work item: C2 (Rejection and Suppression Feedback), pending its own approved
-specification; implementation has not begun. C3 (Event Model Decision) and C4 (Typed Memory
-Server Write Path) remain pending, scheduled incrementally per §3, provided they do not
-compromise Phase A or Phase B guarantees.
+Phase B (B1-B5) is complete. C1 (Modularization and Tests) is complete. C2 (Rejection and
+Suppression Feedback) is complete (v2.41.0, closed 2026-07-26). Current work item:
+none — C2 closure complete, awaiting Product/Architecture direction on Phase C continuation.
+Next work item: C3 (Event Model Decision), pending its own approved specification;
+implementation has not begun. C4 (Typed Memory Server Write Path) remains pending, scheduled
+incrementally per §3, provided it does not compromise Phase A or Phase B guarantees.
 
 ---
 
