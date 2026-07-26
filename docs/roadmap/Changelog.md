@@ -135,8 +135,9 @@ models, event models, or persistence models; B1–B5 and C1 contracts preserved 
 
 ### Next
 
-C3 — Event Model Decision is `NEXT`, pending its own approved specification. Implementation has
-not begun.
+C3 — Event Model Decision is approved and closed (2026-07-26, canonical decision, no production
+code changes). C4 — Typed Memory Server Write Path is `NEXT`, pending its own approved
+specification. Implementation has not begun.
 
 ---
 

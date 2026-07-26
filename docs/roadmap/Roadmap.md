@@ -30,7 +30,7 @@
 **Status:** 🟢 COMPLETED
 **Completion Date:** 2026-07-23
 
-`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 is now the next engineering task (C2 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
+`docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 is closed and C4 is the next engineering task (C3 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
 
 ---
 
@@ -378,8 +378,7 @@ refactored.
 
 ### Deliverables
 
-- ✅ Approved `docs/architecture/...Discovery Report` (input only)
-- ✅ Approved `docs/specs/C3_SPEC_v1.0.md`
+- ✅ Approved `docs/specs/C3_SPEC_v1.0.md` (its Architecture Discovery input was a reviewed, session-based analysis, not a separately committed repository file)
 - ✅ Canonical event vocabulary and schema (version 1) recorded
 - ✅ Ordinary Trigger-fired records reclassified as legacy bookkeeping — no new consumer permitted
 - ✅ Retention policy recorded (feedback prioritized over legacy bookkeeping); mechanism left to future engineering
