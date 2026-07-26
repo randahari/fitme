@@ -25,6 +25,11 @@
   var ProfileMetrics = (typeof module !== 'undefined' && module.exports)
     ? require('../domain/profileMetrics.js')
     : window.ProfileMetrics;
+  // C2 (Rejection and Suppression Feedback): utility טהור משותף, אותה שכבה כמו
+  // ProfileMetrics/NotificationAdapter לעיל — ראה js/feedback/feedbackDomain.js.
+  var FeedbackDomain = (typeof module !== 'undefined' && module.exports)
+    ? require('../feedback/feedbackDomain.js')
+    : window.FeedbackDomain;
 
   var deps = null;
   function configure(injected) { deps = injected || {}; }
@@ -38,6 +43,8 @@
     var profile = access.read.adaptiveProfile();
     var triggerProfile = access.read.triggerProfile();
     var todayNutrition = access.read.todayNutrition();
+    var feedbackHistory = access.read.recommendationFeedbackHistory(); // C2
+    var now = Date.now();
 
     var candidates = [
       TriggerDomain.evalRedFlag(history, profile, deps.getTodayData()),
@@ -46,7 +53,10 @@
       TriggerDomain.evalNoWorkout(history, triggerProfile, todayNutrition),
       TriggerDomain.evalCloseToGoal(triggerProfile, todayNutrition),
       TriggerDomain.evalStreakMilestone(triggerProfile)
-    ].filter(Boolean).filter(function (t) { return access.read.canFire(t.type, t.priority); });
+    ].filter(Boolean)
+      .filter(function (t) { return access.read.canFire(t.type, t.priority); })
+      // C2 (§8/§13): דיכוי זמני/הפיך על סמך דפוס דחיות חוזר — לא משנה את canFire/budget עצמם.
+      .filter(function (t) { return !FeedbackDomain.evaluateSuppression(feedbackHistory, 'trigger', t.type, now).suppressed; });
 
     if (!candidates.length) return { trigger: null, persistence: deps.persistenceSummaryFn(null) };
     var t = TriggerDomain.selectTrigger(candidates);
@@ -65,6 +75,7 @@
     if (!t) { card.classList.add('hidden'); return; }
     var textEl = deps.documentRef.getElementById('trigger-card-text');
     if (textEl) textEl.textContent = TriggerDomain.triggerLocalText(deps.getUserProfile(), t) || '...';
+    try { ensureTriggerCardDismissButton(card, t); } catch (e) {} // C2: מחווית דחייה — לעולם לא שוברת את הצגת הכרטיס
     card.classList.remove('hidden');
     if (t.live && textEl) {
       try {
@@ -72,6 +83,27 @@
         if (msg && (typeof sessionGeneration === 'undefined' || deps.sessionLifecycle.isCurrent(sessionGeneration))) textEl.textContent = msg;
       } catch (e) {}
     }
+  }
+
+  // ── C2 (§6/§9/§14): כפתור "לא רלוונטי" על כרטיס הטריגר — נוצר פעם אחת (idempotent),
+  // מחובר מחדש ל-contextId (t.type) הנוכחי בכל הצגה. מקליט Dismissed דרך deps.recordFeedbackFn
+  // (מוזרק מ-app.js — יוצר StateAccess capability אד-הוק ל-triggerEngine/DAILY_COACH_CHECK,
+  // אותו דפוס בדיוק כמו habitEngine.js's "access || StateAccess.createEngineAccess(...)"). ──
+  function ensureTriggerCardDismissButton(card, t) {
+    var btn = card.querySelector ? card.querySelector('.trigger-card-dismiss') : null;
+    if (!btn) {
+      btn = deps.documentRef.createElement('button');
+      btn.className = 'btn-ghost trigger-card-dismiss';
+      btn.style.cssText = 'width:auto;padding:6px 10px;margin:8px 0 0;font-size:12px;display:block';
+      btn.textContent = 'לא רלוונטי';
+      card.appendChild(btn);
+    }
+    btn.onclick = function () {
+      card.classList.add('hidden');
+      try {
+        if (deps.recordFeedbackFn) deps.recordFeedbackFn('trigger', t.type, 'Dismissed');
+      } catch (e) {}
+    };
   }
 
   // ── בקשת טקסט חי מהמאמן לטריגר (רגעים גדולים) — זהה לחלוטין ל-triggerLiveText()

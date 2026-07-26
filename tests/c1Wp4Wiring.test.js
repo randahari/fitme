@@ -33,12 +33,12 @@ test('all three WP4 modules are registered in index.html, loaded after the WP3 r
 test('all three WP4 modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   WP4_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.40.0');
+  assert.equal(versionMatch[1], '2.41.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.40.0');
+  assert.equal(appVersionMatch[1], '2.41.0');
 });
 
 test('the authentication lifecycle routes through AuthSessionController — no direct AuthAdapter.onAuthStateChanged call remains in app.js', () => {
@@ -150,11 +150,13 @@ test('no repository/adapter is duplicated or re-implemented by the WP4 modules; 
 // profilePresenter.js/settingsPresenter.js/foodScreenPresenter.js/
 // dayNavigationController.js) after this test was written — the closed set below was
 // updated in the same commit. The three WP4 modules themselves must still never
-// reference any WP10 module name.
-test('no WP11+ vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6/WP7/WP8/WP9/WP10 directories were added', () => {
+// reference any WP10 module name. C2 (Rejection and Suppression Feedback) legitimately
+// added js/feedback/ (feedbackDomain.js — a shared pure utility, same tier as js/domain/,
+// js/core/) after C1 closed — the closed set below was updated in the same commit.
+test('no WP11+/post-C1 vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6/WP7/WP8/WP9/WP10 and C2 directories were added', () => {
   const dirs = fs.readdirSync(path.join(__dirname, '../js'));
   assert.deepEqual(dirs.filter((d) => fs.statSync(path.join(__dirname, '../js', d)).isDirectory()).sort(),
-    ['adaptive', 'adapters', 'app', 'coach', 'core', 'domain', 'engines', 'nutrition', 'repositories', 'trigger', 'ui'].sort());
+    ['adaptive', 'adapters', 'app', 'coach', 'core', 'domain', 'engines', 'feedback', 'nutrition', 'repositories', 'trigger', 'ui'].sort());
   const appDirFiles = fs.readdirSync(path.join(__dirname, '../js/app')).sort();
   assert.deepEqual(appDirFiles, ['authSessionController.js', 'bootstrapController.js', 'runtimeState.js']);
   [fs.readFileSync(path.join(__dirname, '..', 'js/app/runtimeState.js'), 'utf8'),

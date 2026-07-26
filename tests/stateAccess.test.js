@@ -32,7 +32,7 @@ function makeEnv(overrides) {
   const todayData = Object.assign({ meals: [{ kcal: 300, protein: 20 }], burned: 100 }, overrides && overrides.todayData);
 
   let generation = 1;
-  const calls = { savedProfile: 0, patternWrites: [], coachEvents: [], firedTypes: [], adaptProposal: undefined, adaptHistoryCache: undefined };
+  const calls = { savedProfile: 0, patternWrites: [], coachEvents: [], firedTypes: [], adaptProposal: undefined, adaptHistoryCache: undefined, feedbackEvents: [] };
 
   const deps = {
     getUserProfile: () => profile,
@@ -71,7 +71,14 @@ function makeEnv(overrides) {
       return { status: 'SUCCESS', changed: true, requestId: 'req-budget', receipt: {} };
     },
     checkCanFire: (type) => profile.coachDay.fired.indexOf(type) === -1,
-    getTriggerBudget: () => profile.coachDay
+    getTriggerBudget: () => profile.coachDay,
+    // C2 (Rejection and Suppression Feedback): mirrors recordCoachEvent's test-double shape above.
+    recordFeedbackEvent: async (identity, surface, contextId, feedbackType) => {
+      if (!Array.isArray(profile.coachEvents)) profile.coachEvents = [];
+      profile.coachEvents.push({ kind: 'feedback', surface, contextId, feedbackType, ts: Date.now() });
+      calls.feedbackEvents.push({ surface, contextId, feedbackType });
+      return { status: 'SUCCESS', changed: true, requestId: 'req-feedback', receipt: {} };
+    }
   };
 
   return {
@@ -358,11 +365,16 @@ test('27. permission matrix and read snapshots do not alter any computation form
 });
 
 // ── 28/29/30. No B4/B5/Recommendation Engine behavior ──
-test('28-30. no persistence-transaction, consumption-ranking, or recommendation vocabulary exists in this module', () => {
+// C2_SPEC v1.1 §12 approved recommendationFeedbackHistory/recordRecommendationFeedback as named
+// StateAccess capabilities — the bare word "recommendation" is therefore expected (see C2) and no
+// longer scope-creep evidence by itself. The genuinely dangerous terms (this module owning its own
+// transaction/rollback/retry semantics, or ranking/confidence-scoring logic — all of which remain
+// exclusively Gateway/future-Recommendation-Engine concerns) stay banned; C2 introduces none of them.
+test('28-30. no persistence-transaction or consumption-ranking vocabulary exists in this module (bare "recommendation" is expected — see C2)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../js/stateAccess.js'), 'utf8');
-  ['transaction', 'rollbackPolicy', 'retryPolicy', 'confidenceThreshold', 'ranking', 'recommendation'].forEach((needle) => {
+  ['transaction', 'rollbackPolicy', 'retryPolicy', 'confidenceThreshold', 'ranking'].forEach((needle) => {
     assert.equal(src.toLowerCase().indexOf(needle.toLowerCase()), -1, 'stateAccess.js must not contain B4/B5/Recommendation-Engine vocabulary: ' + needle);
   });
 });
@@ -432,4 +444,78 @@ test('35. a Pattern CONFLICT from the Gateway rolls back in-memory state and is 
   assert.equal(result.error.code, 'STATE_WRITE_CONFLICT');
   assert.equal(result.metadata.persistenceStatus, 'CONFLICT');
   assert.deepEqual(env.profile.coachMemory.patterns, originalPatterns, 'CONFLICT must roll back exactly like FAILED — no overwrite of newer durable state');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ── C2 (Rejection and Suppression Feedback) ──
+// ══════════════════════════════════════════════════════════════════
+
+test('C2-1. triggerEngine/DAILY_COACH_CHECK can read feedback history and record feedback; other Trigger actions cannot', async () => {
+  const env = makeEnv(); configure(env);
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  assert.deepEqual(dailyCheck.read.recommendationFeedbackHistory(), []);
+  const result = await dailyCheck.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' });
+  assert.equal(result.status, 'APPLIED');
+  assert.deepEqual(env.calls.feedbackEvents, [{ surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' }]);
+
+  const workoutCompleted = access('triggerEngine', 'WORKOUT_COMPLETED', env);
+  assert.throws(() => workoutCompleted.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.equal(workoutCompleted.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' }).status, 'REJECTED');
+
+  const notifSchedule = access('triggerEngine', 'LOCAL_NOTIFICATION_SCHEDULE', env);
+  assert.throws(() => notifSchedule.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+});
+
+test('C2-2. adaptiveTdeeEngine/ADAPTIVE_CHECK can read feedback history and record feedback; WEIGHT_CHANGED/ADAPTIVE_RECHECK cannot (no scope expansion beyond the approved SPEC)', async () => {
+  const env = makeEnv(); configure(env);
+  const adaptiveCheck = access('adaptiveTdeeEngine', 'ADAPTIVE_CHECK', env);
+  assert.deepEqual(adaptiveCheck.read.recommendationFeedbackHistory(), []);
+  const result = await adaptiveCheck.write.recordRecommendationFeedback({ surface: 'adaptiveTdee', contextId: 'adaptive-proposal', feedbackType: 'Accepted' });
+  assert.equal(result.status, 'APPLIED');
+
+  const weightChanged = access('adaptiveTdeeEngine', 'WEIGHT_CHANGED', env);
+  assert.throws(() => weightChanged.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const recheck = access('adaptiveTdeeEngine', 'ADAPTIVE_RECHECK', env);
+  assert.throws(() => recheck.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+});
+
+test('C2-3. recommendationFeedbackHistory only exposes recorded feedback entries — never the ordinary trigger-fired coachEvents entries it coexists with', () => {
+  const env = makeEnv({ profile: { coachEvents: [{ type: 'streak-7', date: '2026-07-01', ts: 1, meta: {} }] } });
+  configure(env);
+  env.profile.coachEvents.push({ kind: 'feedback', surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed', ts: 2 });
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  const history = dailyCheck.read.recommendationFeedbackHistory();
+  assert.equal(history.length, 1);
+  assert.equal(history[0].feedbackType, 'Dismissed');
+});
+
+test('C2-4. recommendationFeedbackHistory returns a frozen, protected snapshot (not a live reference)', () => {
+  const env = makeEnv(); configure(env);
+  env.profile.coachEvents.push({ kind: 'feedback', surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed', ts: 1 });
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  const history = dailyCheck.read.recommendationFeedbackHistory();
+  assert.throws(() => { history.push({}); }); // frozen array — push always throws (matches test 17's convention)
+  history[0].feedbackType = 'Accepted'; // frozen element — sloppy-mode assignment silently no-ops (matches test 17's convention)
+  assert.equal(history[0].feedbackType, 'Dismissed', 'the write silently failed — the snapshot element is frozen');
+});
+
+test('C2-5. a stale session cannot read feedback history or write a feedback event', async () => {
+  const env = makeEnv(); configure(env);
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  env.setGeneration(2); // session moved on
+  assert.throws(() => dailyCheck.read.recommendationFeedbackHistory(), (e) => e.code === 'STALE_SESSION');
+  const result = await dailyCheck.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' });
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'STALE_SESSION');
+});
+
+test('C2-6. a capability built for triggerEngine cannot record Adaptive TDEE feedback, and vice versa (each engine only invokes its own owner-scoped write)', async () => {
+  const env = makeEnv(); configure(env);
+  const trigger = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  const adaptive = access('adaptiveTdeeEngine', 'ADAPTIVE_CHECK', env);
+  // both are approved to call the same capability name — ownership/domain separation is enforced
+  // one layer down, in the Gateway (see tests/persistenceGateway.test.js C2-2) — this layer only
+  // asserts both engines can reach their own approved capability, neither more nor less.
+  assert.equal((await trigger.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' })).status, 'APPLIED');
+  assert.equal((await adaptive.write.recordRecommendationFeedback({ surface: 'adaptiveTdee', contextId: 'adaptive-proposal', feedbackType: 'Accepted' })).status, 'APPLIED');
 });

@@ -10,6 +10,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const AdaptiveTdeeController = require('../js/adaptive/adaptiveTdeeController.js');
 const PersistenceGateway = require('../js/persistenceGateway.js');
+// C2 (Rejection and Suppression Feedback): same require-cache singleton the controller module
+// itself uses — monkey-patched per test for the suppression-gate tests below, same convention
+// this file already documents for PersistenceGateway above.
+const AdaptiveTdeeDomain = require('../js/adaptive/adaptiveTdeeDomain.js');
 
 function fakeElement(overrides) {
   return Object.assign({ classList: { add() {}, remove() {}, toggle() {} }, style: {}, innerHTML: '', textContent: '', value: '' }, overrides);
@@ -54,7 +58,9 @@ function fakeDeps(overrides) {
     runEngineAction: async (trigger, engineId, action) => calls.push(['runEngineAction', trigger, engineId, action]),
     coachNameFn: () => 'רן',
     coachMessageFn: async (ctx) => { calls.push(['coachMessage', ctx]); return 'הודעת מאמן'; },
-    alertFn: (msg) => calls.push(['alert', msg])
+    alertFn: (msg) => calls.push(['alert', msg]),
+    // C2 (Rejection and Suppression Feedback) — mirrors TriggerController's fakeDeps convention.
+    recordFeedbackFn: (surface, contextId, feedbackType) => calls.push(['recordFeedback', surface, contextId, feedbackType])
   };
   Object.assign(deps, overrides);
   deps._setProposal = (p) => { adaptProposal = p; };
@@ -132,6 +138,80 @@ test('runAdaptiveCheck skips proposal building entirely when not due by time (re
   await AdaptiveTdeeController.runAdaptiveCheck(access);
   assert.ok(calls.some((c) => c[0] === 'markCompleted'));
   assert.ok(!calls.some((c) => c[0] === 'storeProposal'));
+});
+
+// ── C2: Rejection and Suppression Feedback — runAdaptiveCheck suppression gate ──────────
+
+test('C2: runAdaptiveCheck does not store an otherwise-ready proposal when the ADAPTIVE_CHECK surface is suppressed by a repeated-dismiss pattern', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  const realBuild = AdaptiveTdeeDomain.buildAdaptiveProposal;
+  AdaptiveTdeeDomain.buildAdaptiveProposal = () => ({ ready: true, delta: -100, calc: {}, signals: {}, newGoal: 1900, oldGoal: 2000 });
+  try {
+    const now = Date.now();
+    const feedbackHistory = [0, 1, 2].map((i) => ({ surface: 'adaptiveTdee', contextId: 'adaptive-proposal', feedbackType: 'Dismissed', occurredAt: now - i * 86400000 }));
+    const access = {
+      identity: { action: 'ADAPTIVE_CHECK' },
+      read: {
+        adaptiveProfile: () => ({ lastTdeeUpdate: null }),
+        nutritionActivityHistory: async () => ({}),
+        recommendationFeedbackHistory: () => { calls.push(['read.recommendationFeedbackHistory']); return feedbackHistory; }
+      },
+      write: {
+        markAdaptiveCheckCompleted: async () => calls.push(['markCompleted']),
+        storeAdaptiveProposal: async () => calls.push(['storeProposal'])
+      }
+    };
+    await AdaptiveTdeeController.runAdaptiveCheck(access);
+    assert.ok(calls.some((c) => c[0] === 'read.recommendationFeedbackHistory'), 'the suppression gate must be consulted for ADAPTIVE_CHECK');
+    assert.ok(!calls.some((c) => c[0] === 'storeProposal'), 'a suppressed surface must not store a new proposal, even when otherwise ready');
+  } finally { AdaptiveTdeeDomain.buildAdaptiveProposal = realBuild; }
+});
+
+test('C2: runAdaptiveCheck stores a ready proposal normally when there is no suppressing feedback pattern', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  const realBuild = AdaptiveTdeeDomain.buildAdaptiveProposal;
+  AdaptiveTdeeDomain.buildAdaptiveProposal = () => ({ ready: true, delta: -100, calc: {}, signals: {}, newGoal: 1900, oldGoal: 2000 });
+  try {
+    const access = {
+      identity: { action: 'ADAPTIVE_CHECK' },
+      read: {
+        adaptiveProfile: () => ({ lastTdeeUpdate: null }),
+        nutritionActivityHistory: async () => ({}),
+        recommendationFeedbackHistory: () => []
+      },
+      write: {
+        markAdaptiveCheckCompleted: async () => calls.push(['markCompleted']),
+        storeAdaptiveProposal: async () => calls.push(['storeProposal'])
+      }
+    };
+    await AdaptiveTdeeController.runAdaptiveCheck(access);
+    assert.ok(calls.some((c) => c[0] === 'storeProposal'));
+  } finally { AdaptiveTdeeDomain.buildAdaptiveProposal = realBuild; }
+});
+
+test('C2: runAdaptiveCheck never calls recommendationFeedbackHistory for WEIGHT_CHANGED/ADAPTIVE_RECHECK (not approved for those actions — no scope expansion)', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  const realBuild = AdaptiveTdeeDomain.buildAdaptiveProposal;
+  AdaptiveTdeeDomain.buildAdaptiveProposal = () => ({ ready: true, delta: -100, calc: {}, signals: {}, newGoal: 1900, oldGoal: 2000 });
+  try {
+    const access = {
+      identity: { action: 'WEIGHT_CHANGED' },
+      read: {
+        adaptiveProfile: () => ({ lastTdeeUpdate: null }),
+        nutritionActivityHistory: async () => ({}),
+        recommendationFeedbackHistory: () => { throw new Error('must never be called for this action'); }
+      },
+      write: {
+        markAdaptiveCheckCompleted: async () => calls.push(['markCompleted']),
+        storeAdaptiveProposal: async () => calls.push(['storeProposal'])
+      }
+    };
+    await assert.doesNotReject(AdaptiveTdeeController.runAdaptiveCheck(access));
+    assert.ok(calls.some((c) => c[0] === 'storeProposal'), 'WEIGHT_CHANGED must remain unaffected by the C2 suppression gate');
+  } finally { AdaptiveTdeeDomain.buildAdaptiveProposal = realBuild; }
 });
 
 // ── renderAdaptiveCard ──────────────────────────────────────────────────────────────────
@@ -304,6 +384,53 @@ test('dismissAdaptiveUpdate marks lastTdeeUpdate as today, saves, clears the pro
   assert.equal(userProfile.lastTdeeUpdate, new Date().toISOString().slice(0, 10));
   assert.ok(calls.some((c) => c[0] === 'saveProfile'));
   assert.equal(deps.getAdaptProposal(), null);
+});
+
+// ── C2: Rejection and Suppression Feedback ──────────────────────────────────────────────
+
+test('C2: dismissAdaptiveUpdate additionally records Dismissed feedback alongside the existing saveProfile() defer (§22 backward compatibility — existing behavior preserved, not replaced)', async () => {
+  const { deps, calls, userProfile } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  await AdaptiveTdeeController.dismissAdaptiveUpdate();
+  assert.ok(calls.some((c) => c[0] === 'saveProfile'), 'the existing lastTdeeUpdate defer-write must still happen (external behavior preserved)');
+  assert.ok(calls.some((c) => c[0] === 'recordFeedback' && c[1] === 'adaptiveTdee' && c[2] === 'adaptive-proposal' && c[3] === 'Dismissed'));
+  assert.equal(userProfile.lastTdeeUpdate, new Date().toISOString().slice(0, 10));
+});
+
+test('C2: dismissAdaptiveUpdate never throws when recordFeedbackFn rejects (feedback bookkeeping must never block the dismiss action)', async () => {
+  const { deps, calls } = fakeDeps({ recordFeedbackFn: async () => { throw new Error('gateway down'); } });
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  await assert.doesNotReject(AdaptiveTdeeController.dismissAdaptiveUpdate());
+  assert.equal(deps.getAdaptProposal(), null, 'the dismissal itself must still complete');
+});
+
+test('C2: applyAdaptiveUpdate additionally records Accepted feedback after a successful apply', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  PersistenceGateway.persist = async () => ({ status: 'SUCCESS' });
+  await AdaptiveTdeeController.applyAdaptiveUpdate();
+  assert.ok(calls.some((c) => c[0] === 'recordFeedback' && c[1] === 'adaptiveTdee' && c[2] === 'adaptive-proposal' && c[3] === 'Accepted'));
+});
+
+test('C2: applyAdaptiveUpdate does not record feedback when the goal-update persistence itself fails (only a real acceptance counts as evidence)', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  PersistenceGateway.persist = async () => ({ status: 'REJECTED' });
+  await AdaptiveTdeeController.applyAdaptiveUpdate();
+  assert.ok(!calls.some((c) => c[0] === 'recordFeedback'));
+});
+
+test('C2: applyAdaptiveUpdate never throws when recordFeedbackFn rejects (feedback bookkeeping must never undo an already-successful apply)', async () => {
+  const { deps, userProfile } = fakeDeps({ recordFeedbackFn: async () => { throw new Error('gateway down'); } });
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  PersistenceGateway.persist = async () => ({ status: 'SUCCESS' });
+  await assert.doesNotReject(AdaptiveTdeeController.applyAdaptiveUpdate());
+  assert.equal(userProfile.goalKcal, 1900, 'the already-successful goal update must not be undone by a feedback-recording failure');
 });
 
 // ── renderPartialPrompt ─────────────────────────────────────────────────────────────────

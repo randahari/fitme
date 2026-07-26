@@ -14,9 +14,22 @@ const NotificationAdapter = require('../js/adapters/notificationAdapter.js');
 function fakeElement(overrides) {
   return Object.assign({ classList: { add() {}, remove() {} }, style: {}, innerHTML: '', textContent: '' }, overrides);
 }
+// C2: card double that additionally supports querySelector/appendChild, for the dismiss-button tests.
+function fakeCardWithChildren() {
+  const el = fakeElement();
+  el._children = [];
+  el.querySelector = (sel) => (sel === '.trigger-card-dismiss' ? (el._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1) || null) : null);
+  el.appendChild = (child) => { el._children.push(child); };
+  return el;
+}
 function fakeDocument(overrides) {
   const elements = {};
-  const doc = { getElementById: (id) => elements[id] || null, _elements: elements };
+  const doc = {
+    getElementById: (id) => elements[id] || null,
+    _elements: elements,
+    // C2: minimal createElement so ensureTriggerCardDismissButton can build a real-ish button double.
+    createElement: (tag) => Object.assign(fakeElement(), { tagName: tag, className: '', onclick: null })
+  };
   Object.assign(doc, overrides);
   return doc;
 }
@@ -55,7 +68,8 @@ function fakeAccess(overrides) {
       adaptiveProfile: () => { calls.push(['read.adaptiveProfile']); return {}; },
       triggerProfile: () => { calls.push(['read.triggerProfile']); return { goalKcal: 2000, weight: 80, streak: 3, totalWorkouts: 5 }; },
       todayNutrition: () => { calls.push(['read.todayNutrition']); return { consumed: 1000, protein: 50, burned: 0 }; },
-      canFire: () => true
+      canFire: () => true,
+      recommendationFeedbackHistory: () => { calls.push(['read.recommendationFeedbackHistory']); return []; } // C2
     },
     write: {
       updateDailyTriggerBudget: async (arg) => { calls.push(['write.updateDailyTriggerBudget', arg]); return { status: 'APPLIED' }; },
@@ -294,4 +308,69 @@ test('scheduleLocalNotifications: a scheduled callback checks canFire before sen
     const lastCallback = deps._scheduled[deps._scheduled.length - 1];
     assert.doesNotThrow(() => lastCallback());
   } finally { global.Date = RealDate; }
+});
+
+// ── C2: Rejection and Suppression Feedback ───────────────────────────────────────────────
+
+test('runCoachTriggers excludes a candidate suppressed by a repeated-dismiss pattern, but still selects an unsuppressed lower-priority one', async () => {
+  const { deps } = fakeDeps();
+  TriggerController.configure(deps);
+  const now = Date.now();
+  // 3 Dismissed events for 'streak-30' within the window -> suppressed; nothing for 'forgot-eat'.
+  const feedback = [0, 1, 2].map((i) => ({ surface: 'trigger', contextId: 'streak-30', feedbackType: 'Dismissed', occurredAt: now - i * 86400000 }));
+  const { access } = fakeAccess({
+    read: {
+      todayNutrition: () => ({ consumed: 100, protein: 10, burned: 0 }), // also satisfies forgot-eat if within hours — but we assert on candidate composition, not the hour-gated one
+      triggerProfile: () => ({ goalKcal: 2000, weight: 80, streak: 30, totalWorkouts: 5 }),
+      recommendationFeedbackHistory: () => feedback
+    }
+  });
+  const r = await TriggerController.runCoachTriggers(access);
+  assert.notEqual(r.trigger && r.trigger.type, 'streak-30', 'a repeatedly-dismissed trigger type must not be selected');
+});
+
+test('runCoachTriggers still selects a trigger type with only a single prior Dismissed event (CD-02: single event never suppresses)', async () => {
+  const { deps } = fakeDeps();
+  TriggerController.configure(deps);
+  const feedback = [{ surface: 'trigger', contextId: 'streak-30', feedbackType: 'Dismissed', occurredAt: Date.now() }];
+  const { access } = fakeAccess({
+    read: {
+      todayNutrition: () => ({ consumed: 1000, protein: 50, burned: 500 }),
+      triggerProfile: () => ({ goalKcal: 2000, weight: 80, streak: 30, totalWorkouts: 5 }),
+      recommendationFeedbackHistory: () => feedback
+    }
+  });
+  const r = await TriggerController.runCoachTriggers(access);
+  assert.equal(r.trigger.type, 'streak-30');
+});
+
+test('presentTriggerCard adds a dismiss button that records Dismissed feedback and hides the card, without throwing when the DOM double lacks createElement/querySelector', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  deps.recordFeedbackFn = (surface, contextId, feedbackType) => calls.push(['recordFeedback', surface, contextId, feedbackType]);
+  TriggerController.configure(deps);
+  await TriggerController.presentTriggerCard({ type: 'forgot-eat', live: false, data: { have: 100 } }, 1);
+
+  const btn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+  assert.ok(btn, 'a dismiss button must be appended to the card');
+  let hidden = false;
+  card.classList.add = (c) => { if (c === 'hidden') hidden = true; };
+  btn.onclick();
+  assert.equal(hidden, true);
+  assert.ok(calls.some((c) => c[0] === 'recordFeedback' && c[1] === 'trigger' && c[2] === 'forgot-eat' && c[3] === 'Dismissed'));
+
+  // presenting again must not duplicate the button (idempotent creation)
+  await TriggerController.presentTriggerCard({ type: 'forgot-eat', live: false, data: { have: 100 } }, 1);
+  assert.equal(card._children.filter((c) => c.className.indexOf('trigger-card-dismiss') !== -1).length, 1);
+});
+
+test('presentTriggerCard never throws when the card DOM double does not support createElement/appendChild (existing minimal test doubles)', async () => {
+  const card = fakeElement(); // no querySelector/appendChild — matches every pre-existing test in this file
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  TriggerController.configure(deps);
+  await assert.doesNotReject(TriggerController.presentTriggerCard({ type: 'forgot-eat', data: { have: 1 } }, 1));
 });

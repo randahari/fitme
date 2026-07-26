@@ -190,6 +190,18 @@
     return !!deps.checkCanFire(type, priority);
   }
 
+  // C2 (Rejection and Suppression Feedback, §13/§14): snapshot מוגן של אירועי משוב שנרשמו
+  // בעבר (coachEvents[] עם kind==='feedback') — מקור ל-FeedbackDomain.evaluateSuppression
+  // (recompute-from-source, ללא state מאוחסן ב-StateAccess עצמו).
+  function readRecommendationFeedbackHistory(identity) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var p = deps.getUserProfile() || {};
+    var events = Array.isArray(p.coachEvents) ? p.coachEvents : [];
+    var feedback = events.filter(function (e) { return e && e.kind === 'feedback'; })
+      .map(function (e) { return { surface: e.surface, contextId: e.contextId, feedbackType: e.feedbackType, occurredAt: e.ts }; });
+    return copyArrayOfObjects(feedback);
+  }
+
   function readWorkoutPayload(identity, payload) {
     if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
     return freezeShallow({ burn: (payload && payload.burn) || 0 });
@@ -294,6 +306,22 @@
     }
   }
 
+  // C2 (Rejection and Suppression Feedback, §11/§14): deps.recordFeedbackEvent(identity, surface,
+  // contextId, feedbackType) מבצע את מוטציית ה-in-memory (userProfile.coachEvents, אותו דפוס
+  // בדיוק כמו deps.recordCoachEvent) ואז כותב field-scoped דרך ה-Gateway
+  // (RECOMMENDATION_FEEDBACK_RECORD). owner (triggerState/profileGoalsState) נבחר ב-app.js
+  // לפי ה-engineId שיצר את ה-capability הזה.
+  async function writeRecordRecommendationFeedback(identity, command) {
+    var domain = 'feedback', op = 'recordRecommendationFeedback';
+    if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+    try {
+      var pr = await deps.recordFeedbackEvent(identity, command.surface, command.contextId, command.feedbackType);
+      return mapPersistenceResult(domain, op, identity, pr);
+    } catch (e) {
+      return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Permission matrix (B3 SPEC §12, locked to the four B2 engines) ──
   // ══════════════════════════════════════════════════════════════════
@@ -309,7 +337,8 @@
     todayNutrition: readTodayNutrition,
     triggerBudget: readTriggerBudget,
     canFire: readCanFire,
-    workoutPayload: readWorkoutPayload
+    workoutPayload: readWorkoutPayload,
+    recommendationFeedbackHistory: readRecommendationFeedbackHistory
   };
 
   var WRITE_OPS = {
@@ -318,7 +347,8 @@
     storeAdaptiveProposal: writeStoreAdaptiveProposal,
     markAdaptiveCheckCompleted: writeMarkAdaptiveCheckCompleted,
     recordTriggerOutcome: writeRecordTriggerOutcome,
-    updateDailyTriggerBudget: writeUpdateDailyTriggerBudget
+    updateDailyTriggerBudget: writeUpdateDailyTriggerBudget,
+    recordRecommendationFeedback: writeRecordRecommendationFeedback
   };
 
   var PERMISSIONS = {
@@ -335,14 +365,19 @@
       }
     },
     adaptiveTdeeEngine: {
-      ADAPTIVE_CHECK: { reads: ['nutritionActivityHistory', 'adaptiveProfile'], writes: ['storeAdaptiveProposal', 'markAdaptiveCheckCompleted'] },
+      // C2 (§12): recommendationFeedbackHistory/recordRecommendationFeedback מוגבלים ל-ADAPTIVE_CHECK
+      // בלבד (התיקוף המדויק שאושר ב-SPEC) — WEIGHT_CHANGED/ADAPTIVE_RECHECK אינם מורחבים (אין
+      // הרחבת scope מעבר למה שאושר).
+      ADAPTIVE_CHECK: { reads: ['nutritionActivityHistory', 'adaptiveProfile', 'recommendationFeedbackHistory'], writes: ['storeAdaptiveProposal', 'markAdaptiveCheckCompleted', 'recordRecommendationFeedback'] },
       WEIGHT_CHANGED: { reads: ['nutritionActivityHistory', 'adaptiveProfile'], writes: ['storeAdaptiveProposal', 'markAdaptiveCheckCompleted'] },
       ADAPTIVE_RECHECK: { reads: ['nutritionActivityHistory', 'adaptiveProfile'], writes: ['storeAdaptiveProposal', 'markAdaptiveCheckCompleted'] }
     },
     triggerEngine: {
+      // C2 (§12): recommendationFeedbackHistory/recordRecommendationFeedback הוספו כאן בלבד
+      // (DAILY_COACH_CHECK) — WORKOUT_COMPLETED/LOCAL_NOTIFICATION_SCHEDULE אינם מורחבים.
       DAILY_COACH_CHECK: {
-        reads: ['nutritionActivityHistory', 'adaptiveProfile', 'triggerProfile', 'todayNutrition', 'triggerBudget', 'canFire'],
-        writes: ['recordTriggerOutcome', 'updateDailyTriggerBudget']
+        reads: ['nutritionActivityHistory', 'adaptiveProfile', 'triggerProfile', 'todayNutrition', 'triggerBudget', 'canFire', 'recommendationFeedbackHistory'],
+        writes: ['recordTriggerOutcome', 'updateDailyTriggerBudget', 'recordRecommendationFeedback']
       },
       WORKOUT_COMPLETED: {
         reads: ['workoutPayload', 'triggerProfile'],

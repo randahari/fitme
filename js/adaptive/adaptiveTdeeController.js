@@ -27,6 +27,11 @@
   var DateUtils = (typeof module !== 'undefined' && module.exports)
     ? require('../core/dateUtils.js')
     : window.DateUtils;
+  // C2 (Rejection and Suppression Feedback): utility טהור משותף, אותה שכבה כמו
+  // AuthorityContract/DateUtils לעיל — ראה js/feedback/feedbackDomain.js.
+  var FeedbackDomain = (typeof module !== 'undefined' && module.exports)
+    ? require('../feedback/feedbackDomain.js')
+    : window.FeedbackDomain;
 
   var deps = null;
   function configure(injected) { deps = injected || {}; }
@@ -46,8 +51,18 @@
     var dueByTime = !last || DateUtils.daysBetween(DateUtils.getTodayKey(), last) >= AdaptiveTdeeDomain.ADAPT_CADENCE_DAYS;
 
     if (dueByTime) {
-      var prop = AdaptiveTdeeDomain.buildAdaptiveProposal(history, profile, deps.getTodayData());
-      if (prop.ready && prop.delta !== 0) await access.write.storeAdaptiveProposal({ proposal: prop });
+      // C2 (§8/§12/§13): recommendationFeedbackHistory מאושר רק ל-action=ADAPTIVE_CHECK (לא
+      // WEIGHT_CHANGED/ADAPTIVE_RECHECK, ר' StateAccess PERMISSIONS) — לכן הבדיקה מוגבלת לכך
+      // במפורש, ולעולם לא קוראת ל-capability שלא אושר עבורו.
+      var suppressed = false;
+      if (access.identity && access.identity.action === 'ADAPTIVE_CHECK') {
+        var feedbackHistory = access.read.recommendationFeedbackHistory();
+        suppressed = FeedbackDomain.evaluateSuppression(feedbackHistory, 'adaptiveTdee', 'adaptive-proposal', Date.now()).suppressed;
+      }
+      if (!suppressed) {
+        var prop = AdaptiveTdeeDomain.buildAdaptiveProposal(history, profile, deps.getTodayData());
+        if (prop.ready && prop.delta !== 0) await access.write.storeAdaptiveProposal({ proposal: prop });
+      }
     }
   }
 
@@ -147,14 +162,22 @@
     deps.renderHome();
     deps.renderSettings();
     deps.alertFn('היעד עודכן ל-' + p.newGoal.toLocaleString() + ' קל׳ ✓');
+    // C2 (§6/§14): רישום Accepted — לא חוסם/לא הופך את עדכון היעד שכבר הצליח.
+    try { if (deps.recordFeedbackFn) await deps.recordFeedbackFn('adaptiveTdee', 'adaptive-proposal', 'Accepted'); } catch (e) {}
   }
 
-  // זהה לחלוטין ל-dismissAdaptiveUpdate() המקורי — דוחים לשבוע, מסמנים שבדקנו היום.
+  // דוחים לשבוע, מסמנים שבדקנו היום — התנהגות מקורית משומרת (C2_SPEC v1.1 §22: Backward
+  // Compatibility). C2 (§6/§14/§25): מוסיף רישום Dismissed דרך ה-Gateway (RECOMMENDATION_FEEDBACK_RECORD)
+  // לצד ה-saveProfile() הקיים — לא מחליף אותו: lastTdeeUpdate אינו חלק מקטלוג ה-Gateway הסגור
+  // (אין operation ל"רק לדחות תאריך"), והחלפת saveProfile() הייתה מאבדת durability של הדחייה
+  // בפועל או מחייבת operation חדש בקטלוג — שניהם אסורים (CD-08/CD-09). סטייה מתועדת מהניסוח
+  // המילולי ב-Implementation Notes §25 (ראה דוח היישום).
   async function dismissAdaptiveUpdate() {
     var userProfile = deps.getUserProfile();
     if (!userProfile) return;
     userProfile.lastTdeeUpdate = DateUtils.getTodayKey();
     await deps.saveProfile();
+    try { if (deps.recordFeedbackFn) await deps.recordFeedbackFn('adaptiveTdee', 'adaptive-proposal', 'Dismissed'); } catch (e) {}
     deps.clearAdaptProposal();
     renderAdaptiveCard();
   }

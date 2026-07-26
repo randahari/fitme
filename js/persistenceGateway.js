@@ -142,6 +142,14 @@
     return { coachDay: payload.coachDay };
   });
 
+  // C2 (Rejection and Suppression Feedback, §11): durable surface זהה ל-triggerEventRepository
+  // (coachEvents[]) — לא נוצר שדה/collection חדש (Issue 2/CD-08/CD-09). repository נפרד רק
+  // כדי לשמר "כל operation מספק מיפוי שדות משלו" (B4, לעיל) לצורכי אבחון (getOperation), לא
+  // כי המנגנון עצמו שונה.
+  var recommendationFeedbackRepository = makeProfileMergeRepository('recommendationFeedbackRepository', function (payload) {
+    return { coachEvents: payload.coachEvents };
+  });
+
   var dayRepository = {
     id: 'dayRepository',
     execute: function (request) {
@@ -228,6 +236,18 @@
       requiresAuthority: true, acceptedAuthoritySources: ['USER_DECLARATION', 'USER_CONFIRMED_AI_ESTIMATE'],
       requiresIdempotencyKey: false, conflictPolicy: 'NONE', retryPolicy: 'TRANSIENT_ONLY',
       payloadValidator: validateDaySavePayload
+    },
+    // C2 (Rejection and Suppression Feedback, §11): append-style (coachEvents[], כמו
+    // TRIGGER_RECORD_EVENT) — דורש idempotencyKey (B4 §23 כלל 3). allowedOwners משתמש אך ורק
+    // בבעלים סגורים קיימים כבר (triggerState/profileGoalsState) — אין owner חדש (Issue 2,
+    // האופציה השמרנית ביותר מתוך שלוש חלופות שנשקלו ונדחו, ר' C2_SPEC v1.1 §11). requiresAuthority
+    // false: בוקקיפינג תפעולי, לא עובדה סמכותית (REM-003 §12/§13) — זהה ל-TRIGGER_RECORD_EVENT.
+    RECOMMENDATION_FEEDBACK_RECORD: {
+      domain: 'SYSTEM_METADATA', allowedOwners: ['triggerState', 'profileGoalsState'], repository: recommendationFeedbackRepository,
+      durableSurface: 'TRIGGER_EVENTS', requiresUser: true, requiresSessionGeneration: true,
+      requiresAuthority: false, acceptedAuthoritySources: [],
+      requiresIdempotencyKey: true, conflictPolicy: 'NONE', retryPolicy: 'TRANSIENT_ONLY',
+      payloadValidator: validateTriggerEventPayload
     }
   };
 

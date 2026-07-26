@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.40.0';
+const APP_VERSION = '2.41.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -285,7 +285,11 @@ AdaptiveTdeeController.configure({
   runEngineAction: function (trigger, engineId, action, payload) { return runEngineAction(trigger, engineId, action, payload); },
   coachNameFn: function () { return coachName(); },
   coachMessageFn: function (context) { return coachMessage(context); },
-  alertFn: function (msg) { alert(msg); }
+  alertFn: function (msg) { alert(msg); },
+  // C2 (Rejection and Suppression Feedback, §12/§14): יוצר StateAccess capability אד-הוק
+  // (adaptiveTdeeEngine/ADAPTIVE_CHECK) מחוץ למחזור ריצת ה-Engine, אותו דפוס בדיוק כמו
+  // habitEngine.js's "access || StateAccess.createEngineAccess(...)".
+  recordFeedbackFn: function (surface, contextId, feedbackType) { return recordRecommendationFeedback('adaptiveTdeeEngine', 'ADAPTIVE_CHECK', surface, contextId, feedbackType); }
 });
 
 // C1-WP8: מזריק DOM/state/callbacks. persistenceSummaryFn/scheduleAtFn/sendLocalNotificationFn
@@ -303,7 +307,10 @@ TriggerController.configure({
   sendLocalNotificationFn: function (title, body) { return sendLocalNotification(title, body); },
   coachNameFn: function () { return coachName(); },
   coachMessageFn: function (context) { return coachMessage(context); },
-  coachLineFn: function (kind, d) { return coachLine(kind, d); }
+  coachLineFn: function (kind, d) { return coachLine(kind, d); },
+  // C2 (Rejection and Suppression Feedback, §12/§14): יוצר StateAccess capability אד-הוק
+  // (triggerEngine/DAILY_COACH_CHECK) מחוץ למחזור ריצת ה-Engine — ר' הערה זהה ב-AdaptiveTdeeController.configure לעיל.
+  recordFeedbackFn: function (surface, contextId, feedbackType) { return recordRecommendationFeedback('triggerEngine', 'DAILY_COACH_CHECK', surface, contextId, feedbackType); }
 });
 
 // C1-WP9: מזריק appVersion/sessionLifecycle/state getters/persistenceSummaryFn (המשותף עם
@@ -1823,6 +1830,20 @@ PersistenceGateway.configure({
   }
 });
 
+// C2 (Rejection and Suppression Feedback, §12/§14): נקודת כניסה יחידה ליצירת EngineStateAccess
+// אד-הוק לכתיבת אירוע משוב מחוץ למחזור ריצת ה-Engine (מחווה ידנית של המשתמש — דחיית כרטיס
+// טריגר / דחיית או אישור הצעת TDEE) — אותו דפוס בדיוק כמו habitEngine.js's own
+// "access || StateAccess.createEngineAccess(...)". owner (triggerState/profileGoalsState)
+// נגזר בתוך deps.recordFeedbackEvent (StateAccess.configure, למטה) לפי ה-surface.
+function recordRecommendationFeedback(engineId, action, surface, contextId, feedbackType) {
+  if (!currentUser) return Promise.resolve(null);
+  var access = StateAccess.createEngineAccess({
+    engineId: engineId, action: action,
+    userId: currentUser.uid, sessionGeneration: SessionLifecycle.getGeneration(), runId: null
+  });
+  return access.write.recordRecommendationFeedback({ surface: surface, contextId: contextId, feedbackType: feedbackType });
+}
+
 // B3: מזריק את התלויות האמיתיות (userProfile, todayData וכו') לתוך js/stateAccess.js.
 // engineRegistry.js אינו נוגע בכך כלל — ה-configure קורה כאן, ב-app.js, לפני שאדפטר
 // כלשהו עשוי להיקרא בפועל. B4: persistHabitsView/persistPatternView/recordCoachEvent/
@@ -1928,7 +1949,40 @@ StateAccess.configure({
     });
   },
   checkCanFire: canFire,
-  getTriggerBudget: coachDay
+  getTriggerBudget: coachDay,
+  // C2 (Rejection and Suppression Feedback, §11/§14): אותו דפוס בדיוק כמו recordCoachEvent
+  // לעיל — מוטציית in-memory (userProfile.coachEvents, capped) ואז כתיבה field-scoped דרך
+  // ה-Gateway (RECOMMENDATION_FEEDBACK_RECORD). owner נגזר מה-surface: 'triggerState' לטריגרים,
+  // 'profileGoalsState' ל-Adaptive TDEE (שני הבעלים כבר קיימים בקטלוג הסגור — אין owner חדש,
+  // ר' C2_SPEC v1.1 §11 Issue 2). rollback בכשל durable — אותה עקביות כמו recordCoachEvent.
+  recordFeedbackEvent: function (identity, surface, contextId, feedbackType) {
+    if (!userProfile) return Promise.resolve(null);
+    ensureCoachMemory();
+    var snapshot = userProfile.coachEvents;
+    var entry = { kind: 'feedback', surface: surface, contextId: contextId, feedbackType: feedbackType, date: getTodayKey(), ts: Date.now() };
+    var nextEvents = snapshot.concat([entry]);
+    if (nextEvents.length > COACH_EVENTS_CAP) nextEvents = nextEvents.slice(-COACH_EVENTS_CAP);
+    userProfile.coachEvents = nextEvents;
+    var owner = (surface === 'adaptiveTdee') ? 'profileGoalsState' : 'triggerState';
+    return PersistenceGateway.persist({
+      requestId: 'feedback-' + identity.userId + '-' + (identity.runId || Date.now()) + '-' + surface + '-' + contextId,
+      operation: 'RECOMMENDATION_FEEDBACK_RECORD',
+      domain: 'SYSTEM_METADATA',
+      owner: owner,
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      payload: { coachEvents: nextEvents },
+      authority: null,
+      expectedVersion: null,
+      // append-style (B4 §23 כלל 3), גרנולריות זהה לדפוס הקיים של TRIGGER_RECORD_EVENT.
+      idempotencyKey: identity.userId + ':' + surface + ':' + contextId + ':' + feedbackType + ':' + getTodayKey(),
+      createdAt: Date.now(),
+      metadata: { engineId: identity.engineId, runId: identity.runId }
+    }).then(function (pr) {
+      if (userProfile && pr && pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') userProfile.coachEvents = snapshot;
+      return pr;
+    });
+  }
 });
 
 // B5: מזריק תלויות ל-derivedIntelligenceConsumer.js — קורא Habit/Pattern Derived

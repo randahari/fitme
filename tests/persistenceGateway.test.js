@@ -118,6 +118,17 @@ function daySaveRequest(env, overrides) {
     authority: AUTH_AI_CONFIRMED, expectedVersion: null, idempotencyKey: null, createdAt: 1, metadata: {}
   }, overrides);
 }
+// C2 (Rejection and Suppression Feedback, §11): same durable surface (coachEvents[]) as
+// triggerEventRequest above; allowedOwners is ['triggerState', 'profileGoalsState'] — no new owner.
+function recommendationFeedbackRequest(env, overrides) {
+  return Object.assign({
+    requestId: 'req-feedback-1', operation: 'RECOMMENDATION_FEEDBACK_RECORD', domain: 'SYSTEM_METADATA',
+    owner: 'triggerState', userId: 'user-1', sessionGeneration: env.getGeneration(),
+    payload: { coachEvents: [{ kind: 'feedback', surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' }] },
+    authority: null, expectedVersion: null,
+    idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18', createdAt: 1, metadata: {}
+  }, overrides);
+}
 
 // ══════════════════════════════════════════════════════════════════
 // ── Gateway Contract (1-10) ──
@@ -610,10 +621,10 @@ test('51-60. B1/B2/B3/REM-001/REM-002/REM-003 regression suites are unaffected b
 // ══════════════════════════════════════════════════════════════════
 // ── Additional: diagnostics / catalog closure ──
 // ══════════════════════════════════════════════════════════════════
-test('closed catalog: listOperations() returns exactly the six approved operations', () => {
+test('closed catalog: listOperations() returns exactly the seven approved operations (C2 adds RECOMMENDATION_FEEDBACK_RECORD)', () => {
   assert.deepEqual(PersistenceGateway.listOperations().sort(), [
     'DERIVED_ADAPTIVE_PROPOSAL_APPLY', 'DERIVED_HABITS_REPLACE', 'DERIVED_PATTERNS_REPLACE',
-    'SOURCE_HISTORY_SAVE_DAY', 'TRIGGER_RECORD_EVENT', 'TRIGGER_UPDATE_BUDGET'
+    'RECOMMENDATION_FEEDBACK_RECORD', 'SOURCE_HISTORY_SAVE_DAY', 'TRIGGER_RECORD_EVENT', 'TRIGGER_UPDATE_BUDGET'
   ].sort());
 });
 
@@ -622,11 +633,85 @@ test('getOperation() exposes no function references (diagnostics-safe)', () => {
   Object.keys(def).forEach((k) => assert.notEqual(typeof def[k], 'function'));
 });
 
-test('no B4/B5/Recommendation-Engine vocabulary in this module', () => {
+// C2_SPEC v1.1 §11 (Issue 2) approved RECOMMENDATION_FEEDBACK_RECORD as a legitimate, minimal
+// catalog extension — the bare word "recommendation" is therefore no longer scope-creep evidence
+// by itself. The genuinely dangerous terms (a real ranking/ML-style Recommendation Engine, cross-
+// engine transactions, distributed rollback) remain banned; C2 introduces none of them.
+test('no B5/Recommendation-Engine-ranking vocabulary in this module (bare "recommendation" is expected — see C2)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../js/persistenceGateway.js'), 'utf8');
-  ['confidenceThreshold', 'ranking', 'recommendation', 'crossEngineTransaction', 'distributedRollback'].forEach((needle) => {
+  ['confidenceThreshold', 'ranking', 'crossEngineTransaction', 'distributedRollback'].forEach((needle) => {
     assert.equal(src.toLowerCase().indexOf(needle.toLowerCase()), -1, needle);
   });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ── C2 (Rejection and Suppression Feedback) — RECOMMENDATION_FEEDBACK_RECORD ──
+// ══════════════════════════════════════════════════════════════════
+// Note: PersistenceGateway's idempotency ledger is module-level (persists across tests within
+// this file's single require()'d singleton, exactly like the module's own production behavior —
+// see js/persistenceGateway.js's idempotencyLedger). Each test below therefore uses its own
+// unique idempotencyKey so tests remain independent of execution order and of each other.
+test('C2-1. a valid feedback request resolves and writes into the existing coachEvents surface (no new field)', async () => {
+  const env = makeEnv(); configure(env);
+  const result = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-1' }));
+  assert.equal(result.status, 'SUCCESS');
+  assert.deepEqual(Object.keys(env.calls.mergeUserFields[0].fields), ['coachEvents']);
+  assert.deepEqual(env.store.coachEvents, [{ kind: 'feedback', surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' }]);
+});
+
+test('C2-2. both existing owners (triggerState, profileGoalsState) are allowed; no other owner is', async () => {
+  const env = makeEnv(); configure(env);
+  const asTrigger = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { owner: 'triggerState', requestId: 'r1', idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-2a' }));
+  assert.equal(asTrigger.status, 'SUCCESS');
+  const asAdaptive = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { owner: 'profileGoalsState', requestId: 'r2', idempotencyKey: 'user-1:adaptiveTdee:adaptive-proposal:Dismissed:2026-07-18:c2-2b' }));
+  assert.equal(asAdaptive.status, 'SUCCESS');
+  const asHabit = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { owner: 'habitState', requestId: 'r3', idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-2c' }));
+  assert.equal(asHabit.status, 'REJECTED');
+  assert.equal(asHabit.error.code, 'OWNER_NOT_ALLOWED');
+});
+
+test('C2-3. no new owner identifier was introduced — allowedOwners is a subset of {triggerState, profileGoalsState}', () => {
+  const def = PersistenceGateway.getOperation('RECOMMENDATION_FEEDBACK_RECORD');
+  assert.deepEqual(def.allowedOwners.slice().sort(), ['profileGoalsState', 'triggerState']);
+});
+
+test('C2-4. an idempotency key is required (append-style, same rule as TRIGGER_RECORD_EVENT)', async () => {
+  const env = makeEnv(); configure(env);
+  const result = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { idempotencyKey: null }));
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'IDEMPOTENCY_KEY_REQUIRED');
+});
+
+test('C2-5. a replayed idempotency key with an identical payload is a safe NO_OP', async () => {
+  const env = makeEnv(); configure(env);
+  const key = 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-5';
+  const first = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { idempotencyKey: key }));
+  assert.equal(first.status, 'SUCCESS');
+  const replay = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { idempotencyKey: key }));
+  assert.equal(replay.status, 'NO_OP');
+  assert.equal(env.calls.mergeUserFields.length, 1, 'the repository must not execute again for an identical replay');
+});
+
+test('C2-6. requiresAuthority is false — pure operational bookkeeping, matching TRIGGER_RECORD_EVENT/TRIGGER_UPDATE_BUDGET', async () => {
+  const env = makeEnv(); configure(env);
+  const result = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { authority: null, idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-6' }));
+  assert.equal(result.status, 'SUCCESS', 'no authority object should be required to persist');
+  const def = PersistenceGateway.getOperation('RECOMMENDATION_FEEDBACK_RECORD');
+  assert.equal(def.requiresAuthority, false);
+});
+
+test('C2-7. a domain mismatch is rejected (must be SYSTEM_METADATA)', async () => {
+  const env = makeEnv(); configure(env);
+  const result = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { domain: 'USER_PROFILE', idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-7' }));
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'DOMAIN_MISMATCH');
+});
+
+test('C2-8. a repository failure is retried (transient) and never reported as success', async () => {
+  const env = makeEnv({ mergeFailTimes: 1, mergeFailCode: 'unavailable' }); configure(env);
+  const result = await PersistenceGateway.persist(recommendationFeedbackRequest(env, { idempotencyKey: 'user-1:trigger:forgot-eat:Dismissed:2026-07-18:c2-8' }));
+  assert.equal(result.status, 'SUCCESS');
+  assert.equal(env.calls.mergeUserFields.length, 2, 'one failed attempt + one successful retry');
 });
