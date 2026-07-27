@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-26
+**Last Updated:** 2026-07-27
 
 ---
 
@@ -425,6 +425,113 @@ refactored.
 
 ---
 
+# D-Series — Coach Decision Policy
+
+## D1 — Coach Intelligence Translation Model
+
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-07-27
+**Production Code Changes:** None
+
+### Canonical Decision
+
+`docs/specs/D1_SPEC_v1.0.md` is the canonical decision-policy specification translating FITME's
+approved governance and coaching philosophy (AI Constitution, Product Bible, Coach Bible, Coach
+Knowledge Base, Intelligence & Relationship Philosophy) into deterministic decision rules covering
+Decision Inputs, User State Model, Opportunity Detection, Intervention Eligibility, Prioritization,
+Recommendation Policy, Initiative Policy, Silence Policy, Evidence Requirements, Memory Usage,
+Personalization, Authority Boundaries and Canonical Decision Output. D1 defines policy only; it
+does not define architecture, prompts, APIs, UI or implementation, and it does not itself implement
+the Recommendation Engine (TASK-004), Initiative Engine (TASK-005) or Decision Engine (TASK-006).
+
+### Deliverables
+
+- ✅ Approved `docs/specs/D1_SPEC_v1.0.md`
+- ✅ 17 Units expanded into deterministic SHALL/SHALL NOT decision rules, each traceable to an approved canonical source
+- ✅ 5 Canonical Decision Required (CDR) items recorded for gaps that could not be derived from an approved canonical source
+- ✅ No architecture, prompt, API, UI or implementation decisions made
+- ✅ No code, tests, Firestore schema, Firestore Rules or Firebase Functions changes
+- ✅ Product/AI Architect review and canonical approval complete
+
+---
+
+## D2 — Coach Decision Pipeline Specification
+
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-07-27
+**Production Code Changes:** None
+
+### Canonical Decision
+
+`docs/specs/D2_SPEC_v1.0.md` is the canonical orchestration specification governing how coach
+decisions flow from input through execution: the single canonical Pipeline (Stage ordering, Stage
+Contracts, Pipeline Invariants, Decision Lifecycle, Engine Responsibilities, Exceptional Flows, and
+Pipeline Traceability) that independently-built implementations of the Recommendation Engine
+(TASK-004), Initiative Engine (TASK-005) and Decision Engine (TASK-006) — together with the
+cross-cutting Safety Layer and Memory Layer — must conform to. D2 defines orchestration only; it
+does not define coaching, recommendation, evidence, memory, priority, personalization or safety
+policy (D1's, or an earlier canonical document's, exclusive territory), does not define engineering
+implementation, and does not itself implement TASK-004, TASK-005 or TASK-006.
+
+### Deliverables
+
+- ✅ Approved `docs/specs/D2_SPEC_v1.0.md`
+- ✅ 12 Units (00–11) plus Consolidated Canonical Decision Requirements, each traceable to D1 or an
+  approved canonical document
+- ✅ 1 Canonical Decision Required (CDR) item raised during specification derivation, resolved by
+  Product/AI Architecture decision during Canonical Review; D1's own open CDR items (CDR-1, CDR-2,
+  CDR-4) remain inherited and unresolved, unaffected by D2's scope
+- ✅ No architecture, prompt, API, UI or implementation decisions made
+- ✅ No code, tests, Firestore schema, Firestore Rules or Firebase Functions changes
+- ✅ Product/AI Architect review and canonical approval complete
+
+---
+
+## D3 — Coach Decision System Architecture
+
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-07-27
+**Production Code Changes:** None
+
+### Canonical Decision
+
+`docs/specs/D3_SPEC.md` is the canonical architecture specification governing how D1's decision
+policy and D2's orchestration pipeline are realized inside FITME's existing system architecture:
+architectural responsibilities, ownership, runtime role, and integration boundaries for the Coach
+Decision System's six internal collaborators (Memory Layer, Recommendation Engine, Initiative
+Engine, Decision Engine, Safety Layer, Expression) and its Internal Pipeline Orchestrator, all
+registered as a single Composite Engine in the existing B2 Engine Registry. D3 defines architecture
+only; it does not define coaching, recommendation, evidence, memory, priority, personalization or
+safety policy (D1's, or an earlier canonical document's, exclusive territory), does not define
+engineering implementation, and does not itself implement TASK-004, TASK-005 or TASK-006.
+
+### Deliverables
+
+- ✅ Approved `docs/specs/D3_SPEC.md` (v1.2)
+- ✅ 17 sections positioning D1's and D2's logical components against the existing architecture —
+  the Engine Registry (B2), StateAccess (B3), the Persistence Gateway (B4), the Derived Intelligence
+  Consumer (B5), the module layering and native-portability boundary (C1), the canonical event model
+  (C3), and the Typed Memory Server Write Path (C4) — each traceable to D1, D2, or an approved
+  B/C-series specification
+- ✅ 6 Canonical Decisions issued by the Head of Product and AI Architect across Canonical Review,
+  resolving every architectural composition question raised during authoring: Composite Engine
+  registration (Decision 1), reuse of the existing Trigger Catalog with no new trigger type
+  (Decision 2), exclusive Memory Layer ownership of Pipeline Context Assembly (Decision 3),
+  separation of Coaching History from Typed Memory (Decision 4), a platform-neutral, immutable
+  Delivery Intent produced by Expression (Decision 5), and the Coach Runtime as the sole
+  platform-mapping owner across Web and future Native clients (Decision 6)
+- ✅ No architecture invented beyond composing D1 and D2 with the approved system; no product or
+  coaching-logic policy introduced
+- ✅ No code, tests, Firestore schema, Firestore Rules or Firebase Functions changes
+- ✅ Product/AI Architect review and canonical approval complete
+
+---
+
+**D-Series — Complete.** D1, D2 and D3 are all approved and Canonical. This concludes the D-series
+architecture phase.
+
+---
+
 # Blocked Until Remediation Foundations Are Complete
 
 ## TASK-004 — Recommendation Engine
@@ -463,6 +570,9 @@ C1 — Modularization and Tests is approved, implemented (WP1–WP11, v2.25.0–
 C2 — Rejection and Suppression Feedback is approved, implemented (v2.41.0) and closed.
 C3 — Event Model Decision is approved and closed (canonical decision, no production code changes).
 C4 — Typed Memory Server Write Path is approved, implemented and closed (server-side only, no `APP_VERSION` change).
+D1 — Coach Intelligence Translation Model is approved and Canonical (decision-policy specification only, no production code changes).
+D2 — Coach Decision Pipeline Specification is approved and Canonical (orchestration specification only, no production code changes).
+D3 — Coach Decision System Architecture is approved and Canonical (architecture specification only, no production code changes).
 
-Current Work Item: none — C4 closure complete. Phase C (C1–C4) is complete.
-Next Work Item: not yet named. No Phase C item beyond C4 is currently defined in the Architecture Remediation Plan; the next canonical task is pending Product/Architecture direction.
+Current Work Item: None. Phase C (C1–C4) and the D-series (D1–D3) are complete; the D-series architecture phase is closed.
+Next Work Item: Pending Product/Architecture direction — no next canonical work item is currently named.
