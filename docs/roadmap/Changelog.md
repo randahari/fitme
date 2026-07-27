@@ -25,6 +25,7 @@
 - 🟢 C2 — Rejection and Suppression Feedback approved, implemented, verified and closed
 - 🟢 C3 — Event Model Decision approved and closed (canonical decision, no production code changes)
 - 🟢 C4 — Typed Memory Server Write Path approved, implemented, verified and closed (server-side only, no `APP_VERSION` change)
+- 🟢 FITME Intelligence & Relationship Philosophy v1.1 approved and Canonical, integrated into project governance (docs-only)
 - ⏭️ Next engineering task: not yet named — Phase C (C1–C4) complete; pending Product/Architecture direction
 
 ---
@@ -191,6 +192,28 @@ C3 — Event Model Decision is approved and closed (2026-07-26, canonical decisi
 code changes). C4 — Typed Memory Server Write Path is approved, implemented and closed
 (2026-07-26). Phase C (C1–C4) is complete; the next canonical task is pending Product/Architecture
 direction.
+
+---
+
+## Governance — FITME Intelligence & Relationship Philosophy v1.1
+
+**Date:** 2026-07-26
+**Status:** Documentation-only, approved and Canonical
+
+### Summary
+
+`docs/governance/FITME_Intelligence_and_Relationship_Philosophy_v1.0.md` (canonical content, revised to v1.1 during editorial review) is approved as a Canonical governance document. It defines FITME's permanent intelligence and relationship philosophy — how FITME thinks, how it understands people, and the kind of relationship it is designed to build with every user — independent of feature, implementation or architecture detail.
+
+### Verification
+
+- No application code, Firestore schema, or product behaviour changes.
+- No Coach Bible, Coach Knowledge Base, Product Bible, AI Constitution, Architecture or Engineering Workflow changes.
+- No Firestore rules, Firebase Functions, or `APP_VERSION` changes.
+
+### Next
+
+Governance: none — this document's own Governance section (Canonical Authority, Document Scope, Authority Hierarchy, Amendment Process, Interpretation Rules) remains headings-only pending policy content to be supplied separately. Because that content (specifically Authority Hierarchy) is not yet available, this entry does not update the Source of Truth hierarchy in `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` §3 or the Governance References section of the Product Bible — both remain open follow-ups.
+Engineering: next task remains unnamed, pending Product/Architecture direction (unaffected by this documentation work).
 
 ---
 

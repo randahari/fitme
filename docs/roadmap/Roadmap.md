@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-23
+**Last Updated:** 2026-07-26
 
 ---
 
@@ -31,6 +31,15 @@
 **Completion Date:** 2026-07-23
 
 `docs/governance/FITME_Coach_Knowledge_Base.md` v2.0 is complete. Its Canonical Rules, Knowledge Map, Canonical Topic Structure and Knowledge Authoring Standard are approved, and all 36 Topics across all four Parts — Human Nature (01–10), Health Psychology (11–20), The FITME Coach (21–30) and Product Translation (31–36) — are authored and Canonical. Topic 01 — "Why do people fail?" (v1.1) remains the approved Gold Standard; Topics 02–36 were authored to match its structure, depth and writing style, each grounded in its corresponding FITME Coach Bible chapter(s). No Topics remain pending. This is a separate workstream from engineering delivery and does not change engineering order or priorities — C3 and C4 are both closed, completing Phase C (C4 closed 2026-07-26). Documentation-only change; no product behaviour, UX, or code affected.
+
+---
+
+## FITME Intelligence & Relationship Philosophy v1.1
+
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-07-26
+
+`docs/governance/FITME_Intelligence_and_Relationship_Philosophy_v1.0.md` (canonical content, revised to v1.1 during editorial review) is the canonical intelligence and relationship philosophy document, defining how FITME understands people and the kind of relationship it is designed to build with every user — independent of feature, implementation or architecture detail. Documentation-only change; no product behaviour, UX, or code affected. The document's own Governance section (Canonical Authority, Document Scope, Authority Hierarchy, Amendment Process, Interpretation Rules) is currently headings-only pending separately-supplied policy content; its ranking in the Source of Truth hierarchy relative to the AI Constitution, Product Bible and Coach Bible has not yet been decided and is not reflected in `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` §3 or the Product Bible's Governance References by this entry.
 
 ---
 
