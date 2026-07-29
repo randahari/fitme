@@ -153,10 +153,15 @@ test('no repository/adapter is duplicated or re-implemented by the WP4 modules; 
 // reference any WP10 module name. C2 (Rejection and Suppression Feedback) legitimately
 // added js/feedback/ (feedbackDomain.js — a shared pure utility, same tier as js/domain/,
 // js/core/) after C1 closed — the closed set below was updated in the same commit.
-test('no WP11+/post-C1 vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6/WP7/WP8/WP9/WP10 and C2 directories were added', () => {
+// TASK-004 legitimately added js/coachDecisionSystem/ (recommendationCategories.js/
+// recommendationEngine.js/memoryLayer.js/internalPipelineOrchestrator.js/
+// registerCoachDecisionSystem.js — the Composite Engine's internal collaborators, D3 §17
+// Decision 1) after C2 closed — the closed set below was updated in the same commit. The
+// three WP4 modules themselves must still never reference any of these new module names.
+test('no WP11+/post-C1 vocabulary was introduced into the WP4 modules; only the C1-WP5A/WP6/WP7/WP8/WP9/WP10, C2, and TASK-004 directories were added', () => {
   const dirs = fs.readdirSync(path.join(__dirname, '../js'));
   assert.deepEqual(dirs.filter((d) => fs.statSync(path.join(__dirname, '../js', d)).isDirectory()).sort(),
-    ['adaptive', 'adapters', 'app', 'coach', 'core', 'domain', 'engines', 'feedback', 'nutrition', 'repositories', 'trigger', 'ui'].sort());
+    ['adaptive', 'adapters', 'app', 'coach', 'coachDecisionSystem', 'core', 'domain', 'engines', 'feedback', 'nutrition', 'repositories', 'trigger', 'ui'].sort());
   const appDirFiles = fs.readdirSync(path.join(__dirname, '../js/app')).sort();
   assert.deepEqual(appDirFiles, ['authSessionController.js', 'bootstrapController.js', 'runtimeState.js']);
   [fs.readFileSync(path.join(__dirname, '..', 'js/app/runtimeState.js'), 'utf8'),

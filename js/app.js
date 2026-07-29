@@ -2027,7 +2027,11 @@ function runAppReadyEngines() {
         habitEngine: 'RECOMPUTE',
         patternEngine: 'RECOMPUTE',
         adaptiveTdeeEngine: 'ADAPTIVE_CHECK',
-        triggerEngine: 'DAILY_COACH_CHECK'
+        triggerEngine: 'DAILY_COACH_CHECK',
+        // TASK-004: ה-Composite Engine היחיד (D3 §17 Decision 1). action בודד, כמו שאר
+        // ה-engines לעיל — internalPipelineOrchestrator.run מתעלם מ-action/payload (D2
+        // Stage 1-2 Context Assembly אינו תלוי-action).
+        coachDecisionSystem: 'DECISION_PASS'
       },
       context: engineRunContextBase()
     }).catch(function () {});
@@ -2060,3 +2064,9 @@ function runAuthSessionReadyEngines() {
 // docs/specs/C1_SPEC_v1.0.md §C1-WP9.
 // ══════════════════════════════════════════════════════════════════
 RegisterEngines.registerAll();
+
+// TASK-004: רישום יחיד של ה-Composite Engine (D3 §17 Decision 1) — אחרי ארבעת ה-engines
+// הקיימים לעיל, באותו דפוס בדיוק (registerAll() פעם אחת, בזמן composition). אינו תלוי
+// ב-configure() משלו — internalPipelineOrchestrator/memoryLayer נשענים אך ורק על
+// StateAccess/DerivedIntelligenceConsumer הקיימים, שכבר קונפגו לעיל.
+RegisterCoachDecisionSystem.registerAll();

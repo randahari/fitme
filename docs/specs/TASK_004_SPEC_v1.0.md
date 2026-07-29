@@ -11,10 +11,10 @@
 
 # Status
 
--   Status: CANONICAL READY
+-   Status: DONE
 -   Authority: Head of Product + AI Architect
 -   Engineering Authority: Lead Engineer (Claude Code)
--   Implementation Status: NOT STARTED
+-   Implementation Status: COMPLETE
 -   Repository: FITME
 
 ## Purpose
@@ -44,7 +44,7 @@ Decision owner: Head of Product + AI Architect.
 ## Constraints
 
 -   The Status block must be updated whenever lifecycle state changes; it must not be left stale.
--   "Implementation Status" must reflect the repository's actual state. No Recommendation Engine code exists in the repository (see Repository Baseline), so "NOT STARTED" is accurate.
+-   "Implementation Status" must reflect the repository's actual state. `js/coachDecisionSystem/` now exists and is wired into `js/app.js`/`index.html`/`sw.js` (see Closure Record), so "COMPLETE" is accurate.
 
 ## Forbidden Changes
 
@@ -155,7 +155,7 @@ Downstream consumer: the Decision Engine (D2 Stages 7–9) and, ultimately, Expr
 
 ## Repository Gaps
 
-No prior implementation of this engine exists in the repository; this is the baseline state, not a defect, and is consistent with "Implementation Status: NOT STARTED."
+None remaining — at spec-authoring time no prior implementation of this engine existed in the repository (the baseline state, not a defect, consistent with "Implementation Status: NOT STARTED"); the engine is now implemented (`js/coachDecisionSystem/`, see Closure Record).
 
 ## Engineering Notes
 
@@ -200,11 +200,12 @@ Bounds what this specification covers so that engineering and review effort are 
 -   **Memory**: `js/memory.js` (client read/write, `CLIENT_WRITABLE_SOURCES=['user_stated','migrated']`) and `functions/typedMemoryServerWrite.js` (server write-only, no read contract).
 -   **Feedback/Suppression**: `js/feedback/feedbackDomain.js` — one module, both `classifyFeedback()` and `evaluateSuppression()`.
 -   **Engine ownership**: per D3, this engine is not independently registered in `js/engineRegistry.js` the way `habitEngine`/`patternEngine`/`adaptiveTdeeEngine`/`triggerEngine` currently are — it is an internal collaborator of one Composite Engine.
--   **Ranking / prioritization / explanation generation / lifecycle**: no repository precedent exists for these as engine capabilities; they are new, to be built per D2's Stage Contracts (Stages 6–10) within the constraints Prioritization/Winner Selection/Decision Formation already assign to the Decision Engine, not this one.
+-   **Ranking / prioritization**: per Ranking Policy (Canonical Decision, Stage 5), this engine builds no ranking/prioritization capability of any kind — the Decision Engine exclusively owns prioritization, winner selection, tie-breaking, recommendation budget, and decision formation.
+-   **Explanation generation / lifecycle**: no repository precedent exists for these as engine capabilities; they are new, to be built per D2's Stage Contracts (Stages 6–10).
 
 ## Repository Evidence Required
 
-Persistence/memory/feedback/suppression/engine-ownership are each cited above. Ranking/prioritization/explanation-generation/lifecycle are new-capability items with no existing module.
+Persistence/memory/feedback/suppression/engine-ownership are each cited above. Explanation-generation/lifecycle are new-capability items with no existing module. Ranking/prioritization is resolved (Stage 5) as a capability this engine does not build, rather than a new capability to construct.
 
 ## Responsibilities
 
@@ -212,7 +213,7 @@ Each item is expanded elsewhere in this document (Functional Scope, Ranking Fram
 
 ## Constraints
 
-The listed items are the complete scope; adding an item here requires Product/Architecture sign-off, not engineering judgment. Per D2 Unit 07, "ranking"/"prioritization" as full Decision-Engine-level concepts (D2 Stages 7–8, "Prioritization"/"Winner Selection") are not owned by the Recommendation Engine — only its own internal candidate-ordering (feeding Stage 7) is in this task's scope, per Ranking Framework and Recommendation Evaluation Pipeline below.
+The listed items are the complete scope; adding an item here requires Product/Architecture sign-off, not engineering judgment. Per D2 Unit 07, "ranking"/"prioritization" as full Decision-Engine-level concepts (D2 Stages 7–8, "Prioritization"/"Winner Selection") are not owned by the Recommendation Engine. Per Ranking Policy (Canonical Decision, Stage 5), this engine performs no internal candidate-ordering of any kind — it produces unordered, well-formed candidates only, per Ranking Framework and Recommendation Evaluation Pipeline below.
 
 ## Repository Gaps
 
@@ -228,7 +229,7 @@ Do not add or remove items from this list without Product/Architecture approval.
 
 ## Definition of Complete
 
-All items are traceable to exactly one downstream section that defines them in full. Ranking weights and explanation policy are marked Product Decision Pending in their owning sections rather than left undefined.
+All items are traceable to exactly one downstream section that defines them in full. Ranking Policy and Explainability Policy are resolved per Canonical Decisions (Stages 5–6, Head of Product + AI Architect) in their owning sections.
 
 ## Claude Fill Instructions
 
@@ -588,7 +589,7 @@ Defines what "success" for this task looks like in terms that can be checked aga
 
 The AI Constitution (§11.2) states every recommendation must simultaneously: (1) improve the user's decision, (2) strengthen the coaching relationship, (3) increase probability of future adherence — *"If a recommendation improves nutrition but weakens trust... it is not a successful recommendation."* Intelligence & Relationship Philosophy Ch.4: *"Before making any recommendation FITME should be able to answer one question: 'How does this improve this person's future?' If no meaningful answer exists, the recommendation should not be made."*
 
-These are canonical qualitative objectives, not yet translated into measurable, observable, repository-traceable success metrics (e.g., no stated target for acceptance rate, adherence lift, or trust/relationship-health proxy metric).
+Resolved by Canonical Decision — TASK-004 Stage 1 (Head of Product + AI Architect): the canonical Product Objective is that the Recommendation Engine generates recommendation candidates that improve the user's next decision, strengthen the coaching relationship, and improve long-term adherence; it does not perform final winner selection. This objective is stated qualitatively, consistent with the Constitution/Philosophy citations above — no additional numeric target or proxy metric was provided, and none is required beyond this canonical statement.
 
 ## Responsibilities
 
@@ -599,9 +600,9 @@ Product/Architecture author the measurable objectives; Engineering may only add 
 -   Every objective must have a corresponding entry in Acceptance Criteria and, where applicable, a Required Test.
 -   An objective that cannot be observed in the repository is not yet valid.
 
-## Product Decision Pending
+## Product Decision Pending (Resolved)
 
-No measurable objective (numeric target or proxy metric) has been committed for this task; only the qualitative Constitution/Philosophy statements above exist. Decision owner: Head of Product.
+Resolved by Canonical Decision — TASK-004 Stage 1 (Head of Product + AI Architect): see Existing Canonical Documentation above for the canonical Product Objective statement.
 
 ## Traceability
 
@@ -613,11 +614,11 @@ Engineering must not invent objectives on Product's behalf.
 
 ## Definition of Complete
 
-Every objective is measurable, observable, repository-traceable, and mirrored in Acceptance Criteria. Not yet satisfied — Product Decision Pending.
+The canonical Product Objective is fixed (Stage 1, above); it is stated qualitatively rather than as a numeric target, which is what Product/Architecture approved. It is now mirrored in Acceptance Criteria (Product), verified against the completed implementation.
 
 ## Claude Fill Instructions
 
-Do not author objectives. Record the absence as an open Product input required before READY.
+Do not alter the canonical Product Objective (Stage 1). Mirror it in Acceptance Criteria once implementation exists to verify against.
 
 # Non Goals
 
@@ -677,17 +678,17 @@ Same set as Scope (D2 Unit 07 Stage Contracts, D3 §17, C2, C4, B4), filtered pe
 
 **1. Responsibilities** — Purpose: define this engine's single decision responsibility. Owner: this engine (Recommendation Engine collaborator). Inputs: Pipeline Context (D2 Stage 2, Memory Layer output). Outputs: a one-sentence responsibility statement (see Purpose section above). Consumers: this document's own Scope/Functional Scope sections. Dependencies: D2 Stage assignment (Unit 07). Repository evidence: none (policy-level, not code).
 
-**2. Execution flow** — Purpose: fix invocation order. Owner: D3's Internal Pipeline Orchestrator (this engine is invoked by the orchestrator, per D2's Stage sequence). Inputs: current Decision Pass state at Stage 6. Outputs: control returns to the orchestrator for Stage 7 (Decision Engine's Prioritization). Consumers: Decision Engine. Dependencies: D2 Stages 1–5 must have completed for the current cycle. Repository evidence: Repository Gap — the Internal Pipeline Orchestrator does not exist in the repository (see Relationship to Previous Work).
+**2. Execution flow** — Purpose: fix invocation order. Owner: D3's Internal Pipeline Orchestrator (this engine is invoked by the orchestrator, per D2's Stage sequence). Inputs: current Decision Pass state at Stage 6. Outputs: control returns to the orchestrator for Stage 7 (Decision Engine's Prioritization). Consumers: Decision Engine. Dependencies: D2 Stages 1–5 must have completed for the current cycle. Repository evidence: `js/coachDecisionSystem/internalPipelineOrchestrator.js` (implemented; see Relationship to Previous Work and Closure Record). Stages 4–5 are not built by TASK-004 (Decision-Engine-owned/no canonical Decision-Window detection rule exists — see Closure Record, Follow-up Work Items), so the live path currently yields empty candidates every cycle; `runForOpportunity()` exposes Stage 6 directly for a real `EligibleOpportunity` once one exists.
 
 **3. Engine ownership** — Purpose/Owner: per D3 §17 Decision 1, this engine is an internal collaborator of the single Composite Engine registered in `js/engineRegistry.js`; it is not independently registered (unlike `habitEngine`/`patternEngine`/`adaptiveTdeeEngine`/`triggerEngine`, which each have their own `registerEngines.js` entry). Repository evidence: `js/engines/registerEngines.js` (existing pattern, not replicated for this engine), D3_SPEC.md §17.
 
-**4. Ranking** — see Ranking Framework (Ranking Policy is Product Decision Pending).
+**4. Ranking** — see Ranking Framework (Ranking Policy resolved — Canonical Decision Stage 5: this engine performs no internal ranking).
 
-**5. Prioritization** — Purpose: per D2 Unit 07, full Prioritization (Stage 7) is a Decision Engine responsibility, not this engine's. Owner: Decision Engine (TASK-006, out of scope here). This engine's role is limited to producing well-formed, internally-ordered candidates for Stage 7 to prioritize across engine types (Recommendation vs. Initiative). Repository evidence: D2_SPEC_v1.0.md Unit 07.
+**5. Prioritization** — Purpose: per D2 Unit 07, full Prioritization (Stage 7) is a Decision Engine responsibility, not this engine's. Owner: Decision Engine (TASK-006, out of scope here). Per Ranking Policy (Canonical Decision, Stage 5), this engine's role is limited to producing well-formed, unordered candidates for Stage 7 to prioritize across engine types (Recommendation vs. Initiative) — no internal priority score or semantic ordering of any kind is permitted. Repository evidence: D2_SPEC_v1.0.md Unit 07.
 
-**6. Explanation generation** — see Explainability (Explainability Policy is Product Decision Pending). Consumer: Expression collaborator (`js/coach/coachPresenter.js`/`js/trigger/triggerController.js`, per D3 §6.2).
+**6. Explanation generation** — see Explainability (Explainability Policy resolved — Canonical Decision Stage 6). Consumer: Expression collaborator (`js/coach/coachPresenter.js`/`js/trigger/triggerController.js`, per D3 §6.2).
 
-**7. Lifecycle** — see Runtime Ownership. Owner: this engine's own internal state; overall Composite Engine lifecycle owned by `js/engineRegistry.js` + D3's Internal Pipeline Orchestrator (not built — Repository Gap).
+**7. Lifecycle** — see Runtime Ownership. Owner: this engine's own internal state; overall Composite Engine lifecycle owned by `js/engineRegistry.js` + D3's Internal Pipeline Orchestrator (`js/coachDecisionSystem/internalPipelineOrchestrator.js`, built).
 
 **8. Integration contracts** — see Canonical Contracts and Integration Map.
 
@@ -719,11 +720,11 @@ A capability table row is not complete until all seven columns are addressed or 
 
 ## Repository Gaps
 
-Internal Pipeline Orchestrator does not exist.
+None remaining — the Internal Pipeline Orchestrator now exists (`js/coachDecisionSystem/internalPipelineOrchestrator.js`).
 
-## Product Decision Pending
+## Product Decision Pending (Resolved)
 
-Ranking Policy (see Ranking Framework); Explainability Policy (see Explainability).
+Ranking Policy (Stage 5 — see Ranking Framework) and Explainability Policy (Stage 6 — see Explainability) are resolved per the Canonical Decisions (Head of Product + AI Architect).
 
 ## Traceability
 
@@ -765,7 +766,7 @@ Per D3 (§17, Decision 1), this engine is invoked internally by the Internal Pip
 
 ## Repository Evidence Required
 
-Neither the Composite Engine nor the Internal Pipeline Orchestrator exists in the repository yet (Repository Gap; Implementation Status: NOT STARTED). Per CD-03/CD-04, building both is in TASK-004's scope (see Relationship to Previous Work).
+None remaining — both now exist (`js/coachDecisionSystem/registerCoachDecisionSystem.js`, `internalPipelineOrchestrator.js`), per CD-03/CD-04 (TASK-004's scope, see Relationship to Previous Work). The live `run()` path currently yields empty candidates every cycle, since Stage 3/4/5 (Opportunity Detection/Evidence/Eligibility Evaluation) are not built by this task — see Closure Record, Follow-up Work Items.
 
 ## Inputs
 
@@ -785,7 +786,7 @@ Synchronous within a single Decision Pass cycle, sequenced by the Internal Pipel
 
 ## Dependencies
 
-D2 Stages 1–5 must have already executed in the current cycle; the D3 Composite Engine/Orchestrator shell must exist (Repository Gap).
+D2 Stages 1–5 must have already executed in the current cycle; the D3 Composite Engine/Orchestrator shell must exist — built (`js/coachDecisionSystem/`).
 
 ## Constraints
 
@@ -797,7 +798,7 @@ If the Composite Engine/Orchestrator does not exist, this engine cannot be invok
 
 ## Repository Gaps
 
-No call site exists for this engine's invocation yet (Implementation Status: NOT STARTED). Build responsibility is resolved per CD-03/CD-04 (see Relationship to Previous Work) — TASK-004 builds it.
+None remaining — the call site now exists: `js/app.js`'s `runAppReadyEngines()` includes `coachDecisionSystem: 'DECISION_PASS'` in its `APP_READY` actions map, invoking the Composite Engine registered via `RegisterCoachDecisionSystem.registerAll()`. Build responsibility was resolved per CD-03/CD-04 (see Relationship to Previous Work) — TASK-004 built it.
 
 ## Traceability
 
@@ -809,7 +810,7 @@ Do not alter the existing invocation order of `habitEngine`/`patternEngine`/`ada
 
 ## Definition of Complete
 
-Invocation point, caller, timing, inputs, and consumers are each cited to D2/D3 sections; the absence of a built Orchestrator shell is recorded as a Repository Gap (build responsibility resolved per CD-03/CD-04, not an open ownership question).
+Invocation point, caller, timing, inputs, and consumers are each cited to D2/D3 sections; the Orchestrator shell is now built (build responsibility resolved per CD-03/CD-04, never an open ownership question).
 
 ## Claude Fill Instructions
 
@@ -931,7 +932,7 @@ Existing test files identified per row above are the conventions new tests exten
 
 ## Repository Gaps
 
-The Composite Engine/Orchestrator and its `js/app.js` registration call do not exist yet (Implementation Status: NOT STARTED). Per CD-03/CD-04, building both is in TASK-004's scope (see Relationship to Previous Work).
+None remaining — the Composite Engine/Orchestrator and its `js/app.js` registration call now exist (`RegisterCoachDecisionSystem.registerAll();`, called immediately after the existing `RegisterEngines.registerAll();`), per CD-03/CD-04 (TASK-004's scope, see Relationship to Previous Work). All eleven Integration Table rows are exercised by `tests/coachDecisionSystemWiring.test.js`.
 
 ## Traceability
 
@@ -988,7 +989,28 @@ Names every formal contract this engine must satisfy or produce. A contract here
 
 **CC-01 Runtime Contract** → D2's Stage Contract concept (Unit 04: Purpose/Inputs/Outputs/Responsibilities/Forbidden Actions/Dependencies/Entry Criteria/Exit Criteria/Cross References), applied to Stage 6. D2's own term is "Stage Contract," not "Runtime Contract."
 
-**CC-02 Recommendation Request Contract** and **CC-03 Recommendation Result Contract** — Product Decision Pending. No prior canonical source defines these shapes. Structural inputs for approval: the request shape should carry Stage 6's Inputs (Pipeline Context, per Stage Contract); the result shape should be compatible with what Stage 7 (Prioritization, owned by the Decision Engine) expects as a "Recommendation-kind Candidate" (D2 Unit 07) and with what `coachPromptComposer.js`/Expression can render.
+**CC-02 Recommendation Request Contract** — Resolved by Canonical Decision — TASK-004 Stage 3 (Head of Product + AI Architect):
+
+```text
+RecommendationRequest
+{
+    opportunity: EligibleOpportunity,
+    pipelineContext: ImmutablePipelineContext
+}
+```
+
+The engine consumes an eligible Opportunity and an immutable Pipeline Context only.
+
+**CC-03 Recommendation Result Contract** — Resolved by Canonical Decision — TASK-004 Stage 4 (Head of Product + AI Architect):
+
+```text
+RecommendationResult
+{
+    candidates: RecommendationCandidate[]
+}
+```
+
+Each candidate contains: `kind`, `category` (per Recommendation Categories), `action`, `rationale`, `confidence`, `hierarchyTier`, `opportunityProvenance`. An empty candidate list is valid.
 
 **CC-04 Recommendation Lifecycle** → D2's Decision Pass Stages 1–10 plus Post-Decision Continuation Stages 11–13 (Unit 03), scoped to this engine's own Stage 6/Stage 3-contribution portion; D3 §12 (Failure Handling/recovery) for abort/resume behavior.
 
@@ -1010,11 +1032,11 @@ Names every formal contract this engine must satisfy or produce. A contract here
 
 ## Repository Evidence Required
 
-Documented per contract above, aside from the CC-01 transcription gap and CC-02/CC-03 pending shapes.
+Documented per contract above, aside from the CC-01 transcription gap. CC-02/CC-03 shapes are fixed per Canonical Decisions Stage 3/4 (see Contract-by-Contract Population above).
 
 ## Responsibilities
 
-Engineering may draft a proposed shape for CC-02/CC-03 for Product/Architecture approval; engineering only documents conformance for the remaining, pre-existing contracts.
+CC-02/CC-03 are now Product/Architecture-approved (Stages 3–4); engineering documents conformance for all twelve contracts, including CC-02/CC-03, rather than drafting proposed shapes.
 
 ## Ownership
 
@@ -1024,9 +1046,9 @@ Each contract has exactly one owning spec/system, as cited above; no contract is
 
 CC-01's Stage 6 table has not been verbatim-transcribed from D2_SPEC_v1.0.md Unit 04.
 
-## Product Decision Pending
+## Product Decision Pending (Resolved)
 
-CC-02, CC-03 shapes.
+CC-02, CC-03 shapes are resolved per Canonical Decisions Stage 3/4 (Head of Product + AI Architect) — see Contract-by-Contract Population above.
 
 ## Traceability
 
@@ -1034,15 +1056,15 @@ Every CC appears in the Traceability Matrix and, where it corresponds to a syste
 
 ## Forbidden Changes
 
-Do not alter the shape of CC-01, CC-04–CC-12 beyond what their owning spec already defines. Do not add a new CC without Product/Architecture approval. Do not finalize CC-02/CC-03 on engineering's own authority.
+Do not alter the shape of CC-01–CC-12 beyond what their owning spec already defines (CC-02/CC-03 per Canonical Decisions Stage 3/4). Do not add a new CC without Product/Architecture approval.
 
 ## Definition of Complete
 
-All twelve contracts are documented with cited shape and owning source (CC-02/CC-03 marked Product Decision Pending), and each preserves previously approved ownership.
+All twelve contracts are documented with cited shape and owning source (CC-02/CC-03 per Canonical Decisions Stage 3/4), and each preserves previously approved ownership.
 
 ## Claude Fill Instructions
 
-For CC-01, CC-04–CC-12, quote the owning spec's actual contract shape rather than re-deriving it. For CC-02/CC-03, draft a proposed shape and mark it Product Decision Pending, never final.
+For CC-01–CC-12 (including CC-02/CC-03, resolved per Canonical Decisions Stage 3/4), quote the owning spec's actual contract shape rather than re-deriving it.
 
 ------------------------------------------------------------------------
 
@@ -1090,11 +1112,11 @@ D2-EF-06 (Pipeline Abort): no Terminal Decision shall be fabricated if a Stage c
 
 ## Repository Gaps
 
-Neither pipeline exists in code, consistent with "Implementation Status: NOT STARTED."
+This engine's assigned scope (Stage 6, Candidate Generation) now exists in code (`js/coachDecisionSystem/recommendationEngine.js`); the full 13-stage Canonical Pipeline does not, and is not this task's scope — Stages 5/7/8/9 remain the Decision Engine's (TASK-006), Stage 6 Initiative-kind remains the Initiative Engine's (TASK-005), consistent with Non Goals.
 
 ## Traceability
 
-Ranking Framework describes this engine's own internal candidate-ordering feeding D2's Stage 7 (Decision Engine's Prioritization), not this engine performing Stage 7 itself.
+Ranking Framework confirms (per Canonical Decision Stage 5) that this engine performs no internal candidate-ordering; it produces unordered candidates feeding D2's Stage 7 (Decision Engine's Prioritization), which exclusively owns ordering and winner selection.
 
 ## Forbidden Changes
 
@@ -1119,7 +1141,7 @@ Repository evidence required.
 
 ## Purpose
 
-This section documents this engine's own internal candidate-ordering (feeding D2's Stage 7, owned by the Decision Engine) — not full cross-engine prioritization, which D2 assigns to the Decision Engine.
+Resolved by Canonical Decision — TASK-004 Stage 5 (Head of Product + AI Architect): the Recommendation Engine performs no semantic ranking. The Decision Engine exclusively owns prioritization, winner selection, tie-breaking, recommendation budget, and final decision formation. No internal priority score or semantic ordering is permitted for this engine's output — not full cross-engine prioritization, which D2 assigns to the Decision Engine.
 
 ## Canonical Sources
 
@@ -1144,35 +1166,35 @@ Stages 3–5's outputs are required inputs, per D2's fixed pipeline order.
 
 ## Validation Rules
 
-Any internal ordering this engine applies before handing candidates to Stage 7 must be deterministic and testable.
+Per Canonical Decision Stage 5, this engine SHALL NOT apply any internal ordering, priority score, or semantic ranking to candidates before handing them to Stage 7. Candidate generation itself must remain deterministic and testable (same input yields the same candidate set) across repeated runs with identical input.
 
 ## Failure Modes
 
-Tie-breaking must have a defined, deterministic rule.
+Tie-breaking is exclusively a Decision Engine responsibility (Canonical Decision, Stage 5); this engine has no tie-breaking logic of its own.
 
 ## Required Tests
 
-Unit tests for: candidate-ordering determinism and stable ordering across repeated runs with identical input.
+Unit tests for: candidate-generation determinism (same input yields the same candidate set) across repeated runs with identical input, and a negative test confirming this engine does not attach or apply any priority score or ordering to its output.
 
-## Product Decision Pending
+## Ranking Policy (Resolved)
 
-Ranking Policy — weights and priority sources for this engine's internal candidate-ordering, and how much internal ordering (if any) this engine should perform before Stage 7. The Canonical Decision Hierarchy governs final cross-candidate prioritization, but that is the Decision Engine's Stage 7/8 responsibility, not this engine's.
+Resolved by Canonical Decision — TASK-004 Stage 5 (Head of Product + AI Architect): the Recommendation Engine performs no semantic ranking. The Decision Engine exclusively owns prioritization, winner selection, tie-breaking, recommendation budget, and final decision formation. No internal priority score or semantic ordering is permitted. The Canonical Decision Hierarchy governs final cross-candidate prioritization, but that remains the Decision Engine's Stage 7/8 responsibility, not this engine's.
 
 ## Traceability
 
-Attaches to D2 Stage 6 (feeding Stage 7); must remain consistent with D2-INV-07 (Policy Separation).
+Attaches to D2 Stage 6 (feeding Stage 7); consistent with D2-INV-07 (Policy Separation) and Ranking Policy (Stage 5).
 
 ## Forbidden Changes
 
-Do not let this engine perform full Stage 7/8 Prioritization/Winner Selection itself — that remains the Decision Engine's responsibility.
+Do not let this engine perform any internal ordering, priority scoring, tie-breaking, or Stage 7/8 Prioritization/Winner Selection — all of that remains exclusively the Decision Engine's responsibility (Canonical Decision, Stage 5).
 
 ## Definition of Complete
 
-Not complete — Ranking Policy is Product Decision Pending.
+Complete — Ranking Policy is resolved per Canonical Decision Stage 5 (no internal ranking or ordering performed by this engine).
 
 ## Claude Fill Instructions
 
-Do not invent specific weight values. Ranking Policy must not be finalized by engineering.
+Ranking Policy is finalized (Stage 5); do not introduce ranking weights, priority scores, or ordering logic into this engine — none are authorized.
 
 # Recommendation Categories
 
@@ -1181,7 +1203,7 @@ Dependencies - Explanation strategy
 
 ## Purpose
 
-Requires the distinct kinds of recommendation this engine can produce to be enumerated. Product Decision Pending — the canonical list of recommendation categories.
+Requires the distinct kinds of recommendation this engine can produce to be enumerated. Resolved by Canonical Decision — TASK-004 Stage 2 (Head of Product + AI Architect): the canonical Recommendation Category list is `IMMEDIATE_ACTION`, `PREPARATION`, `RECOVERY`, `SYSTEM_BUILDING`.
 
 ## Canonical Sources
 
@@ -1190,43 +1212,43 @@ Requires the distinct kinds of recommendation this engine can produce to be enum
 
 ## Existing Repository Behaviour
 
-No canonical list of recommendation content categories (nutrition/workout/habit/etc.) exists in the Product Bible, AI Constitution, or Coach Bible. Candidate category producers exist in the repository (`js/engines/habitEngine.js`, `patternEngine.js`, `adaptiveTdeeEngineAdapter.js`, `triggerEngineAdapter.js`), but whether these map 1:1 to a future canonical category list is undecided.
+No canonical list of recommendation content categories previously existed in the Product Bible, AI Constitution, or Coach Bible; the canonical list is now fixed by Stage 2 (`IMMEDIATE_ACTION`, `PREPARATION`, `RECOVERY`, `SYSTEM_BUILDING`). Candidate category producers exist in the repository (`js/engines/habitEngine.js`, `patternEngine.js`, `adaptiveTdeeEngineAdapter.js`, `triggerEngineAdapter.js`), but their mapping to these four canonical categories has not yet been evidenced (see Repository Gaps).
 
 ## Repository Evidence Required
 
-The four existing engines above are candidate producers only, not a confirmed mapping.
+The four existing engines above are candidate producers only; their mapping to the four canonical categories is implementation-time repository evidence, not yet established.
 
 ## Ownership
 
-If Product approves a category list, each category's Producer would be the specific existing engine (or a new one) that originates its underlying signal; this engine remains the consumer/generator of candidates from those signals, not the producer of the underlying observation.
+Now that the category list is approved (Stage 2), each category's Producer is the specific existing engine (or a new one) that originates its underlying signal; this engine remains the consumer/generator of candidates from those signals, not the producer of the underlying observation.
 
 ## Constraints
 
-No category may be introduced that is not already sanctioned by the Product Bible ("No new coaching philosophy," Out of Scope).
+No category may be introduced beyond the four canonical categories fixed by Stage 2 (`IMMEDIATE_ACTION`, `PREPARATION`, `RECOVERY`, `SYSTEM_BUILDING`).
 
 ## Repository Gaps
 
-Coach Knowledge Base Topics 09–36 have not been incorporated into this specification and have not been checked for a category taxonomy.
+Coach Knowledge Base Topics 09–36 have not been incorporated into this specification and have not been checked for a category taxonomy. The per-category Purpose/Owner/Priority/Producer/Consumers/Dependencies/Explanation-strategy breakdown (per this section's skeleton) has not yet been mapped against repository evidence — this is implementation-time engineering work, not a further Product decision, per Ownership above.
 
-## Product Decision Pending
+## Recommendation Categories (Resolved)
 
-Canonical recommendation category list. Decision owner: Head of Product.
+Resolved by Canonical Decision — TASK-004 Stage 2 (Head of Product + AI Architect): `IMMEDIATE_ACTION`, `PREPARATION`, `RECOVERY`, `SYSTEM_BUILDING`.
 
 ## Traceability
 
-Would tie to Explainability's per-category explanation strategy and to Ranking Framework's priority sources, once approved.
+Ties to Explainability's per-category explanation strategy (Stage 6) and to CC-03's `category` field (Stage 4). Ranking Framework does not assign priority by category, per Stage 5 (no internal ranking performed by this engine).
 
 ## Forbidden Changes
 
-Do not define a new coaching category not already present in the Product Bible.
+Do not add, remove, or rename any of the four canonical categories (`IMMEDIATE_ACTION`, `PREPARATION`, `RECOVERY`, `SYSTEM_BUILDING`) fixed by Stage 2.
 
 ## Definition of Complete
 
-Not complete: Product Decision Pending.
+Complete: the canonical category list is resolved per Stage 2. The per-category Purpose/Owner/Producer/Consumer/Dependencies/Explanation-strategy breakdown remains a Repository Gap for implementation time, not a Product Decision Pending item.
 
 ## Claude Fill Instructions
 
-Do not infer categories solely from existing engine names. The category list must remain marked pending until Product confirms it; the impact-tier taxonomy in AI Constitution Ch.11 is the closest existing analog but is not a substitute.
+The canonical category list (Stage 2) is fixed; do not infer additional categories from existing engine names or introduce new ones. Map existing engines to these four categories using repository evidence at implementation time.
 
 # Personalization
 
@@ -1265,7 +1287,7 @@ A modifier must be traceable to a specific field or event in its owning system.
 
 ## Repository Gaps
 
-Context Assembly / Memory Layer shell not yet built — implementation has not started (Implementation Status: NOT STARTED). Per CD-02, building this minimal Memory Layer is in TASK-004's scope, not a prerequisite task's responsibility (see Relationship to Previous Work).
+None remaining — the minimal Memory Layer / Context Assembly shell now exists (`js/coachDecisionSystem/memoryLayer.js`), per CD-02 (TASK-004's scope, not a prerequisite task's responsibility — see Relationship to Previous Work).
 
 ## Architecture Decision Pending (Resolved)
 
@@ -1294,7 +1316,7 @@ explanation behavior
 
 ## Purpose
 
-Requires "explanation generation" to guarantee something specific about every recommendation surfaced downstream. Product Decision Pending — the explanation policy itself.
+Requires "explanation generation" to guarantee something specific about every recommendation surfaced downstream. Resolved by Canonical Decision — TASK-004 Stage 6 (Head of Product + AI Architect): the Recommendation Engine owns structured Decision Truth; Expression owns only user-facing rendering. A candidate that cannot be explained truthfully must not be returned.
 
 ## Canonical Sources
 
@@ -1312,15 +1334,27 @@ Requires "explanation generation" to guarantee something specific about every re
 
 ## Ownership
 
-This engine is responsible for generating the raw rationale (candidate + reason); Coach (`coachPromptComposer.js`/`coachPresenter.js`) is responsible for final voice/tone rendering, per Coach Bible Ch.4's tone rules — these are not the same responsibility.
+This engine is responsible for generating the structured `explanation` object (Decision Truth: `rationale`, `evidenceBasis`, `expectedValue`, `uncertainty` — Stage 6); Coach (`coachPromptComposer.js`/`coachPresenter.js`) is responsible only for final user-facing voice/tone rendering of that explanation, per Coach Bible Ch.4's tone rules — these are not the same responsibility.
 
 ## Outputs
 
-Format: Product Decision Pending, as part of CC-03 (Recommendation Result Contract). Coach Bible Ch.4 §8 requires explanation depth to vary with confidence, implying the format needs a confidence/evidence-tier field, not just a flat rationale string.
+Format: Resolved by Canonical Decision Stage 6 (Explainability Policy):
+
+```text
+explanation
+{
+    rationale,
+    evidenceBasis,
+    expectedValue,
+    uncertainty
+}
+```
+
+Coach Bible Ch.4 §8's confidence-calibration requirement is satisfied structurally by the candidate's `confidence` field (CC-03, Stage 4), independent of this separately-defined `explanation` object (Stage 6).
 
 ## Failure Modes
 
-Missing explanation behavior: Product Decision Pending. AI Constitution §11.5: *"If the coach cannot explain why... the recommendation should not exist."*
+Missing explanation behavior: resolved by Canonical Decision Stage 6 — a candidate that cannot be explained truthfully must not be returned. AI Constitution §11.5: *"If the coach cannot explain why... the recommendation should not exist."*
 
 ## Repository Gaps
 
@@ -1328,7 +1362,7 @@ Missing explanation behavior: Product Decision Pending. AI Constitution §11.5: 
 
 ## Traceability
 
-Attaches to D2's Expression stage (Stage 10), realized by `coachPresenter.js`/`triggerController.js` (D3 §6.2); feeds CC-03.
+Attaches to D2's Expression stage (Stage 10), realized by `coachPresenter.js`/`triggerController.js` (D3 §6.2). The `explanation` object's shape is fixed by Stage 6, independently of CC-03's own field list (Stage 4).
 
 ## Forbidden Changes
 
@@ -1336,11 +1370,11 @@ Do not let this engine perform final coaching-voice rendering — that remains C
 
 ## Definition of Complete
 
-Not complete: Explainability Policy is Product Decision Pending. The confidence-calibration requirement from Coach Bible Ch.4 §8 is documented as a structural constraint any eventual policy must satisfy.
+Complete: Explainability Policy is resolved per Canonical Decision Stage 6 (structured `explanation` object — `rationale`, `evidenceBasis`, `expectedValue`, `uncertainty`; a candidate that cannot be explained truthfully must not be returned). The confidence-calibration requirement from Coach Bible Ch.4 §8 is satisfied via the candidate's `confidence` field (CC-03), independent of this object.
 
 ## Claude Fill Instructions
 
-Verify the downstream consumption contract before finalizing the explanation Format. Explainability Policy must not be finalized by engineering.
+Explainability Policy is finalized (Stage 6); do not alter the `explanation` object's fields. Verify the downstream consumption contract (Coach/Expression rendering) remains compatible with this fixed shape.
 
 # Failure Handling
 
@@ -1366,9 +1400,9 @@ D3_SPEC.md §12; B4_SPEC.md §22–25 (persistence retry/conflict/rollback conve
 | Candidate discovery/Stage 6 yields zero candidates | This engine's own Stage 6 return value is empty | This engine | Per D2, "Silence is fully formed" (D2-INV-05) — an empty result is a valid, complete outcome | No recommendation delivered this cycle (AI Constitution §11.10, "Recommendation Competes Against Silence") | New test required |
 | Upstream Memory Layer / Context Assembly unavailable or incomplete | Per D3 §12.3, graceful degradation | Memory Layer (not this engine) | Proceed with available context categories | Never fabricate missing context | Precedent: existing engines' `getHistoryData()` failure handling (Architecture §15) |
 | Composite Engine/Orchestrator itself fails | `js/engineRegistry.js`'s existing `ENGINE_THREW`/`DEPENDENCY_FAILED` normalization | `js/engineRegistry.js` (existing, unchanged) | Registry-level, not engine-specific | Existing registry behavior applies unmodified | `tests/engineRegistry.test.js` |
-| Explanation generation fails | See Explainability | This engine (rationale generation) vs. Coach (rendering) | Product Decision Pending (see Explainability) | Constitutional principle (§11.5) leans toward withholding; not yet a confirmed default | New test required once policy is set |
+| Explanation generation fails | See Explainability | This engine (rationale generation) vs. Coach (rendering) | Per Stage 6: the candidate must not be returned if it cannot be explained truthfully | Withholding is the confirmed default per Stage 6 (Explainability Policy), consistent with AI Constitution §11.5 | New test required |
 | Persistence write for this engine's output fails | `js/persistenceGateway.js`'s existing typed result | `js/persistenceGateway.js` (existing, unchanged) | Bounded retry per B4 §22 (transient only, max 3 attempts) | `durable:false` result surfaced to caller | `tests/persistenceGateway.test.js` |
-| Contract violation on request/result shape (CC-02/CC-03) | N/A until CC-02/CC-03 are approved | This engine | N/A | N/A | New tests required once CC-02/CC-03 are approved |
+| Contract violation on request/result shape (CC-02/CC-03) | Malformed `RecommendationRequest`/`RecommendationResult` shape, per CC-02/CC-03 (Stages 3–4) | This engine | N/A | N/A | New tests required (CC-02/CC-03 now fixed — Stages 3–4) |
 
 ## Required Tests
 
@@ -1388,7 +1422,7 @@ Do not define a fallback that silently fabricates a recommendation in place of a
 
 ## Definition of Complete
 
-Every failure mode named elsewhere in this document has one catalogued entry above; two entries remain open pending Product/Architecture decisions tracked elsewhere (Explainability, CC-02/CC-03).
+Every failure mode named elsewhere in this document has one catalogued entry above; the two entries previously pending Product/Architecture decisions (Explainability, CC-02/CC-03) are now resolved per Canonical Decisions Stages 3/4/6.
 
 ## Claude Fill Instructions
 
@@ -1487,11 +1521,11 @@ Documented above. Engineering Workflow defines no formal unit/integration/contra
 
 ### Validation Rules
 
-Contract Tests must cover all twelve CCs (CC-02/CC-03 tests deferred until their shapes are approved). Failure Tests must cover every entry in the Failure Handling catalogue.
+Contract Tests must cover all twelve CCs, including CC-02/CC-03 (shapes resolved per Canonical Decisions Stage 3/4). Failure Tests must cover every entry in the Failure Handling catalogue.
 
 ### Repository Gaps
 
-No engine-specific test files exist, consistent with "Implementation Status: NOT STARTED."
+None remaining — five engine-specific test files now exist (`tests/recommendationCategories.test.js`, `tests/recommendationEngine.test.js`, `tests/memoryLayer.test.js`, `tests/internalPipelineOrchestrator.test.js`, `tests/coachDecisionSystemWiring.test.js`; 62 tests total), alongside the unmodified 1082 pre-existing tests (1144/1144 passing at closure).
 
 ### Traceability
 
@@ -1503,7 +1537,7 @@ Do not reduce test coverage below what is implied by the functional/contract/int
 
 ### Definition of Complete
 
-Every item in each of the five test categories has at least one corresponding test case planned; CC-02/CC-03-dependent tests are deferred pending their contract approval, not dropped.
+Every item in each of the five test categories has at least one corresponding test case planned; CC-02/CC-03-dependent tests are no longer deferred — their contract shapes are resolved (Stages 3–4) and tests may be planned against them.
 
 ### Claude Fill Instructions
 
@@ -1515,15 +1549,37 @@ Do not write implementation-specific test code in this document. Follow the exis
 
 ## Functional
 
+-   `RecommendationEngine.generate(RecommendationRequest)` returns a well-formed `RecommendationResult` for a valid request, and an empty (but well-formed, frozen) `RecommendationResult` for any invalid/malformed request, without throwing — verified: `tests/recommendationEngine.test.js` #1–8.
+-   Determinism: identical `{opportunity, pipelineContext}` input yields an identical candidate set across repeated calls — verified: `tests/recommendationEngine.test.js` #9.
+-   Every produced candidate's `category` is one of the four canonical values — verified: `tests/recommendationEngine.test.js` #10.
+-   A candidate whose Decision Truth (`rationale`/`evidenceBasis`/`expectedValue`/`uncertainty`) is incomplete is withheld, never fabricated — verified: `tests/recommendationEngine.test.js` #11–12c.
+-   No internal ranking, priority score, tie-breaking, or winner selection is performed anywhere in the engine — verified: `tests/recommendationEngine.test.js` #13–15, `tests/coachDecisionSystemWiring.test.js` #17.
+-   Suppression (C2, D1-RP-05) is consulted and honored before a candidate is returned — verified: `tests/recommendationEngine.test.js` #19–20.
+
 ## Runtime
+
+-   Exactly one Composite Engine (`id: 'coachDecisionSystem'`) is registered with the existing B2 Engine Registry; a second registration attempt is rejected as `DUPLICATE_ID` — verified: `tests/coachDecisionSystemWiring.test.js` #1–3.
+-   The Composite Engine is invocable end-to-end through the real `EngineRegistry.run()`, and its result is normalized per the existing registry contract (including `ENGINE_THREW` on a thrown error) — verified: `tests/coachDecisionSystemWiring.test.js` #4–5.
+-   The Memory Layer performs real Context Assembly (StateAccess + B5 Derived Intelligence Consumer) and degrades gracefully, per-category, without fabricating missing context, when either dependency is unavailable — verified: `tests/memoryLayer.test.js` #1–6, `tests/internalPipelineOrchestrator.test.js` #3a.
+-   A Memory Layer/Orchestrator internal failure is normalized to a `FAILED` engine result, never propagated as an uncaught exception — verified: `tests/internalPipelineOrchestrator.test.js` #3b.
 
 ## Architecture
 
+-   No second Engine Registry, second orchestration authority, or second session mechanism is introduced (D3 Invariant AI-01, AI-05) — verified: `tests/coachDecisionSystemWiring.test.js` #18, and by inspection (no `.register(` call outside `registerCoachDecisionSystem.js`, no new session-generation logic anywhere in the new modules).
+-   `EngineRegistry`, `StateAccess`, and `PersistenceGateway`'s existing public contracts are unmodified — only their already-established extension points are used (a new `PERMISSIONS` entry keyed by a new `engineId`/`action` pair; a new `PRODUCTION_ENABLED_MAPPING` entry activating an already-approved, already-tested B5 consumer/policy pair) — verified: `tests/coachDecisionSystemWiring.test.js` #6–9, and the diffs to `js/stateAccess.js` / `js/derivedIntelligenceConsumer.js` themselves.
+-   No write to `PersistenceGateway` and no direct read of `js/memory.js`/`coachEvents[]` exists in any new module (no speculative persistence; Memory Layer only) — verified: `tests/coachDecisionSystemWiring.test.js` #14–15.
+
 ## Product
+
+-   The canonical Product Objective (Stage 1) is unaltered by the implementation; the engine generates candidates only, never a final decision — structurally guaranteed by CC-03's `RecommendationResult` shape (no winner/ranked-list field exists) and verified above under Functional.
+-   Only the four canonical Recommendation Categories (Stage 2) are ever produced — verified: `tests/recommendationEngine.test.js` #10, `tests/recommendationCategories.test.js` #2.
 
 ## Documentation
 
-All objectively verifiable.
+-   This specification's Status/Implementation Status, Acceptance Criteria, READY/DONE Definitions, and Closure Record are updated to reflect the completed implementation (this closure).
+-   `docs/roadmap/Roadmap.md` and `docs/roadmap/Changelog.md` are updated per the existing per-task convention (see Documentation Updates Required, below).
+
+All objectively verifiable — each bullet above cites the exact test(s) that verify it, or the exact diff that structurally guarantees it.
 
 ### Purpose
 
@@ -1535,27 +1591,27 @@ Mirrors the Review Checklists later in this document.
 
 ### Validation Rules
 
--   **Functional**: cannot be finalized until Functional Scope's capability tables and CC-02/CC-03 are approved (Product Decision Pending).
--   **Runtime**: the Composite Engine/Orchestrator shell ownership question is resolved (CD-03/CD-04 — see Relationship to Previous Work); criteria cannot yet be finalized because implementation does not exist to verify against (Repository Gap), not because of an open ownership question.
--   **Architecture**: can be partially drafted from Integration Map/Canonical Contracts, pending the two Product-Decision-Pending contracts.
--   **Product**: cannot be finalized — Product Objectives has no measurable target yet (Product Decision Pending).
--   **Documentation**: can be drafted from Documentation Updates Required once implementation specifics are known (Repository Gap until then).
+-   **Functional**: implementation exists; every criterion above cites the specific test(s) that verify it.
+-   **Runtime**: implementation exists; every criterion above cites the specific test(s) that verify it.
+-   **Architecture**: implementation exists; every criterion above cites the specific test(s) or diff that verifies it.
+-   **Product**: the canonical Product Objective (Stage 1) is verified structurally by CC-03's fixed shape, not re-derived here.
+-   **Documentation**: verified by the state of this specification and of `Roadmap.md`/`Changelog.md` as of this closure.
 
 ### Repository Gaps
 
-Documentation criteria depend on implementation specifics not yet known.
+None remaining for this section — implementation exists and every criterion above is verified against it (Implementation Status: COMPLETE).
 
-### Product Decision Pending
+### Product Decision Pending (Resolved)
 
-Functional and Product criteria depend on Product Objectives, Recommendation Categories, Ranking Policy, Explainability Policy, and CC-02/CC-03.
+Product Objectives (Stage 1), Recommendation Categories (Stage 2), CC-02 (Stage 3), CC-03 (Stage 4), Ranking Policy (Stage 5), and Explainability Policy (Stage 6) are all resolved per the Canonical Decisions (Head of Product + AI Architect), and are now verified against the completed implementation above.
 
 ### Architecture Decision Pending
 
-None remaining — the Composite Engine/Orchestrator shell question is resolved by CD-03/CD-04 (TASK-004 builds it). Runtime criteria remain undrafted until implementation exists to verify against, per Repository Gaps above, not because of an open ownership question.
+None remaining — the Composite Engine/Orchestrator shell question is resolved by CD-03/CD-04 (TASK-004 built it, per Runtime/Architecture above).
 
 ### Traceability
 
-Every criterion must cite the section it verifies.
+Every criterion above cites the section/test it verifies.
 
 ### Forbidden Changes
 
@@ -1563,11 +1619,11 @@ Do not add an acceptance criterion that tests something outside this document's 
 
 ### Definition of Complete
 
-Not complete — blocked on the open items above, not on missing engineering effort.
+Complete — every criterion in Functional/Runtime/Architecture/Product/Documentation above is populated and cites its verifying test or diff.
 
 ### Claude Fill Instructions
 
-Populate each subsection only after its source sections are themselves complete — do not front-run them with speculative criteria.
+This section is now closed. Do not add a criterion that tests something outside Scope; do not remove a criterion without a new Product/Architecture decision.
 
 ------------------------------------------------------------------------
 
@@ -1587,13 +1643,13 @@ Engineering Workflow §4/§14.
 ## Current State
 
 -   **"Repository analyzed"**: satisfied — Repository Baseline is fully populated with verified, cited evidence.
--   **"Contracts documented"**: partially satisfied — CC-01, CC-04–CC-12 are documented and cited to their owning specs; CC-02 and CC-03 remain Product Decision Pending.
+-   **"Contracts documented"**: satisfied — all twelve contracts (CC-01–CC-12) are documented and cited to their owning specs; CC-02 and CC-03 are resolved per Canonical Decisions Stage 3/4.
 -   **"Dependencies documented"**: satisfied — Relationship to Previous Work is fully populated; the Composite Engine shell question is resolved per CD-03/CD-04 (TASK-004 builds it).
--   **"No unresolved ambiguity"**: satisfied for READY. The remaining Product Decision Pending items and Canonical Conflicts are explicitly identified, documented, assigned to their proper authority, and intentionally carried forward. They are tracked work items rather than unresolved ambiguities and therefore do not block the READY state.
+-   **"No unresolved ambiguity"**: satisfied for READY. CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy, and Product Objectives are now resolved per the Canonical Decisions (Stages 1–6, Head of Product + AI Architect). The remaining Canonical Conflicts (Roadmap-status, repository-hooks, Coach Knowledge Base precedence) are explicitly identified, documented, assigned to their proper authority, and intentionally carried forward. They are tracked work items rather than unresolved ambiguities and therefore do not block the READY state.
 
 ## Approval
 
-Approved for Canonical READY by Head of Product + AI Architect via the Final Canonical Gate Review. The items listed under Current State (Product Decision Pending, Architecture Decision Pending, and the Canonical Conflicts) remain individually open and are not resolved by this determination; they are carried forward for resolution as implementation reaches them. Implementation has not started.
+Approved for Canonical READY by Head of Product + AI Architect via the Final Canonical Gate Review. At the time of that approval, the items listed under Current State (Product Decision Pending, Architecture Decision Pending, and the Canonical Conflicts) remained individually open, carried forward for resolution as implementation reached them; that determination did not itself resolve them. Since then, CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy, and Product Objectives have been resolved by Canonical Decisions Stages 1–6 (Head of Product + AI Architect) and integrated into this specification during Canonical Consolidation. The Roadmap-status, repository-hooks, and Coach Knowledge Base precedence Canonical Conflicts remain open (none were found to block implementation — see Relationship to Previous Work / Canonical Conflicts). Implementation has since been completed and approved by Head of Product + AI Architect (TASK-004 Canonical Closure) — see DONE Definition and Closure Record below.
 
 ## Repository Gaps
 
@@ -1626,23 +1682,29 @@ The gate that closes this task after implementation.
 
 ## Current State
 
-Not applicable — implementation has not started, and per Engineering Workflow §6 ("No implementation before READY"), it must not start until the READY Definition's open items are resolved by Product/Architecture.
+-   **Implementation complete**: yes — `js/coachDecisionSystem/` (`recommendationCategories.js`, `recommendationEngine.js`, `memoryLayer.js`, `internalPipelineOrchestrator.js`, `registerCoachDecisionSystem.js`), wired into `js/app.js`/`index.html`/`sw.js`, plus additive extensions to `js/stateAccess.js` and `js/derivedIntelligenceConsumer.js`.
+-   **Tests pass**: yes — 62 new tests (unit/contract/integration/failure, across `tests/recommendationCategories.test.js`, `tests/recommendationEngine.test.js`, `tests/memoryLayer.test.js`, `tests/internalPipelineOrchestrator.test.js`, `tests/coachDecisionSystemWiring.test.js`), plus the full existing suite (1082 pre-existing tests, unchanged) — 1144/1144 passing, 0 failures, at closure.
+-   **Docs updated**: yes — this specification (Status, Acceptance Criteria, READY/DONE Definitions, Documentation Updates Required, Closure Record), `docs/roadmap/Roadmap.md`, `docs/roadmap/Changelog.md`; `docs/architecture/FITME_ARCHITECTURE_v1.md` reviewed (see Documentation Updates Required for the disposition of each).
+-   **Roadmap updated**: yes — TASK-004 status line reflects implementation complete.
+-   **Changelog updated**: yes — a new per-task entry added, per the existing convention.
+-   **Approvals complete**: implementation approved by Head of Product + AI Architect via the TASK-004 Canonical Closure directive; Product Review Checklist and Architecture Review Checklist statuses updated accordingly (see those sections above).
+-   **Task closed**: yes, per this Closure Record.
 
 ## Repository Gaps
 
-Not applicable prior to READY and the start of implementation.
+None blocking closure. The Roadmap-status, repository-hooks, and Coach Knowledge Base precedence Canonical Conflicts remain open (unresolved by this closure, per Forbidden Changes elsewhere in this document) but were confirmed, before and during implementation, not to block it.
 
 ## Forbidden Changes
 
-Do not mark DONE without every criterion in Test Strategy and Acceptance Criteria independently verified.
+Do not mark DONE without every criterion in Test Strategy and Acceptance Criteria independently verified — satisfied above.
 
 ## Definition of Complete
 
-Not applicable at this stage.
+Satisfied — every item under Current State above is true and evidenced.
 
 ## Claude Fill Instructions
 
-Do not fill this section prematurely. It is evaluated once, at actual task closure.
+This section is now closed at actual task closure, per Approvals in Current State above.
 
 ------------------------------------------------------------------------
 
@@ -1654,19 +1716,19 @@ Base - Related specifications
 
 ## Current Assessment
 
--   **Roadmap**: Update required — see Status (Canonical Conflict).
--   **Changelog**: Update required — a new entry documenting this specification's approval/READY status will be needed, per the existing per-task entry convention.
--   **Architecture**: Likely, pending implementation — once built, the Composite Engine/Orchestrator shell (D3 §17) should be reflected in `FITME_ARCHITECTURE_v1.md`'s layered-runtime description (§20).
--   **Engineering Workflow**: No update anticipated.
--   **Product Bible**: Possibly, pending Product decision — if Recommendation Categories are approved, the Product Bible may need to reflect them.
--   **AI Constitution**: No update anticipated — Ch.11 already comprehensively governs recommendation behavior.
--   **Coach Bible**: No update anticipated — Ch.2/Ch.4's existing rules already govern explanation/tone.
--   **Coach Knowledge Base**: Possibly — Topics 27, 29, 33, 34 (Decision making, Coaching plans, AI principles, Architecture implications) are not incorporated into this specification (see Repository Gaps).
--   **Related specifications**: Yes — D1/D2/D3's own "does not itself implement TASK-004" caveats imply their own status entries may reference this specification once it is approved.
+-   **Roadmap**: Updated — TASK-004 status line now reflects implementation complete (`docs/roadmap/Roadmap.md`).
+-   **Changelog**: Updated — a new per-task entry added (`docs/roadmap/Changelog.md`), per the existing convention.
+-   **Architecture**: Reviewed — `FITME_ARCHITECTURE_v1.md` §20's layered-runtime description already documents the Coach Decision System / Composite Engine placement at the architecture-decision level (D3 §17, cited there); no further edit was needed to describe this implementation, which builds exactly what §20/D3 §17 already specify. Reviewed and intentionally left unchanged.
+-   **Engineering Workflow**: Reviewed — no update needed; this closure follows its existing lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed) without modification. Reviewed and intentionally left unchanged.
+-   **Product Bible**: Reviewed — the four Recommendation Categories (Stage 2) were approved as a Canonical Decision directly in this specification; no Product Bible edit was directed as part of this closure. Reviewed and intentionally left unchanged; remains a candidate for a future, separately-scoped Product Bible update, not decided here.
+-   **AI Constitution**: Reviewed — Ch.11 already comprehensively governs recommendation behavior; no update needed. Reviewed and intentionally left unchanged.
+-   **Coach Bible**: Reviewed — Ch.2/Ch.4's existing rules already govern explanation/tone, unmodified by this implementation (the engine never performs final voice/tone rendering). Reviewed and intentionally left unchanged.
+-   **Coach Knowledge Base**: Reviewed — Topics 27, 29, 33, 34 remain not incorporated into this specification; this is carried forward as a Repository Gap, not resolved by this closure (no Product/Architecture decision was given to incorporate them). Reviewed and intentionally left unchanged.
+-   **Related specifications (D1/D2/D3)**: Reviewed — D1/D2/D3 remain canonical, decision/architecture-only documents; none requires a content edit to describe TASK-004's completed implementation, since none claims to implement it. Reviewed and intentionally left unchanged.
 
 ## Repository Gaps
 
-Coach Knowledge Base Topics 27, 29, 33, 34 are not incorporated into this specification; a targeted review is recommended before implementation.
+Coach Knowledge Base Topics 27, 29, 33, 34 remain not incorporated into this specification; carried forward as a tracked, non-blocking gap (see Repository Gaps under DONE Definition).
 
 ## Forbidden Changes
 
@@ -1674,11 +1736,11 @@ Do not update governance documents' content directly as part of this task withou
 
 ## Definition of Complete
 
-All nine categories assessed above.
+All nine categories assessed above, each with an explicit updated/reviewed-unchanged disposition.
 
 ## Claude Fill Instructions
 
-Revisit this section once implementation is underway.
+This section is now closed at task closure.
 
 ------------------------------------------------------------------------
 
@@ -1716,10 +1778,10 @@ See `docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md` § Engineering Self-
 
 ## Result
 
--   **All sections complete**: No — open items remain: CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy (Product Decision Pending), and the Roadmap-status and repository-hooks Canonical Conflicts. The Composite Engine shell question is resolved per CD-03/CD-04; the Pipeline-definition Canonical Conflict is resolved per CD-01. Each remaining item is marked accordingly rather than left ambiguous.
+-   **All sections complete**: Yes, for closure purposes — CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy, and Product Objectives are resolved per Canonical Decisions Stages 1–6 (Head of Product + AI Architect); implementation is complete and Acceptance Criteria are populated and verified against it. Open items remaining: the Roadmap-status and repository-hooks Canonical Conflicts, and Coach Knowledge Base Topics 27/29/33/34 (see Documentation Updates Required) — none of these were found to block implementation or closure, and none is resolved by this closure; they remain individually tracked. The Composite Engine shell question is resolved per CD-03/CD-04; the Pipeline-definition Canonical Conflict is resolved per CD-01.
 -   **No placeholders**: Satisfied — every subsection contains real cited content or an explicit Repository Gap / Product Decision Pending / Architecture Decision Pending / Engineering Decision Pending marker.
 -   **No speculation**: Satisfied — every factual claim cites repository evidence or canonical documentation; the Roadmap-status and repository-hooks Canonical Conflicts remain documented without resolution; the Pipeline-definition Canonical Conflict is resolved per CD-01, cited rather than re-argued.
--   **Contracts consistent**: Satisfied for CC-01, CC-04–CC-12; CC-02/CC-03 remain Product Decision Pending.
+-   **Contracts consistent**: Satisfied for all twelve contracts, CC-01–CC-12; CC-02/CC-03 resolved per Canonical Decisions Stage 3/4 and verified consistent with CC-01, CC-04–CC-12 elsewhere in this document.
 
 # Product Review Checklist
 
@@ -1727,11 +1789,11 @@ Verify: - Product intent - Philosophy - Scope - Governance consistency
 
 ## Status
 
-Not yet performed — this is Head of Product's own gate; Engineering does not self-certify it. Items requiring Product attention: the Roadmap-status Canonical Conflict, the Product-Decision-Pending items, and Coach Knowledge Base Topics 27/29/33/34.
+Performed and approved — Head of Product + AI Architect, via the TASK-004 Canonical Closure directive ("TASK-004 implementation has been approved") — Engineering did not self-certify this checklist; approval was communicated directly, not derived by Engineering. The Roadmap-status Canonical Conflict and Coach Knowledge Base Topics 27/29/33/34 remain individually open and are not resolved by this approval (see Documentation Updates Required).
 
 ## Claude Fill Instructions
 
-Do not fill or self-approve this checklist. Present the document for Product review.
+This checklist is now closed. Engineering did not self-certify it.
 
 # Architecture Review Checklist
 
@@ -1740,11 +1802,11 @@ Persistence - Memory - Event model - Recommendation isolation
 
 ## Status
 
-Not yet performed — this is AI Architect's own gate. The Composite Engine/Internal Pipeline Orchestrator build-responsibility question is resolved per CD-03/CD-04; the Pipeline-definition Canonical Conflict is resolved per CD-01. Items still requiring Architecture attention: the repository-hooks Canonical Conflict, and confirmation of "Recommendation isolation" (this engine, per D3 §17, owns no independently-registered engine slot and no system in Integration Map).
+Performed and approved — Head of Product + AI Architect, via the TASK-004 Canonical Closure directive. "Recommendation isolation" is confirmed by the completed implementation: the Recommendation Engine owns no independently-registered engine slot (`tests/coachDecisionSystemWiring.test.js` #1–3) and no system in Integration Map (`tests/coachDecisionSystemWiring.test.js` #6, #14–16). The repository-hooks Canonical Conflict remains individually open and is not resolved by this approval.
 
 ## Claude Fill Instructions
 
-Do not fill or self-approve this checklist. Present the document for Architecture review.
+This checklist is now closed. Engineering did not self-certify it.
 
 # Engineering Handoff
 
@@ -1753,11 +1815,11 @@ questions - Gaps - Implementation sequence - Impact assessment
 
 ## Status
 
-Not yet assembled — handoff occurs only once READY Definition's four conditions are satisfied. READY is not yet reached (see READY Definition); this specification is ready for Product/Architecture review, the necessary step before READY can be assessed.
+Assembled and delivered — the completed specification (this document), repository evidence, open questions, gaps, and impact assessment were delivered as two Engineering reports during implementation (Work Packages 1–6) and closure; the implementation sequence followed was: Recommendation Categories → Recommendation Engine core → Memory Layer + StateAccess/Derived Intelligence Consumer wiring → Internal Pipeline Orchestrator + Composite Engine registration → tests → full-suite verification → this closure.
 
 ## Claude Fill Instructions
 
-Assemble this handoff package only after READY Definition's four conditions are satisfied and both review checklists are signed off.
+This handoff is complete.
 
 ------------------------------------------------------------------------
 
@@ -1769,11 +1831,24 @@ Learned - Follow-up Work Items
 
 ## Status
 
-Empty, as required — this section is written once, at actual task closure.
+Written at actual task closure, per Approvals below.
+
+-   **Dates**: Implementation and closure performed 2026-07-29.
+-   **Repository Version**: `APP_VERSION = '2.41.0'` (`js/app.js`), unchanged by this task — no runtime behavior visible to existing engines changed; a version bump is left to a future task/release act rather than performed speculatively here.
+-   **Commit Hash**: the single commit introducing this implementation and this Closure Record (this file cannot self-reference its own resulting hash; see `git log -1 -- docs/specs/TASK_004_SPEC_v1.0.md` after this commit, or the closure report delivered alongside it).
+-   **Approvals**: Head of Product + AI Architect, via the TASK-004 Canonical Closure directive ("TASK-004 implementation has been approved"); see Product Review Checklist / Architecture Review Checklist above.
+-   **Documentation updates**: this specification (Status, Acceptance Criteria, READY/DONE Definitions, Documentation Updates Required, Engineering Self Review, both Review Checklists, Engineering Handoff, this Closure Record); `docs/roadmap/Roadmap.md`; `docs/roadmap/Changelog.md`. `docs/architecture/FITME_ARCHITECTURE_v1.md`, Engineering Workflow, Product Bible, AI Constitution, Coach Bible, Coach Knowledge Base, and D1/D2/D3 were reviewed and intentionally left unchanged (see Documentation Updates Required for the disposition of each).
+-   **Final Status**: DONE.
+-   **Lessons Learned**: (1) An uncommitted working-tree edit to this specification, resolving six previously `Product Decision Pending` items, was found and flagged before implementation began rather than assumed authoritative; the user confirmed it was a legitimate record of already-taken Canonical Decisions. (2) `EligibleOpportunity`'s content fields (`proposedAction`, `explanation`) were deliberately scoped as required, externally-supplied inputs rather than engine-generated content, since no canonical source defines concrete recommendation-content-generation rules and inventing one would be new coaching philosophy (Out of Scope) — this kept Stage 6 to validation/categorization/structural-assembly, its actual D2/D3-assigned responsibility. (3) A version bump was attempted, then reverted, after discovering it would require editing ~17 unrelated test files that hardcode the current version literal — a reminder to check ripple effects before a version bump, not just the two canonical version constants.
+-   **Follow-up Work Items** (tracked, not decided or scheduled here; none expand TASK-004's own scope):
+    -   TASK-005 (Initiative Engine) / TASK-006 (Decision Engine) remain the path to a live, non-empty candidate flow — Stage 3 (Decision-Window detection) and Stage 4/5 (Evidence/Eligibility Evaluation) are not built by TASK-004 (see Repository Gaps under DONE Definition, and the implementation report delivered during Work Packages 1–6).
+    -   The engineering-authored Opportunity-Source → Category / Hierarchy-Tier mapping (`js/coachDecisionSystem/recommendationCategories.js`) is provisional pending Product review.
+    -   The Roadmap-status, repository-hooks, and Coach Knowledge Base precedence Canonical Conflicts remain open, per Head of Product + AI Architect / AI Architect's respective ownership.
+    -   Coach Knowledge Base Topics 27, 29, 33, 34 remain not incorporated into this specification.
 
 ## Claude Fill Instructions
 
-Leave this section empty until actual task closure.
+This section is now closed.
 
 # End of Specification
 
@@ -1796,7 +1871,7 @@ The following apply to the entire specification:
 
 ## Application
 
-D1–D3, B4, C2–C4 are cited, not redefined, throughout this specification. The Pipeline stage-list Canonical Conflict is resolved per CD-01 (Head of Product + AI Architect), not by engineering redefinition. TASK-004 implements the Composite Engine architecture already approved by D3 §17, per CD-03/CD-04 — no new architectural layer beyond what D3 §17 already specifies is introduced; the Composite Engine/Orchestrator remains a Repository Gap (not yet built) but is no longer an open ownership question. No speculative repository behaviour is asserted — every "Existing Repository Behaviour" subsection is evidence-backed or marked Repository Gap.
+D1–D3, B4, C2–C4 are cited, not redefined, throughout this specification. The Pipeline stage-list Canonical Conflict is resolved per CD-01 (Head of Product + AI Architect), not by engineering redefinition. TASK-004 implements the Composite Engine architecture already approved by D3 §17, per CD-03/CD-04 — no new architectural layer beyond what D3 §17 already specifies is introduced; the Composite Engine/Orchestrator is now built (`js/coachDecisionSystem/`), and was never an open ownership question. No speculative repository behaviour is asserted — every "Existing Repository Behaviour" subsection is evidence-backed or marked Repository Gap.
 
 ## Claude Fill Instructions
 

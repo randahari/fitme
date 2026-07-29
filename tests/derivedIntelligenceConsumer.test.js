@@ -681,11 +681,17 @@ test('correction. buildProductionSafe rejects TEST_HARNESS/TEST_FULL_DIAGNOSTIC_
   assert.equal(env.calls.habitReads, 0, 'the core module (and its state reads) must never be invoked for a rejected production request');
 });
 
-test('correction. buildProductionSafe rejects RECOMMENDATION_ENGINE/RECOMMENDATION_SUPPORT_V1 (not production-enabled per §51.4)', async () => {
+// TASK-004 (Recommendation Engine, first consumer of RECOMMENDATION_ENGINE/
+// RECOMMENDATION_SUPPORT_V1 — this module's own comment on PRODUCTION_ENABLED_MAPPING
+// documents the change) intentionally enables this pair on the production-safe adapter, per
+// this module's own "no production code calls it yet, pending a separate spec" comment above
+// CONSUMERS — TASK_004_SPEC_v1.0.md is that spec. This supersedes the pre-TASK-004 assertion
+// that this pair was rejected; §51.4's mechanism itself (reject anything not in the mapping)
+// is unchanged — see the TEST_HARNESS rejection test above, which still holds.
+test('correction. buildProductionSafe now allows RECOMMENDATION_ENGINE/RECOMMENDATION_SUPPORT_V1 (TASK-004 — production-enabled, first consumer)', async () => {
   makeEnv({ habits: [makeHabit()] });
   const result = await Consumer.buildProductionSafe(baseRequest({ consumer: 'RECOMMENDATION_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
-  assert.equal(result.status, 'REJECTED');
-  assert.equal(result.error.code, 'POLICY_NOT_ALLOWED_FOR_CONSUMER');
+  assert.equal(result.status, 'SUCCESS');
 });
 
 test('correction. buildProductionSafe rejects a malformed request without throwing', async () => {

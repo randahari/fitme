@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-07-29
 
 ---
 
@@ -31,8 +31,51 @@
 - 🟢 D3 — Coach Decision System Architecture approved and Canonical (architecture specification only, no production code changes)
 - ✅ D-series architecture phase closed (D1, D2, D3 all approved and Canonical)
 - Draft Canonical — FITME Specification Authoring Standard v1.0 integrated into project governance (docs-only); governs task specifications only, pending final Head of Product + AI Architect sign-off to Canonical
-- READY — TASK-004 Recommendation Engine specification (`docs/specs/TASK_004_SPEC_v1.0.md`) approved by Head of Product + AI Architect for Canonical READY; implementation not started
-- ⏭️ Next canonical task: TASK-004 — Recommendation Engine implementation, subject to the specification's individually-tracked open items as implementation reaches them
+- 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
+- ⏭️ Next canonical task: pending Product/Architecture direction — no next canonical work item is currently named
+
+---
+
+## TASK-004 — Recommendation Engine (Implementation Complete, Closed)
+
+**Date:** 2026-07-29
+**Status:** DONE — implemented, tested, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented D3 §17's Coach Decision System Composite Engine, with the Recommendation Engine as
+its first operational internal collaborator (two of the six collaborators — Memory Layer,
+Recommendation Engine; Initiative Engine/Decision Engine/Safety Layer/Expression remain
+TASK-005/TASK-006). Added: `js/coachDecisionSystem/recommendationCategories.js`,
+`recommendationEngine.js`, `memoryLayer.js`, `internalPipelineOrchestrator.js`,
+`registerCoachDecisionSystem.js`. Modified (additive only, no existing public contract changed):
+`js/stateAccess.js` (new `PERMISSIONS.coachDecisionSystem` entry), `js/derivedIntelligenceConsumer.js`
+(new `PRODUCTION_ENABLED_MAPPING.RECOMMENDATION_ENGINE` entry — TASK-004 is its first production
+consumer), `js/app.js` / `index.html` / `sw.js` (registration + script/shell wiring). No
+`APP_VERSION` change — no existing engine's runtime behavior changed.
+
+### Verification
+
+- 62 new tests (unit/contract/integration/failure) across five new test files; full suite
+  1144/1144 passing (the pre-existing 1082 tests unchanged).
+- Exactly one Composite Engine registered (`coachDecisionSystem`); no second Engine Registry, no
+  second orchestration authority, no session mechanism change (D3 Invariant AI-01/AI-05).
+- CC-02/CC-03 implemented verbatim; only the four canonical Recommendation Categories are ever
+  produced; no ranking/priority-score/winner-selection logic exists anywhere in the engine
+  (Ranking Policy, Canonical Decision Stage 5); an incomplete Decision Truth withholds its
+  candidate rather than being fabricated (Explainability Policy, Canonical Decision Stage 6).
+- CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy, and the
+  Composite Engine/Orchestrator build-responsibility question are resolved and implemented. The
+  Roadmap-status, repository-hooks, and Coach Knowledge Base precedence Canonical Conflicts
+  remain open and untouched by this task — confirmed, not to block it.
+
+### Next
+
+See `docs/specs/TASK_004_SPEC_v1.0.md`'s Closure Record for the full follow-up list (none of
+which expand this task's own scope) — principally that Stage 3/4/5 (Opportunity Detection/
+Evidence/Eligibility Evaluation) are not built by TASK-004, so the live pipeline currently yields
+no candidates until TASK-005/TASK-006 exist to drive it.
 
 ---
 

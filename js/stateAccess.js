@@ -396,6 +396,15 @@
         reads: ['habitView', 'patternView'],
         writes: []
       }
+    },
+    // TASK-004: ה-Composite Engine היחיד (D3 §17 Decision 1) — Memory Layer's Context
+    // Assembly בלבד (CD-02). recommendationFeedbackHistory כבר קיים (C2); אין writes (Memory
+    // Layer, כפי שממומש כאן, קורא-בלבד — אין Persistence ספקולטיבי).
+    coachDecisionSystem: {
+      DECISION_PASS: {
+        reads: ['recommendationFeedbackHistory'],
+        writes: []
+      }
     }
   };
 

@@ -701,9 +701,18 @@
 
   // B5 v1.2 §41.2/§42.3/§51.4: production-safe adapter. Rejects any consumer/policyId not in
   // the production-enabled mapping BEFORE invoking the core build() — this is the canonical
-  // enforcement mechanism keeping TEST_HARNESS/TEST_FULL_DIAGNOSTIC_V1 (and any other
-  // non-production consumer, e.g. RECOMMENDATION_ENGINE) unreachable from window/production UI.
-  var PRODUCTION_ENABLED_MAPPING = freezeShallow({ AI_COACH_PROMPT: 'COACH_PROMPT_V1' });
+  // enforcement mechanism keeping TEST_HARNESS/TEST_FULL_DIAGNOSTIC_V1 unreachable from
+  // window/production UI. TASK-004 is RECOMMENDATION_ENGINE's first consumer (this module's own
+  // comment above: "no production code (js/app.js) actually calls it yet, pending a separate
+  // spec" — this is that spec, TASK_004_SPEC_v1.0.md § Relationship to Previous Work /
+  // Functional Scope capability 10); enabling it here does not alter build()'s validation,
+  // eligibility, or scoring logic in any way — it only activates an already-approved,
+  // already-tested consumer/policy pair (B5 CONSUMER_POLICY.RECOMMENDATION_ENGINE ->
+  // RECOMMENDATION_SUPPORT_V1, unchanged).
+  var PRODUCTION_ENABLED_MAPPING = freezeShallow({
+    AI_COACH_PROMPT: 'COACH_PROMPT_V1',
+    RECOMMENDATION_ENGINE: 'RECOMMENDATION_SUPPORT_V1'
+  });
   async function buildProductionSafe(request) {
     var consumer = request && request.consumer;
     var policyId = request && request.policyId;

@@ -787,3 +787,26 @@ service-worker dependency) — matching the C1_SPEC §27 Native Migration Contra
 should be reusable unchanged in a future native shell. Everything under **UI Presenters /
 Controllers** and the six `js/adapters/*.js` platform adapters is exactly what §27 expects to be
 replaced by native-specific implementations.
+
+## 21. TASK-004 — Coach Decision System (Composite Engine, D3 §17)
+
+**Added by TASK-004** (`docs/specs/TASK_004_SPEC_v1.0.md`). D3_SPEC.md §17 approved the Coach
+Decision System as a single Composite Engine — one B2 Engine Registry registration containing
+six internal, non-independently-registered collaborators (Memory Layer, Recommendation Engine,
+Initiative Engine, Decision Engine, Safety Layer, Expression), sequenced by an Internal Pipeline
+Orchestrator. TASK-004 is the first task to build any part of it: `js/coachDecisionSystem/`
+implements the Composite Engine registration, the Internal Pipeline Orchestrator, a minimal
+Memory Layer (read-only Pipeline Context Assembly), and the Recommendation Engine as its first
+operational internal collaborator. Registered under `js/engineRegistry.js`'s existing
+`register()` contract (§20.6's **Engine Registry, Engines, State/Persistence** tier), invoked
+from `js/app.js`'s existing `runAppReadyEngines()` alongside the four pre-existing engines —
+`js/engineRegistry.js`, `js/stateAccess.js`, and `js/persistenceGateway.js`'s public contracts
+are unmodified; only their existing, sanctioned extension points were used (a new `StateAccess`
+permission-map entry, a new `js/derivedIntelligenceConsumer.js` production-mapping entry).
+
+The Initiative Engine, Decision Engine, Safety Layer, and Expression collaborators, and Stage
+3/4/5 (Opportunity Detection/Evidence/Eligibility Evaluation) of D2's Canonical Pipeline, remain
+unbuilt (TASK-005/TASK-006) — see `docs/specs/TASK_004_SPEC_v1.0.md`'s Closure Record for the
+current, non-architectural repository gaps this leaves. This is a scope decision, not an
+oversight — D3 §17's six-collaborator design was already fixed before TASK-004; TASK-004 realizes
+two of the six, per its own approved scope.
