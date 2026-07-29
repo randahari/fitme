@@ -43,6 +43,15 @@
 
 ---
 
+## FITME Specification Authoring Standard v1.0
+
+**Status:** Draft Canonical
+**Completion Date:** 2026-07-27
+
+`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md` is the standard governing how FITME task specifications are authored, evidenced, reviewed, and completed, consolidating reusable specification-authoring rules into a single source of truth for that purpose. It governs task specifications only; it does not govern the Product Bible, AI Constitution, Architecture, Engineering Workflow, Roadmap, Changelog, Coach Bible, Coach Knowledge Base, or Intelligence & Relationship Philosophy, and it does not redefine the Engineering Workflow's task lifecycle or Source of Truth hierarchy. `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` §4 references this standard as the authoring requirements for the lifecycle's SPEC stage. Documentation-only change; no product behaviour, UX, or code affected.
+
+---
+
 # Sprint 1
 
 ## TASK-001 — Coach Brain / Typed Memory Foundation
@@ -536,9 +545,9 @@ architecture phase.
 
 ## TASK-004 — Recommendation Engine
 
-**Status:** ⏸️ PAUSED
+**Status:** READY (Specification approved; implementation not started)
 
-Implementation must not begin until Phase A of the Architecture Remediation Plan is complete and the required Phase B architecture decisions are approved.
+`docs/specs/TASK_004_SPEC_v1.0.md` passed the Final Canonical Gate Review and is approved by Head of Product + AI Architect for Canonical READY, per the Engineering Workflow lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed). Implementation has not begun.
 
 ## TASK-005 — Initiative Engine
 

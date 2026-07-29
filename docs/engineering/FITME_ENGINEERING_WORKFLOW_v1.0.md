@@ -30,6 +30,9 @@ Bible chapters but does not itself govern implementation.
 Architecture → SPEC → Engineering Review → READY → Implementation → Code
 Review → Documentation Update → Commit → Task Closed
 
+SPEC authoring requirements are defined in
+`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md`.
+
 # 5. Responsibilities
 
 ## ChatGPT

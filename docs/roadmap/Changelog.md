@@ -30,7 +30,54 @@
 - 🟢 D2 — Coach Decision Pipeline Specification approved and Canonical (orchestration specification only, no production code changes)
 - 🟢 D3 — Coach Decision System Architecture approved and Canonical (architecture specification only, no production code changes)
 - ✅ D-series architecture phase closed (D1, D2, D3 all approved and Canonical)
-- ⏭️ Next canonical task: pending Product/Architecture direction — none currently named
+- Draft Canonical — FITME Specification Authoring Standard v1.0 integrated into project governance (docs-only); governs task specifications only, pending final Head of Product + AI Architect sign-off to Canonical
+- READY — TASK-004 Recommendation Engine specification (`docs/specs/TASK_004_SPEC_v1.0.md`) approved by Head of Product + AI Architect for Canonical READY; implementation not started
+- ⏭️ Next canonical task: TASK-004 — Recommendation Engine implementation, subject to the specification's individually-tracked open items as implementation reaches them
+
+---
+
+## TASK-004 — Recommendation Engine (Specification READY)
+
+**Date:** 2026-07-27
+**Status:** SPEC approved; Engineering Review = READY (implementation not started)
+**Production Code Changes:** None
+
+### Summary
+
+`docs/specs/TASK_004_SPEC_v1.0.md` passed the Final Canonical Gate Review and is approved by Head of Product + AI Architect for Canonical READY, per the Engineering Workflow lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed). Implementation has not begun.
+
+### Verification
+
+- No application code, Firestore schema, or product behaviour changes.
+- No Recommendation Engine behavior, runtime, contracts, ownership, scope, or acceptance criteria changed as part of this update.
+- CC-02, CC-03, Recommendation Categories, Ranking Policy, Explainability Policy, the Composite Engine/Orchestrator build-responsibility question, and three Canonical Conflicts (Pipeline definition, Roadmap status, repository hooks) remain individually open and tracked in the specification; this READY approval does not resolve them.
+
+### Next
+
+Engineering: implementation planning may proceed under READY; the open items above are carried forward for resolution as implementation reaches them, not resolved by this entry.
+
+---
+
+## Governance — FITME Specification Authoring Standard v1.0
+
+**Date:** 2026-07-27
+**Status:** Documentation-only, Draft Canonical
+
+### Summary
+
+`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md` consolidates reusable FITME specification-authoring rules — how a task specification is structured, grounded in canonical sources and repository evidence, evidenced, reviewed, and completed — into a single source of truth for specification authoring. It governs task specifications only; it does not govern the Product Bible, AI Constitution, Architecture, Engineering Workflow, Roadmap, Changelog, Coach Bible, Coach Knowledge Base, or Intelligence & Relationship Philosophy, and it does not redefine the Engineering Workflow's task lifecycle or Source-of-Truth hierarchy.
+
+### Verification
+
+- No application code, Firestore schema, or product behaviour changes.
+- No Product Bible, AI Constitution, Architecture, Coach Bible, or Coach Knowledge Base changes.
+- No Engineering Workflow lifecycle or Source-of-Truth hierarchy changes; Engineering Workflow §4 now references this standard for how a Task SPEC is authored.
+- No Firestore rules, Firebase Functions, or `APP_VERSION` changes.
+
+### Next
+
+Governance: pending final Head of Product + AI Architect sign-off to move from Draft Canonical to Canonical, per the standard's own Standard Lifecycle and Versioning section.
+Engineering: next task remains unnamed, pending Product/Architecture direction (unaffected by this documentation work).
 
 ---
 
