@@ -33,8 +33,11 @@
   // B5 §12.3: AI_COACH_PROMPT ו-TEST_HARNESS הם runtime consumers מאושרים. RECOMMENDATION_ENGINE
   // מאושר כ-contract/test target בלבד — build() פותר עבורו policy (RECOMMENDATION_SUPPORT_V1)
   // כדי לאפשר בדיקה, אך אף קוד production (js/app.js) אינו קורא לו בפועל עד מפרט נפרד.
-  // INITIATIVE_ENGINE/DECISION_ENGINE נותרים מושבתים לחלוטין.
-  var ENABLED_CONSUMERS = ['AI_COACH_PROMPT', 'RECOMMENDATION_ENGINE', 'TEST_HARNESS'];
+  // INITIATIVE_ENGINE הופעל ע"י TASK-005 Canonical Decision CD-T005-01
+  // (docs/specs/TASK_005_SPEC_v1.0.md §25/§32/§36 item A-1, resolved) — אך ורק כחלק מהרחבת
+  // Memory Layer הממוקדת (js/coachDecisionSystem/memoryLayer.js); אין נתיב קריאה ישיר של
+  // ה-Initiative Engine עצמו (B5 §10.1, CD-T005-01 rule 2). DECISION_ENGINE נותר מושבת לחלוטין.
+  var ENABLED_CONSUMERS = ['AI_COACH_PROMPT', 'RECOMMENDATION_ENGINE', 'INITIATIVE_ENGINE', 'TEST_HARNESS'];
   var DOMAINS = ['NUTRITION', 'WORKOUT', 'WEIGHT', 'MEASUREMENT', 'ENGAGEMENT', 'GENERAL_COACHING'];
   // B5 §12.5: "the initial implementation MAY define only the topic IDs represented by current
   // producer records" — הרשימה כאן היא בדיוק מה שנדרש לקטלוג ה-catalog IDs הקיים של
@@ -72,13 +75,27 @@
       allowedLifecycle: ['ACTIVE', 'CONFIRMED', 'WEAKENING', 'OBSERVED', 'CANDIDATE'], minimumConfidence: 0,
       minimumEvidenceDefault: 0, allowWeakening: true, maxSignals: 50, maxHabits: 50, maxPatterns: 50,
       includeUnresolvedContradictions: true, includeDetailedDiagnostics: true, hardStalenessMultiplier: 100
+    },
+    // B5 §19.3 reserves this name only — "Reserved for future work. Disabled under B5 unless
+    // separately approved" — with no concrete config anywhere canonical. TASK-005 Canonical
+    // Decision CD-T005-01 (docs/specs/TASK_005_SPEC_v1.0.md §25/§32/§36 item A-1) authorizes
+    // enabling this consumer/policy pair; the concrete threshold values below are
+    // Engineering-authored provisional logic — they mirror RECOMMENDATION_SUPPORT_V1's exact,
+    // already-approved shape rather than inventing new numbers. CDR candidate (analogous to
+    // §36 item E-1) — flagged in the TASK-005 implementation report, not decided here.
+    INITIATIVE_SUPPORT_V1: {
+      allowedLifecycle: ['ACTIVE', 'CONFIRMED', 'WEAKENING'], minimumConfidence: 0.65, minimumEvidenceDefault: 3,
+      allowWeakening: true, maxSignals: 20, maxHabits: 10, maxPatterns: 10,
+      includeUnresolvedContradictions: true, includeDetailedDiagnostics: false, hardStalenessMultiplier: 3.0
     }
   };
-  // B5 §51.1: מיפוי סגור consumer->policy. INITIATIVE/DECISION מושבתים (§12.3) ולכן חסרים כאן בכוונה —
-  // בקשה עבורם נכשלת כ-UNKNOWN_CONSUMER לפני שמגיעים בכלל לשלב resolvePolicy.
+  // B5 §51.1: מיפוי סגור consumer->policy. DECISION מושבת (§12.3) ולכן חסר כאן בכוונה — בקשה
+  // עבורו נכשלת כ-UNKNOWN_CONSUMER לפני שמגיעים בכלל לשלב resolvePolicy. INITIATIVE_ENGINE
+  // הופעל ע"י CD-T005-01 (ר' הערה ליד ENABLED_CONSUMERS למעלה).
   var CONSUMER_POLICY = {
     AI_COACH_PROMPT: 'COACH_PROMPT_V1',
     RECOMMENDATION_ENGINE: 'RECOMMENDATION_SUPPORT_V1',
+    INITIATIVE_ENGINE: 'INITIATIVE_SUPPORT_V1',
     TEST_HARNESS: 'TEST_FULL_DIAGNOSTIC_V1'
   };
 
@@ -711,7 +728,11 @@
   // RECOMMENDATION_SUPPORT_V1, unchanged).
   var PRODUCTION_ENABLED_MAPPING = freezeShallow({
     AI_COACH_PROMPT: 'COACH_PROMPT_V1',
-    RECOMMENDATION_ENGINE: 'RECOMMENDATION_SUPPORT_V1'
+    RECOMMENDATION_ENGINE: 'RECOMMENDATION_SUPPORT_V1',
+    // TASK-005 Canonical Decision CD-T005-01 — enabled solely as part of the Memory Layer's
+    // focused Pipeline Context extension (js/coachDecisionSystem/memoryLayer.js); no other
+    // production caller exists or is authorized.
+    INITIATIVE_ENGINE: 'INITIATIVE_SUPPORT_V1'
   });
   async function buildProductionSafe(request) {
     var consumer = request && request.consumer;

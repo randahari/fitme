@@ -810,3 +810,39 @@ unbuilt (TASK-005/TASK-006) — see `docs/specs/TASK_004_SPEC_v1.0.md`'s Closure
 current, non-architectural repository gaps this leaves. This is a scope decision, not an
 oversight — D3 §17's six-collaborator design was already fixed before TASK-004; TASK-004 realizes
 two of the six, per its own approved scope.
+
+## 22. TASK-005 — Initiative Engine (Composite Engine, D3 §17, third collaborator)
+
+**Added by TASK-005** (`docs/specs/TASK_005_SPEC_v1.0.md`). Realizes the third of D3 §17's six
+internal collaborators: `js/coachDecisionSystem/initiativeEngine.js` implements the Initiative
+Engine — a Stage-3 detection contribution (confirmed-pattern anticipation from real Habit/Pattern
+signals; disruption/milestone detection, correctly yielding zero Opportunities given no repository
+data source for calendar/milestone/setback events at this baseline) and Stage-6 orchestration
+authority for Initiative-kind Candidate Generation, applying D1 Unit 09 in full including
+Relationship-Maturity gating (D1-IP-02). Remains an internal collaborator of the single, already-
+registered `coachDecisionSystem` Composite Engine — no second Engine Registry entry, no second
+orchestration authority (D3 §17 Decision 1, §11.1).
+
+`js/coachDecisionSystem/memoryLayer.js` received a focused extension per Canonical Decision
+CD-T005-01: a second B5 `DerivedIntelligenceConsumer.build()` read (consumer `INITIATIVE_ENGINE`,
+policy `INITIATIVE_SUPPORT_V1`, newly enabled in `js/derivedIntelligenceConsumer.js`'s production-
+enabled mapping) supplies Habit/Pattern state; Life Event Context and Capacity State are reported
+honestly `UNAVAILABLE` (no repository data source exists for either); Relationship Maturity is
+reported `UNKNOWN` (no Product/Architecture-approved source exists yet — see the Closure Record's
+Follow-ups). The Memory Layer remains the sole owner of Decision Input reads and Pipeline Context
+Assembly; this extension performs no Opportunity Detection, Evidence Evaluation, Eligibility
+Evaluation, Candidate Generation, Prioritization, Winner Selection, or Decision Formation.
+`js/coachDecisionSystem/internalPipelineOrchestrator.js` gained `runForInitiativeOpportunity`/
+`detectInitiativeOpportunities`, structurally parallel to the existing `runForOpportunity`; `run()`'s
+existing contract is unchanged. `recommendationEngine.js`/`recommendationCategories.js` are
+untouched — reused only for the D1 Unit 05 source vocabulary (`isValidOpportunitySource`,
+`hierarchyTierForSource`), never the Recommendation Category taxonomy; `InitiativeCandidate` carries
+no `category` field (Canonical Decision CD-T005-02).
+
+The Decision Engine, Safety Layer, and Expression collaborators, and Stage 4/5 (Evidence/Eligibility
+Evaluation) of D2's Canonical Pipeline, remain unbuilt (TASK-006) — see
+`docs/specs/TASK_005_SPEC_v1.0.md`'s Closure Record for the current, non-architectural repository
+gaps this leaves (principally: no approved Relationship Maturity source, and no Life Event/Capacity/
+calendar/milestone data source, exist anywhere in the repository yet). This is a scope decision, not
+an oversight — D3 §17's six-collaborator design was already fixed before TASK-004; TASK-005 realizes
+three of the six, per its own approved scope.

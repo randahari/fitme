@@ -15,10 +15,12 @@ const StateAccess = require('../js/stateAccess.js');
 const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const RegisterCoachDecisionSystem = require('../js/coachDecisionSystem/registerCoachDecisionSystem.js');
 const RecommendationEngine = require('../js/coachDecisionSystem/recommendationEngine.js');
+const InitiativeEngine = require('../js/coachDecisionSystem/initiativeEngine.js');
 
 const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const recommendationEngineJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/recommendationEngine.js'), 'utf8');
+const initiativeEngineJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/initiativeEngine.js'), 'utf8');
 const orchestratorJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/internalPipelineOrchestrator.js'), 'utf8');
 const memoryLayerJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/memoryLayer.js'), 'utf8');
 
@@ -129,10 +131,10 @@ test('11. js/app.js wires coachDecisionSystem into the APP_READY actions map, al
   assert.match(body, /coachDecisionSystem:\s*'DECISION_PASS'/);
 });
 
-test('12. index.html loads all five new modules before js/app.js, after registerEngines.js', () => {
+test('12. index.html loads all six modules (TASK-004 five + TASK-005 initiativeEngine.js) before js/app.js, after registerEngines.js', () => {
   const iReg = indexHtml.indexOf('js/engines/registerEngines.js');
   const iApp = indexHtml.indexOf('src="js/app.js"');
-  ['recommendationCategories.js', 'recommendationEngine.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
+  ['recommendationCategories.js', 'recommendationEngine.js', 'initiativeEngine.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
     const i = indexHtml.indexOf('js/coachDecisionSystem/' + f);
     assert.notEqual(i, -1, f + ' must be present in index.html');
     assert.ok(i > iReg, f + ' must load after registerEngines.js');
@@ -150,7 +152,7 @@ test('13. Recommendation Engine consumes FeedbackDomain.evaluateSuppression — 
 // ── Persistence: no writes anywhere in the new modules (no speculative persistence) ──
 
 test('14. no new module writes to PersistenceGateway (no candidate audit trail — none required by Acceptance Criteria)', () => {
-  [recommendationEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
+  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
     assert.equal(src.indexOf('PersistenceGateway.persist'), -1);
     assert.equal(src.indexOf("require('../persistenceGateway"), -1);
   });
@@ -158,15 +160,25 @@ test('14. no new module writes to PersistenceGateway (no candidate audit trail �
 
 // ── Derived Intelligence consumption (B5, read-only, correct consumer/policy pair) ──
 
-test('15. Memory Layer requests exactly the RECOMMENDATION_ENGINE/RECOMMENDATION_SUPPORT_V1 consumer/policy pair', () => {
+test('15. Memory Layer requests exactly the RECOMMENDATION_ENGINE/RECOMMENDATION_SUPPORT_V1 and INITIATIVE_ENGINE/INITIATIVE_SUPPORT_V1 consumer/policy pairs', () => {
   assert.match(memoryLayerJs, /consumer:\s*'RECOMMENDATION_ENGINE'/);
   assert.match(memoryLayerJs, /policyId:\s*'RECOMMENDATION_SUPPORT_V1'/);
+  assert.match(memoryLayerJs, /consumer:\s*'INITIATIVE_ENGINE'/);
+  assert.match(memoryLayerJs, /policyId:\s*'INITIATIVE_SUPPORT_V1'/);
+});
+
+test('15b. the Initiative Engine itself never calls StateAccess, DerivedIntelligenceConsumer, or Firestore directly (Memory-Layer-only read path, D3 §8.1/§11.1)', () => {
+  assert.equal(initiativeEngineJs.indexOf("require('../stateAccess"), -1);
+  assert.equal(initiativeEngineJs.indexOf("require('../derivedIntelligenceConsumer"), -1);
+  assert.equal(initiativeEngineJs.indexOf('firestore'), -1);
+  assert.equal(initiativeEngineJs.indexOf('window.StateAccess'), -1);
+  assert.equal(initiativeEngineJs.indexOf('window.DerivedIntelligenceConsumer'), -1);
 });
 
 // ── Coach/Expression boundary — no final expression performed here ──
 
 test('16. none of the new modules reference Coach rendering/voice/tone surfaces (final expression stays out of scope)', () => {
-  [recommendationEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
+  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
     assert.equal(src.indexOf('coachPresenter'), -1);
     assert.equal(src.indexOf('coachPromptComposer'), -1);
     assert.equal(src.indexOf('triggerController'), -1);
@@ -180,8 +192,24 @@ test('17. the Recommendation Engine module exposes generate() only — no rank/p
   assert.deepEqual(Object.keys(RecommendationEngine).sort(), ['generate']);
 });
 
+test('17b. the Initiative Engine module exposes no rank/prioritize/selectWinner/formDecision export (D2 Unit 07 Forbidden Responsibilities)', () => {
+  ['rank', 'prioritize', 'selectWinner', 'formDecision', 'disqualify'].forEach((fn) => {
+    assert.equal(typeof InitiativeEngine[fn], 'undefined', fn);
+  });
+});
+
 test('18. no second EngineRegistry-like registration surface is introduced anywhere in the new modules', () => {
-  [orchestratorJs, memoryLayerJs].forEach((src) => {
+  [orchestratorJs, memoryLayerJs, initiativeEngineJs].forEach((src) => {
     assert.equal(src.indexOf('.register('), -1);
   });
+});
+
+// ── TASK-005 — no StateAccess permission-matrix entry beyond TASK-004's baseline was required ──
+
+test('19. StateAccess coachDecisionSystem/DECISION_PASS permission entry is unchanged by TASK-005 (Habit/Pattern/Relationship-Maturity signal reach the Initiative Engine only via the Memory Layer\'s existing B5 read path, not a new raw StateAccess grant)', () => {
+  StateAccess.configure({ getUserProfile: () => ({ coachEvents: [] }), getCurrentUser: () => ({ uid: 'u' }), isSessionCurrent: () => true });
+  const access = StateAccess.createEngineAccess({ engineId: 'coachDecisionSystem', action: 'DECISION_PASS', userId: 'u', sessionGeneration: 1, runId: 'r' });
+  assert.doesNotThrow(() => access.read.recommendationFeedbackHistory());
+  assert.throws(() => access.read.habitView());
+  assert.throws(() => access.read.patternView());
 });

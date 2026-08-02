@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-08-02
 
 ---
 
@@ -551,7 +551,9 @@ architecture phase.
 
 ## TASK-005 — Initiative Engine
 
-**Status:** ⏳ PENDING
+**Status:** ✅ DONE (Implementation complete, approved, closed)
+
+`docs/specs/TASK_005_SPEC_v1.0.md` completed Canonical Review, Product Approval, Architecture Approval, and Engineering Review (all approved), per the Engineering Workflow lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed). Implementation is complete: `js/coachDecisionSystem/initiativeEngine.js` (new — the Initiative Engine, D3 §17's third of six internal collaborators), with a focused extension to `memoryLayer.js` (Canonical Decision CD-T005-01) and `internalPipelineOrchestrator.js`; 68 new/changed tests, full suite 1212/1212 passing. A focused code-review correction pass (four corrections) was applied and verified before approval. Approved by Head of Product + AI Architect and closed 2026-08-02 — see `docs/specs/TASK_005_SPEC_v1.0.md`'s Closure Record for details, evidence, and tracked follow-up items (none of which expand this task's own scope).
 
 ## TASK-006 — Decision Engine
 
@@ -583,5 +585,5 @@ D1 — Coach Intelligence Translation Model is approved and Canonical (decision-
 D2 — Coach Decision Pipeline Specification is approved and Canonical (orchestration specification only, no production code changes).
 D3 — Coach Decision System Architecture is approved and Canonical (architecture specification only, no production code changes).
 
-Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), and TASK-004 (Recommendation Engine) are complete and closed.
+Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), and TASK-005 (Initiative Engine) are complete and closed.
 Next Work Item: Pending Product/Architecture direction — no next canonical work item is currently named.

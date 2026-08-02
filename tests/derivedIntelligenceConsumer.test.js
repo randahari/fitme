@@ -114,14 +114,22 @@ test('4. unknown consumer rejected', async () => {
   assert.equal(result.error.code, 'UNKNOWN_CONSUMER');
 });
 
-test('4b. disabled consumers (INITIATIVE_ENGINE/DECISION_ENGINE) rejected as unknown/unauthorized', async () => {
+test('4b. DECISION_ENGINE remains disabled — rejected as unknown/unauthorized (unaffected by TASK-005)', async () => {
   makeEnv();
-  const r1 = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
   const r2 = await Consumer.build(baseRequest({ consumer: 'DECISION_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
-  assert.equal(r1.status, 'REJECTED');
-  assert.equal(r1.error.code, 'UNKNOWN_CONSUMER');
   assert.equal(r2.status, 'REJECTED');
   assert.equal(r2.error.code, 'UNKNOWN_CONSUMER');
+});
+
+// TASK-005 Canonical Decision CD-T005-01 enables INITIATIVE_ENGINE (see the dedicated TASK-005
+// block below) — this supersedes the pre-TASK-005 assertion that it was UNKNOWN_CONSUMER. With
+// its own policy it now succeeds; requested against a foreign policy it correctly reports the
+// more specific POLICY_NOT_ALLOWED_FOR_CONSUMER instead (§51.4's mismatch mechanism, unchanged).
+test('4c. INITIATIVE_ENGINE is now a known, enabled consumer — a foreign policy is a mismatch, not UNKNOWN_CONSUMER', async () => {
+  makeEnv();
+  const r1 = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
+  assert.equal(r1.status, 'REJECTED');
+  assert.equal(r1.error.code, 'POLICY_NOT_ALLOWED_FOR_CONSUMER');
 });
 
 test('5. unknown policy rejected', async () => {
@@ -699,4 +707,37 @@ test('correction. buildProductionSafe rejects a malformed request without throwi
   const result = await Consumer.buildProductionSafe({});
   assert.equal(result.status, 'REJECTED');
   assert.equal(result.error.code, 'POLICY_NOT_ALLOWED_FOR_CONSUMER');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// TASK-005 Canonical Decision CD-T005-01 — INITIATIVE_ENGINE/INITIATIVE_SUPPORT_V1 enablement
+// (docs/specs/TASK_005_SPEC_v1.0.md §25/§32/§36 item A-1, resolved). B5 §19.3 reserved the name
+// only ("Reserved for future work"); the concrete policy values are Engineering-authored
+// provisional logic mirroring RECOMMENDATION_SUPPORT_V1's shape (CDR candidate).
+// ══════════════════════════════════════════════════════════════════
+
+test('TASK-005: INITIATIVE_ENGINE/INITIATIVE_SUPPORT_V1 is now reachable through the core module (Node) build path', async () => {
+  makeEnv({ habits: [makeHabit()] });
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  assert.equal(result.status, 'SUCCESS');
+});
+
+test('TASK-005: INITIATIVE_ENGINE requesting a mismatched policy still fails POLICY_NOT_ALLOWED_FOR_CONSUMER', async () => {
+  makeEnv();
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'POLICY_NOT_ALLOWED_FOR_CONSUMER');
+});
+
+test('TASK-005: buildProductionSafe now allows INITIATIVE_ENGINE/INITIATIVE_SUPPORT_V1 (production-enabled, Memory Layer is the sole authorized caller)', async () => {
+  makeEnv({ habits: [makeHabit()] });
+  const result = await Consumer.buildProductionSafe(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  assert.equal(result.status, 'SUCCESS');
+});
+
+test('TASK-005: DECISION_ENGINE remains fully disabled — enabling INITIATIVE_ENGINE does not widen the boundary any further than CD-T005-01 authorizes', async () => {
+  makeEnv();
+  const result = await Consumer.build(baseRequest({ consumer: 'DECISION_ENGINE', policyId: 'DECISION_SUPPORT_V1' }));
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'UNKNOWN_CONSUMER');
 });

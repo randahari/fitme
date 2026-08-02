@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-07-29
+**Last Updated:** 2026-08-02
 
 ---
 
@@ -32,7 +32,63 @@
 - ✅ D-series architecture phase closed (D1, D2, D3 all approved and Canonical)
 - Draft Canonical — FITME Specification Authoring Standard v1.0 integrated into project governance (docs-only); governs task specifications only, pending final Head of Product + AI Architect sign-off to Canonical
 - 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
+- 🟢 TASK-005 — Initiative Engine approved, implemented, verified and closed (`js/coachDecisionSystem/initiativeEngine.js`; D3 §17's Composite Engine, third of six internal collaborators; focused Memory Layer extension per CD-T005-01; 68 new/changed tests, full suite 1212/1212 passing)
 - ⏭️ Next canonical task: pending Product/Architecture direction — no next canonical work item is currently named
+
+---
+
+## TASK-005 — Initiative Engine (Implementation Complete, Closed)
+
+**Date:** 2026-08-02
+**Status:** DONE — implemented, tested, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented D3 §17's third Coach Decision System internal collaborator — the Initiative Engine —
+alongside a focused extension of the existing Memory Layer (Canonical Decision CD-T005-01). Added:
+`js/coachDecisionSystem/initiativeEngine.js` (Stage-3 confirmed-pattern-anticipation/disruption/
+milestone detection contribution; Stage-6 Initiative-kind Candidate Generation applying D1 Unit 09
+in full). Modified (additive only, no existing public contract changed): `memoryLayer.js` (Habit/
+Pattern state via a second B5 read, Life Event Context and Capacity State reported honestly
+`UNAVAILABLE`, Relationship Maturity reported `UNKNOWN` — no approved source exists yet),
+`internalPipelineOrchestrator.js` (`runForInitiativeOpportunity`/`detectInitiativeOpportunities`,
+existing `run`/`runForOpportunity` unchanged), `js/derivedIntelligenceConsumer.js` (new
+`INITIATIVE_ENGINE`/`INITIATIVE_SUPPORT_V1` consumer/policy pair, enabled per CD-T005-01),
+`index.html`/`sw.js` (script/shell wiring). `recommendationEngine.js`/`recommendationCategories.js`
+untouched, reused as-is (source vocabulary only, never the Recommendation Category taxonomy — the
+Initiative Candidate carries no `category` field, Canonical Decision CD-T005-02). No
+`js/stateAccess.js` change was required. No `APP_VERSION` change.
+
+A focused code-review correction pass was applied before final approval: an invented Relationship
+Maturity evidence-count heuristic was removed (replaced with honest `UNKNOWN`, no replacement
+heuristic); `DECISION_WINDOW` was removed from the Initiative Engine's accepted Stage-6 sources
+(Repository Gap G-4 remains an unresolved Follow-up, not an Engineering routing decision);
+`SAFETY_HIGH_RISK` handling was re-documented as an out-of-contract exclusion rather than a
+policy-driven Silence (Repository Gap G-3 remains unresolved); and comments overstating the reused
+`recommendationCategories.js` mapping's status were corrected to state plainly it is TASK-004's own
+engineering-authored, provisional mapping, reused unmodified.
+
+### Verification
+
+- 68 new/changed tests (unit/contract/integration/failure) across `tests/initiativeEngine.test.js`
+  (new, 47 tests) and four extended test files; full suite 1212/1212 passing (the TASK-004 baseline
+  1144/1144 unchanged).
+- Still exactly one Composite Engine registered (`coachDecisionSystem`); no second Engine Registry
+  entry, no second orchestration authority.
+- `InitiativeCandidate` carries no `category` field and no disqualification/prioritization/winner-
+  selection function exists on the Initiative Engine's public interface (D2 Unit 07 Forbidden
+  Responsibilities, D1-AB-05).
+- No repository data source exists for calendar disruptions, milestones, setback/recovery events,
+  Life Event Context, Capacity State, or an approved Relationship Maturity signal — all reported
+  honestly `UNAVAILABLE`/`UNKNOWN`/empty rather than fabricated.
+
+### Next
+
+See `docs/specs/TASK_005_SPEC_v1.0.md`'s Closure Record for the full follow-up list (none of which
+expand this task's own scope) — principally that TASK-006 (Decision Engine) remains the path to a
+live, non-empty candidate flow, and that an approved Relationship Maturity source, and Life
+Event/Capacity/calendar/milestone data sources, remain Product/Architecture-owned future work.
 
 ---
 

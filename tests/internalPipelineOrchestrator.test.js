@@ -88,3 +88,42 @@ test('5. runForOpportunity() withholds when the opportunity cannot be explained 
   const result = Orchestrator.runForOpportunity(pipelineContext, opportunity);
   assert.deepEqual(result.candidates, []);
 });
+
+// ── TASK-005 — Initiative Engine Stage-6 dispatch, Stage-3 detection dispatch ──
+
+test('6. runForInitiativeOpportunity() invokes Stage 6 (Initiative Engine) directly for a real EligibleOpportunity', async () => {
+  configureHappyPath();
+  const pipelineContext = { feedbackHistory: [], relationshipMaturity: { stage: 'ASSISTANT' } };
+  const opportunity = {
+    id: 'iopp-1', sourceCategory: 'DISRUPTION_DETECTION', proposedAction: 'prepare ahead', confidence: 0.8,
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'low' },
+    valueDimensions: ['CONSISTENCY'], detectedAt: Date.now()
+  };
+  const result = Orchestrator.runForInitiativeOpportunity(pipelineContext, opportunity);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].kind, 'INITIATIVE');
+});
+
+test('7. runForInitiativeOpportunity() withholds when Relationship-Maturity gating is not satisfied', () => {
+  const pipelineContext = { feedbackHistory: [], relationshipMaturity: { stage: 'OBSERVER' } };
+  const opportunity = {
+    id: 'iopp-2', sourceCategory: 'DISRUPTION_DETECTION', proposedAction: 'prepare ahead', confidence: 0.8,
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'low' },
+    valueDimensions: ['CONSISTENCY'], detectedAt: Date.now()
+  };
+  const result = Orchestrator.runForInitiativeOpportunity(pipelineContext, opportunity);
+  assert.deepEqual(result.candidates, []);
+});
+
+test('8. detectInitiativeOpportunities() exposes the Stage-3 detection contribution (confirmed-pattern anticipation, disruption, milestone/recovery)', () => {
+  const pipelineContext = { initiativeIntelligence: { signals: [] } };
+  const result = Orchestrator.detectInitiativeOpportunities(pipelineContext);
+  assert.deepEqual(Object.keys(result).sort(), ['confirmedPatternAnticipation', 'disruption', 'milestoneRecovery']);
+});
+
+test('9. run()\'s overall contract is preserved unchanged by the TASK-005 extension (still candidates: [] at this baseline)', async () => {
+  configureHappyPath();
+  const result = await Orchestrator.run({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
+  assert.equal(result.status, 'SUCCESS');
+  assert.deepEqual(result.output.candidates, []);
+});
