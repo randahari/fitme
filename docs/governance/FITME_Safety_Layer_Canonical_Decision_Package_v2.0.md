@@ -1,11 +1,11 @@
 
 # FITME — SAFETY LAYER CANONICAL DECISION PACKAGE
-## v2.1 — Expanded from GOLD SKELETON v2.0 (Closed — Repository Synchronized)
+## v2.2 — Expanded from GOLD SKELETON v2.0 (Closed — Repository Synchronized; Safety Decision Matrix Disposition Policy Finalized)
 
 > **Document role:** Decision Package. Not a SPEC. Not an implementation document.
 > **Prepared by:** Lead Engineer / Canonical Documentation Maintainer, recording decisions approved by the Head of Product + AI Architect without reinterpretation.
 > **Repository baseline:** `main`, prior to this closure commit (parent commit `ee727f8`, "docs: close FITME Spec Authoring Standard v1.1 to Canonical").
-> **Revision note:** v1.1 applied Canonical Review Round 2 corrections (solution-neutral RCD/Gap wording). v1.2 applied Canonical Review Round 3 (RCD-01 reframed as a formal-designation question). v2.0 recorded the Head of Product + AI Architect's Final Canonical Update: all eight Required Canonical Decisions (RCD-01 through RCD-08) approved and RESOLVED. v2.1 records closure: the RCD-06 repository synchronization has been executed across every affected canonical document (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3), and this Decision Package itself is filed as a canonical governance document at `docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`. SL-001 — Safety Layer SPEC authoring is enabled but not started by this closure.
+> **Revision note:** v1.1 applied Canonical Review Round 2 corrections (solution-neutral RCD/Gap wording). v1.2 applied Canonical Review Round 3 (RCD-01 reframed as a formal-designation question). v2.0 recorded the Head of Product + AI Architect's Final Canonical Update: all eight Required Canonical Decisions (RCD-01 through RCD-08) approved and RESOLVED. v2.1 records closure: the RCD-06 repository synchronization has been executed across every affected canonical document (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3), and this Decision Package itself is filed as a canonical governance document at `docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`. SL-001 — Safety Layer SPEC authoring is enabled but not started by this closure. **v2.2 records a further Final Canonical Update:** the Head of Product + AI Architect approved and RESOLVED three additional Required Canonical Decisions — RCD-09 (Safety Decision Matrix Disposition Policy), RCD-10 (Derivation of Safety Matrix Dimensions), and RCD-11 (Canonical `reasonCode` Contract) — fully specifying content that RCD-02 and RCD-03 had previously approved only at the structural level. This round is not yet repository-synchronized; the documentation-synchronization action for RCD-09 through RCD-11 (principally, updating the future SL-001 SPEC's own record of these items from Architecture Decision Pending to fixed) remains a follow-up action outside this Decision Package's own authority, per the same reasoning RCD-06 already established for the original eight decisions.
 
 ---
 
@@ -992,6 +992,7 @@ Aggregated from Ch. 06-26; see each gap entry below for its originating citation
 - Repository Evidence: Ch. 17 (AIC §11.6 impact tiers, D1-PR-02, CB Ch.3 §4/§10 — none of which grade harm severity; full-text review confirms total absence).
 - Why this was a gap: The Safety Layer had to choose among five dispositions (Ch. 15, Ch. 18) with no stated criteria distinguishing them by severity.
 - Resolution: RCD-02 (Ch. 28) — the Head of Product + AI Architect approved a deterministic Safety Decision Matrix evaluating Risk Type, Evidence Confidence, Correctability, and Urgency, explicitly ruling out a generic numerical severity score.
+- Further specified by: RCD-09 and RCD-10 (Ch. 28) — the Head of Product + AI Architect subsequently fixed the Matrix's disposition-selection policy (protective precedence, per-disposition trigger conditions, the all-disqualified Silence/Refusal split) and the derivation rule for each of the four dimensions. No Safety Decision Matrix content remains undefined at the canonical-decision level.
 - Blocks SPEC: **No** (resolved).
 
 **GAP-02 — No Closed Reason-Code Taxonomy for Safety Determinations — RESOLVED**
@@ -999,6 +1000,7 @@ Aggregated from Ch. 06-26; see each gap entry below for its originating citation
 - Repository Evidence: Ch. 24 (T006 §21.8's free-text `reason` field alongside the closed `disposition` enum).
 - Why this was a gap: Downstream systems (audit, analytics, a future Expression collaborator) could not safely branch on unconstrained text for a non-bypassable authority's output.
 - Resolution: RCD-03 (Ch. 28) — the Head of Product + AI Architect approved a closed canonical `reasonCode` plus an optional structured `reasonDetail`; free-text explanations are no longer the canonical authority. The specific enumerated `reasonCode` values remain SL-001 SPEC-authoring content, not a further Product/Architecture ambiguity.
+- Further specified by: RCD-11 (Ch. 28) — the Head of Product + AI Architect superseded this chapter's earlier framing and fixed the closed `reasonCode` catalogue directly at the Decision Package level, rather than leaving the specific values to SL-001 SPEC-authoring discretion. One item remains genuinely open: RCD-11 does not state a migration mapping from the existing free-text `reason` field (T006 §21.8) to the new closed catalogue — see RCD-11's own Explicit Non-Interpretations.
 - Blocks SPEC: **No** (resolved).
 
 **GAP-03 — No TASK Number or Roadmap Entry for the Safety Layer — RESOLVED**
@@ -1151,17 +1153,48 @@ See Ch. 06-27 for full citations underlying each decision below.
 - Consequences: Provides the missing bridge between CB's philosophy and RCD-02's Safety Decision Matrix — the enumerated signal types are exactly the class of inputs the matrix's Evidence Confidence dimension must recognize as pattern-exempt.
 - Backward Compatibility: CB's Canonical Maintenance Policy requires this addition to be "recorded openly, as a new version of this Bible, with the change and its reasoning stated plainly" `[CB, ~Line 5192]` — a repository update per RCD-06, not performed by this package itself.
 
+**RCD-09 — Safety Decision Matrix Disposition Policy — RESOLVED**
+- Decision Statement: Approved. The Safety Layer SHALL determine exactly one disposition; no numeric scoring, weighting, or averaging is permitted. The four RCD-02 dimensions (Risk Type, Evidence Confidence, Correctability, Urgency) are evaluated together. Disposition selection SHALL always follow protective precedence, in this fixed order — the first satisfied rule determines the result, and where multiple rules match simultaneously, the highest-protective disposition SHALL always win:
+  1. `ESCALATED` — returned only when repository-approved safety evidence requires professional support or immediate protective escalation. `ESCALATED` never creates external communication by itself; Expression determines wording (consistent with RCD-04).
+  2. `BLOCKED` — returned when the user's requested intent fundamentally violates an approved canonical safety boundary and cannot become safe without changing the original intent.
+  3. `DEFERRED` — returned when a safe decision cannot yet be made because required safety information is missing or uncertainty is too high.
+  4. `MODIFIED` — returned when the original intent can remain intact by applying a bounded safety modification.
+  5. `UNMODIFIED` — returned only when no repository-supported safety conflict exists and no missing critical safety information prevents a safe decision.
+
+  Silence vs. Refusal (Stage 8 all-disqualified outcome, Ch. 14): if all Candidates are disqualified because the original request itself violates a canonical safety boundary, the Safety Layer SHALL produce Refusal; if all Candidates are disqualified because no sufficiently safe Candidate can be established due to missing context or insufficient evidence, the Safety Layer SHALL produce Silence. All-disqualified status SHALL NOT itself produce `ESCALATED`.
+- Canonical Rationale: Completes RCD-02's Safety Decision Matrix by fixing the disposition-selection policy operating over its four already-approved dimensions; resolves the "Remains open" item recorded at Ch. 14, Ch. 15, Ch. 17, and Ch. 18 (the policy logic selecting among the five dispositions), and the Silence-vs-Refusal question left to "the Safety Layer's own reasoning" at `[T006 §23.5]`. The `ESCALATED` trigger condition is stated consistently with, and does not alter, RCD-04's own definition of what `ESCALATED` means once selected. The `BLOCKED`/permanent-commitment framing is consistent with D1-AH-02's existing absolute-override list (Ch. 14); no new override category is introduced.
+- Approval Evidence: Head of Product + AI Architect, Canonical Review — Disposition Policy Canonical Update (not a citation to any of the 13 original repository documents, since none of them yet reflects this policy; recorded here per this Decision Package's established practice for RCD-01 through RCD-08).
+- Documents Affected: The future Safety Layer SPEC (SL-001) — a repository update outside this package's own authority (see RCD-06's precedent).
+- Consequences: `finalReview()` can now be specified against a complete, ordered disposition-selection rule rather than an undefined mapping; the Stage-8 all-disqualified Silence/Refusal ambiguity (Ch. 14, Ch. 19) is closed.
+- Backward Compatibility: N/A — no prior disposition-selection policy existed to be broken; this decision also forecloses any future numerical-scoring design for this purpose, consistent with RCD-02.
+
+**RCD-10 — Derivation of Safety Matrix Dimensions — RESOLVED**
+- Decision Statement: Approved. The four Safety Matrix dimensions SHALL be derived exclusively from already-approved canonical inputs: Pipeline Context, the Candidate under review, the Terminal Decision under review, Health/Safety Profile, and Life Event Context. No new engines, pipeline stages, repository state, or data sources are introduced. Risk Type SHALL classify only canonical safety conflict type. Evidence Confidence SHALL reflect only the repository-supported Evidence Hierarchy (D1 Unit 11). Correctability SHALL determine whether the detected safety issue can be resolved while preserving the user's original intent. Urgency SHALL classify only the timing sensitivity of the required protective action. If a dimension cannot be derived from approved canonical evidence, its value SHALL be `INSUFFICIENT`; Engineering SHALL NOT infer or invent a missing value. Missing critical information SHALL result in `DEFERRED` whenever safe classification cannot otherwise be established.
+- Canonical Rationale: Completes RCD-02 by fixing how each of its four dimensions is derived, without introducing any input source beyond what D1 Unit 03 already enumerates (Ch. 11). The `INSUFFICIENT` sentinel and its consequence (`DEFERRED`) directly implement RCD-09's own `DEFERRED` trigger condition ("required safety information is missing") and are structurally consistent with, though not identical to, the `NO_SIGNAL` sentinel pattern T006 §14.12 already established for the Decision Engine's own arbitration metadata.
+- Approval Evidence: Head of Product + AI Architect, Canonical Review — Disposition Policy Canonical Update.
+- Documents Affected: The future Safety Layer SPEC (SL-001) — a repository update outside this package's own authority.
+- Consequences: Closes the "no real classification source exists for the Safety Decision Matrix's own input dimensions" gap; the Matrix is now fully specified from input derivation through disposition selection (RCD-09).
+- Backward Compatibility: N/A — no prior derivation rule existed to be broken; introduces no new engine, pipeline stage, repository state, or data source, per the decision's own explicit terms.
+
+**RCD-11 — Canonical `reasonCode` Contract — RESOLVED**
+- Decision Statement: Approved. Every Safety Layer decision SHALL expose exactly one canonical `reasonCode`, which SHALL be the canonical authority; `reasonDetail` SHALL be structured supporting information only and SHALL NEVER replace `reasonCode`. The canonical closed `reasonCode` catalogue is: `NO_SAFETY_CONFLICT`, `KNOWN_ALLERGY_CONFLICT`, `ACTIVE_MEDICAL_INSTRUCTION_CONFLICT`, `ACTIVE_HIGH_RISK_SYMPTOM`, `SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT`, `DANGEROUS_OR_EXTREME_REQUEST`, `PERMANENT_SAFETY_COMMITMENT_CONFLICT`, `DISORDERED_EATING_OR_BODY_IMAGE_CONCERN`, `PSYCHOLOGICAL_DISTRESS_CONCERN`, `OUTSIDE_COACHING_SCOPE`, `INSUFFICIENT_SAFETY_CONTEXT`, `INFERRED_SIGNAL_NOT_SUFFICIENT`, `PROFESSIONAL_SUPPORT_REQUIRED`. Only one primary `reasonCode` SHALL be returned; where multiple safety conditions exist simultaneously, the `reasonCode` corresponding to the highest-protective disposition (RCD-09's precedence order) SHALL be selected, and secondary information belongs only inside `reasonDetail`. The catalogue is CLOSED; Engineering SHALL NOT extend it.
+- Canonical Rationale: Completes RCD-03 by fixing the specific closed enumeration that chapter approved only structurally, superseding this Decision Package's own earlier framing (Ch. 24, Ch. 27/GAP-02) that the enumerated values would be left to SL-001 SPEC-authoring discretion. The catalogue's categories align with, and do not expand, D1-AH-02's absolute-override list, D1-AB-02's professional-referral threshold, and RCD-08's single-event bypass signal list — no new safety-trigger category is introduced by this decision.
+- Approval Evidence: Head of Product + AI Architect, Canonical Review — Disposition Policy Canonical Update.
+- Documents Affected: The future Safety Layer SPEC (SL-001) — a repository update outside this package's own authority.
+- Consequences: The existing free-text `reason` field in `DisqualificationResult`/`SafetyReviewResult` (T006 §21.8) is superseded in authority by the closed `reasonCode`. **Not addressed by this decision:** a migration mapping from the existing free-text `reason` field's historical values to the new closed catalogue — this was requested as part of the same decision round but was not supplied with the approved content; it is recorded as a genuinely open item, not invented here (see Explicit Non-Interpretations, below, and Ch. 27/GAP-02).
+- Backward Compatibility: The free-text `reason` field's migration to `reasonCode`/`reasonDetail` remains SL-001 SPEC-authoring content per RCD-03's original framing, except that the target catalogue is now fixed by this decision rather than left open.
+
 ## Explicit Non-Interpretations
-This chapter records the Head of Product + AI Architect's approved decisions verbatim; it does not reinterpret, improve, or replace them, and it does not itself perform the repository updates RCD-06 requires — those remain outside this Decision Package's own authority (Ch. 01, Ch. 03).
+This chapter records the Head of Product + AI Architect's approved decisions verbatim; it does not reinterpret, improve, or replace them, and it does not itself perform the repository updates RCD-06 requires — those remain outside this Decision Package's own authority (Ch. 01, Ch. 03). RCD-11 does not state, and this chapter does not invent, a migration mapping from the existing free-text `reason` field to the new closed `reasonCode` catalogue; that mapping remains unresolved and is not supplied by inference.
 
 ## Repository Gaps
 N/A — this chapter records the resolution of Ch. 27's gaps via approved decisions; it does not introduce new gaps.
 
 ## Completion Checklist
-- **Already decided:** RCD-01 through RCD-08, all — approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update); the RCD-06 repository synchronization (Product Bible, AI Constitution, Coach Bible, Roadmap, Changelog, D1, D2, D3) has been executed.
-- **Remains open:** Nothing under this chapter's scope.
-- **Owner:** Head of Product + AI Architect approved the decisions; repository synchronization executed under this closure.
-- **Blocks SPEC:** No — all eight RCDs resolved and synchronized.
+- **Already decided:** RCD-01 through RCD-08 — approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update); the RCD-06 repository synchronization (Product Bible, AI Constitution, Coach Bible, Roadmap, Changelog, D1, D2, D3) has been executed. RCD-09 through RCD-11 — approved by the Head of Product + AI Architect (Canonical Review, Disposition Policy Canonical Update); repository synchronization for this round has not yet been executed (see this document's v2.2 Revision note).
+- **Remains open:** The free-text-`reason`-to-`reasonCode` migration mapping (RCD-11's own Explicit Non-Interpretations); the RCD-09/10/11 repository synchronization action itself.
+- **Owner:** Head of Product + AI Architect approved all eleven decisions; repository synchronization for RCD-01 through RCD-08 executed under the prior closure; synchronization for RCD-09 through RCD-11 remains a follow-up action.
+- **Blocks SPEC:** No — all eleven RCDs resolved; the two remaining open items above are non-blocking, consistent with this package's treatment of every other non-blocking open item (Ch. 27).
 
 ---
 
@@ -1191,21 +1224,25 @@ See "Documents Affected" fields in Ch. 28.
 | RCD-06 (documentation synchronization) | RESOLVED | Product Bible, AI Constitution, Coach Bible, Roadmap, Changelog |
 | RCD-07 (precedence confirmed) | RESOLVED | D1, D2, D3 (internal alternate lists), by reference |
 | RCD-08 (single-event bypass criteria) | RESOLVED | Coach Bible (versioned amendment); future SL-001 SPEC |
+| RCD-09 (Safety Decision Matrix disposition policy) | RESOLVED | Future SL-001 SPEC |
+| RCD-10 (derivation of Safety Matrix dimensions) | RESOLVED | Future SL-001 SPEC |
+| RCD-11 (canonical `reasonCode` contract) | RESOLVED | Future SL-001 SPEC |
 | GAP-06 (terminology) | Open, non-blocking | AI Constitution (optional clarity pass) |
 | GAP-10/11/12/13 (inherited) | Open, non-blocking | Already tracked by their originating documents (D1 CDRs, T004-T006 Canonical Conflicts); not newly introduced here |
+| RCD-11 free-text-to-`reasonCode` migration mapping | Open, non-blocking | Future SL-001 SPEC (not yet supplied — see RCD-11's Explicit Non-Interpretations) |
 
-This package itself, once accepted, becomes a candidate for citation by SL-001's future SPEC (RCD-01) — but it is not itself canonical (Ch. 01), and the physical repository updates listed above remain RCD-06's follow-up action, not performed by this package.
+This package itself, once accepted, becomes a candidate for citation by SL-001's future SPEC (RCD-01) — but it is not itself canonical (Ch. 01), and the physical repository updates listed above remain RCD-06's (for RCD-01 through RCD-08) or an equivalent follow-up action's (for RCD-09 through RCD-11) responsibility, not performed by this package.
 
 ## Explicit Non-Interpretations
-This chapter does not sequence or prioritize the RCD-06 repository updates relative to each other — sequencing is a Product/AI Architecture planning decision.
+This chapter does not sequence or prioritize the RCD-06 (or RCD-09–11) repository updates relative to each other — sequencing is a Product/AI Architecture planning decision. It does not invent the missing RCD-11 migration mapping to fill the open row above.
 
 ## Repository Gaps
-None new.
+None new. The RCD-11 migration-mapping item is tracked in the table above, not restated as a numbered GAP, since it originates from this v2.2 round rather than the original Ch. 27 gap-discovery pass.
 
 ## Completion Checklist
-- **Already decided:** The mapping table above; every RCD-linked item is resolved and, per RCD-06, synchronized to its listed document(s).
-- **Remains open:** GAP-06 and GAP-10 through GAP-13 (unaddressed, non-blocking) — informational only.
-- **Owner:** Head of Product + AI Architect (decisions approved and synchronized).
+- **Already decided:** The mapping table above; every RCD-linked item is resolved. RCD-01 through RCD-08 are synchronized to their listed document(s) per RCD-06; RCD-09 through RCD-11 are approved but not yet synchronized.
+- **Remains open:** GAP-06, GAP-10 through GAP-13 (unaddressed, non-blocking, inherited), and the RCD-11 migration-mapping item (non-blocking, new to this round) — informational only.
+- **Owner:** Head of Product + AI Architect (decisions approved; synchronization for RCD-01–08 complete, for RCD-09–11 pending).
 - **Blocks SPEC:** No.
 
 ---
@@ -1265,15 +1302,15 @@ Skeleton §12 "Final Acceptance Gate."
 
 ## Repository Evidence
 - Skeleton §12: "The completed Decision Package may recommend SPEC authoring ONLY if: 1. No Product ambiguity remains. 2. No Architecture ambiguity remains. 3. Engineering will not need to invent behaviour. 4. Every required decision is explicit. 5. Every remaining gap is classified. 6. Readiness verdict is justified by repository evidence. If any criterion fails: Final verdict MUST be: NOT READY FOR SPEC."
-- Ch. 27: of the 8 primary gaps, 7 are now RESOLVED (GAP-01 through GAP-05, GAP-07, GAP-08) per approved decisions RCD-01 through RCD-08; GAP-06 remains open, non-blocking. Of the inherited gaps, GAP-09 is now RESOLVED (RCD-07); GAP-10 through GAP-13 remain open, already non-blocking for Safety Layer specifically.
-- Ch. 28: all 8 Required Canonical Decisions (RCD-01 through RCD-08) are RESOLVED, approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update).
+- Ch. 27: of the 8 primary gaps, 7 are now RESOLVED (GAP-01 through GAP-05, GAP-07, GAP-08) per approved decisions RCD-01 through RCD-08, with GAP-01 and GAP-02 subsequently further specified in full by RCD-09/RCD-10 and RCD-11 respectively; GAP-06 remains open, non-blocking. Of the inherited gaps, GAP-09 is now RESOLVED (RCD-07); GAP-10 through GAP-13 remain open, already non-blocking for Safety Layer specifically.
+- Ch. 28: all 11 Required Canonical Decisions (RCD-01 through RCD-11) are RESOLVED, approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update for RCD-01–08; Disposition Policy Canonical Update for RCD-09–11).
 
 ## Canonical Interpretation
-Criterion 1 (no Product ambiguity remains) — satisfied: RCD-01 (SL-001 designation), RCD-04 (meaning of ESCALATED), RCD-06 (documentation synchronization), and RCD-07 (precedence confirmed) are all resolved. Criterion 2 (no Architecture ambiguity remains) — satisfied: RCD-02 (Safety Decision Matrix), RCD-03 (closed `reasonCode`), and RCD-05 (filter-concept relationship) are all resolved. Criterion 3 (Engineering will not need to invent behaviour) — satisfied: a future SL-001 SPEC can now be authored against a fixed disposition-selection input model (Risk Type, Evidence Confidence, Correctability, Urgency), a fixed `reasonCode`/`reasonDetail` shape, a fixed meaning of escalation, a fixed relationship among the Constitution's three filter concepts, and a fixed single-event bypass criteria list — none of which requires Engineering to originate Product or AI Architecture policy. Criterion 4 (every required decision explicit) — satisfied (Ch. 28). Criterion 5 (every remaining gap classified) — satisfied (Ch. 27; the open gaps, GAP-06 and the inherited GAP-10 through GAP-13, are explicitly classified as non-blocking). Criterion 6 (verdict justified by repository evidence) — satisfied by this chapter's citations to Ch. 27/28 and by the approved decisions' own recorded text.
+Criterion 1 (no Product ambiguity remains) — satisfied: RCD-01 (SL-001 designation), RCD-04 (meaning of ESCALATED), RCD-06 (documentation synchronization), and RCD-07 (precedence confirmed) are all resolved. Criterion 2 (no Architecture ambiguity remains) — satisfied, and now more completely than at v2.1: RCD-02/RCD-09/RCD-10 (Safety Decision Matrix, its disposition-selection policy, and its dimension-derivation rules), RCD-03/RCD-11 (closed `reasonCode` contract and its specific catalogue), and RCD-05 (filter-concept relationship) are all resolved. Criterion 3 (Engineering will not need to invent behaviour) — satisfied, and strengthened by this round: a future SL-001 SPEC can now be authored against a fixed disposition-selection *policy* (not merely a fixed input model), a fixed `reasonCode` catalogue (not merely a fixed field shape), a fixed meaning of escalation, a fixed relationship among the Constitution's three filter concepts, and a fixed single-event bypass criteria list — none of which requires Engineering to originate Product or AI Architecture policy. The single remaining item Engineering cannot originate on its own — the free-text-`reason`-to-`reasonCode` migration mapping (RCD-11) — is recorded as open, not invented, and does not itself require Engineering to originate Product or Architecture policy to proceed with the rest of SL-001. Criterion 4 (every required decision explicit) — satisfied (Ch. 28). Criterion 5 (every remaining gap classified) — satisfied (Ch. 27, Ch. 29; the open items — GAP-06, the inherited GAP-10 through GAP-13, and the new RCD-11 migration-mapping item — are explicitly classified as non-blocking). Criterion 6 (verdict justified by repository evidence) — satisfied by this chapter's citations to Ch. 27/28/29 and by the approved decisions' own recorded text.
 
-No unresolved canonical blocker was found that is not addressed by the approved decisions above. GAP-06 (Constitution terminology inconsistency between Ch.22's metaphorical use of "safety layer" and Ch.23's named component) and the inherited GAP-10 through GAP-13 remain open, but all were already classified non-blocking for Safety Layer SPEC authoring before this update (Ch. 27), and none of the approved decisions above reopens them.
+No unresolved canonical blocker was found that is not addressed by the approved decisions above. GAP-06 (Constitution terminology inconsistency between Ch.22's metaphorical use of "safety layer" and Ch.23's named component), the inherited GAP-10 through GAP-13, and the RCD-11 migration-mapping item remain open, but all are classified non-blocking for Safety Layer SPEC authoring (Ch. 27, Ch. 29), and none of the approved decisions above reopens them.
 
-All six criteria are now satisfied.
+All six criteria are now satisfied, and more completely than at v2.1.
 
 ## Explicit Non-Interpretations
 This chapter does not itself perform SPEC authoring or design work — SL-001 remains a formally designated but unauthored Work Item; this closure enables it but does not begin it.
@@ -1282,16 +1319,16 @@ This chapter does not itself perform SPEC authoring or design work — SL-001 re
 None new — GAP-06 and GAP-10 through GAP-13 remain open exactly as classified in Ch. 27, unaffected by this verdict.
 
 ## Completion Checklist
-- **Already decided:** All eight RCDs resolved (Ch. 28); the RCD-06 repository documentation synchronization has been executed (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3 — see repository commit); the verdict logic (Skeleton §12) applied to that resolved, synchronized state.
-- **Remains open:** GAP-06 and GAP-10 through GAP-13 (open, non-blocking) — informational only, not addressed by this closure and not required for SL-001 SPEC authoring.
-- **Owner:** Head of Product + AI Architect (decisions already made and synchronized).
+- **Already decided:** All eleven RCDs resolved (Ch. 28); the RCD-06 repository documentation synchronization for RCD-01 through RCD-08 has been executed (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3 — see repository commit); RCD-09 through RCD-11 are approved but not yet repository-synchronized; the verdict logic (Skeleton §12) applied to that resolved state.
+- **Remains open:** GAP-06, GAP-10 through GAP-13 (open, non-blocking, inherited), the RCD-11 migration-mapping item (open, non-blocking, new to this round), and the RCD-09–11 repository-synchronization action itself — informational only, none required for SL-001 SPEC authoring to proceed.
+- **Owner:** Head of Product + AI Architect (all eleven decisions already made; synchronization for RCD-01–08 complete, for RCD-09–11 pending as a follow-up action).
 - **Blocks SPEC:** No.
 
 ## Final Verdict
 
 # **READY FOR SPEC**
 
-All eight Required Canonical Decisions (RCD-01 through RCD-08) are resolved, approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update), and the RCD-06 repository documentation synchronization has been executed across every affected canonical document (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3). No unresolved canonical blocker remains: GAP-06 and the inherited GAP-10 through GAP-13 remain open but were already classified non-blocking (Ch. 27) and are unaffected by this update. SL-001 — Safety Layer SPEC authoring may now begin, per the Skeleton's Final Acceptance Gate (§12).
+All eleven Required Canonical Decisions (RCD-01 through RCD-11) are resolved, approved by the Head of Product + AI Architect (Canonical Review — Final Canonical Update for RCD-01 through RCD-08, Disposition Policy Canonical Update for RCD-09 through RCD-11). The RCD-06 repository documentation synchronization has been executed across every affected canonical document for RCD-01 through RCD-08 (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3); synchronization for RCD-09 through RCD-11 remains a follow-up action, not yet performed. No unresolved canonical blocker remains: GAP-06, the inherited GAP-10 through GAP-13, and the RCD-11 migration-mapping item remain open but are classified non-blocking (Ch. 27, Ch. 29) and are unaffected by this update. SL-001 — Safety Layer SPEC authoring may now proceed against a fully specified Safety Decision Matrix (disposition policy, dimension derivation, and reasonCode catalogue), per the Skeleton's Final Acceptance Gate (§12).
 
 ---
 
