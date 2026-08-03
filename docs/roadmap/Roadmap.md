@@ -43,12 +43,12 @@
 
 ---
 
-## FITME Specification Authoring Standard v1.0
+## FITME Specification Authoring Standard v1.1
 
-**Status:** Draft Canonical
-**Completion Date:** 2026-07-27
+**Status:** 🟢 APPROVED AND CANONICAL
+**Completion Date:** 2026-08-03
 
-`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md` is the standard governing how FITME task specifications are authored, evidenced, reviewed, and completed, consolidating reusable specification-authoring rules into a single source of truth for that purpose. It governs task specifications only; it does not govern the Product Bible, AI Constitution, Architecture, Engineering Workflow, Roadmap, Changelog, Coach Bible, Coach Knowledge Base, or Intelligence & Relationship Philosophy, and it does not redefine the Engineering Workflow's task lifecycle or Source of Truth hierarchy. `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` §4 references this standard as the authoring requirements for the lifecycle's SPEC stage. Documentation-only change; no product behaviour, UX, or code affected.
+`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.1.md` (supersedes `docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md`) is the standard governing how FITME task specifications are authored, evidenced, reviewed, and completed, consolidating reusable specification-authoring rules into a single source of truth for that purpose. It governs task specifications only; it does not govern the Product Bible, AI Constitution, Architecture, Engineering Workflow, Roadmap, Changelog, Coach Bible, Coach Knowledge Base, or Intelligence & Relationship Philosophy, and it does not redefine the Engineering Workflow's task lifecycle or Source of Truth hierarchy. `docs/engineering/FITME_ENGINEERING_WORKFLOW_v1.0.md` §4 references this standard as the authoring requirements for the lifecycle's SPEC stage. Documentation-only change; no product behaviour, UX, or code affected.
 
 ---
 

@@ -31,7 +31,7 @@ Architecture → SPEC → Engineering Review → READY → Implementation → Co
 Review → Documentation Update → Commit → Task Closed
 
 SPEC authoring requirements are defined in
-`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.0.md`.
+`docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.1.md`.
 
 # 5. Responsibilities
 

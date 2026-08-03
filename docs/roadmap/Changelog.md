@@ -30,7 +30,7 @@
 - 🟢 D2 — Coach Decision Pipeline Specification approved and Canonical (orchestration specification only, no production code changes)
 - 🟢 D3 — Coach Decision System Architecture approved and Canonical (architecture specification only, no production code changes)
 - ✅ D-series architecture phase closed (D1, D2, D3 all approved and Canonical)
-- Draft Canonical — FITME Specification Authoring Standard v1.0 integrated into project governance (docs-only); governs task specifications only, pending final Head of Product + AI Architect sign-off to Canonical
+- 🟢 FITME Specification Authoring Standard v1.1 approved and Canonical (documentation-only; governs task specifications only), superseding the Draft Canonical v1.0 baseline
 - 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
 - 🟢 TASK-005 — Initiative Engine approved, implemented, verified and closed (`js/coachDecisionSystem/initiativeEngine.js`; D3 §17's Composite Engine, third of six internal collaborators; focused Memory Layer extension per CD-T005-01; 68 new/changed tests, full suite 1212/1212 passing)
 - 🟢 TASK-006 — Decision Engine approved, implemented, verified and closed (`js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js`; D3 §17's Composite Engine, fourth of six internal collaborators — Stage 5/7/8/9; focused Candidate arbitration-metadata extension per CD-T006-02; 106 new/changed tests, full suite 1318/1318 passing)
