@@ -1191,9 +1191,9 @@ This chapter records the Head of Product + AI Architect's approved decisions ver
 N/A — this chapter records the resolution of Ch. 27's gaps via approved decisions; it does not introduce new gaps.
 
 ## Completion Checklist
-- **Already decided:** RCD-01 through RCD-08 — approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update); the RCD-06 repository synchronization (Product Bible, AI Constitution, Coach Bible, Roadmap, Changelog, D1, D2, D3) has been executed. RCD-09 through RCD-11 — approved by the Head of Product + AI Architect (Canonical Review, Disposition Policy Canonical Update); repository synchronization for this round has not yet been executed (see this document's v2.2 Revision note).
-- **Remains open:** The free-text-`reason`-to-`reasonCode` migration mapping (RCD-11's own Explicit Non-Interpretations); the RCD-09/10/11 repository synchronization action itself.
-- **Owner:** Head of Product + AI Architect approved all eleven decisions; repository synchronization for RCD-01 through RCD-08 executed under the prior closure; synchronization for RCD-09 through RCD-11 remains a follow-up action.
+- **Already decided:** RCD-01 through RCD-08 — approved by the Head of Product + AI Architect (Canonical Review, Final Canonical Update); the RCD-06 repository synchronization (Product Bible, AI Constitution, Coach Bible, Roadmap, Changelog, D1, D2, D3) has been executed. RCD-09 through RCD-11 — approved by the Head of Product + AI Architect (Canonical Review, Disposition Policy Canonical Update); repository synchronization for this round has been executed (Roadmap, Changelog — see repository commit).
+- **Remains open:** The free-text-`reason`-to-`reasonCode` migration mapping (RCD-11's own Explicit Non-Interpretations).
+- **Owner:** Head of Product + AI Architect approved all eleven decisions; repository synchronization for RCD-01 through RCD-08 executed under the prior closure; synchronization for RCD-09 through RCD-11 has since also been executed (Roadmap, Changelog; per Ch. 29, no other canonical document is a synchronization target for these three decisions).
 - **Blocks SPEC:** No — all eleven RCDs resolved; the two remaining open items above are non-blocking, consistent with this package's treatment of every other non-blocking open item (Ch. 27).
 
 ---
@@ -1319,16 +1319,16 @@ This chapter does not itself perform SPEC authoring or design work — SL-001 re
 None new — GAP-06 and GAP-10 through GAP-13 remain open exactly as classified in Ch. 27, unaffected by this verdict.
 
 ## Completion Checklist
-- **Already decided:** All eleven RCDs resolved (Ch. 28); the RCD-06 repository documentation synchronization for RCD-01 through RCD-08 has been executed (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3 — see repository commit); RCD-09 through RCD-11 are approved but not yet repository-synchronized; the verdict logic (Skeleton §12) applied to that resolved state.
-- **Remains open:** GAP-06, GAP-10 through GAP-13 (open, non-blocking, inherited), the RCD-11 migration-mapping item (open, non-blocking, new to this round), and the RCD-09–11 repository-synchronization action itself — informational only, none required for SL-001 SPEC authoring to proceed.
-- **Owner:** Head of Product + AI Architect (all eleven decisions already made; synchronization for RCD-01–08 complete, for RCD-09–11 pending as a follow-up action).
+- **Already decided:** All eleven RCDs resolved (Ch. 28); the RCD-06 repository documentation synchronization for RCD-01 through RCD-08 has been executed (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3 — see repository commit); RCD-09 through RCD-11 are approved and repository-synchronized (Roadmap, Changelog — see repository commit); the verdict logic (Skeleton §12) applied to that resolved state.
+- **Remains open:** GAP-06, GAP-10 through GAP-13 (open, non-blocking, inherited), and the RCD-11 migration-mapping item (open, non-blocking, new to this round) — informational only, none required for SL-001 SPEC authoring to proceed.
+- **Owner:** Head of Product + AI Architect (all eleven decisions already made; synchronization for RCD-01–08 and RCD-09–11 both complete).
 - **Blocks SPEC:** No.
 
 ## Final Verdict
 
 # **READY FOR SPEC**
 
-All eleven Required Canonical Decisions (RCD-01 through RCD-11) are resolved, approved by the Head of Product + AI Architect (Canonical Review — Final Canonical Update for RCD-01 through RCD-08, Disposition Policy Canonical Update for RCD-09 through RCD-11). The RCD-06 repository documentation synchronization has been executed across every affected canonical document for RCD-01 through RCD-08 (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3); synchronization for RCD-09 through RCD-11 remains a follow-up action, not yet performed. No unresolved canonical blocker remains: GAP-06, the inherited GAP-10 through GAP-13, and the RCD-11 migration-mapping item remain open but are classified non-blocking (Ch. 27, Ch. 29) and are unaffected by this update. SL-001 — Safety Layer SPEC authoring may now proceed against a fully specified Safety Decision Matrix (disposition policy, dimension derivation, and reasonCode catalogue), per the Skeleton's Final Acceptance Gate (§12).
+All eleven Required Canonical Decisions (RCD-01 through RCD-11) are resolved, approved by the Head of Product + AI Architect (Canonical Review — Final Canonical Update for RCD-01 through RCD-08, Disposition Policy Canonical Update for RCD-09 through RCD-11). The RCD-06 repository documentation synchronization has been executed across every affected canonical document for RCD-01 through RCD-08 (Roadmap, Changelog, AI Constitution, Coach Bible, Product Bible, D1, D2, D3); synchronization for RCD-09 through RCD-11 has also been executed (Roadmap, Changelog — see repository commit). No unresolved canonical blocker remains: GAP-06, the inherited GAP-10 through GAP-13, and the RCD-11 migration-mapping item remain open but are classified non-blocking (Ch. 27, Ch. 29) and are unaffected by this update. SL-001 — Safety Layer SPEC authoring may now proceed against a fully specified Safety Decision Matrix (disposition policy, dimension derivation, and reasonCode catalogue), per the Skeleton's Final Acceptance Gate (§12).
 
 ---
 
