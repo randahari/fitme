@@ -2,7 +2,7 @@
 
 **Project Status:** In Progress  
 **Single Source of Truth:** FITME Product Bible v1.0  
-**Last Updated:** 2026-08-02
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -557,7 +557,9 @@ architecture phase.
 
 ## TASK-006 — Decision Engine
 
-**Status:** ⏳ PENDING
+**Status:** ✅ DONE (Implementation complete, approved, closed)
+
+`docs/specs/TASK_006_SPEC_v1.0.md` completed Engineering Readiness Review, Implementation, External Implementation Review, Product Approval, and Architecture Approval (all approved), per the Engineering Workflow lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed). Implementation is complete: `js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js` (new — the Decision Engine, D3 §17's fourth of six internal collaborators, owning Stage 5/7/8/9), with a focused arbitration-metadata extension to `recommendationEngine.js`/`initiativeEngine.js` (Canonical Decision CD-T006-02) and a new `runDecisionPass()` dispatch on `internalPipelineOrchestrator.js`; 106 new/changed tests, full suite 1318/1318 passing. The External Implementation Review found one blocker (an inverted Evidence Hierarchy tie-break comparator), corrected in a single focused pass and independently re-verified before approval. Approved by Head of Product + AI Architect and closed 2026-08-03 — see `docs/specs/TASK_006_SPEC_v1.0.md`'s Closure Record for details, evidence, and tracked follow-up items (none of which expand this task's own scope).
 
 ## TASK-007 — UX System
 
@@ -584,6 +586,7 @@ C4 — Typed Memory Server Write Path is approved, implemented and closed (serve
 D1 — Coach Intelligence Translation Model is approved and Canonical (decision-policy specification only, no production code changes).
 D2 — Coach Decision Pipeline Specification is approved and Canonical (orchestration specification only, no production code changes).
 D3 — Coach Decision System Architecture is approved and Canonical (architecture specification only, no production code changes).
+TASK-006 — Decision Engine is approved, implemented (fourth of six D3 §17 collaborators) and closed.
 
-Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), and TASK-005 (Initiative Engine) are complete and closed.
-Next Work Item: Pending Product/Architecture direction — no next canonical work item is currently named.
+Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), and TASK-006 (Decision Engine) are complete and closed.
+Next Work Item: Pending Product/Architecture direction — the Safety Layer and Expression remain the last two of D3 §17's six Coach Decision System collaborators; no next canonical work item is currently named.

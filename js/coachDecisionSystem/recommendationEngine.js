@@ -32,6 +32,11 @@
   var FeedbackDomain = (typeof module !== 'undefined' && module.exports)
     ? require('../feedback/feedbackDomain.js')
     : window.FeedbackDomain;
+  // TASK-006, Canonical Decision CD-T006-02 (arbitration metadata) / Engineering Fill §14.12 —
+  // NO_SIGNAL sentinel, single source of truth, reused not duplicated (prioritization.js).
+  var Prioritization = (typeof module !== 'undefined' && module.exports)
+    ? require('./prioritization.js')
+    : window.Prioritization;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -102,6 +107,17 @@
       }),
       confidence: opportunity.confidence,
       hierarchyTier: hierarchyTier,
+      // TASK-006, Canonical Decision CD-T006-02 / Engineering Fill §14.12.2-3 — fixed, mechanical,
+      // non-judgmental arbitration-metadata population, consumed by Stage 7 (prioritization.js).
+      // triggeringEvidenceTime carries forward the Opportunity's own already-existing detectedAt
+      // value unchanged; every other field has no classification source in the current repository
+      // baseline and is set to the literal NO_SIGNAL sentinel — never a fabricated value.
+      evidenceTier: Prioritization.NO_SIGNAL,
+      trustImpact: Prioritization.NO_SIGNAL,
+      timingQuality: Prioritization.NO_SIGNAL,
+      triggeringEvidenceTime: isFiniteNumber(opportunity.detectedAt) ? opportunity.detectedAt : Prioritization.NO_SIGNAL,
+      problemMagnitude: Prioritization.NO_SIGNAL,
+      recommendationImpactTier: Prioritization.NO_SIGNAL,
       opportunityProvenance: freezeShallow({
         opportunityId: opportunity.id,
         sourceCategory: opportunity.sourceCategory,

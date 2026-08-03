@@ -846,3 +846,64 @@ gaps this leaves (principally: no approved Relationship Maturity source, and no 
 calendar/milestone data source, exist anywhere in the repository yet). This is a scope decision, not
 an oversight — D3 §17's six-collaborator design was already fixed before TASK-004; TASK-005 realizes
 three of the six, per its own approved scope.
+
+## 23. TASK-006 — Decision Engine (Composite Engine, D3 §17, fourth collaborator)
+
+**Added by TASK-006** (`docs/specs/TASK_006_SPEC_v1.0.md`). Realizes the fourth of D3 §17's six
+internal collaborators: `js/coachDecisionSystem/eligibilityEvaluator.js` (Stage 5 — Eligibility
+Evaluation, a Pipeline Gate applying D1 Unit 06 per-Opportunity, driven exclusively by the closed
+`OpportunityEligibilityInput` contract, Canonical Decision CD-T006-01 — never free-text inference),
+`prioritization.js` (Stage 7 — Candidate Pool Assembly across every Opportunity and both producer
+engines into one shared pool, then the fixed D1-PR-01→06 lexicographic ranking sequence — Hierarchy
+tier, same-kind-Recommendation-only impact tier per Canonical Decision CD-T006-03, biggest-problem-
+first, then the four-step D1-PR-06 tie-break order — never a weighted composite score), and
+`winnerSelection.js` (Stage 8 — exactly one winner by default, or the narrow permitted tied set only
+where the tie-break sequence is genuinely exhausted, subject to Safety Layer disqualification ahead
+of final selection). `decisionFormation.js` (Stage 9 — Decision Formation) assembles the Decision
+Pass's single Terminal Decision, carrying exactly one of four canonical decision families —
+`RECOMMENDATION`, `INITIATIVE`, `SILENCE`, `BOUNDARY` (with `boundaryType: REFUSAL | ESCALATION`) —
+per Canonical Decision CD-T006-06's deterministic mapping of the Safety Layer's five possible final-
+review dispositions (`UNMODIFIED`/`MODIFIED`/`DEFERRED`/`BLOCKED`/`ESCALATED`). All four modules
+remain internal collaborators of the single, already-registered `coachDecisionSystem` Composite
+Engine — no second Engine Registry entry, no second orchestration authority (D3 §17 Decision 1,
+§11.1); `js/coachDecisionSystem/internalPipelineOrchestrator.js` gained `runDecisionPass()`,
+structurally parallel to the existing `runForOpportunity`/`runForInitiativeOpportunity` pattern,
+sequencing Stage 5 through Stage 9 for a caller-supplied set of Opportunities; `run()`'s existing
+contract is unchanged, since no live Stage 3/4 Opportunity source exists yet in this repository
+(Repository Gap G-2).
+
+`js/coachDecisionSystem/safetyIntegrationPort.js` defines the **Safety Integration Port** — the
+platform-neutral call/response contract (`disqualify()` at Stage 8, `finalReview()` at Stage 9)
+through which the Decision Engine integrates with a future, separately-scoped Safety Layer
+implementation (Canonical Decision CD-T006-05). It contains no Safety Layer policy logic of its own.
+Production code has no path to bypass, downgrade, or fake a Safety determination through this port —
+absent a real Safety Layer implementation, a Decision Pass correctly aborts at Stage 8/9 rather than
+fabricating a Terminal Decision (D3 §12.3). A deterministic test double implementing the same
+interface (`tests/fixtures/safetyIntegrationPortTestDouble.js`) is a test-only fixture, confirmed by
+a dedicated regression test to be unreachable from any production module.
+
+`recommendationEngine.js` and `initiativeEngine.js` received a focused, additive extension per
+Canonical Decision CD-T006-02: every Candidate they produce now also carries `evidenceTier`,
+`trustImpact`, `timingQuality`, `triggeringEvidenceTime`, and `problemMagnitude` (plus
+`recommendationImpactTier` on Recommendation-kind Candidates only, per Canonical Decision CD-T006-03)
+— the arbitration metadata Stage 7's ranking sequence consumes. `triggeringEvidenceTime` carries the
+Opportunity's own existing `detectedAt` value forward unchanged; every other field is the literal
+`NO_SIGNAL` sentinel at this repository baseline, since no canonical or repository-verified
+classification source yet exists for any of them (Repository Gap G-9) — `NO_SIGNAL` never outranks a
+real value, and never distinguishes a tie against another `NO_SIGNAL`, so Stage 7 remains fully
+correct today and forward-compatible with a future real source, without requiring any change to the
+ranking sequence itself. `recommendationCategories.js` is unchanged — Canonical Decision CD-T006-07
+approves its existing `SOURCE_HIERARCHY_TIER_MAP` as the TASK-006 canonical Hierarchy-tier baseline
+as-is. The Decision Engine has no StateAccess capability of its own, performs no durable write of any
+kind (including no persistent budget-tracking state — Canonical Decision CD-T006-04 resolves the
+shared recommendation/initiative budget entirely at the single-Decision-Pass level, one shared pool,
+one Terminal Decision, non-winners resolving to Silence), and reads Pipeline Context only as already
+delivered by the Memory Layer, which is unchanged by this task.
+
+The Safety Layer and Expression collaborators remain unbuilt (a future task) — see
+`docs/specs/TASK_006_SPEC_v1.0.md`'s Closure Record for the current, non-architectural repository
+gaps this leaves (principally: no real Safety Layer or Expression implementation exists yet behind
+the ports/boundaries this task defines; no real classification source exists yet for the arbitration-
+metadata fields that are `NO_SIGNAL` at this baseline). This is a scope decision, not an oversight —
+D3 §17's six-collaborator design was already fixed before TASK-004; TASK-006 realizes four of the
+six, per its own approved scope.

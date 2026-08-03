@@ -40,6 +40,20 @@
   var InitiativeEngine = (typeof module !== 'undefined' && module.exports)
     ? require('./initiativeEngine.js')
     : window.InitiativeEngine;
+  // TASK-006 — Decision Engine's four Stage 5/7/8/9 collaborators (D2 Unit 07), each an internal
+  // module of the single Composite Engine, not independently registered (§28.7).
+  var EligibilityEvaluator = (typeof module !== 'undefined' && module.exports)
+    ? require('./eligibilityEvaluator.js')
+    : window.EligibilityEvaluator;
+  var Prioritization = (typeof module !== 'undefined' && module.exports)
+    ? require('./prioritization.js')
+    : window.Prioritization;
+  var WinnerSelection = (typeof module !== 'undefined' && module.exports)
+    ? require('./winnerSelection.js')
+    : window.WinnerSelection;
+  var DecisionFormation = (typeof module !== 'undefined' && module.exports)
+    ? require('./decisionFormation.js')
+    : window.DecisionFormation;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -85,11 +99,97 @@
     return InitiativeEngine.detectOpportunities(pipelineContext);
   }
 
+  // TASK-006 — Stage 6 dispatch for a single already-eligible Opportunity: both producer engines
+  // are offered the same EligibleOpportunity, and each engine's own already-approved Stage-6
+  // policy gates (source acceptance, Relationship-Maturity gating, suppression, etc. — untouched
+  // by TASK-006, §34.10) determine, independently, whether it produces a Candidate or an empty
+  // result. This introduces no Stage-3/Stage-6 routing policy of its own (§9.2, §13 item 4) — it
+  // never decides which engine "owns" a given Opportunity source; both are simply invoked, per
+  // §16.9's "no generator-specific priority shortcut."
+  function dispatchStage6(pipelineContext, eligibleOpportunity) {
+    var out = [];
+    var rec = RecommendationEngine.generate({ opportunity: eligibleOpportunity, pipelineContext: pipelineContext });
+    if (rec && Array.isArray(rec.candidates)) out = out.concat(rec.candidates);
+    var init = InitiativeEngine.generate({ opportunity: eligibleOpportunity, pipelineContext: pipelineContext });
+    if (init && Array.isArray(init.candidates)) out = out.concat(init.candidates);
+    return out;
+  }
+
+  // TASK-006 — Decision Engine entry point: Stage 5 (Eligibility Evaluation) -> Stage 6 dispatch
+  // (existing runForOpportunity/runForInitiativeOpportunity pattern, per-Opportunity) -> Stage 7
+  // (Candidate Pool Assembly + Prioritization) -> Stage 8 (Winner Selection) -> Stage 9 (Decision
+  // Formation), producing exactly one Terminal Decision (D2 Unit 02, Canonical Decision 1) or an
+  // explicit Pipeline Abort (§31). Not reached from run() above — no live Stage 3/4 Opportunity
+  // source exists yet in this repository (Repository Gap G-2, non-blocking, §9.2/§38) — exposed
+  // as a direct dispatch function for a future Stage 3/4 caller, or tests, structurally parallel
+  // to runForOpportunity/runForInitiativeOpportunity (§28.10).
+  //
+  // params.opportunities: array of { eligibilityInput: OpportunityEligibilityInput (§15.11),
+  // eligibleOpportunity: EligibleOpportunity (Stage-6 input, existing shape) }.
+  // params.pipelineContext, params.safetyPort (SafetyIntegrationPort, §21.8).
+  async function runDecisionPass(params) {
+    params = params || {};
+    var pipelineContext = params.pipelineContext;
+    var opportunities = Array.isArray(params.opportunities) ? params.opportunities : [];
+    var safetyPort = params.safetyPort;
+
+    var opportunitiesConsidered = [];
+    var candidateLists = [];
+
+    for (var i = 0; i < opportunities.length; i++) {
+      var entry = opportunities[i] || {};
+      var eligibilityInput = entry.eligibilityInput;
+      var eligibleOpportunity = entry.eligibleOpportunity;
+
+      // §15.5/§21.1 — a safety/high-risk-triggered Opportunity bypasses Stage 5 entirely.
+      if (eligibilityInput && eligibilityInput.safetyHighRiskBypass === true) {
+        opportunitiesConsidered.push({
+          opportunityId: eligibilityInput.id,
+          sourceCategory: eligibilityInput.sourceCategory,
+          internalOutcome: 'SAFETY_BYPASS'
+        });
+        candidateLists.push(dispatchStage6(pipelineContext, eligibleOpportunity));
+        continue;
+      }
+
+      var elig = EligibilityEvaluator.evaluate(eligibilityInput);
+      opportunitiesConsidered.push({
+        opportunityId: eligibilityInput && eligibilityInput.id,
+        sourceCategory: eligibilityInput && eligibilityInput.sourceCategory,
+        internalOutcome: elig.outcome,
+        reason: elig.reason
+      });
+
+      if (elig.outcome !== 'ELIGIBLE') continue; // §23.1/23.2 — internal Silence, no Stage 6 dispatch
+
+      candidateLists.push(dispatchStage6(pipelineContext, eligibleOpportunity));
+    }
+
+    var assembly = Prioritization.assemblePool(candidateLists);
+    var pool = assembly.pool;
+
+    if (pool.length === 0) {
+      return DecisionFormation.formDecisionPassSilence({ opportunitiesConsidered: opportunitiesConsidered });
+    }
+
+    var rankedPool = Prioritization.rank(pool);
+    var selection = await WinnerSelection.select({ rankedPool: rankedPool, pipelineContext: pipelineContext, safetyPort: safetyPort });
+
+    return DecisionFormation.form({
+      selection: selection,
+      pipelineContext: pipelineContext,
+      safetyPort: safetyPort,
+      opportunitiesConsidered: opportunitiesConsidered,
+      candidatePoolSize: pool.length
+    });
+  }
+
   var API = {
     run: run,
     runForOpportunity: runForOpportunity,
     runForInitiativeOpportunity: runForInitiativeOpportunity,
-    detectInitiativeOpportunities: detectInitiativeOpportunities
+    detectInitiativeOpportunities: detectInitiativeOpportunities,
+    runDecisionPass: runDecisionPass
   };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemOrchestrator = API; }

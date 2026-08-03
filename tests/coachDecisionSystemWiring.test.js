@@ -23,6 +23,14 @@ const recommendationEngineJs = fs.readFileSync(path.join(__dirname, '../js/coach
 const initiativeEngineJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/initiativeEngine.js'), 'utf8');
 const orchestratorJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/internalPipelineOrchestrator.js'), 'utf8');
 const memoryLayerJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/memoryLayer.js'), 'utf8');
+// TASK-006
+const eligibilityEvaluatorJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/eligibilityEvaluator.js'), 'utf8');
+const prioritizationJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/prioritization.js'), 'utf8');
+const winnerSelectionJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/winnerSelection.js'), 'utf8');
+const decisionFormationJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/decisionFormation.js'), 'utf8');
+const safetyIntegrationPortJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/safetyIntegrationPort.js'), 'utf8');
+const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+const TASK006_MODULES = [eligibilityEvaluatorJs, prioritizationJs, winnerSelectionJs, decisionFormationJs, safetyIntegrationPortJs];
 
 function freshRegistry() { EngineRegistry.__resetForTests__(); }
 
@@ -131,14 +139,27 @@ test('11. js/app.js wires coachDecisionSystem into the APP_READY actions map, al
   assert.match(body, /coachDecisionSystem:\s*'DECISION_PASS'/);
 });
 
-test('12. index.html loads all six modules (TASK-004 five + TASK-005 initiativeEngine.js) before js/app.js, after registerEngines.js', () => {
+test('12. index.html loads all eleven modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five) before js/app.js, after registerEngines.js, in dependency order', () => {
   const iReg = indexHtml.indexOf('js/engines/registerEngines.js');
   const iApp = indexHtml.indexOf('src="js/app.js"');
-  ['recommendationCategories.js', 'recommendationEngine.js', 'initiativeEngine.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
+  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
+  var last = iReg;
+  files.forEach((f) => {
     const i = indexHtml.indexOf('js/coachDecisionSystem/' + f);
     assert.notEqual(i, -1, f + ' must be present in index.html');
     assert.ok(i > iReg, f + ' must load after registerEngines.js');
     assert.ok(i < iApp, f + ' must load before app.js');
+    last = i;
+  });
+  // prioritization.js (defines NO_SIGNAL, read at module-evaluation time via window.Prioritization
+  // in the browser) must load before recommendationEngine.js/initiativeEngine.js consume it.
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/prioritization.js') < indexHtml.indexOf('js/coachDecisionSystem/recommendationEngine.js'));
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/prioritization.js') < indexHtml.indexOf('js/coachDecisionSystem/initiativeEngine.js'));
+});
+
+test('12b. sw.js caches all eleven modules in its SHELL manifest, matching index.html', () => {
+  ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
+    assert.notEqual(swJs.indexOf('js/coachDecisionSystem/' + f), -1, f + ' must be present in sw.js');
   });
 });
 
@@ -152,9 +173,29 @@ test('13. Recommendation Engine consumes FeedbackDomain.evaluateSuppression — 
 // ── Persistence: no writes anywhere in the new modules (no speculative persistence) ──
 
 test('14. no new module writes to PersistenceGateway (no candidate audit trail — none required by Acceptance Criteria)', () => {
-  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
+  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].concat(TASK006_MODULES).forEach((src) => {
     assert.equal(src.indexOf('PersistenceGateway.persist'), -1);
     assert.equal(src.indexOf("require('../persistenceGateway"), -1);
+  });
+});
+
+// ── TASK-006 — Memory and Persistence Boundary tests (§29, §35.14) ──
+
+test('14b. no TASK-006 module calls StateAccess, DerivedIntelligenceConsumer, js/memory.js, or typedMemoryServerWrite directly (§29.3/29.4/29.5)', () => {
+  TASK006_MODULES.forEach((src) => {
+    assert.equal(src.indexOf("require('../stateAccess"), -1);
+    assert.equal(src.indexOf("require('../derivedIntelligenceConsumer"), -1);
+    assert.equal(src.indexOf("require('../memory.js"), -1);
+    assert.equal(src.indexOf('typedMemoryServerWrite'), -1);
+    assert.equal(src.indexOf('firestore'), -1);
+    assert.equal(src.indexOf('window.StateAccess'), -1);
+  });
+});
+
+test('14c. no TASK-006 module performs any durable write of any kind — zero write-capable calls anywhere in Stage 5/7/8/9 (§29.5, Canonical Decision CD-T006-04: no persistent budget state)', () => {
+  TASK006_MODULES.forEach((src) => {
+    assert.equal(src.indexOf('.write.'), -1);
+    assert.equal(src.indexOf('.persist('), -1);
   });
 });
 
@@ -178,11 +219,53 @@ test('15b. the Initiative Engine itself never calls StateAccess, DerivedIntellig
 // ── Coach/Expression boundary — no final expression performed here ──
 
 test('16. none of the new modules reference Coach rendering/voice/tone surfaces (final expression stays out of scope)', () => {
-  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].forEach((src) => {
+  [recommendationEngineJs, initiativeEngineJs, orchestratorJs, memoryLayerJs].concat(TASK006_MODULES).forEach((src) => {
     assert.equal(src.indexOf('coachPresenter'), -1);
     assert.equal(src.indexOf('coachPromptComposer'), -1);
     assert.equal(src.indexOf('triggerController'), -1);
     assert.equal(src.indexOf('innerHTML'), -1);
+  });
+});
+
+// ── TASK-006 — Expression and Delivery Boundary tests (§30, §35.15) ──
+
+test('16b. no TASK-006 module has any knowledge of platform/UI/notification/push/voice surfaces — the Decision Engine produces a Terminal Decision only', () => {
+  TASK006_MODULES.concat([orchestratorJs]).forEach((src) => {
+    ['notification', 'pushNotification', 'chatCard', 'triggerCard', 'document.', 'window.alert'].forEach((needle) => {
+      assert.equal(src.toLowerCase().indexOf(needle.toLowerCase()), -1, needle + ' found in ' + src.slice(0, 40));
+    });
+  });
+});
+
+test('16c. decisionFormation.js exposes no Expression/Delivery-Intent-production or wording-generation function', () => {
+  const DecisionFormation = require('../js/coachDecisionSystem/decisionFormation.js');
+  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['form', 'formDecisionPassSilence']);
+});
+
+// ── TASK-006 — Native / Platform-Neutral Contract tests (§35.19, D3 §5.5/§14) ──
+
+test('16d. every TASK-006 module is Node-loadable with no DOM/window/Firebase reference', () => {
+  TASK006_MODULES.forEach((src) => {
+    assert.equal(/\bdocument\./.test(src), false);
+    assert.equal(/\bnavigator\./.test(src), false);
+    assert.equal(src.indexOf('firebase'), -1);
+  });
+});
+
+// ── TASK-006 — Forbidden Responsibilities (§13) ──
+
+test('16e. no TASK-006 module generates Candidate content, and no module bypasses/downgrades/reinterprets a Safety determination (§13 items 1-2, 6-7)', () => {
+  [eligibilityEvaluatorJs, prioritizationJs, winnerSelectionJs, decisionFormationJs].forEach((src) => {
+    assert.equal(src.indexOf('opportunity.proposedAction'), -1); // never authors Candidate action content
+  });
+  assert.equal(winnerSelectionJs.indexOf('disqualified = false'), -1); // never force-clears a disqualification
+  assert.equal(decisionFormationJs.indexOf("disposition = 'UNMODIFIED'"), -1); // never overrides a returned disposition
+});
+
+test('16f. the Decision Engine has no direct Coach Runtime invocation path anywhere (§28.9)', () => {
+  TASK006_MODULES.concat([orchestratorJs]).forEach((src) => {
+    assert.equal(src.indexOf("require('../coach/"), -1);
+    assert.equal(src.indexOf("require('../trigger/"), -1);
   });
 });
 
@@ -199,8 +282,14 @@ test('17b. the Initiative Engine module exposes no rank/prioritize/selectWinner/
 });
 
 test('18. no second EngineRegistry-like registration surface is introduced anywhere in the new modules', () => {
-  [orchestratorJs, memoryLayerJs, initiativeEngineJs].forEach((src) => {
+  [orchestratorJs, memoryLayerJs, initiativeEngineJs].concat(TASK006_MODULES).forEach((src) => {
     assert.equal(src.indexOf('.register('), -1);
+  });
+});
+
+test('18b. no TASK-006 module introduces a new trigger type beyond the existing B2 Trigger Catalog (§28.8)', () => {
+  TASK006_MODULES.concat([orchestratorJs]).forEach((src) => {
+    assert.equal(/trigger:\s*\[/.test(src), false);
   });
 });
 

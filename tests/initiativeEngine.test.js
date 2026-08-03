@@ -172,12 +172,14 @@ test('Contract: InitiativeResult is exactly {candidates: InitiativeCandidate[]}'
   assert.deepEqual(Object.keys(result), ['candidates']);
 });
 
-test('Contract: InitiativeCandidate carries exactly the nine canonical fields (no more, no less)', () => {
+test('Contract: InitiativeCandidate carries exactly the nine canonical fields plus TASK-006\'s Canonical-Decision-CD-T006-02 arbitration-metadata extension (no more, no less; never recommendationImpactTier, CD-T006-03)', () => {
   const c = InitiativeEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() }).candidates[0];
   assert.deepEqual(Object.keys(c).sort(), [
-    'action', 'confidence', 'hierarchyTier', 'immutable', 'kind', 'opportunityProvenance',
-    'opportunitySource', 'rationale', 'relationshipMaturityContext', 'validationResult'
+    'action', 'confidence', 'evidenceTier', 'hierarchyTier', 'immutable', 'kind', 'opportunityProvenance',
+    'opportunitySource', 'problemMagnitude', 'rationale', 'relationshipMaturityContext', 'timingQuality',
+    'triggeringEvidenceTime', 'trustImpact', 'validationResult'
   ].sort());
+  assert.equal('recommendationImpactTier' in c, false);
 });
 
 test('Contract (CD-T005-02): InitiativeCandidate never carries a category field', () => {

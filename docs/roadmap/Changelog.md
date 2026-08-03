@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-02
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -33,7 +33,87 @@
 - Draft Canonical — FITME Specification Authoring Standard v1.0 integrated into project governance (docs-only); governs task specifications only, pending final Head of Product + AI Architect sign-off to Canonical
 - 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
 - 🟢 TASK-005 — Initiative Engine approved, implemented, verified and closed (`js/coachDecisionSystem/initiativeEngine.js`; D3 §17's Composite Engine, third of six internal collaborators; focused Memory Layer extension per CD-T005-01; 68 new/changed tests, full suite 1212/1212 passing)
-- ⏭️ Next canonical task: pending Product/Architecture direction — no next canonical work item is currently named
+- 🟢 TASK-006 — Decision Engine approved, implemented, verified and closed (`js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js`; D3 §17's Composite Engine, fourth of six internal collaborators — Stage 5/7/8/9; focused Candidate arbitration-metadata extension per CD-T006-02; 106 new/changed tests, full suite 1318/1318 passing)
+- ⏭️ Next canonical task: pending Product/Architecture direction — the Safety Layer and Expression remain the last two of D3 §17's six collaborators; no next canonical work item is currently named
+
+---
+
+## TASK-006 — Decision Engine (Implementation Complete, Closed)
+
+**Date:** 2026-08-03
+**Status:** DONE — implemented, tested, reviewed, corrected, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented D3 §17's fourth Coach Decision System internal collaborator — the Decision Engine —
+owning Stage 5 (Eligibility Evaluation), Stage 7 (Candidate Pool Assembly + Prioritization), Stage 8
+(Winner Selection), and Stage 9 (Decision Formation), alongside a focused extension of both existing
+producer engines (Canonical Decision CD-T006-02). Added: `js/coachDecisionSystem/eligibilityEvaluator.js`
+(Stage 5, driven exclusively by the closed `OpportunityEligibilityInput` contract, Canonical Decision
+CD-T006-01 — never free-text inference); `prioritization.js` (Stage 7 Candidate Pool Assembly and the
+fixed D1-PR-01→06 lexicographic ranking sequence — never a weighted composite score; defines the
+`NO_SIGNAL` sentinel and its comparison semantics, Section 14.12); `winnerSelection.js` (Stage 8 —
+single-winner default, the narrow permitted tied-set exception, Safety Layer disqualification
+integration); `decisionFormation.js` (Stage 9 — the four-family Terminal Decision contract,
+`RECOMMENDATION`/`INITIATIVE`/`SILENCE`/`BOUNDARY`, per Canonical Decision CD-T006-06's deterministic
+five-disposition Safety mapping); `safetyIntegrationPort.js` (the Safety Integration Port contract
+only, Canonical Decision CD-T006-05 — no Safety Layer policy logic; production cannot bypass or fake
+a Safety determination). Modified (additive only, no existing public contract changed):
+`recommendationEngine.js`/`initiativeEngine.js` (CD-T006-02 arbitration-metadata fields populated on
+every Candidate — real `triggeringEvidenceTime` carried from the Opportunity's own `detectedAt`; every
+other field the literal `NO_SIGNAL` sentinel at this repository baseline, since no canonical or
+repository-verified classification source yet exists for `evidenceTier`/`trustImpact`/`timingQuality`/
+`problemMagnitude`/`recommendationImpactTier`; `recommendationImpactTier` on Recommendation-kind
+Candidates only, per Canonical Decision CD-T006-03), `internalPipelineOrchestrator.js` (new
+`runDecisionPass()`, structurally parallel to the existing `runForOpportunity`/
+`runForInitiativeOpportunity` pattern — `run()`'s existing `candidates: []` contract is unchanged, since
+no live Stage 3/4 Opportunity source exists yet in this repository), `index.html`/`sw.js` (script/shell
+wiring). `recommendationCategories.js` is unchanged (Canonical Decision CD-T006-07 approves its existing
+`SOURCE_HIERARCHY_TIER_MAP` as-is); `memoryLayer.js`, `registerCoachDecisionSystem.js`, and
+`js/stateAccess.js` are unchanged — no new StateAccess capability, no new Engine Registry entry. No
+`APP_VERSION` change.
+
+An External Implementation Review found one genuine implementation blocker: the D1-PR-06(a) Evidence
+Hierarchy tie-break comparator in `prioritization.js` was implemented with inverted polarity —
+numerically higher `evidenceTier` values were ranked as winning, when D1 Unit 11 fixes Tier 1
+(Explicit User Statement) as the strongest evidence tier and Tier 5 (Inference) as the weakest, the
+same inverted-numbering convention already correctly applied to `hierarchyTier`/`recommendationImpactTier`
+two lines away in the same function. Corrected in a single focused pass touching only
+`prioritization.js` and `tests/prioritization.test.js` (comparator direction changed from descending to
+ascending; the two tests whose scenarios depended on the incorrect polarity rebuilt to assert the
+canonically correct direction); independently re-verified and re-approved. The defect was dormant at
+this repository baseline (`evidenceTier` is always `NO_SIGNAL` today) but would have silently
+misordered Candidates the moment a real Evidence Hierarchy source is ever populated — exactly the case
+the `NO_SIGNAL` design's own forward-compatibility guarantee (Section 14.12.4) requires to already be
+correct.
+
+### Verification
+
+- 106 new/changed tests (unit/contract/integration/failure/determinism) across five new test files
+  (`tests/eligibilityEvaluator.test.js`, `prioritization.test.js`, `winnerSelection.test.js`,
+  `decisionFormation.test.js`, `safetyIntegrationPort.test.js`) plus a test-only Safety Integration Port
+  double (`tests/fixtures/safetyIntegrationPortTestDouble.js`, never referenced by production code) and
+  extensions to four existing test files; full suite **1318/1318 passing** (the TASK-005 baseline
+  1212/1212 unchanged).
+- Still exactly one Composite Engine registered (`coachDecisionSystem`); no second Engine Registry
+  entry, no second orchestration authority; no new trigger type.
+- The Decision Engine never generates Candidate content, never exercises independent Safety judgment,
+  never performs a durable write, and never produces more than one Terminal Decision per Decision Pass
+  — verified across every Section 31 exceptional flow, including the narrow multi-option tied-set case
+  and the all-Candidates-disqualified case.
+- Production code cannot construct, import, or otherwise reach the test-only Safety Integration Port
+  double; a real Safety Layer's absence correctly aborts a Decision Pass rather than fabricating or
+  faking a determination.
+
+### Next
+
+See `docs/specs/TASK_006_SPEC_v1.0.md`'s Closure Record for the full follow-up list (none of which
+expand this task's own scope) — principally that the Safety Layer and Expression remain the last two
+of D3 §17's six collaborators, that Stage 4 (Evidence Evaluation) orchestration ownership remains
+unassigned (Repository Gap G-2), and that a real classification source for `evidenceTier`/
+`trustImpact`/`timingQuality`/`problemMagnitude`/`recommendationImpactTier` remains future,
+Product/Architecture-owned work (Repository Gap G-9).
 
 ---
 

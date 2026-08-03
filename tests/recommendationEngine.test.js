@@ -131,10 +131,13 @@ test('12c. unexplainable candidate withheld: missing explanation object entirely
 
 // ── No ranking / no priority score / no winner selection (Ranking Policy, Stage 5) ──
 
-test('13. no ranking: candidate carries no priority/score/rank/order field of any kind', () => {
+test('13. no ranking: candidate carries no priority/score/rank/order field of any kind (TASK-006, Canonical Decision CD-T006-02, extends the field list with categorical arbitration metadata only — never a composite score)', () => {
   const result = RecommendationEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() });
   const keys = Object.keys(result.candidates[0]);
-  assert.deepEqual(keys.sort(), ['action', 'category', 'confidence', 'hierarchyTier', 'kind', 'opportunityProvenance', 'rationale'].sort());
+  assert.deepEqual(keys.sort(), [
+    'action', 'category', 'confidence', 'evidenceTier', 'hierarchyTier', 'kind', 'opportunityProvenance',
+    'problemMagnitude', 'rationale', 'recommendationImpactTier', 'timingQuality', 'triggeringEvidenceTime', 'trustImpact'
+  ].sort());
   ['priority', 'priorityScore', 'rank', 'order', 'score', 'weight'].forEach((forbidden) => {
     assert.equal(Object.prototype.hasOwnProperty.call(result.candidates[0], forbidden), false, 'must not carry ' + forbidden);
   });

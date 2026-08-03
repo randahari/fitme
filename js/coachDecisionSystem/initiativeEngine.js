@@ -53,6 +53,11 @@
   var RecommendationCategories = (typeof module !== 'undefined' && module.exports)
     ? require('./recommendationCategories.js')
     : window.RecommendationCategories;
+  // TASK-006, Canonical Decision CD-T006-02 (arbitration metadata) / Engineering Fill §14.12 —
+  // NO_SIGNAL sentinel, single source of truth, reused not duplicated (prioritization.js).
+  var Prioritization = (typeof module !== 'undefined' && module.exports)
+    ? require('./prioritization.js')
+    : window.Prioritization;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -247,6 +252,14 @@
       }),
       confidence: opportunity.confidence,
       hierarchyTier: hierarchyTier,
+      // TASK-006, Canonical Decision CD-T006-02 / Engineering Fill §14.12.2-3 — identical,
+      // mechanical population as recommendationEngine.js. Per Canonical Decision CD-T006-03,
+      // recommendationImpactTier is never added to InitiativeCandidate.
+      evidenceTier: Prioritization.NO_SIGNAL,
+      trustImpact: Prioritization.NO_SIGNAL,
+      timingQuality: Prioritization.NO_SIGNAL,
+      triggeringEvidenceTime: isFiniteNumber(opportunity.detectedAt) ? opportunity.detectedAt : Prioritization.NO_SIGNAL,
+      problemMagnitude: Prioritization.NO_SIGNAL,
       relationshipMaturityContext: freezeShallow({
         stage: stage,
         gatingRuleApplied: 'D1-IP-02',
