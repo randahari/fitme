@@ -51,6 +51,16 @@ does not re-derive or restate that Unit's rule.
 10. Roadmap
 11. Changelog
 
+**Precedence Confirmation (RCD-07):** The precedence among these sources
+for resolving textual conflicts is the Engineering Workflow §3 order,
+confirmed by the FITME Safety Layer Canonical Decision Package v2.0
+(Head of Product + AI Architect, Final Canonical Update) as: 1. AI
+Constitution, 2. Product Bible, 3. Coach Bible, 4. Architecture, 5.
+Engineering Workflow, 6. Task Specifications, 7. Roadmap, 8. Changelog.
+The list above is a citation index for this document's own sources, not
+an independent precedence order; the Coach Knowledge Base is confirmed
+non-authoritative.
+
 ------------------------------------------------------------------------
 
 # Scope

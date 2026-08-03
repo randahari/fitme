@@ -561,6 +561,12 @@ architecture phase.
 
 `docs/specs/TASK_006_SPEC_v1.0.md` completed Engineering Readiness Review, Implementation, External Implementation Review, Product Approval, and Architecture Approval (all approved), per the Engineering Workflow lifecycle (Architecture → SPEC → Engineering Review → READY → Implementation → Code Review → Documentation Update → Commit → Task Closed). Implementation is complete: `js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js` (new — the Decision Engine, D3 §17's fourth of six internal collaborators, owning Stage 5/7/8/9), with a focused arbitration-metadata extension to `recommendationEngine.js`/`initiativeEngine.js` (Canonical Decision CD-T006-02) and a new `runDecisionPass()` dispatch on `internalPipelineOrchestrator.js`; 106 new/changed tests, full suite 1318/1318 passing. The External Implementation Review found one blocker (an inverted Evidence Hierarchy tie-break comparator), corrected in a single focused pass and independently re-verified before approval. Approved by Head of Product + AI Architect and closed 2026-08-03 — see `docs/specs/TASK_006_SPEC_v1.0.md`'s Closure Record for details, evidence, and tracked follow-up items (none of which expand this task's own scope).
 
+## SL-001 — Safety Layer
+
+**Status:** ⏳ PENDING (canonical Work Item designated; SPEC authoring not yet started)
+
+Approved by Head of Product + AI Architect as a standalone canonical Work Item — an architectural prerequisite before TASK-007 — per the FITME Safety Layer Canonical Decision Package v2.0 (RCD-01, Final Canonical Update). Realizes D3 §17's fifth of six Coach Decision System collaborators, building the policy logic behind the existing, policy-free `js/coachDecisionSystem/safetyIntegrationPort.js` (Canonical Decision CD-T006-05). All eight Required Canonical Decisions in the Decision Package are resolved (RCD-01 through RCD-08), including the Safety Decision Matrix (RCD-02), the closed `reasonCode`/`reasonDetail` contract (RCD-03), the meaning of `ESCALATED` (RCD-04), the relationship between Constitutional Evaluation, Health Layer, and Safety Layer (RCD-05), and the single-event safety bypass criteria (RCD-08) — see `docs/governance/` for the closed Decision Package once filed.
+
 ## TASK-007 — UX System
 
 **Status:** ⏳ PENDING
@@ -587,6 +593,7 @@ D1 — Coach Intelligence Translation Model is approved and Canonical (decision-
 D2 — Coach Decision Pipeline Specification is approved and Canonical (orchestration specification only, no production code changes).
 D3 — Coach Decision System Architecture is approved and Canonical (architecture specification only, no production code changes).
 TASK-006 — Decision Engine is approved, implemented (fourth of six D3 §17 collaborators) and closed.
+SL-001 — Safety Layer is approved as a standalone canonical Work Item (architectural prerequisite before TASK-007), per the FITME Safety Layer Canonical Decision Package v2.0 (Head of Product + AI Architect, Final Canonical Update); all eight Required Canonical Decisions are resolved.
 
-Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), and TASK-006 (Decision Engine) are complete and closed.
-Next Work Item: Pending Product/Architecture direction — the Safety Layer and Expression remain the last two of D3 §17's six Coach Decision System collaborators; no next canonical work item is currently named.
+Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), TASK-006 (Decision Engine), and the Safety Layer Canonical Decision Package are complete and closed.
+Next Work Item: SL-001 — Safety Layer SPEC authoring, per the FITME Safety Layer Canonical Decision Package v2.0. Expression remains the sixth and last undesignated D3 §17 Coach Decision System collaborator; no work item is yet named for it.

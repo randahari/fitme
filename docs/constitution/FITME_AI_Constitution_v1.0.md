@@ -8491,6 +8491,10 @@ Only after passing every stage may a recommendation be delivered.
 
 
 
+Per the FITME Safety Layer Canonical Decision Package v2.0 (RCD-05, Head of Product + AI Architect, Final Canonical Update): Constitutional Evaluation, Health Layer (Chapter 17), and Safety Layer (Chapter 23) are not separate safety engines. \*\*Constitutional Evaluation defines policy.\*\* \*\*Health Layer provides safety context.\*\* \*\*The Safety Layer is the single architectural enforcement layer\*\*, realizing this pipeline's stage 5 filtering together with Chapter 17's and Chapter 23's constraints, at the Coach Decision System's three fixed checkpoints (D2 Unit 07).
+
+
+
 \---
 
 
@@ -14235,6 +14239,10 @@ This architecture ensures that health remains foundational rather than optional.
 
 
 
+Per the FITME Safety Layer Canonical Decision Package v2.0 (Head of Product + AI Architect, Final Canonical Update): the Health Layer described above provides safety context to, and does not compete with, the single architectural Safety Layer defined in Chapter 23 (RCD-05). The \*\*Risk Escalation\*\* module named above realizes the \*\*ESCALATED\*\* disposition defined in Chapter 23's Safety Layer: the coach recommends appropriate professional care and/or pausing unsafe activity, within FITME authority boundaries; it does not contact healthcare providers, notify third parties, open support tickets, or communicate externally (RCD-04).
+
+
+
 \---
 
 
@@ -19826,6 +19834,26 @@ Safety evaluation should execute \*\*before every coaching recommendation\*\*, r
 
 
 No module—including future AI agents—may bypass this constitutional safety layer.
+
+
+
+Per the FITME Safety Layer Canonical Decision Package v2.0 (Head of Product + AI Architect, Final Canonical Update), the following are approved and canonical:
+
+
+
+\* \*\*Disposition selection (RCD-02).\*\* The Safety Layer selects among its five dispositions (UNMODIFIED, MODIFIED, DEFERRED, BLOCKED, ESCALATED) using a deterministic Safety Decision Matrix evaluating Risk Type, Evidence Confidence, Correctability, and Urgency — not a generic numerical severity score.
+
+\* \*\*Reason communication (RCD-03).\*\* Every Safety Layer decision exposes a closed canonical reasonCode and an optional structured reasonDetail; free-text explanations are not the canonical authority.
+
+\* \*\*Escalation, precisely (RCD-04).\*\* ESCALATED means recommending appropriate professional care when constitutionally required and/or recommending pausing unsafe activity, continuing to coach only inside FITME authority boundaries. ESCALATED does not contact healthcare providers, notify third parties, open support tickets, or communicate externally. The Safety Layer classifies; Expression communicates.
+
+\* \*\*Single relationship to Constitutional Evaluation and Health Layer (RCD-05).\*\* This Safety Layer, Chapter 11's Constitutional Evaluation pipeline stage, and Chapter 17's Health Layer are not separate safety engines. Constitutional Evaluation defines policy; Health Layer provides safety context; this Safety Layer is the single architectural enforcement layer.
+
+\* \*\*Single-event bypass criteria (RCD-08).\*\* A single event may bypass the normal pattern requirement only when it represents an explicit constitutional safety signal: high-risk symptoms, known allergy conflicts, active medical instruction conflicts, significant injuries, explicit dangerous requests, or clear situations outside coaching authority. Inference alone does not bypass the normal evidence requirements.
+
+
+
+The Safety Layer's engineering realization is designated as canonical Work Item \*\*SL-001 — Safety Layer\*\* (RCD-01), an architectural prerequisite before TASK-007.
 
 
 

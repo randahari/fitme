@@ -34,7 +34,29 @@
 - 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
 - 🟢 TASK-005 — Initiative Engine approved, implemented, verified and closed (`js/coachDecisionSystem/initiativeEngine.js`; D3 §17's Composite Engine, third of six internal collaborators; focused Memory Layer extension per CD-T005-01; 68 new/changed tests, full suite 1212/1212 passing)
 - 🟢 TASK-006 — Decision Engine approved, implemented, verified and closed (`js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js`; D3 §17's Composite Engine, fourth of six internal collaborators — Stage 5/7/8/9; focused Candidate arbitration-metadata extension per CD-T006-02; 106 new/changed tests, full suite 1318/1318 passing)
-- ⏭️ Next canonical task: pending Product/Architecture direction — the Safety Layer and Expression remain the last two of D3 §17's six collaborators; no next canonical work item is currently named
+- 🟢 FITME Safety Layer Canonical Decision Package approved and closed (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`; all eight Required Canonical Decisions resolved — RCD-01 SL-001 standalone Work Item, RCD-02 Safety Decision Matrix, RCD-03 closed `reasonCode`/`reasonDetail`, RCD-04 meaning of `ESCALATED`, RCD-05 Constitutional Evaluation/Health Layer/Safety Layer relationship, RCD-06 documentation synchronization, RCD-07 canonical precedence confirmed, RCD-08 single-event safety bypass criteria; documentation-only, no production code changes)
+- ⏭️ Next canonical task: SL-001 — Safety Layer SPEC authoring, per the FITME Safety Layer Canonical Decision Package v2.0; Expression remains the sixth and last undesignated D3 §17 collaborator
+
+---
+
+## Safety Layer Canonical Decision Package (Approved and Closed)
+
+**Date:** 2026-08-03
+**Status:** DONE — Canonical Review completed, all Required Canonical Decisions approved, closed
+**Production Code Changes:** No (documentation only)
+
+`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md` completed Canonical Review; all eight Required Canonical Decisions were approved by the Head of Product + AI Architect:
+
+- **RCD-01** — Safety Layer introduced as a standalone canonical Work Item, identifier **SL-001 — Safety Layer**, an architectural prerequisite before TASK-007. TASK-007 itself is unaffected.
+- **RCD-02** — Safety Layer SHALL use a deterministic Safety Decision Matrix (Risk Type, Evidence Confidence, Correctability, Urgency), not a generic numerical severity score, to select among its five dispositions (`UNMODIFIED`/`MODIFIED`/`DEFERRED`/`BLOCKED`/`ESCALATED`).
+- **RCD-03** — Safety decisions SHALL expose a closed canonical `reasonCode` and an optional structured `reasonDetail`; free-text explanations SHALL NOT be the canonical authority.
+- **RCD-04** — `ESCALATED` means recommending appropriate professional care and/or pausing unsafe activity, within FITME authority boundaries; it SHALL NOT contact healthcare providers, notify third parties, open support tickets, or communicate externally. The Safety Layer classifies; Expression communicates.
+- **RCD-05** — Constitutional Evaluation, Health Layer, and Safety Layer are not separate safety engines: Constitutional Evaluation defines policy, Health Layer provides safety context, and the Safety Layer is the single architectural enforcement layer.
+- **RCD-06** — The repository SHALL be updated to reflect these decisions in the appropriate canonical documents (this entry, and the corresponding updates to the AI Constitution, Coach Bible, Product Bible, D1, D2, and D3, realize this decision).
+- **RCD-07** — Canonical precedence confirmed as: 1. AI Constitution, 2. Product Bible, 3. Coach Bible, 4. Architecture, 5. Engineering Workflow, 6. Task Specifications, 7. Roadmap, 8. Changelog. The Coach Knowledge Base remains non-authoritative.
+- **RCD-08** — A single event may bypass the normal pattern requirement only when it represents an explicit constitutional safety signal (high-risk symptoms, known allergy conflicts, active medical instruction conflicts, significant injuries, explicit dangerous requests, clear situations outside coaching authority); inference alone does not qualify.
+
+No implementation work was performed or authorized by this closure. SL-001 — Safety Layer SPEC authoring is enabled but not started.
 
 ---
 

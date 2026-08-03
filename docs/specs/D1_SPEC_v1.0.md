@@ -46,6 +46,16 @@ The precedence among these sources, and the treatment of sources that are
 *not* independently authoritative, is fixed in **Unit 02 — Authority
 Hierarchy** and is not restated here.
 
+**Precedence Confirmation (RCD-07):** Per the FITME Safety Layer Canonical
+Decision Package v2.0 (Head of Product + AI Architect, Final Canonical
+Update), the canonical precedence order for resolving conflicts across
+FITME governance documents is confirmed as: 1. AI Constitution, 2. Product
+Bible, 3. Coach Bible, 4. Architecture, 5. Engineering Workflow, 6. Task
+Specifications, 7. Roadmap, 8. Changelog — matching Unit 02's restatement
+of Engineering Workflow §3 above. The Coach Knowledge Base is confirmed
+non-authoritative for conflict resolution; its appearance in the citation
+list above is informational only.
+
 ------------------------------------------------------------------------
 
 # Scope

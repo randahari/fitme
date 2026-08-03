@@ -123,6 +123,14 @@ what the coach decides.
 - Roadmap
 - Changelog
 
+**Precedence Confirmation (RCD-07):** Per the FITME Safety Layer Canonical Decision Package v2.0
+(Head of Product + AI Architect, Final Canonical Update), canonical precedence for resolving
+conflicts among these documents is confirmed as: 1. AI Constitution, 2. Product Bible, 3. Coach
+Bible, 4. Architecture, 5. Engineering Workflow, 6. Task Specifications, 7. Roadmap, 8. Changelog.
+The Coach Knowledge Base listed above is non-authoritative for conflict-resolution precedence; it
+is retained in this list as a governing-document reference only, consistent with Engineering
+Workflow §3.
+
 D3 relies on these only through the derivations D1 and D2 have already made from them (Governing
 Principle, D2). It does not independently re-derive coaching or product policy from them.
 
