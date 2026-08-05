@@ -16,12 +16,13 @@
 
 # Governance Documentation
 
-## Coach Bible — Chapter 1
+## Coach Bible — Chapters 1–22 (Complete)
 
 **Status:** 🟢 APPROVED AND CANONICAL
-**Completion Date:** 2026-07-22
+**Chapter 1 Completion Date:** 2026-07-22
+**Chapters 2–22 Completion Date:** 2026-08-05
 
-`docs/governance/FITME_Coach_Bible.md` is the canonical coaching doctrine document (Chapter 1: "How Humans Actually Change" — approved). `docs/governance/FITME_Coach_Knowledge_Base.md` remains the living research/pre-canonical repository that future Bible chapters are derived from. Referenced from the Product Bible and the Engineering Workflow's Source of Truth hierarchy. Documentation-only change; no product behaviour, UX, or code affected.
+`docs/governance/FITME_Coach_Bible.md` is the canonical coaching doctrine document. Chapter 1 ("How Humans Actually Change") was approved and integrated into project governance on 2026-07-22. Chapters 2–22 — added to the repository 2026-07-27, and since relied upon by the FITME Safety Layer Canonical Decision Package v2.0 and `docs/specs/SL-001_SPEC_v1.0.md` (Ch.17/Ch.19 citations) and by TASK-004's Canonical Source Inventory, and amended (Chapter 3 §4) to v1.1 on 2026-08-03 per RCD-08 of that Decision Package — completed an independent Product and AI Architecture review on 2026-08-05: no Product blockers, no Architecture blockers, no Safety blockers, and no Authority-boundary violations were found. The document (Chapters 1–22, "Status: Canonical — Complete" per its own header) is confirmed APPROVED AND CANONICAL in full as of this entry. `docs/governance/FITME_Coach_Bible_Canonical_Review.md` is a Chapter 21–22/Manifesto content excerpt, not a separate review record. `docs/governance/FITME_Coach_Knowledge_Base.md` remains the living research/pre-canonical repository that Bible chapters are derived from. Referenced from the Product Bible and the Engineering Workflow's Source of Truth hierarchy. Documentation-only synchronization; no Coach Bible content, product behaviour, UX, or code affected by this entry.
 
 ---
 
