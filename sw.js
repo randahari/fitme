@@ -63,6 +63,7 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/initiativeEngine.js',
   '/fitme/js/coachDecisionSystem/winnerSelection.js',
   '/fitme/js/coachDecisionSystem/decisionFormation.js',
+  '/fitme/js/coachDecisionSystem/safetyLayer.js',
   '/fitme/js/coachDecisionSystem/memoryLayer.js',
   '/fitme/js/coachDecisionSystem/internalPipelineOrchestrator.js',
   '/fitme/js/coachDecisionSystem/registerCoachDecisionSystem.js',

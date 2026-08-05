@@ -54,6 +54,12 @@
   var DecisionFormation = (typeof module !== 'undefined' && module.exports)
     ? require('./decisionFormation.js')
     : window.DecisionFormation;
+  // SL-001 — Safety Layer's Stage-3 detection contribution (SPEC Ch.9-10), dispatched with the
+  // same structure as detectInitiativeOpportunities() below; disqualify()/finalReview() (Stage
+  // 8/9) are supplied directly as the safetyPort param by the caller, not required here.
+  var SafetyLayer = (typeof module !== 'undefined' && module.exports)
+    ? require('./safetyLayer.js')
+    : window.SafetyLayer;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -97,6 +103,14 @@
   // not exist yet, so nothing currently consumes detected Opportunities).
   function detectInitiativeOpportunities(pipelineContext) {
     return InitiativeEngine.detectOpportunities(pipelineContext);
+  }
+
+  // SL-001 — Stage-3 detection-contribution dispatch for the Safety Layer (SPEC Ch.9-10, D2 Unit
+  // 07), structurally parallel to detectInitiativeOpportunities() above. Exposed for future
+  // Decision-Engine Opportunity-Detection orchestration, or tests; not reached from run() above
+  // for the same reason detectInitiativeOpportunities() isn't (Stage 4/5 do not exist yet).
+  function detectSafetyOpportunities(pipelineContext) {
+    return SafetyLayer.detectSafetyOpportunities(pipelineContext);
   }
 
   // TASK-006 — Stage 6 dispatch for a single already-eligible Opportunity: both producer engines
@@ -189,6 +203,7 @@
     runForOpportunity: runForOpportunity,
     runForInitiativeOpportunity: runForInitiativeOpportunity,
     detectInitiativeOpportunities: detectInitiativeOpportunities,
+    detectSafetyOpportunities: detectSafetyOpportunities,
     runDecisionPass: runDecisionPass
   };
 

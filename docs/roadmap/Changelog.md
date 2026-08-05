@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-03
+**Last Updated:** 2026-08-05
 
 ---
 
@@ -34,8 +34,9 @@
 - 🟢 TASK-004 — Recommendation Engine approved, implemented, verified and closed (`js/coachDecisionSystem/`; D3 §17's Composite Engine, first two of six internal collaborators — Memory Layer, Recommendation Engine; 62 new tests, full suite 1144/1144 passing)
 - 🟢 TASK-005 — Initiative Engine approved, implemented, verified and closed (`js/coachDecisionSystem/initiativeEngine.js`; D3 §17's Composite Engine, third of six internal collaborators; focused Memory Layer extension per CD-T005-01; 68 new/changed tests, full suite 1212/1212 passing)
 - 🟢 TASK-006 — Decision Engine approved, implemented, verified and closed (`js/coachDecisionSystem/eligibilityEvaluator.js`, `prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, `safetyIntegrationPort.js`; D3 §17's Composite Engine, fourth of six internal collaborators — Stage 5/7/8/9; focused Candidate arbitration-metadata extension per CD-T006-02; 106 new/changed tests, full suite 1318/1318 passing)
-- 🟢 FITME Safety Layer Canonical Decision Package approved and closed (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`, v2.2; all eleven Required Canonical Decisions resolved — RCD-01 SL-001 standalone Work Item, RCD-02 Safety Decision Matrix, RCD-03 closed `reasonCode`/`reasonDetail`, RCD-04 meaning of `ESCALATED`, RCD-05 Constitutional Evaluation/Health Layer/Safety Layer relationship, RCD-06 documentation synchronization, RCD-07 canonical precedence confirmed, RCD-08 single-event safety bypass criteria, RCD-09 Safety Decision Matrix disposition policy, RCD-10 derivation of Safety Matrix dimensions, RCD-11 canonical `reasonCode` catalogue; documentation-only, no production code changes)
-- ⏭️ Next canonical task: SL-001 — Safety Layer SPEC authoring, per the FITME Safety Layer Canonical Decision Package v2.0; Expression remains the sixth and last undesignated D3 §17 collaborator
+- 🟢 FITME Safety Layer Canonical Decision Package approved and closed (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`, v2.6; all fifteen Required Canonical Decisions resolved — RCD-01 SL-001 standalone Work Item, RCD-02 Safety Decision Matrix, RCD-03 closed `reasonCode`/`reasonDetail`, RCD-04 meaning of `ESCALATED`, RCD-05 Constitutional Evaluation/Health Layer/Safety Layer relationship, RCD-06 documentation synchronization, RCD-07 canonical precedence confirmed, RCD-08 single-event safety bypass criteria, RCD-09 Safety Decision Matrix disposition policy, RCD-10 derivation of Safety Matrix dimensions, RCD-11 canonical `reasonCode` catalogue, RCD-12 ordered Safety Rule framework, RCD-13 Safety Layer output contract, RCD-14 Canonical Safety Rule evaluation model, RCD-15 RG-3 resolution — Decision-Level Modification for tied-set Terminal Decisions; documentation-only, no production code changes)
+- 🟢 SL-001 — Safety Layer approved, implemented, verified and closed (`js/coachDecisionSystem/safetyLayer.js`; D3 §17's Composite Engine, fifth of six internal collaborators — Stage 3/8/9 Safety authority behind the existing `safetyIntegrationPort.js`; `index.html`/`sw.js` wiring for the one new file; 4 new tests, full suite 1374/1374 passing)
+- ⏭️ Next canonical task: TASK-007 — UX System, per SL-001's own designation (RCD-01) of itself as an architectural prerequisite before it; Expression remains the sixth and last undesignated D3 §17 collaborator
 
 ---
 
@@ -144,6 +145,78 @@ of D3 §17's six collaborators, that Stage 4 (Evidence Evaluation) orchestration
 unassigned (Repository Gap G-2), and that a real classification source for `evidenceTier`/
 `trustImpact`/`timingQuality`/`problemMagnitude`/`recommendationImpactTier` remains future,
 Product/Architecture-owned work (Repository Gap G-9).
+
+---
+
+## SL-001 — Safety Layer (Implementation Complete, Closed)
+
+**Date:** 2026-08-05
+**Status:** DONE — implemented, tested, reviewed, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented D3 §17's fifth Coach Decision System internal collaborator — the Safety Layer — the
+production implementation behind the existing, policy-free `SafetyIntegrationPort` (Canonical
+Decision CD-T006-05, `safetyIntegrationPort.js`, TASK-006). Added: `js/coachDecisionSystem/safetyLayer.js`
+— Stage 8 `disqualify()` (the binary D1-AH-02 absolute-override check, narrower than the full
+five-disposition Matrix), Stage 9 `finalReview()` (the complete Safety Decision Matrix: RCD-09's
+disposition-selection policy, RCD-10's dimension-derivation rules, RCD-12's closed dimension
+vocabularies and ordered disposition predicates, RCD-14's Canonical Safety Rule runtime unit and
+same-disposition tie-break), and the Stage 3 `detectSafetyOpportunities()` contribution, dispatched
+from `internalPipelineOrchestrator.js` structurally parallel to the existing Initiative Engine
+detection pattern. `decisionFormation.js` and `safetyIntegrationPort.js` required no change — both
+already conformed to every rule this closure formalizes. `index.html`/`sw.js` — script/shell wiring
+for the one new file, inserted after `safetyIntegrationPort.js` and before `internalPipelineOrchestrator.js`
+in dependency order, matching the existing TASK-006 wiring pattern. No `APP_VERSION` change — this
+collaborator has no user-facing surface yet (Expression, D3 §17's sixth and last collaborator, is not
+built).
+
+A Root Cause Investigation, conducted before implementation could resume, examined three candidate
+architectural blockers. Two — the Health/Safety Profile input-contract question and MODIFIED-disposition
+ownership — were found, on repository evidence, to require no new Canonical Decision: the first is
+already covered by this SPEC's own Ch.28 Failure Mode guidance ("Missing Decision Input category →
+Proceed using available categories") and matches the repository's existing treatment of
+`lifeEventContext`/`capacityState`/`relationshipMaturity` (TASK-005); the second is already settled by
+existing TASK-006/D2 text establishing the Safety Layer, never the Decision Engine, as `modifiedContent`'s
+author. The third — RG-3, the undefined interaction between a `MODIFIED` disposition and a tied-set
+Terminal Decision (Canonical Decision 7) — did require a new Canonical Decision, approved as **RCD-15**:
+decision-level (uniform) modification. The Safety Decision Matrix evaluates a tied-set Terminal
+Decision exactly as it evaluates any other — as one undifferentiated unit, no per-option evaluation
+introduced; `options[]` is preserved unmutated; the resulting `modification` record is a **Decision-Level
+Modification** — a Safety-Layer-authored, whole-decision field (structurally alongside `rationale`/
+`safetyDisposition`), never scoped to an individual option. RCD-15 required no change to RCD-12/RCD-13/
+RCD-14, to the `SafetyIntegrationPort` contract, or to Canonical Decision 7, and was found, on direct
+code inspection, to already match the pre-existing (uncommitted) implementation of `decisionFormation.js`
+— the interruption this Root Cause Investigation resolved was a documentation/decision gap, not an
+implementation defect.
+
+### Verification
+
+- 4 new tests added to `tests/decisionFormation.test.js` (the tied-set + `MODIFIED` scenario RCD-15
+  resolves, plus confirmation that every other Safety disposition behaves identically on a tied-set to
+  the single-winner case, unaltered by RCD-15); full suite **1374/1374 passing** (the TASK-006 baseline
+  1318/1318 unchanged and still passing).
+- `finalReview()` confirmed invoked exactly once per Decision Pass for a tied-set Terminal Decision,
+  never once per option.
+- `options[]` confirmed identical in count, order, and membership to Winner Selection's own output
+  after a `MODIFIED` review; the `modification` record confirmed present only at the decision level,
+  never nested inside any individual option.
+- All fifteen Required Canonical Decisions (RCD-01 through RCD-15) confirmed resolved in the
+  FITME Safety Layer Canonical Decision Package (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`,
+  v2.6, Closed); no open Repository Gap remains for SL-001's own scope (RG-1/RG-2/RG-3 all RESOLVED;
+  GAP-06 and the inherited GAP-10 through GAP-13 remain open, unaffected, already classified
+  non-blocking).
+
+### Next
+
+See `docs/specs/SL-001_SPEC_v1.0.md`'s Closure Record for the full follow-up list (none of which expand
+this task's own scope) — principally that ED-1 (the concrete failure-detection/retry/logging mechanism)
+remains an open, Engineering-owned Engineering Decision Pending; that the bounded-modification
+content-generation algorithm has no canonical source and remains unreachable at this repository
+baseline; that no Health/Safety Profile repository data source yet exists (same non-blocking treatment
+as `lifeEventContext`/`capacityState`/`relationshipMaturity`); and that Expression remains the sixth and
+last undesignated D3 §17 collaborator.
 
 ---
 

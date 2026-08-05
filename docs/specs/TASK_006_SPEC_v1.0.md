@@ -1271,6 +1271,8 @@ D1-CDO-03 (restated throughout this document, most directly at Section 22.6): De
 
 # 25. Terminal Decision Contract (Corrected — Canonical Decision CD-T006-06)
 
+> **Additive cross-reference (no semantic change):** the `modification`/`modifiedContent` fields and the `options` tied-set representation defined below are additively clarified, for the specific case of a `MODIFIED` disposition on a tied-set Terminal Decision, by `[SLDP RCD-15]` (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`, Ch.28) and `[SL-001_SPEC_v1.0.md, Ch.27, RG-3]`. No field, invariant, or mapping stated in this chapter is altered by that decision.
+
 Reusing TASK-004's CC-02/CC-03 and TASK-005's `InitiativeCandidate` shapes (Section 10.4) as the structural precedent, and applying Canonical Decision CD-T006-06's exact four-family model (Section 21.5, 22.4, 24.1), this document fixes the Terminal Decision object Stage 9 produces. This corrected contract replaces, without ambiguity or residual contradiction, any five-kind or Stage-9-modify/defer/block-reforms-to-refusal/escalation reading of D2 Unit 04's more general text — CD-T006-06 is the exact, binding realization of D1 Unit 15's fourth "refusal or escalation" kind for TASK-006:
 
 ```
@@ -1400,6 +1402,8 @@ A single integer, 1–10, identical in shape to `RecommendationCandidate.hierarc
 ## 25.10 Tied-Option Representation
 
 The `options` array (Section 25 above), each entry the full, unmutated winning-tied Candidate object — satisfying Canonical Decision 7's requirement that the narrow exception be "assembled into one Terminal Decision carrying multiple user-selectable options" without inventing a second, summarized representation of each option.
+
+**Additive cross-reference (no semantic change):** where the Terminal Decision's `safetyDisposition.disposition` is `MODIFIED`, this unmutated-`options[]` guarantee is preserved exactly as stated above, and the `modification` record is applied as a Decision-Level Modification — a whole-decision field, never scoped to an individual option. See `[SLDP RCD-15]` and `[SL-001_SPEC_v1.0.md, Ch.27, RG-3]` for the full resolution; no rule in this section is altered by it.
 
 ## 25.11 Refusal/Escalation Representation
 

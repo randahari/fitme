@@ -92,11 +92,76 @@ test('a tied set is assembled into exactly one Terminal Decision carrying multip
   assert.equal(r.decision.candidateProvenance.length, 2);
 });
 
+// ── RG-3 / RCD-15 — MODIFIED on a tied-set Terminal Decision (Decision-Level Modification) ──
+// SLDP RCD-15; SL-001_SPEC_v1.0.md Ch.27/§31 (RG-3, RESOLVED); TASK_006_SPEC_v1.0.md §25.10.
+
+test('MODIFIED on a tied-set Terminal Decision: options[] preserved unmutated (count, order, membership), modification applied at decision level, kind never reformed', async () => {
+  const a = candidate('a'); const b = candidate('b');
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'MODIFIED', modifiedContent: { action: 'a softened version' }, reasonCode: 'DANGEROUS_OR_EXTREME_REQUEST', reasonDetail: null, reason: 'DANGEROUS_OR_EXTREME_REQUEST' }) });
+  const selection = { status: 'TIED_SET', tiedSet: [a, b], disqualifiedCandidates: [] };
+  const r = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(r.status, 'FORMED');
+  assert.equal(r.decision.kind, 'RECOMMENDATION');
+  assert.equal(r.decision.safetyDisposition.disposition, 'MODIFIED');
+  // §25.10/RCD-15.B — options[] identical in count, order, and membership to what Winner Selection produced.
+  assert.equal(r.decision.options.length, 2);
+  assert.deepEqual(r.decision.options[0], a);
+  assert.deepEqual(r.decision.options[1], b);
+  // RCD-15.C — the modification record is a decision-level field, a sibling of `options`, not nested inside it.
+  assert.deepEqual(r.decision.modification.modifiedContent, { action: 'a softened version' });
+  assert.equal('modifiedContent' in r.decision.options[0], false);
+  assert.equal('modifiedContent' in r.decision.options[1], false);
+  assert.equal('modification' in r.decision.options[0], false);
+  assert.equal('modification' in r.decision.options[1], false);
+});
+
+test('MODIFIED on a tied-set Terminal Decision: candidateProvenance carries both tied options, unmodified', async () => {
+  const a = candidate('a'); const b = candidate('b');
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'MODIFIED', modifiedContent: { action: 'a softened version' }, reasonCode: 'DANGEROUS_OR_EXTREME_REQUEST', reasonDetail: null, reason: 'DANGEROUS_OR_EXTREME_REQUEST' }) });
+  const selection = { status: 'TIED_SET', tiedSet: [a, b], disqualifiedCandidates: [] };
+  const r = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.deepEqual(r.decision.candidateProvenance, [a.opportunityProvenance, b.opportunityProvenance]);
+});
+
+test('RCD-15.A — the Safety Decision Matrix (finalReview) is invoked exactly once per Decision Pass for a tied-set, never once per option', async () => {
+  const a = candidate('a'); const b = candidate('b');
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'MODIFIED', modifiedContent: { action: 'a softened version' }, reasonCode: 'DANGEROUS_OR_EXTREME_REQUEST', reasonDetail: null, reason: 'DANGEROUS_OR_EXTREME_REQUEST' }) });
+  const selection = { status: 'TIED_SET', tiedSet: [a, b], disqualifiedCandidates: [] };
+  await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(port.calls.finalReview, 1);
+});
+
+test('every other Safety disposition on a tied-set Terminal Decision behaves identically to the single-winner case (CD-T006-06, unaltered by RCD-15)', async () => {
+  const a = candidate('a'); const b = candidate('b');
+  const selection = { status: 'TIED_SET', tiedSet: [a, b], disqualifiedCandidates: [] };
+
+  const deferredPort = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reasonCode: 'INSUFFICIENT_SAFETY_CONTEXT', reasonDetail: null, reason: 'INSUFFICIENT_SAFETY_CONTEXT' }) });
+  const rDeferred = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: deferredPort, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(rDeferred.decision.kind, 'SILENCE');
+  assert.equal('modification' in rDeferred.decision, false);
+
+  const blockedPort = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reasonCode: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', reasonDetail: null, reason: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT' }) });
+  const rBlocked = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: blockedPort, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(rBlocked.decision.kind, 'BOUNDARY');
+  assert.equal(rBlocked.decision.boundaryType, 'REFUSAL');
+  assert.equal('modification' in rBlocked.decision, false);
+
+  const escalatedPort = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'ESCALATED', modifiedContent: null, reasonCode: 'PROFESSIONAL_SUPPORT_REQUIRED', reasonDetail: null, reason: 'PROFESSIONAL_SUPPORT_REQUIRED' }) });
+  const rEscalated = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: escalatedPort, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(rEscalated.decision.kind, 'BOUNDARY');
+  assert.equal(rEscalated.decision.boundaryType, 'ESCALATION');
+
+  const unmodifiedPort = makeSafetyIntegrationPortTestDouble();
+  const rUnmodified = await DecisionFormation.form({ selection, pipelineContext: {}, safetyPort: unmodifiedPort, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(rUnmodified.decision.kind, 'RECOMMENDATION');
+  assert.equal(rUnmodified.decision.options.length, 2);
+});
+
 // ── §21.5/22.4/24.1 Canonical Decision CD-T006-06 — the five-disposition mapping ──
 
 test('MODIFIED keeps the original kind and attaches a modification record, never BOUNDARY/SILENCE', async () => {
   const c = candidate('a');
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'MODIFIED', modifiedContent: { action: 'a softened version' }, reason: 'toned down' }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'MODIFIED', modifiedContent: { action: 'a softened version' }, reasonCode: 'DANGEROUS_OR_EXTREME_REQUEST', reasonDetail: null, reason: 'DANGEROUS_OR_EXTREME_REQUEST' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal(r.decision.kind, 'RECOMMENDATION');
   assert.deepEqual(r.decision.modification.modifiedContent, { action: 'a softened version' });
@@ -105,7 +170,7 @@ test('MODIFIED keeps the original kind and attaches a modification record, never
 
 test('DEFERRED reforms the Terminal Decision to kind: SILENCE', async () => {
   const c = candidate('a');
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reason: 'timing not right' }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reasonCode: 'INSUFFICIENT_SAFETY_CONTEXT', reasonDetail: null, reason: 'INSUFFICIENT_SAFETY_CONTEXT' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal(r.decision.kind, 'SILENCE');
   assert.equal(r.decision.safetyDisposition.disposition, 'DEFERRED');
@@ -115,7 +180,7 @@ test('DEFERRED reforms the Terminal Decision to kind: SILENCE', async () => {
 
 test('BLOCKED reforms the Terminal Decision to kind: BOUNDARY, boundaryType: REFUSAL', async () => {
   const c = candidate('a');
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reason: 'conflicts with a safety principle' }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reasonCode: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', reasonDetail: null, reason: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal(r.decision.kind, 'BOUNDARY');
   assert.equal(r.decision.boundaryType, 'REFUSAL');
@@ -124,7 +189,7 @@ test('BLOCKED reforms the Terminal Decision to kind: BOUNDARY, boundaryType: REF
 
 test('ESCALATED reforms the Terminal Decision to kind: BOUNDARY, boundaryType: ESCALATION', async () => {
   const c = candidate('a');
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'ESCALATED', modifiedContent: null, reason: 'professional referral threshold met' }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'ESCALATED', modifiedContent: null, reasonCode: 'PROFESSIONAL_SUPPORT_REQUIRED', reasonDetail: null, reason: 'PROFESSIONAL_SUPPORT_REQUIRED' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal(r.decision.kind, 'BOUNDARY');
   assert.equal(r.decision.boundaryType, 'ESCALATION');
@@ -132,7 +197,7 @@ test('ESCALATED reforms the Terminal Decision to kind: BOUNDARY, boundaryType: E
 
 test('a BLOCKED disposition never disguises a different, unblocked Candidate as the winner (§24.5) — the original provenance is preserved as evidence', async () => {
   const c = candidate('a');
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reason: 'blocked' }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reasonCode: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', reasonDetail: null, reason: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.deepEqual(r.decision.candidateProvenance, [c.opportunityProvenance]);
   assert.equal(r.decision.rationale, c.rationale);
@@ -147,14 +212,14 @@ test('boundaryType is present if and only if kind === BOUNDARY', async () => {
 });
 
 test('confidence and hierarchyTier are absent for a SILENCE (DEFERRED) Terminal Decision', async () => {
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reason: null }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reasonCode: 'INSUFFICIENT_SAFETY_CONTEXT', reasonDetail: null, reason: 'INSUFFICIENT_SAFETY_CONTEXT' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(candidate('a')), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal('confidence' in r.decision, false);
   assert.equal('hierarchyTier' in r.decision, false);
 });
 
 test('confidence and hierarchyTier are absent for a BOUNDARY (BLOCKED) Terminal Decision', async () => {
-  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reason: null }) });
+  const port = makeSafetyIntegrationPortTestDouble({ reviewRule: () => ({ disposition: 'BLOCKED', modifiedContent: null, reasonCode: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', reasonDetail: null, reason: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT' }) });
   const r = await DecisionFormation.form({ selection: singleWinnerSelection(candidate('a')), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal('confidence' in r.decision, false);
   assert.equal('hierarchyTier' in r.decision, false);
