@@ -20,9 +20,62 @@
   var StringUtils = (typeof module !== 'undefined' && module.exports)
     ? require('../core/stringUtils.js')
     : window.StringUtils;
+  var DateUtils = (typeof module !== 'undefined' && module.exports)
+    ? require('../core/dateUtils.js')
+    : window.DateUtils;
 
   var deps = null;
   function configure(injected) { deps = injected || {}; }
+
+  // TASK-007 UX-7.5/UX-14.1a (WP8): "prolonged absence" threshold — Engineering Decision
+  // Pending, non-blocking, per TASK_007_SPEC_v1.0.md §7.2.6's own text ("exact threshold:
+  // Engineering Decision Pending"). 4 days: longer than an ordinary single skipped day, short
+  // enough to close the gap the SPEC's own Repository Gap citation identifies, and less than
+  // the existing 7-day week-chart's own rolling window (so this signal fires before that window
+  // would otherwise silently roll a longer absence out of view).
+  var RETURN_AFTER_ABSENCE_THRESHOLD_DAYS = 4;
+
+  // TASK-007 UX-7.5 (WP8): finds the most recent day strictly before todayKey with any logged
+  // meal activity, in the already-existing day-history object (js/repositories/dayRepository.js
+  // fetchHistory() — the exact same data source js/app.js's updateStreak()/buildWeekChart()
+  // already read; no new field, repository, schema, or Persistence Gateway operation). "Activity"
+  // is defined as meals.length > 0, matching updateStreak()'s own existing definition — not a new
+  // definition invented for this purpose. Returns the day-count gap, or null if no qualifying
+  // prior day exists (a brand-new user with no history yet, or a user whose only logged day is
+  // today) — null correctly produces no signal, since there is nothing to be "absent" from.
+  function daysSinceLastLoggedDay(history, todayKey) {
+    if (!history || typeof history !== 'object') return null;
+    var lastKey = null;
+    Object.keys(history).forEach(function (key) {
+      if (key >= todayKey) return; // strictly before today
+      var day = history[key];
+      if (day && Array.isArray(day.meals) && day.meals.length > 0) {
+        if (!lastKey || key > lastKey) lastKey = key;
+      }
+    });
+    if (!lastKey) return null;
+    return DateUtils.daysBetween(todayKey, lastKey);
+  }
+
+  // TASK-007 UX-7.5/UX-14.1a (WP8): async, fire-and-forget — same pattern already used by
+  // buildWeekChart()/refreshCoachCard() within renderHome() below. Defensive: a no-op whenever
+  // deps.getHistoryData/deps.sessionLifecycle are not injected, so every existing caller that
+  // doesn't provide them (including the full pre-WP8 test suite) is unaffected. REM-002 session
+  // guard: suppresses the DOM update if the auth session changed while the history fetch was in
+  // flight, matching the discipline already required of every other async Home-render effect.
+  async function applyReturnAfterAbsenceSignal() {
+    if (typeof deps.getHistoryData !== 'function' || !deps.sessionLifecycle) return;
+    var gen = deps.sessionLifecycle.getGeneration();
+    var history;
+    try { history = await deps.getHistoryData(); } catch (e) { return; }
+    if (!deps.sessionLifecycle.isCurrent(gen)) return; // REM-002: stale session — no effect
+    var el = deps.documentRef.getElementById('today-date');
+    if (!el) return;
+    var gap = daysSinceLastLoggedDay(history, DateUtils.getTodayKey());
+    if (gap !== null && gap >= RETURN_AFTER_ABSENCE_THRESHOLD_DAYS) {
+      el.textContent += ' · הרישום האחרון: לפני ' + gap + ' ימים';
+    }
+  }
 
   // המימוש הסופי-בזמן-ריצה היחיד של renderHome.
   function renderHome() {
@@ -78,6 +131,10 @@
 
     // Day Navigation IIFE wrap: מוסיפה סרגל ניווט תאריך + כרום ימי-עבר.
     deps.applyDateNavChrome();
+
+    // TASK-007 UX-7.5/UX-14.1a (WP8): return-after-absence continuity signal — see
+    // applyReturnAfterAbsenceSignal() above.
+    applyReturnAfterAbsenceSignal();
   }
 
   // המימוש הסופי-בזמן-ריצה היחיד של renderMealsInHome (שורות ניתנות ללחיצה
@@ -100,7 +157,10 @@
   var API = {
     configure: configure,
     renderHome: renderHome,
-    renderMealsInHome: renderMealsInHome
+    renderMealsInHome: renderMealsInHome,
+    // TASK-007 UX-7.5 (WP8): exposed for direct unit testing, matching this repository's
+    // established convention for pure internal helpers (e.g. js/memory.js's _internal export).
+    _internal: { daysSinceLastLoggedDay: daysSinceLastLoggedDay }
   };
 
   if (typeof window !== 'undefined') { window.HomePresenter = API; }

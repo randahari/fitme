@@ -20,8 +20,9 @@ function fakeDocument() {
   [
     'greeting', 'ring-arc', 'ring-pct', 'kcal-consumed', 'kcal-target', 'kcal-remain',
     'm-protein', 'm-carbs', 'm-fat', 'bar-protein', 'bar-carbs', 'bar-fat',
-    'burned-val', 'steps-val', 'weight-val', 'streak-num', 'meals-list'
+    'burned-val', 'steps-val', 'weight-val', 'streak-num', 'meals-list', 'today-date'
   ].forEach((id) => { elements[id] = fakeElement(); });
+  elements['today-date'].textContent = 'יום שלישי, 5/8'; // matches app.js's setTodayDate() already having run
   return { getElementById: (id) => elements[id] || null, _elements: elements };
 }
 
@@ -123,4 +124,92 @@ test('renderMealsInHome renders one clickable/deletable row per meal with escape
   assert.match(html, /deleteHomeMeal\(1\)/);
   assert.match(html, /300 קל'/);
   assert.match(html, /סלט/);
+});
+
+// ── TASK-007 UX-7.5/UX-14.1a (WP8) — return-after-absence continuity signal ─────────────
+
+function flushMicrotasks() { return new Promise((resolve) => setTimeout(resolve, 0)); }
+
+const { _internal } = HomePresenter;
+const TODAY = require('../js/core/dateUtils.js').getTodayKey();
+
+function keyDaysAgo(n) {
+  const d = new Date(); d.setDate(d.getDate() - n);
+  return require('../js/core/dateUtils.js').dateKey(d);
+}
+
+test('daysSinceLastLoggedDay returns null for missing/empty history (new user — nothing to be absent from)', () => {
+  assert.equal(_internal.daysSinceLastLoggedDay(null, TODAY), null);
+  assert.equal(_internal.daysSinceLastLoggedDay({}, TODAY), null);
+});
+
+test('daysSinceLastLoggedDay ignores days with an empty meals array, today itself, and future-dated keys', () => {
+  const history = {};
+  history[keyDaysAgo(2)] = { meals: [] };
+  history[TODAY] = { meals: [{ kcal: 100 }] };
+  const future = new Date(); future.setDate(future.getDate() + 1);
+  history[require('../js/core/dateUtils.js').dateKey(future)] = { meals: [{ kcal: 100 }] };
+  assert.equal(_internal.daysSinceLastLoggedDay(history, TODAY), null);
+});
+
+test('daysSinceLastLoggedDay returns the gap to the most recent prior day with meals.length > 0', () => {
+  const history = {};
+  history[keyDaysAgo(9)] = { meals: [{ kcal: 100 }] };
+  history[keyDaysAgo(5)] = { meals: [{ kcal: 200 }] };
+  history[keyDaysAgo(2)] = { meals: [] }; // present but empty — must not count
+  assert.equal(_internal.daysSinceLastLoggedDay(history, TODAY), 5);
+});
+
+test('renderHome appends the continuity signal to #today-date when the gap meets the threshold (4+ days)', async () => {
+  const history = {}; history[keyDaysAgo(6)] = { meals: [{ kcal: 100 }] };
+  const { deps, doc } = fakeDeps({ getHistoryData: async () => history, sessionLifecycle: { getGeneration: () => 1, isCurrent: () => true } });
+  HomePresenter.configure(deps);
+  HomePresenter.renderHome();
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8 · הרישום האחרון: לפני 6 ימים');
+});
+
+test('renderHome does not append the signal when the gap is under the threshold', async () => {
+  const history = {}; history[keyDaysAgo(2)] = { meals: [{ kcal: 100 }] };
+  const { deps, doc } = fakeDeps({ getHistoryData: async () => history, sessionLifecycle: { getGeneration: () => 1, isCurrent: () => true } });
+  HomePresenter.configure(deps);
+  HomePresenter.renderHome();
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8');
+});
+
+test('renderHome does not append the signal for a brand-new user with no qualifying prior day', async () => {
+  const { deps, doc } = fakeDeps({ getHistoryData: async () => ({}), sessionLifecycle: { getGeneration: () => 1, isCurrent: () => true } });
+  HomePresenter.configure(deps);
+  HomePresenter.renderHome();
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8');
+});
+
+test('renderHome suppresses the continuity signal when the session goes stale mid-fetch (REM-002)', async () => {
+  const history = {}; history[keyDaysAgo(10)] = { meals: [{ kcal: 100 }] };
+  const { deps, doc } = fakeDeps({
+    getHistoryData: async () => history,
+    sessionLifecycle: { getGeneration: () => 1, isCurrent: () => false } // already stale by the time it resolves
+  });
+  HomePresenter.configure(deps);
+  HomePresenter.renderHome();
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8', 'a stale session must produce no effect');
+});
+
+test('renderHome does not throw and applies no signal when getHistoryData rejects (defensive)', async () => {
+  const { deps, doc } = fakeDeps({ getHistoryData: async () => { throw new Error('offline'); }, sessionLifecycle: { getGeneration: () => 1, isCurrent: () => true } });
+  HomePresenter.configure(deps);
+  assert.doesNotThrow(() => HomePresenter.renderHome());
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8');
+});
+
+test('renderHome applies no signal, and does not throw, when getHistoryData/sessionLifecycle are not injected (backward compatibility)', async () => {
+  const { deps, doc } = fakeDeps(); // base fakeDeps has neither — matches every pre-WP8 caller
+  HomePresenter.configure(deps);
+  assert.doesNotThrow(() => HomePresenter.renderHome());
+  await flushMicrotasks();
+  assert.equal(doc._elements['today-date'].textContent, 'יום שלישי, 5/8');
 });

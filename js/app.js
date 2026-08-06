@@ -362,6 +362,9 @@ NavigationController.configure({
   updateFoodDateBanner: function () { return DayNavigationController.updateFoodDateBanner(); }
 });
 
+// TASK-007 UX-7.5 (WP8): מזריק getHistoryData/sessionLifecycle — עוטפים פסאדות/מודולים
+// יציבים שכבר קיימים ומוזרקים במקומות אחרים באותה קובץ בדיוק (getHistoryData ל-buildWeekChart/
+// updateStreak, sessionLifecycle לכל הבקרים האחרים) — אין שכפול לוגיקה, אין data source חדש.
 HomePresenter.configure({
   documentRef: document,
   getUserProfile: function () { return userProfile; },
@@ -371,7 +374,9 @@ HomePresenter.configure({
   buildWater: function () { buildWater(); },
   buildWeekChart: function () { buildWeekChart(); },
   refreshCoachCard: function () { return refreshCoachCard(); },
-  applyDateNavChrome: function () { return DayNavigationController.applyHomeChrome(); }
+  applyDateNavChrome: function () { return DayNavigationController.applyHomeChrome(); },
+  getHistoryData: function () { return getHistoryData(); },
+  sessionLifecycle: SessionLifecycle
 });
 
 ProfilePresenter.configure({
