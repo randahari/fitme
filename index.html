@@ -185,25 +185,25 @@
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <div class="streak-badge"><span id="streak-num">0</span> ימים</div>
-            <button class="icon-btn" onclick="toggleDark()" id="dark-toggle-btn">🌙</button>
+            <button class="icon-btn" onclick="toggleDark()" id="dark-toggle-btn" aria-label="החלף מצב כהה">🌙</button>
           </div>
         </div>
         <div class="scroll-content">
 
           <!-- TRIGGER CARD (שלב 5) — תגובת המאמן לאירוע -->
-          <div id="trigger-card" class="coach-card hidden">
+          <div id="trigger-card" class="coach-card hidden" aria-live="polite">
             <div class="coach-card-icon">💬</div>
             <div class="coach-card-text" id="trigger-card-text"></div>
           </div>
 
           <!-- COACH CARD (המאמן) -->
-          <div id="coach-card" class="coach-card hidden">
+          <div id="coach-card" class="coach-card hidden" aria-live="polite">
             <div class="coach-card-icon">🧭</div>
             <div class="coach-card-text" id="coach-card-text"></div>
           </div>
 
           <!-- ADAPTIVE TARGET CARD (שלב 4) — הצעת עדכון יעד -->
-          <div id="adaptive-card" class="adaptive-card hidden">
+          <div id="adaptive-card" class="adaptive-card hidden" aria-live="polite">
             <div class="adaptive-card-head">🎯 עדכון יעד שבועי</div>
             <div class="adaptive-card-text" id="adaptive-card-text"></div>
             <div class="adaptive-card-meta" id="adaptive-card-meta"></div>
@@ -214,7 +214,7 @@
           </div>
 
           <!-- PARTIAL DAYS PROMPT (שלב 4) — פניית המאמן על רישום חלקי -->
-          <div id="partial-prompt" class="adaptive-card hidden">
+          <div id="partial-prompt" class="adaptive-card hidden" aria-live="polite">
             <div class="adaptive-card-head">📝 עזור לי לדייק</div>
             <div class="adaptive-card-text" id="partial-prompt-text"></div>
             <div id="partial-prompt-list" style="margin-top:8px;display:flex;flex-direction:column;gap:6px"></div>
@@ -311,7 +311,7 @@
         <div class="scroll-content">
           <div class="input-group">
             <input type="text" id="food-input" placeholder="למשל: חביתה עם שתי ביצים..." autocomplete="off">
-            <button class="send-btn" onclick="analyzeFood()">
+            <button class="send-btn" onclick="analyzeFood()" aria-label="שלח לניתוח">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
@@ -566,7 +566,7 @@
   <div id="barcode-overlay" class="barcode-overlay hidden">
     <div class="barcode-header">
       <span>סרוק ברקוד</span>
-      <button onclick="closeBarcode()" class="barcode-close">✕</button>
+      <button onclick="closeBarcode()" class="barcode-close" aria-label="סגור סריקה">✕</button>
     </div>
     <div id="barcode-video" class="barcode-video">
       <div id="barcode-reader" style="width:100%;height:100%"></div>
