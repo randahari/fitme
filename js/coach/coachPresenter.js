@@ -25,7 +25,8 @@
   var deps = null;
   function configure(injected) { deps = injected || {}; }
 
-  // כרטיס המאמן במסך הבית — זהה לחלוטין ל-refreshCoachCard() המקורי.
+  // כרטיס המאמן במסך הבית — זהה לחלוטין ל-refreshCoachCard() המקורי, עם תוספת UX-12.5
+  // (TASK-007 WP5): ensureCoachCardDismissButton, למטה.
   async function refreshCoachCard() {
     var userProfile = deps.getUserProfile();
     if (deps.getCoachCardShown() || !userProfile) return;
@@ -38,8 +39,36 @@
     var _gen = deps.sessionLifecycle.getGeneration(); // REM-002: session guard
     try {
       var msg = await deps.coachMessageFn(ctx);
-      if (msg && deps.sessionLifecycle.isCurrent(_gen)) { textEl.textContent = msg; card.classList.remove('hidden'); }
+      if (msg && deps.sessionLifecycle.isCurrent(_gen)) {
+        textEl.textContent = msg;
+        try { ensureCoachCardDismissButton(card); } catch (e) {} // UX-12.5: never breaks card display, same discipline as trigger-card's C2 dismiss button
+        card.classList.remove('hidden');
+      }
     } catch (e) { /* שקט — אם אין רשת פשוט לא מציגים כרטיס */ }
+  }
+
+  // ── TASK-007 UX-12.5 (WP5): Dismiss affordance for #coach-card, which previously had none —
+  // created once (idempotent, same pattern as js/trigger/triggerController.js's
+  // ensureTriggerCardDismissButton). Deliberately does NOT record C2 feedback: coach-card is a
+  // standalone coach-composed message, not a Recommendation-/Initiative-/Trigger-/
+  // Adaptive-proposal-like surface (it does not originate from js/coachDecisionSystem/* — see
+  // TASK_007_SPEC_v1.0.md §13.4's repository evidence). Per §11.1 ("Dismiss... MAY record
+  // feedback") and UX-11.1 ("Only interactions directed at a Recommendation-, Initiative-,
+  // Trigger-, or Adaptive-proposal-like surface record a C2 feedback entry"), no feedback
+  // record is required or appropriate here — and attempting one would require extending C2's
+  // closed owner-derivation catalog in js/app.js's feedback-event writer (a strict two-owner
+  // ternary, no third owner exists), which is outside TASK-007's authority (§4.2, domain logic
+  // unchanged). See docs/specs/TASK_007_IMPLEMENTATION_PLAN.md WP5 for the full analysis. ──
+  function ensureCoachCardDismissButton(card) {
+    var btn = card.querySelector ? card.querySelector('.coach-card-dismiss') : null;
+    if (!btn) {
+      btn = deps.documentRef.createElement('button');
+      btn.className = 'btn-ghost coach-card-dismiss';
+      btn.style.cssText = 'width:auto;padding:6px 10px;margin:8px 0 0;font-size:12px;display:block';
+      btn.textContent = 'סגור';
+      card.appendChild(btn);
+    }
+    btn.onclick = function () { card.classList.add('hidden'); };
   }
 
   // ── COACH SETTINGS — זהה לחלוטין ל-renderCoachSettings()/saveCoachSettings()/

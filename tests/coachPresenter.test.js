@@ -18,6 +18,16 @@ CoachPromptComposer.configure({ sessionLifecycle: { getGeneration: () => 1 }, go
 function fakeElement(overrides) {
   return Object.assign({ classList: { add() {}, remove() {} }, style: {}, innerHTML: '', textContent: '', value: '' }, overrides);
 }
+// TASK-007 UX-12.5 (WP5): card double that additionally supports querySelector/appendChild,
+// for the coach-card dismiss-button tests — same pattern as tests/triggerController.test.js's
+// fakeCardWithChildren.
+function fakeCardWithChildren() {
+  const el = fakeElement();
+  el._children = [];
+  el.querySelector = (sel) => (sel === '.coach-card-dismiss' ? (el._children.find((c) => c.className.indexOf('coach-card-dismiss') !== -1) || null) : null);
+  el.appendChild = (child) => { el._children.push(child); };
+  return el;
+}
 
 function fakeSegButtons(count) {
   return Array.from({ length: count }, (_, i) => Object.assign(fakeElement(), { dataset: { val: 'v' + i }, classList: { toggled: null, toggle(cls, on) { this.toggled = on; } } }));
@@ -29,6 +39,9 @@ function fakeDocument(overrides) {
   const doc = {
     getElementById: (id) => elements[id] || null,
     querySelectorAll: (sel) => groups[sel] || [],
+    // TASK-007 UX-12.5 (WP5): minimal createElement so ensureCoachCardDismissButton can build
+    // a real-ish button double — same pattern as tests/triggerController.test.js's fakeDocument.
+    createElement: (tag) => Object.assign(fakeElement(), { tagName: tag, className: '', onclick: null }),
     _elements: elements,
     _groups: groups
   };
@@ -113,6 +126,51 @@ test('refreshCoachCard suppresses the DOM update when the session goes stale mid
   CoachPresenter.configure(deps);
   await CoachPresenter.refreshCoachCard();
   assert.equal(textEl.textContent, '');
+});
+
+// ── TASK-007 UX-12.5 (WP5) — coach-card Dismiss affordance ─────────────────────────────
+
+test('refreshCoachCard adds a Dismiss button that hides the card and does not record C2 feedback (UX-12.5, UX-11.1)', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['coach-card'] = card;
+  deps.documentRef._elements['coach-card-text'] = textEl;
+  CoachPresenter.configure(deps);
+  await CoachPresenter.refreshCoachCard();
+
+  const btn = card._children.find((c) => c.className.indexOf('coach-card-dismiss') !== -1);
+  assert.ok(btn, 'a dismiss button must be appended to the card');
+  let hidden = false;
+  card.classList.add = (c) => { if (c === 'hidden') hidden = true; };
+  btn.onclick();
+  assert.equal(hidden, true);
+  assert.ok(!calls.some((c) => c[0] === 'recordFeedback'), 'coach-card is not a Recommendation/Initiative/Trigger/Adaptive-proposal-like surface — its Dismiss must not record C2 feedback (UX-11.1)');
+});
+
+test('refreshCoachCard is a no-op after the first successful call, so the dismiss button is never duplicated (once-per-open guard already covers idempotency)', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['coach-card'] = card;
+  deps.documentRef._elements['coach-card-text'] = textEl;
+  CoachPresenter.configure(deps);
+  await CoachPresenter.refreshCoachCard();
+  await CoachPresenter.refreshCoachCard(); // guarded by getCoachCardShown() — must not run again
+  assert.equal(card._children.filter((c) => c.className.indexOf('coach-card-dismiss') !== -1).length, 1);
+});
+
+test('refreshCoachCard does not throw when the card DOM double lacks querySelector/appendChild (defensive, same discipline as trigger-card)', async () => {
+  const card = fakeElement(); // plain double — no querySelector/appendChild
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['coach-card'] = card;
+  deps.documentRef._elements['coach-card-text'] = textEl;
+  let revealed = false;
+  card.classList.remove = (cls) => { if (cls === 'hidden') revealed = true; };
+  CoachPresenter.configure(deps);
+  await assert.doesNotReject(CoachPresenter.refreshCoachCard());
+  assert.equal(revealed, true, 'the card must still be revealed even when the dismiss-button helper cannot attach');
 });
 
 // ── renderCoachSettings ─────────────────────────────────────────────────────────────────
