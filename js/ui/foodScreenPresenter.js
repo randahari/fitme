@@ -21,7 +21,7 @@
     if (!todayData.meals.length) { list.innerHTML = '<div class="empty-state">לא נרשמו ארוחות עדיין</div>'; return; }
     list.innerHTML = '<div class="meals-card">' + todayData.meals.map(function (m, i) {
       var isFav = favoriteMeals.some(function (f) { return f.name === m.name; });
-      return '<div class="meal-row"><div><div class="meal-name">' + m.name + '</div><div class="meal-time">' + m.time + '</div></div><div style="display:flex;align-items:center;gap:4px"><div class="meal-kcal">' + m.kcal + ' קל\'</div><button onclick="toggleMealFavorite(' + i + ', this)" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px">' + (isFav ? '⭐' : '☆') + '</button><button onclick="deleteMeal(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;padding:2px">×</button></div></div>';
+      return '<div class="meal-row"><div><div class="meal-name">' + m.name + '</div><div class="meal-time">' + m.time + '</div></div><div style="display:flex;align-items:center;gap:4px"><div class="meal-kcal">' + m.kcal + ' קל\'</div><button onclick="toggleMealFavorite(' + i + ', this)" aria-label="' + (isFav ? 'הסר מהמועדפים' : 'הוסף למועדפים') + '" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px">' + (isFav ? '⭐' : '☆') + '</button><button onclick="deleteMeal(' + i + ')" aria-label="מחק ארוחה" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;padding:2px">×</button></div></div>';
     }).join('') + '</div>';
   }
 
@@ -31,7 +31,7 @@
     if (!el) return;
     if (!favoriteMeals.length) { el.innerHTML = '<div class="empty-state">אין עדיין מועדפים<br><small>לחץ ⭐ בעת הוספת מאכל</small></div>'; return; }
     el.innerHTML = '<div class="meals-card">' + favoriteMeals.map(function (m, i) {
-      return '<div class="meal-row"><div><div class="meal-name">' + m.name + '</div><div class="meal-time">' + m.kcal + ' קל\' · ' + Math.round(m.protein) + 'g חלבון</div></div><div style="display:flex;gap:6px;align-items:center"><button class="fav-add-btn btn-small" onclick="addFavoriteToToday(' + i + ')">+</button><button onclick="removeFavorite(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:16px">×</button></div></div>';
+      return '<div class="meal-row"><div><div class="meal-name">' + m.name + '</div><div class="meal-time">' + m.kcal + ' קל\' · ' + Math.round(m.protein) + 'g חלבון</div></div><div style="display:flex;gap:6px;align-items:center"><button class="fav-add-btn btn-small" onclick="addFavoriteToToday(' + i + ')" aria-label="הוסף לארוחות היום">+</button><button onclick="removeFavorite(' + i + ')" aria-label="מחק ממועדפים" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:16px">×</button></div></div>';
     }).join('') + '</div>';
   }
 

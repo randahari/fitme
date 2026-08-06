@@ -512,3 +512,10 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
   font-size: 12px; color: var(--text-2);
   background: var(--bg-2); border-radius: var(--radius-sm); padding: 8px 10px;
 }
+
+/* ── TASK-007 UX-21.6 — respect prefers-reduced-motion for the .spinner (spin) and
+   .barcode-line (scan) keyframe animations; no other behavior/appearance changed ── */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .barcode-line { animation: none; }
+}

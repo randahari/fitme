@@ -60,6 +60,30 @@ test('renderFoodMeals renders a filled star for meals that are already favourite
   assert.match(html, /deleteMeal\(1\)/);
 });
 
+// ── TASK-007 UX-21.2 — accessible names for the JS-generated icon-only buttons ──────────
+
+test('renderFoodMeals gives the favourite-toggle button a state-reflecting aria-label (UX-21.2)', () => {
+  const { deps, doc } = fakeDeps({
+    getTodayData: () => ({ meals: [{ name: 'עוף', time: '12:00', kcal: 400 }, { name: 'סלט', time: '13:00', kcal: 100 }] }),
+    getFavoriteMeals: () => [{ name: 'עוף' }]
+  });
+  FoodScreenPresenter.configure(deps);
+  FoodScreenPresenter.renderFoodMeals();
+  const html = doc._elements['food-meals-list'].innerHTML;
+  assert.match(html, /toggleMealFavorite\(0, this\)" aria-label="הסר מהמועדפים"/);
+  assert.match(html, /toggleMealFavorite\(1, this\)" aria-label="הוסף למועדפים"/);
+});
+
+test('renderFoodMeals gives the delete button a non-empty aria-label (UX-21.2)', () => {
+  const { deps, doc } = fakeDeps({
+    getTodayData: () => ({ meals: [{ name: 'עוף', time: '12:00', kcal: 400 }] })
+  });
+  FoodScreenPresenter.configure(deps);
+  FoodScreenPresenter.renderFoodMeals();
+  const html = doc._elements['food-meals-list'].innerHTML;
+  assert.match(html, /deleteMeal\(0\)" aria-label="מחק ארוחה"/);
+});
+
 // ── renderFavoritesList ─────────────────────────────────────────────────────────────────
 
 test('renderFavoritesList shows the empty state when there are no favourites', () => {
@@ -83,6 +107,15 @@ test('renderFavoritesList renders kcal + rounded protein per favourite, with add
   assert.match(html, /400 קל' · 36g חלבון/);
   assert.match(html, /addFavoriteToToday\(0\)/);
   assert.match(html, /removeFavorite\(0\)/);
+});
+
+test('renderFavoritesList gives the add-to-today and remove buttons non-empty aria-labels (UX-21.2)', () => {
+  const { deps, doc } = fakeDeps({ getFavoriteMeals: () => [{ name: 'עוף', kcal: 400, protein: 35.6 }] });
+  FoodScreenPresenter.configure(deps);
+  FoodScreenPresenter.renderFavoritesList();
+  const html = doc._elements['favorites-list'].innerHTML;
+  assert.match(html, /addFavoriteToToday\(0\)" aria-label="הוסף לארוחות היום"/);
+  assert.match(html, /removeFavorite\(0\)" aria-label="מחק ממועדפים"/);
 });
 
 // ── switchFoodTab ───────────────────────────────────────────────────────────────────────

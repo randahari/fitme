@@ -50,9 +50,9 @@
         <p>כמה שאלות קצרות ונתחיל</p>
       </div>
       <div class="ob-form">
-        <label>שם</label>
+        <label for="ob-name">שם</label>
         <input type="text" id="ob-name" placeholder="למשל: רן" autocomplete="off">
-        <label>גיל</label>
+        <label for="ob-age">גיל</label>
         <input type="number" id="ob-age" placeholder="30" min="10" max="99">
         <label>מין</label>
         <div class="seg-ctrl">
@@ -70,9 +70,9 @@
         <p>לחישוב קלוריות ושריפה מדויקים</p>
       </div>
       <div class="ob-form">
-        <label>משקל (ק"ג)</label>
+        <label for="ob-weight">משקל (ק"ג)</label>
         <input type="number" id="ob-weight" placeholder="80" min="30" max="250">
-        <label>גובה (ס"מ)</label>
+        <label for="ob-height">גובה (ס"מ)</label>
         <input type="number" id="ob-height" placeholder="178" min="100" max="230">
         <label>ימי אימון בשבוע</label>
         <div class="seg-ctrl">
@@ -134,7 +134,7 @@
           <div class="food-tag" onclick="toggleTag(this)">פירות</div>
           <div class="food-tag" onclick="toggleTag(this)">אגוזים</div>
         </div>
-        <label style="margin-top:12px">הוסף מאכל נוסף</label>
+        <label for="custom-food" style="margin-top:12px">הוסף מאכל נוסף</label>
         <div style="display:flex;gap:8px">
           <input type="text" id="custom-food" placeholder="למשל: קציצות אמא...">
           <button class="btn-small" onclick="addCustomFood()">הוסף</button>
@@ -151,7 +151,7 @@
         <p>נוכחות שתלווה, תעודד ותתאים את עצמה אליך</p>
       </div>
       <div class="ob-form">
-        <label>איך שנפנה אליך?</label>
+        <label for="ob-coach-name">איך שנפנה אליך?</label>
         <input type="text" id="ob-coach-name" placeholder="השם או כינוי" autocomplete="off">
         <label style="margin-top:12px">אופי המאמן</label>
         <div class="seg-ctrl seg-wrap">
@@ -288,16 +288,16 @@
           <!-- WEIGHT -->
           <div class="section-header"><span>משקל גוף</span></div>
           <div style="display:flex;gap:8px;margin-bottom:16px">
-            <input type="number" id="weight-input" placeholder='משקל היום בק"ג' step="0.1" style="flex:1">
+            <input type="number" id="weight-input" placeholder='משקל היום בק"ג' aria-label='משקל היום בק"ג' step="0.1" style="flex:1">
             <button class="btn-small" onclick="logWeight()">שמור</button>
           </div>
 
           <!-- MEASUREMENTS (שלב 4) — היקפים שבועיים -->
           <div class="section-header"><span>היקפים שבועיים (ס"מ)</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-            <input type="number" id="meas-waist" placeholder="מותן *" step="0.5">
-            <input type="number" id="meas-arm" placeholder="זרוע" step="0.5">
-            <input type="number" id="meas-chest" placeholder="חזה/ירך" step="0.5">
+            <input type="number" id="meas-waist" placeholder="מותן *" aria-label="היקף מותן בס״מ" step="0.5">
+            <input type="number" id="meas-arm" placeholder="זרוע" aria-label="היקף זרוע בס״מ" step="0.5">
+            <input type="number" id="meas-chest" placeholder="חזה/ירך" aria-label="היקף חזה או ירך בס״מ" step="0.5">
           </div>
           <button class="btn-small" onclick="logMeasurements()" style="width:100%;margin-bottom:24px">שמור היקפים</button>
           </div>
@@ -501,7 +501,7 @@
           </div>
           <div class="section-header"><span>המאמן שלי 🧭</span></div>
           <div class="ob-form" style="gap:4px">
-            <label>איך שנפנה אליך?</label>
+            <label for="set-coach-name">איך שנפנה אליך?</label>
             <input type="text" id="set-coach-name" placeholder="השם או כינוי" autocomplete="off" onchange="saveCoachSettings()">
             <label style="margin-top:10px">אופי המאמן</label>
             <div class="seg-ctrl seg-wrap" id="set-coach-style">
