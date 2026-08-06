@@ -219,6 +219,81 @@ test('closeBarcode stops the reader and hides the overlay if present; is a no-op
   assert.doesNotThrow(() => BarcodeFlowController.closeBarcode());
 });
 
+// ── TASK-007 UX-21.4 (WP4) — deterministic focus-in on open, focus-restore on close ────────
+
+test('startBarcode focuses #barcode-close-btn after showing the overlay (UX-21.4)', async () => {
+  const overlay = fakeElement();
+  const statusEl = fakeElement();
+  let closeBtnFocused = false;
+  const closeBtn = fakeElement({ focus: () => { closeBtnFocused = true; } });
+  const { doc } = fakeDocument();
+  doc.getElementById = (id) => (id === 'barcode-overlay' ? overlay : id === 'barcode-status' ? statusEl : id === 'barcode-close-btn' ? closeBtn : null);
+  const { deps } = fakeDeps({ documentRef: doc });
+  BarcodeScannerAdapter.loadLibrary = async () => {};
+  BarcodeScannerAdapter.createScanner = () => ({});
+  BarcodeScannerAdapter.start = async () => {};
+  BarcodeFlowController.configure(deps);
+  await withMockTimeout(async () => { await BarcodeFlowController.startBarcode(); });
+  assert.equal(closeBtnFocused, true);
+});
+
+test('startBarcode does not throw when #barcode-close-btn is missing or has no focus() (defensive)', async () => {
+  const overlay = fakeElement();
+  const { doc } = fakeDocument();
+  doc.getElementById = (id) => (id === 'barcode-overlay' ? overlay : id === 'barcode-close-btn' ? null : fakeElement());
+  const { deps } = fakeDeps({ documentRef: doc });
+  BarcodeScannerAdapter.loadLibrary = async () => {};
+  BarcodeScannerAdapter.createScanner = () => ({});
+  BarcodeScannerAdapter.start = async () => {};
+  BarcodeFlowController.configure(deps);
+  await withMockTimeout(async () => { await assert.doesNotReject(BarcodeFlowController.startBarcode()); });
+});
+
+test('startBarcode records documentRef.activeElement, and closeBarcode restores focus to it (UX-21.4)', async () => {
+  const overlay = fakeElement();
+  const statusEl = fakeElement();
+  const closeBtn = fakeElement({ focus: () => {} });
+  let returnFocused = false;
+  const trigger = fakeElement({ focus: () => { returnFocused = true; } });
+  const { doc } = fakeDocument();
+  doc.getElementById = (id) => (id === 'barcode-overlay' ? overlay : id === 'barcode-status' ? statusEl : id === 'barcode-close-btn' ? closeBtn : null);
+  doc.activeElement = trigger;
+  const { deps } = fakeDeps({ documentRef: doc });
+  BarcodeScannerAdapter.loadLibrary = async () => {};
+  BarcodeScannerAdapter.createScanner = () => ({});
+  BarcodeScannerAdapter.start = async () => {};
+  BarcodeScannerAdapter.stop = () => {};
+  BarcodeFlowController.configure(deps);
+  await withMockTimeout(async () => { await BarcodeFlowController.startBarcode(); });
+  assert.equal(returnFocused, false, 'focus must not be restored before close');
+  BarcodeFlowController.closeBarcode();
+  assert.equal(returnFocused, true, 'closeBarcode must restore focus to the element that was active before startBarcode');
+});
+
+test('closeBarcode does not throw when there is no recorded return-focus element (defensive)', () => {
+  const overlay = fakeElement();
+  const { doc } = fakeDocument();
+  doc.getElementById = () => overlay; // no activeElement ever recorded via startBarcode in this test
+  const { deps } = fakeDeps({ documentRef: doc });
+  BarcodeFlowController.configure(deps);
+  BarcodeScannerAdapter.stop = () => {};
+  assert.doesNotThrow(() => BarcodeFlowController.closeBarcode());
+});
+
+test('a closeBarcode() reached via a startBarcode() failure path also restores focus (UX-21.4 applies uniformly)', async () => {
+  const overlay = fakeElement();
+  let returnFocused = false;
+  const trigger = fakeElement({ focus: () => { returnFocused = true; } });
+  const { doc } = fakeDocument();
+  doc.getElementById = (id) => (id === 'barcode-overlay' ? overlay : fakeElement());
+  doc.activeElement = trigger;
+  const { deps } = fakeDeps({ documentRef: doc });
+  BarcodeScannerAdapter.loadLibrary = async () => { throw new Error('network'); };
+  BarcodeFlowController.configure(deps);
+  await BarcodeFlowController.startBarcode();
+  assert.equal(returnFocused, true, 'the loadLibrary-failure path calls closeBarcode() internally and must also restore focus');
+});
+
 // ── showLabelPrompt / labelPromptCapture / closeLabelPrompt ───────────────────────────
 
 test('showLabelPrompt sets pendingBarcode, creates the modal element once, and fills it with the recovery buttons', () => {

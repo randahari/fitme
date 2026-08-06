@@ -92,15 +92,15 @@
         <p>נתאים לך תוכנית מדויקת</p>
       </div>
       <div class="goal-cards">
-        <div class="goal-card" data-goal="cut" onclick="selectGoal(this)">
+        <div class="goal-card" data-goal="cut" onclick="selectGoal(this)" tabindex="0" onkeydown="activateOnEnter(event)">
           <div class="goal-icon">🔥</div>
           <div><div class="goal-title">חיטוב</div><div class="goal-sub">ירידה בשומן, שמירת שריר</div></div>
         </div>
-        <div class="goal-card" data-goal="bulk" onclick="selectGoal(this)">
+        <div class="goal-card" data-goal="bulk" onclick="selectGoal(this)" tabindex="0" onkeydown="activateOnEnter(event)">
           <div class="goal-icon">💪</div>
           <div><div class="goal-title">מסה</div><div class="goal-sub">בניית שריר ועלייה במשקל</div></div>
         </div>
-        <div class="goal-card" data-goal="maintain" onclick="selectGoal(this)">
+        <div class="goal-card" data-goal="maintain" onclick="selectGoal(this)" tabindex="0" onkeydown="activateOnEnter(event)">
           <div class="goal-icon">⚖️</div>
           <div><div class="goal-title">שימור</div><div class="goal-sub">שמירה על המשקל הנוכחי</div></div>
         </div>
@@ -118,21 +118,21 @@
       <div class="ob-form">
         <label>בחר מה שאתה אוהב</label>
         <div class="food-tags" id="food-tags">
-          <div class="food-tag" onclick="toggleTag(this)">שקשוקה</div>
-          <div class="food-tag" onclick="toggleTag(this)">שניצל</div>
-          <div class="food-tag" onclick="toggleTag(this)">חומוס</div>
-          <div class="food-tag" onclick="toggleTag(this)">פיתה</div>
-          <div class="food-tag" onclick="toggleTag(this)">סלט ירקות</div>
-          <div class="food-tag" onclick="toggleTag(this)">אורז</div>
-          <div class="food-tag" onclick="toggleTag(this)">פסטה</div>
-          <div class="food-tag" onclick="toggleTag(this)">דג</div>
-          <div class="food-tag" onclick="toggleTag(this)">עוף</div>
-          <div class="food-tag" onclick="toggleTag(this)">ביצים</div>
-          <div class="food-tag" onclick="toggleTag(this)">קוטג'</div>
-          <div class="food-tag" onclick="toggleTag(this)">יוגורט</div>
-          <div class="food-tag" onclick="toggleTag(this)">לחם</div>
-          <div class="food-tag" onclick="toggleTag(this)">פירות</div>
-          <div class="food-tag" onclick="toggleTag(this)">אגוזים</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">שקשוקה</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">שניצל</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">חומוס</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">פיתה</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">סלט ירקות</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">אורז</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">פסטה</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">דג</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">עוף</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">ביצים</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">קוטג'</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">יוגורט</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">לחם</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">פירות</div>
+          <div class="food-tag" onclick="toggleTag(this)" tabindex="0" onkeydown="activateOnEnter(event)">אגוזים</div>
         </div>
         <label for="custom-food" style="margin-top:12px">הוסף מאכל נוסף</label>
         <div style="display:flex;gap:8px">
@@ -379,15 +379,15 @@
         <div class="scroll-content">
           <div class="section-header"><span>סוג אימון</span></div>
           <div class="workout-opts">
-            <div class="workout-opt" id="wo-cardio" onclick="selectWorkout('cardio')">
+            <div class="workout-opt" id="wo-cardio" onclick="selectWorkout('cardio')" tabindex="0" onkeydown="activateOnEnter(event)">
               <div class="wo-icon">🏃</div>
               <div><div class="wo-name">ריצה / הליכה</div><div class="wo-sub">קרדיו</div></div>
             </div>
-            <div class="workout-opt" id="wo-strength" onclick="selectWorkout('strength')">
+            <div class="workout-opt" id="wo-strength" onclick="selectWorkout('strength')" tabindex="0" onkeydown="activateOnEnter(event)">
               <div class="wo-icon">🏋️</div>
               <div><div class="wo-name">אימון כוח</div><div class="wo-sub">חדר כושר</div></div>
             </div>
-            <div class="workout-opt" id="wo-calisthenics" onclick="selectWorkout('calisthenics')">
+            <div class="workout-opt" id="wo-calisthenics" onclick="selectWorkout('calisthenics')" tabindex="0" onkeydown="activateOnEnter(event)">
               <div class="wo-icon">🤸</div>
               <div><div class="wo-name">קליסטניקס</div><div class="wo-sub">משקל גוף</div></div>
             </div>
@@ -566,7 +566,7 @@
   <div id="barcode-overlay" class="barcode-overlay hidden">
     <div class="barcode-header">
       <span>סרוק ברקוד</span>
-      <button onclick="closeBarcode()" class="barcode-close" aria-label="סגור סריקה">✕</button>
+      <button onclick="closeBarcode()" class="barcode-close" id="barcode-close-btn" aria-label="סגור סריקה">✕</button>
     </div>
     <div id="barcode-video" class="barcode-video">
       <div id="barcode-reader" style="width:100%;height:100%"></div>

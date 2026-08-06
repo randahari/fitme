@@ -615,6 +615,17 @@ async function refreshCoachCard() { return CoachPresenter.refreshCoachCard(); }
 function coachLine(kind, d) { return CoachPromptComposer.coachLine(userProfile, kind, d); }
 
 // ── ONBOARDING ──
+// TASK-007 UX-21.3 (WP4) — shared keyboard-activation handler for click-only <div> controls
+// (goal-card, food-tag, workout-opt). Enter/Space triggers the same click the control already
+// responds to (event.currentTarget), so no new interaction pattern or handler logic is needed
+// per control — this is the only function WP4 adds to app.js.
+function activateOnEnter(event) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    event.currentTarget.click();
+  }
+}
+
 function selectSeg(btn, group) {
   btn.closest('.seg-ctrl').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -637,6 +648,8 @@ function addCustomFood() {
   tag.className = 'food-tag selected';
   tag.textContent = val;
   tag.onclick = () => toggleTag(tag);
+  tag.tabIndex = 0; // UX-21.3 (WP4) — keeps dynamically-added tags keyboard-operable, same as the static ones
+  tag.onkeydown = activateOnEnter;
   document.getElementById('food-tags').appendChild(tag);
   input.value = '';
 }

@@ -8,10 +8,15 @@
 // keyframe animations in css/app.css). Work Package 3: the remaining §21.5 instances — visible
 // Food-screen (food-input, ql-morning, ql-breakfast, ql-snack) and Workout-screen (speed-slider,
 // incline-slider, duration-slider, steps-input) form controls left unassigned after WP2's
-// domain-scoped pass (see docs/specs/TASK_007_IMPLEMENTATION_PLAN.md §2.1). Dependency-free:
-// reads index.html/css/app.css as text and asserts structural facts — same intentional scope
-// limit as every prior *Wiring.test.js in this repository (no DOM/Firebase harness, no execution
-// of app.js).
+// domain-scoped pass (see docs/specs/TASK_007_IMPLEMENTATION_PLAN.md §2.1). Work Package 4:
+// §21.3 keyboard operability for the click-only <div> controls (goal-card, food-tag,
+// workout-opt) via tabindex="0" + onkeydown="activateOnEnter(event)" (the shared handler added
+// to js/app.js), and §21.4 focus management for #barcode-overlay (deterministic focus-in on
+// open, focus-restore on close) — that behavioral part is tested functionally in
+// tests/barcodeFlowController.test.js, not here; this file only checks the static
+// #barcode-close-btn id wiring. Dependency-free: reads index.html/css/app.css/js/app.js as text
+// and asserts structural facts — same intentional scope limit as every prior *Wiring.test.js in
+// this repository (no DOM/Firebase harness, no execution of app.js).
 // Run with: node --test tests/task007AccessibilityWiring.test.js
 
 const test = require('node:test');
@@ -21,6 +26,7 @@ const path = require('node:path');
 
 const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const appCss = fs.readFileSync(path.join(__dirname, '../css/app.css'), 'utf8');
+const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 
 // ── UX-21.1: aria-live on every dynamically-injected coach-originated card ─────────────────
 
@@ -173,4 +179,75 @@ test('WP3 excludes camera-input, adapt-toggle, and dark-toggle — none of them 
   const darkToggle = indexHtml.match(/<div class="toggle" id="dark-toggle"[^>]*>/);
   assert.ok(darkToggle, '#dark-toggle must still exist');
   assert.doesNotMatch(darkToggle[0], /aria-label=/, '#dark-toggle must not have gained an aria-label under WP3');
+});
+
+// ── UX-21.3: keyboard operability for click-only <div> controls (Work Package 4) ───────────
+
+test('js/app.js defines the shared activateOnEnter(event) keyboard-activation handler (UX-21.3)', () => {
+  assert.match(appJs, /function activateOnEnter\(event\)\s*{/, 'activateOnEnter must be defined');
+  assert.match(appJs, /event\.key === 'Enter' \|\| event\.key === ' '/, 'activateOnEnter must treat both Enter and Space as activation keys');
+  assert.match(appJs, /event\.currentTarget\.click\(\)/, 'activateOnEnter must trigger the control\'s own existing click behaviour, not duplicate handler logic');
+});
+
+const KEYBOARD_DIV_MARKERS = [
+  'data-goal="cut" onclick="selectGoal\\(this\\)"',
+  'data-goal="bulk" onclick="selectGoal\\(this\\)"',
+  'data-goal="maintain" onclick="selectGoal\\(this\\)"',
+  'id="wo-cardio" onclick="selectWorkout\\(\'cardio\'\\)"',
+  'id="wo-strength" onclick="selectWorkout\\(\'strength\'\\)"',
+  'id="wo-calisthenics" onclick="selectWorkout\\(\'calisthenics\'\\)"'
+];
+
+KEYBOARD_DIV_MARKERS.forEach((marker) => {
+  test('div control matching /' + marker + '/ carries tabindex="0" and onkeydown="activateOnEnter(event)" (UX-21.3)', () => {
+    const tagMatch = indexHtml.match(new RegExp('<div class="[^"]+" ' + marker + '[^>]*>'));
+    assert.ok(tagMatch, 'the control matching ' + marker + ' must exist');
+    assert.match(tagMatch[0], /tabindex="0"/, 'must carry tabindex="0"');
+    assert.match(tagMatch[0], /onkeydown="activateOnEnter\(event\)"/, 'must carry onkeydown="activateOnEnter(event)"');
+  });
+});
+
+test('every static .food-tag div carries tabindex="0" and onkeydown="activateOnEnter(event)" (UX-21.3)', () => {
+  const foodTagMatches = indexHtml.match(/<div class="food-tag" onclick="toggleTag\(this\)"[^>]*>/g);
+  assert.ok(foodTagMatches, 'the static .food-tag divs must exist');
+  assert.equal(foodTagMatches.length, 15, 'all 15 static food-tag divs must be present');
+  foodTagMatches.forEach((tag) => {
+    assert.match(tag, /tabindex="0"/, 'each food-tag must carry tabindex="0": ' + tag);
+    assert.match(tag, /onkeydown="activateOnEnter\(event\)"/, 'each food-tag must carry onkeydown="activateOnEnter(event)": ' + tag);
+  });
+});
+
+test('addCustomFood() wires the dynamically-created food-tag with the same keyboard-activation pattern (UX-21.3)', () => {
+  assert.match(appJs, /tag\.tabIndex = 0;/, 'the dynamically-created tag must be given tabIndex 0');
+  assert.match(appJs, /tag\.onkeydown = activateOnEnter;/, 'the dynamically-created tag must be wired to activateOnEnter');
+});
+
+test('WP4 keyboard-activation additions are attribute-only — every affected div keeps its original onclick handler', () => {
+  assert.match(indexHtml, /<div class="goal-card" data-goal="cut" onclick="selectGoal\(this\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+  assert.match(indexHtml, /<div class="goal-card" data-goal="bulk" onclick="selectGoal\(this\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+  assert.match(indexHtml, /<div class="goal-card" data-goal="maintain" onclick="selectGoal\(this\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+  assert.match(indexHtml, /<div class="workout-opt" id="wo-cardio" onclick="selectWorkout\('cardio'\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+  assert.match(indexHtml, /<div class="workout-opt" id="wo-strength" onclick="selectWorkout\('strength'\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+  assert.match(indexHtml, /<div class="workout-opt" id="wo-calisthenics" onclick="selectWorkout\('calisthenics'\)" tabindex="0" onkeydown="activateOnEnter\(event\)">/);
+});
+
+test('WP4 does not add tabindex/onkeydown to int-btn (already a native <button>, excluded per the Plan\'s "if div-based" clause)', () => {
+  const intButtons = indexHtml.match(/<button class="int-btn[^"]*" id="int-[a-z]+" onclick="selectInt\('[a-z]+'\)">[^<]*<\/button>/g);
+  assert.ok(intButtons, 'the three int-btn buttons must exist');
+  assert.equal(intButtons.length, 3);
+  intButtons.forEach((btn) => {
+    assert.doesNotMatch(btn, /tabindex=/, 'int-btn is a native <button>, already keyboard-operable — WP4 must not touch it: ' + btn);
+    assert.doesNotMatch(btn, /onkeydown=/, 'int-btn is a native <button>, already keyboard-operable — WP4 must not touch it: ' + btn);
+  });
+});
+
+// ── UX-21.4: barcode overlay focus management (Work Package 4) ─────────────────────────────
+// Behavioural focus-in/focus-restore coverage lives in tests/barcodeFlowController.test.js;
+// this file only verifies the static id wiring startBarcode()/closeBarcode() rely on.
+
+test('.barcode-close carries id="barcode-close-btn" (UX-21.4 focus-in target)', () => {
+  const tagMatch = indexHtml.match(/<button onclick="closeBarcode\(\)" class="barcode-close"[^>]*>/);
+  assert.ok(tagMatch, '.barcode-close must exist');
+  assert.match(tagMatch[0], /id="barcode-close-btn"/, '.barcode-close must carry id="barcode-close-btn"');
+  assert.match(tagMatch[0], /aria-label="סגור סריקה"/, 'the existing UX-21.2 aria-label (WP1) must be unchanged');
 });

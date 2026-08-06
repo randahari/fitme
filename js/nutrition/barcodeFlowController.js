@@ -33,12 +33,17 @@
   var h5qr = null;
   var barcodeLastCode = null;
   var barcodeHintTimer = null;
+  var barcodeReturnFocusEl = null; // TASK-007 UX-21.4 (WP4) — element to restore focus to on close
 
-  // ── סריקת ברקוד (html5-qrcode דרך BarcodeScannerAdapter) — זהה לחלוטין ל-startBarcode() המקורי ──
+  // ── סריקת ברקוד (html5-qrcode דרך BarcodeScannerAdapter) — זהה לחלוטין ל-startBarcode() המקורי,
+  // עם תוספת UX-21.4 (ניהול פוקוס דטרמיניסטי): שומר את האלמנט שהיה בפוקוס לפני הפתיחה, ומעביר
+  // פוקוס לכפתור הסגירה בתוך ה-overlay — ראה restoreBarcodeFocus() ב-closeBarcode() למטה. ──
   async function startBarcode() {
     var overlay = deps.documentRef.getElementById('barcode-overlay');
     if (!overlay) { deps.alertFn('סריקת ברקוד לא זמינה בדפדפן זה.'); return; }
+    barcodeReturnFocusEl = deps.documentRef.activeElement || null;
     overlay.classList.remove('hidden');
+    focusBarcodeOverlay();
     var statusEl = deps.documentRef.getElementById('barcode-status');
     statusEl.textContent = 'מכוון את המצלמה לברקוד...';
     barcodeLastCode = null;
@@ -91,6 +96,21 @@
     stopBarcodeReader();
     var overlay = deps.documentRef.getElementById('barcode-overlay');
     if (overlay) overlay.classList.add('hidden');
+    restoreBarcodeFocus();
+  }
+
+  // ── UX-21.4 (WP4) focus helpers — deterministic focus-in on open, focus-restore on close.
+  // Defensive: both are no-ops if the target element or its .focus() is unavailable, so every
+  // existing call site (including every closeBarcode() call from a failure/cache/OFF-lookup
+  // path already in this module) keeps working unchanged when focus isn't relevant/possible. ──
+  function focusBarcodeOverlay() {
+    var closeBtn = deps.documentRef.getElementById('barcode-close-btn');
+    if (closeBtn && typeof closeBtn.focus === 'function') { closeBtn.focus(); }
+  }
+
+  function restoreBarcodeFocus() {
+    if (barcodeReturnFocusEl && typeof barcodeReturnFocusEl.focus === 'function') { barcodeReturnFocusEl.focus(); }
+    barcodeReturnFocusEl = null;
   }
 
   // ── בקשת צילום תווית (label fallback) — זהה לחלוטין ל-showLabelPrompt()/labelPromptCapture()/
