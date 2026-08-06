@@ -185,17 +185,32 @@ test('the validation gate always runs (no exempt-source branch, unlike addMeal) 
   assert.equal(validatorCalled, true, 'unlike addMeal, logQuick has no exempt source — the validator must always run');
   assert.equal(result, false);
   assert.deepEqual(td.meals, []);
-  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'הפריט הזה לא עבר אימות תזונתי. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק/לתקן את הערכים.'));
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'אחד הערכים לא הגיוני (למשל שלילי או חסר). אפשר לרשום את הפריט דרך "הוסף ארוחה" כדי לתקן את הערכים.'));
   assert.ok(!calls.some((c) => c[0] === 'persistDaySnapshot'));
 });
 
-test('the gate also blocks a merely UNCERTAIN item', async () => {
-  const { deps } = fakeDeps({ nutritionOutputValidator: { validateNutritionMeal: () => ({ overallStatus: 'UNCERTAIN' }) } });
+test('the gate also blocks a merely UNCERTAIN item, with the distinct REVIEW_REQUIRED-style message (UX-17.1, WP7)', async () => {
+  const { deps, calls } = fakeDeps({ nutritionOutputValidator: { validateNutritionMeal: () => ({ overallStatus: 'UNCERTAIN' }) } });
   QuickLogService.configure(deps);
   const td = freshTodayData();
   const result = await QuickLogService.commitQuickItem(quickItem(), td, 0, authorityOptions());
   assert.equal(result, false);
   assert.deepEqual(td.meals, []);
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'FITME לא בטוח לגמרי בהערכה של הפריט הזה. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק את הערכים לפני השמירה.'));
+});
+
+test('REJECTED and REVIEW_REQUIRED-style statuses never produce the same alert text (UX-17.1: never a single generic message covering more than one category)', async () => {
+  const { deps: depsRejected, calls: callsRejected } = fakeDeps({ nutritionOutputValidator: { validateNutritionMeal: () => ({ overallStatus: 'REJECTED' }) } });
+  QuickLogService.configure(depsRejected);
+  await QuickLogService.commitQuickItem(quickItem(), freshTodayData(), 0, authorityOptions());
+
+  const { deps: depsReview, calls: callsReview } = fakeDeps({ nutritionOutputValidator: { validateNutritionMeal: () => ({ overallStatus: 'REVIEW_REQUIRED' }) } });
+  QuickLogService.configure(depsReview);
+  await QuickLogService.commitQuickItem(quickItem(), freshTodayData(), 0, authorityOptions());
+
+  const rejectedMsg = callsRejected.find((c) => c[0] === 'alert')[1];
+  const reviewMsg = callsReview.find((c) => c[0] === 'alert')[1];
+  assert.notEqual(rejectedMsg, reviewMsg);
 });
 
 // ── authority metadata: fixed source/rule ──────────────────────────────────────────────
@@ -223,7 +238,15 @@ test('the item is appended optimistically before persistDaySnapshot resolves, an
   assert.equal(result, false);
   assert.equal(td.meals.length, 1, 'only the failed candidate must be removed');
   assert.equal(td.meals[0], existingMeal);
-  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הפריט נכשלה. נסה שוב.'));
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הפריט נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+});
+
+test('a failed persist alerts a retry-inviting message when result.error.retryable is true (UX-19.1-19.3, WP7)', async () => {
+  const { deps, calls } = fakeDeps({ persistDaySnapshot: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } }) });
+  QuickLogService.configure(deps);
+  const td = freshTodayData();
+  await QuickLogService.commitQuickItem(quickItem(), td, 0, authorityOptions());
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הפריט נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
 });
 
 test('NO_OP is treated as success (no rollback, usage stats updated)', async () => {

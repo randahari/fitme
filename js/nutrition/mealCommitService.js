@@ -22,6 +22,21 @@
   var deps = null;
   function configure(injected) { deps = injected || {}; }
 
+  // TASK-007 UX-19.1-19.3 (WP7): structured failure-message helper for commitMeal()'s
+  // PersistenceGateway result — persistDaySnapshot (js/app.js) routes through
+  // PersistenceGateway.persist() (SOURCE_HISTORY_SAVE_DAY), so result.error.retryable is real
+  // Gateway data, same grounding rule as WP6's adaptiveTdeeController.js/
+  // dayNavigationController.js helpers. UX-19.4 (preserve entered data on failure) is already
+  // satisfied here unchanged: pendingMeal/food-result are only cleared in the success branch
+  // below, so a failure leaves the editor exactly as the user left it.
+  function mealSaveFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('commitMeal failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת הארוחה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת הארוחה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
   // זהה לחלוטין ל-addMeal() המקורי — כל שלב, כל תנאי, כל סדר קריאה.
   async function commitMeal(pendingMeal, todayData, waterCount, authorityOptions) {
     if (!pendingMeal || !pendingMeal.items.length) { deps.alertFn('אין פריטים בארוחה'); return false; }
@@ -51,7 +66,8 @@
       var idx = todayData.meals.indexOf(finalMeal);
       if (idx !== -1) todayData.meals.splice(idx, 1); // rollback — לא מתחייבים ל-candidate שנכשל
       // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
-      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn('שמירת הארוחה נכשלה. נסה שוב.');
+      // TASK-007 UX-19.1-19.3 (WP7): differentiated by mealSaveFailureMessage(), above.
+      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn(mealSaveFailureMessage(result));
       return false;
     }
     if (!deps.sessionLifecycle.isCurrent(gen)) return false; // REM-002: stale-on-completion — אין אפקטים

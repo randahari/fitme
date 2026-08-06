@@ -170,7 +170,23 @@ test('a failed persist removes exactly the candidate meal that was pushed, leavi
   assert.equal(result, false);
   assert.equal(td.meals.length, 1, 'only the failed candidate must be removed');
   assert.equal(td.meals[0], existingMeal, 'the pre-existing meal must be untouched by reference');
-  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הארוחה נכשלה. נסה שוב.'));
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הארוחה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+});
+
+test('a failed persist alerts a retry-inviting message when result.error.retryable is true (UX-19.1-19.3, WP7)', async () => {
+  const { deps, calls } = fakeDeps({ persistDaySnapshot: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } }) });
+  MealCommitService.configure(deps);
+  const td = freshTodayData();
+  await MealCommitService.commitMeal(draft(), td, 0, authorityOptions());
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הארוחה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+});
+
+test('a failed persist alerts a non-retry-inviting message when result.error.retryable is false (UX-19.2)', async () => {
+  const { deps, calls } = fakeDeps({ persistDaySnapshot: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } }) });
+  MealCommitService.configure(deps);
+  const td = freshTodayData();
+  await MealCommitService.commitMeal(draft(), td, 0, authorityOptions());
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הארוחה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
 });
 
 test('rollback also fires for a FAILED-like status other than SUCCESS/NO_OP, and NO_OP is treated as success (no rollback)', async () => {

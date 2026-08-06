@@ -22,6 +22,29 @@
   var deps = null;
   function configure(injected) { deps = injected || {}; }
 
+  // TASK-007 UX-17.1 (WP7): validation-failure message differentiated by the domain's actual
+  // gate.overallStatus — REJECTED vs. anything else (REVIEW_REQUIRED) — the same distinction
+  // js/nutrition/mealEditorPresenter.js's nutritionValidationBanner() already makes for the
+  // Add-meal editor. Quick Log has no in-place editor to show a field-level banner in, so both
+  // branches still redirect to "הוסף ארוחה", but the two categories are no longer collapsed
+  // into one identical string (UX-17.1's "never a single generic message covering more than one
+  // category").
+  function quickLogValidationMessage(status) {
+    return status === 'REJECTED'
+      ? 'אחד הערכים לא הגיוני (למשל שלילי או חסר). אפשר לרשום את הפריט דרך "הוסף ארוחה" כדי לתקן את הערכים.'
+      : 'FITME לא בטוח לגמרי בהערכה של הפריט הזה. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק את הערכים לפני השמירה.';
+  }
+
+  // TASK-007 UX-19.1-19.3 (WP7): structured failure-message helper for commitQuickItem()'s
+  // PersistenceGateway result — same grounding as mealCommitService.js's mealSaveFailureMessage.
+  function quickItemSaveFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('commitQuickItem failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת הפריט נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת הפריט נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
   // מגביל את המאגר ל-40 פריטים — זהה לחלוטין ל-capQuick() המקורי. items.length<=40 מחזיר
   // את אותה הפניה (ללא מיון/שינוי); אחרת ממיין (נעוצים תחילה, אז לפי שימוש) וחותך.
   function capQuick(items) {
@@ -95,7 +118,7 @@
     var gate = deps.nutritionOutputValidator.validateNutritionMeal([item], 'quick-log');
     deps.logValidation(gate.overallStatus, 'quick-log', deps.collectErrorCodes(gate));
     if (gate.overallStatus !== 'VALID') {
-      deps.alertFn('הפריט הזה לא עבר אימות תזונתי. אפשר לרשום אותו דרך "הוסף ארוחה" כדי לבדוק/לתקן את הערכים.');
+      deps.alertFn(quickLogValidationMessage(gate.overallStatus));
       return false;
     }
     var authority = AuthorityContract.buildAuthorityMetadata({
@@ -120,7 +143,8 @@
       var idx = todayData.meals.indexOf(newMeal);
       if (idx !== -1) todayData.meals.splice(idx, 1);
       // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי (Implementation Review correction).
-      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn('שמירת הפריט נכשלה. נסה שוב.');
+      // TASK-007 UX-19.1-19.3 (WP7): differentiated by quickItemSaveFailureMessage(), above.
+      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn(quickItemSaveFailureMessage(result));
       return false;
     }
     if (!deps.sessionLifecycle.isCurrent(gen)) return false; // REM-002: stale-on-completion — אין אפקטים

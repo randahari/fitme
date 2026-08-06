@@ -377,15 +377,23 @@ test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on sess
   const quickLogServiceJs = fs.readFileSync(path.join(__dirname, '../js/nutrition/quickLogService.js'), 'utf8');
   const adaptiveControllerJs = fs.readFileSync(path.join(__dirname, '../js/adaptive/adaptiveTdeeController.js'), 'utf8');
 
-  const idx = mealCommitServiceJs.indexOf('שמירת הארוחה נכשלה');
-  assert.notEqual(idx, -1, 'expected failure message not found in mealCommitService.js: שמירת הארוחה נכשלה');
+  // TASK-007 UX-19.1-19.3 (WP7): the failure message is now produced by
+  // mealSaveFailureMessage(result) (structured, grounded in result.error.retryable) rather than
+  // an inline string literal, so the gate is verified against that call expression instead of
+  // the message text directly — same pattern as WP6's adaptiveApplyFailureMessage update below.
+  const idx = mealCommitServiceJs.indexOf('deps.alertFn(mealSaveFailureMessage(result))');
+  assert.notEqual(idx, -1, 'expected call site deps.alertFn(mealSaveFailureMessage(result)) not found in mealCommitService.js');
   const prefix = mealCommitServiceJs.slice(Math.max(0, idx - 90), idx);
-  assert.match(prefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הארוחה נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(prefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) $/, 'the alert for mealSaveFailureMessage(result) must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(mealCommitServiceJs, /'שמירת הארוחה נכשלה עקב בעיית תקשורת זמנית\. נסה שוב\.'/, 'the retryable-branch message must still start with שמירת הארוחה נכשלה');
+  assert.match(mealCommitServiceJs, /'שמירת הארוחה נכשלה ולא ניתן לנסות שוב כרגע\. נסה מאוחר יותר\.'/, 'the non-retryable-branch message must still start with שמירת הארוחה נכשלה');
 
-  const quickIdx = quickLogServiceJs.indexOf('שמירת הפריט נכשלה');
-  assert.notEqual(quickIdx, -1, 'expected failure message not found in quickLogService.js: שמירת הפריט נכשלה');
+  const quickIdx = quickLogServiceJs.indexOf('deps.alertFn(quickItemSaveFailureMessage(result))');
+  assert.notEqual(quickIdx, -1, 'expected call site deps.alertFn(quickItemSaveFailureMessage(result)) not found in quickLogService.js');
   const quickPrefix = quickLogServiceJs.slice(Math.max(0, quickIdx - 90), quickIdx);
-  assert.match(quickPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הפריט נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(quickPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) $/, 'the alert for quickItemSaveFailureMessage(result) must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(quickLogServiceJs, /'שמירת הפריט נכשלה עקב בעיית תקשורת זמנית\. נסה שוב\.'/, 'the retryable-branch message must still start with שמירת הפריט נכשלה');
+  assert.match(quickLogServiceJs, /'שמירת הפריט נכשלה ולא ניתן לנסות שוב כרגע\. נסה מאוחר יותר\.'/, 'the non-retryable-branch message must still start with שמירת הפריט נכשלה');
 
   // TASK-007 UX-19.1-19.3 (WP6): the failure message is now produced by
   // adaptiveApplyFailureMessage(result) (structured, grounded in result.error.retryable) rather
