@@ -327,13 +327,33 @@ test('applyAdaptiveUpdate persists via PersistenceGateway, updates the profile, 
   assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'היעד עודכן ל-1,900 קל׳ ✓'));
 });
 
-test('applyAdaptiveUpdate alerts failure and leaves the proposal active when persistence fails', async () => {
+test('applyAdaptiveUpdate alerts a non-retry-inviting failure message and leaves the proposal active when persistence fails non-retryably (UX-19.1-19.3, WP6)', async () => {
   const { deps, calls } = fakeDeps();
   AdaptiveTdeeController.configure(deps);
   deps._setProposal(readyProposal());
-  PersistenceGateway.persist = async () => ({ status: 'REJECTED' });
+  PersistenceGateway.persist = async () => ({ status: 'REJECTED' }); // no .error at all — retryable must default to false, never throw
   await AdaptiveTdeeController.applyAdaptiveUpdate();
-  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת היעד נכשלה. נסה שוב.'));
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת היעד נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+  assert.notEqual(deps.getAdaptProposal(), null, 'a failed persist must not clear the proposal');
+});
+
+test('applyAdaptiveUpdate alerts a retry-inviting failure message when result.error.retryable is true (UX-19.2)', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  PersistenceGateway.persist = async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } });
+  await AdaptiveTdeeController.applyAdaptiveUpdate();
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת היעד נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.notEqual(deps.getAdaptProposal(), null, 'a failed persist must not clear the proposal');
+});
+
+test('applyAdaptiveUpdate alerts a non-retry-inviting failure message when result.error.retryable is false (UX-19.2)', async () => {
+  const { deps, calls } = fakeDeps();
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  PersistenceGateway.persist = async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } });
+  await AdaptiveTdeeController.applyAdaptiveUpdate();
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת היעד נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
   assert.notEqual(deps.getAdaptProposal(), null, 'a failed persist must not clear the proposal');
 });
 
@@ -384,6 +404,28 @@ test('dismissAdaptiveUpdate marks lastTdeeUpdate as today, saves, clears the pro
   assert.equal(userProfile.lastTdeeUpdate, new Date().toISOString().slice(0, 10));
   assert.ok(calls.some((c) => c[0] === 'saveProfile'));
   assert.equal(deps.getAdaptProposal(), null);
+});
+
+test('dismissAdaptiveUpdate rolls back lastTdeeUpdate, alerts a structured message, and leaves the proposal active when saveProfile() fails (UX-19.1-19.4, WP6)', async () => {
+  const { deps, calls, userProfile } = fakeDeps({
+    userProfile: profile({ lastTdeeUpdate: '2020-01-01' }),
+    saveProfile: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } })
+  });
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  await AdaptiveTdeeController.dismissAdaptiveUpdate();
+  assert.equal(userProfile.lastTdeeUpdate, '2020-01-01', 'a failed save must roll back the optimistic lastTdeeUpdate mutation');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הבחירה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.notEqual(deps.getAdaptProposal(), null, 'a failed save must not clear the active proposal');
+  assert.ok(!calls.some((c) => c[0] === 'recordFeedback'), 'a failed save must not record Dismissed feedback');
+});
+
+test('dismissAdaptiveUpdate alerts a non-retry-inviting message when saveProfile() fails with retryable:false (UX-19.2)', async () => {
+  const { deps, calls } = fakeDeps({ saveProfile: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } }) });
+  AdaptiveTdeeController.configure(deps);
+  deps._setProposal(readyProposal());
+  await AdaptiveTdeeController.dismissAdaptiveUpdate();
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת הבחירה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
 });
 
 // ── C2: Rejection and Suppression Feedback ──────────────────────────────────────────────
@@ -490,6 +532,25 @@ test('confirmDayLight adds the day (deduped), saves, re-renders, and re-checks t
   assert.ok(calls.some((c) => c[0] === 'runEngineAction' && c[1] === 'SOURCE_DATA_CHANGED' && c[2] === 'adaptiveTdeeEngine' && c[3] === 'WEIGHT_CHANGED'));
 });
 
+test('confirmDayLight rolls back the confirmedLightDays entry, alerts a structured message, and skips the engine recheck when saveProfile() fails (UX-19.1-19.4, WP6)', async () => {
+  const { deps, calls, userProfile } = fakeDeps({ saveProfile: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } }) });
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.confirmDayLight('2026-01-01');
+  assert.deepEqual(userProfile.confirmedLightDays, [], 'a failed save must roll back the optimistic day addition');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת האישור נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.ok(!calls.some((c) => c[0] === 'runEngineAction'), 'the day-classification recheck must not run against an unsaved confirmation');
+});
+
+test('confirmDayLight does not remove a day that was already confirmed before this call, even when the (no-op) save fails', async () => {
+  const { deps, userProfile } = fakeDeps({
+    userProfile: profile({ confirmedLightDays: ['2026-01-01'] }),
+    saveProfile: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } })
+  });
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.confirmDayLight('2026-01-01');
+  assert.deepEqual(userProfile.confirmedLightDays, ['2026-01-01'], 'an already-confirmed day must not be removed by a later failed no-op save');
+});
+
 // ── logMeasurements ─────────────────────────────────────────────────────────────────────
 
 test('logMeasurements alerts and returns without saving when waist is missing or out of range', async () => {
@@ -516,6 +577,30 @@ test('logMeasurements saves a valid entry, overwrites same-day entries, clears i
   assert.equal(userProfile.measurementHistory[0].chest, 95);
   assert.equal(waistEl.value, '');
   assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'ההיקפים נשמרו ✓'));
+});
+
+test('logMeasurements rolls back measurementHistory, alerts a structured message, and leaves the inputs unfilled when saveProfile() fails (UX-19.1-19.4, WP6)', async () => {
+  const waistEl = fakeElement({ value: '85' });
+  const { deps, calls, userProfile } = fakeDeps({
+    userProfile: profile({ measurementHistory: [{ date: '2020-01-01', waist: 70 }] }),
+    saveProfile: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } })
+  });
+  deps.documentRef._elements['meas-waist'] = waistEl;
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.logMeasurements();
+  assert.deepEqual(userProfile.measurementHistory, [{ date: '2020-01-01', waist: 70 }], 'a failed save must roll back to the pre-attempt history exactly');
+  assert.equal(waistEl.value, '85', 'the entered value must remain visible — not cleared on a failed save (UX-19.4)');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת ההיקפים נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.ok(!calls.some((c) => c[0] === 'alert' && c[1] === 'ההיקפים נשמרו ✓'), 'must never show the success alert for a failed save (UX-19.3)');
+});
+
+test('logMeasurements alerts a non-retry-inviting message when saveProfile() fails with retryable:false (UX-19.2)', async () => {
+  const waistEl = fakeElement({ value: '85' });
+  const { deps, calls } = fakeDeps({ saveProfile: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } }) });
+  deps.documentRef._elements['meas-waist'] = waistEl;
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.logMeasurements();
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת ההיקפים נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
 });
 
 test('logMeasurements ignores out-of-range optional arm/chest values', async () => {
@@ -606,6 +691,22 @@ test('setAdaptiveRate mutates the profile, toggles buttons, saves, and rechecks 
   assert.ok(calls.some((c) => c[0] === 'runEngineAction' && c[1] === 'MANUAL' && c[3] === 'ADAPTIVE_RECHECK'));
 });
 
+test('setAdaptiveRate rolls back the rate + button state, alerts a structured message, and skips the engine recheck when saveProfile() fails (UX-19.1-19.4, WP6)', async () => {
+  const buttons = fakeSegButtons(['gentle', 'balanced']);
+  const { deps, calls, userProfile } = fakeDeps({
+    userProfile: profile({ rate: 'balanced' }),
+    saveProfile: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } })
+  });
+  deps.documentRef._groups['#set-adapt-rate .seg-btn'] = buttons;
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.setAdaptiveRate('gentle');
+  assert.equal(userProfile.rate, 'balanced', 'a failed save must roll back the optimistic rate mutation');
+  assert.equal(buttons[0].classList.toggled, false, 'the "gentle" button must be un-toggled back');
+  assert.equal(buttons[1].classList.toggled, true, 'the previous "balanced" button must be re-toggled active');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת ההגדרה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.ok(!calls.some((c) => c[0] === 'runEngineAction'), 'the recheck must not run against an unsaved rate change');
+});
+
 test('toggleAdaptive flips adaptiveEnabled, toggles the DOM, saves, and rechecks the engine', async () => {
   const tog = fakeElement();
   let togOn = null;
@@ -618,6 +719,23 @@ test('toggleAdaptive flips adaptiveEnabled, toggles the DOM, saves, and rechecks
   assert.equal(togOn, false);
   assert.ok(calls.some((c) => c[0] === 'saveProfile'));
   assert.ok(calls.some((c) => c[0] === 'runEngineAction'));
+});
+
+test('toggleAdaptive rolls back adaptiveEnabled + the DOM toggle, alerts a structured message, and skips the engine recheck when saveProfile() fails (UX-19.1-19.4, WP6)', async () => {
+  const tog = fakeElement();
+  let togOn = null;
+  tog.classList.toggle = (cls, on) => { if (cls === 'on') togOn = on; };
+  const { deps, calls, userProfile } = fakeDeps({
+    userProfile: profile({ adaptiveEnabled: true }),
+    saveProfile: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } })
+  });
+  deps.documentRef._elements['adapt-toggle'] = tog;
+  AdaptiveTdeeController.configure(deps);
+  await AdaptiveTdeeController.toggleAdaptive();
+  assert.equal(userProfile.adaptiveEnabled, true, 'a failed save must roll back the optimistic toggle');
+  assert.equal(togOn, true, 'the DOM toggle must be reverted back to on');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת ההגדרה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+  assert.ok(!calls.some((c) => c[0] === 'runEngineAction'));
 });
 
 test('toggleAdaptive is a no-op with no profile', async () => {

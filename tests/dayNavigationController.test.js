@@ -259,6 +259,29 @@ test('deleteHomeMeal is a no-op for an out-of-range index', async () => {
   assert.deepEqual(calls, []);
 });
 
+test('deleteHomeMeal restores the meal and alerts a structured message, without updating streak, when saveTodayData() fails (UX-19.1-19.4, WP6)', async () => {
+  const { deps, state, calls } = fakeDeps(
+    { todayData: { meals: [{ name: 'a' }, { name: 'b' }], burned: 0, steps: 0 } },
+    { saveTodayData: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } }) }
+  );
+  DayNavigationController.configure(deps);
+  await DayNavigationController.deleteHomeMeal(0);
+  assert.deepEqual(state.todayData.meals, [{ name: 'a' }, { name: 'b' }], 'a failed save must restore the removed meal at its original index');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'מחיקת הארוחה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.ok(!calls.includes('updateStreak'), 'streak must not update for an unsaved deletion');
+  assert.ok(!calls.includes('renderHome'), 'no re-render is needed — the DOM never showed the deletion (render only runs after a confirmed save)');
+});
+
+test('deleteHomeMeal alerts a non-retry-inviting message when saveTodayData() fails with retryable:false (UX-19.2)', async () => {
+  const { deps, calls } = fakeDeps(
+    { todayData: { meals: [{ name: 'a' }], burned: 0, steps: 0 } },
+    { saveTodayData: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } }) }
+  );
+  DayNavigationController.configure(deps);
+  await DayNavigationController.deleteHomeMeal(0);
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'מחיקת הארוחה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+});
+
 // ── showMealEditor / editHomeMeal ───────────────────────────────────────────────────────
 
 test('showMealEditor resets editingExisting and editingItemIdx, builds a fresh pendingMeal draft via MealDraft, and reveals #food-result', () => {
@@ -327,6 +350,28 @@ test('saveEditedMeal alerts and does nothing when pendingMeal has no items', asy
   assert.deepEqual(calls, [['alert', 'אין פריטים בארוחה']]);
 });
 
+test('saveEditedMeal rolls back the meal, alerts a structured message, and keeps the editor open (editingExisting/pendingMeal/#food-result untouched) when saveTodayData() fails (UX-19.1-19.4, WP6)', async () => {
+  const foodResult = fakeElement();
+  const { deps, state, calls, doc } = fakeDeps(
+    {
+      pendingMeal: { items: [{ name: 'x' }] },
+      editingExisting: { idx: 1, time: '07:00' },
+      todayData: { meals: [{ name: 'a' }, { name: 'old' }], burned: 0, steps: 0 }
+    },
+    { saveTodayData: async () => ({ status: 'FAILED', error: { code: 'unavailable', retryable: true } }) }
+  );
+  doc._elements['food-result'] = foodResult;
+  DayNavigationController.configure(deps);
+  await DayNavigationController.saveEditedMeal();
+  assert.equal(state.todayData.meals[1].name, 'old', 'a failed save must roll back to the original meal');
+  assert.notEqual(state.editingExisting, null, 'edit mode must remain active so the user can retry');
+  assert.notEqual(state.pendingMeal, null, 'the pending draft must be preserved, not discarded');
+  assert.equal(foodResult.classList.hidden, false, 'the editor must remain visible, not hidden as if saved');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'שמירת השינויים נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'));
+  assert.ok(!calls.includes('updateStreak'));
+  assert.ok(!calls.some((c) => Array.isArray(c) && c[0] === 'goToScreen'), 'must not navigate away from an unsaved edit');
+});
+
 test('deleteEditedMeal removes the meal being edited, persists, and returns home', async () => {
   const { deps, state, calls } = fakeDeps({
     editingExisting: { idx: 0, time: '' },
@@ -343,6 +388,20 @@ test('deleteEditedMeal is a no-op when not currently editing an existing meal', 
   DayNavigationController.configure(deps);
   await DayNavigationController.deleteEditedMeal();
   assert.deepEqual(calls, []);
+});
+
+test('deleteEditedMeal restores the meal, alerts a structured message, and keeps the editor open when saveTodayData() fails (UX-19.1-19.4, WP6)', async () => {
+  const { deps, state, calls } = fakeDeps(
+    { editingExisting: { idx: 0, time: '' }, todayData: { meals: [{ name: 'a' }, { name: 'b' }], burned: 0, steps: 0 } },
+    { saveTodayData: async () => ({ status: 'FAILED', error: { code: 'permission-denied', retryable: false } }) }
+  );
+  DayNavigationController.configure(deps);
+  await DayNavigationController.deleteEditedMeal();
+  assert.deepEqual(state.todayData.meals, [{ name: 'a' }, { name: 'b' }], 'a failed save must restore the deleted meal at its original index');
+  assert.notEqual(state.editingExisting, null, 'edit mode must remain active so the user can retry');
+  assert.ok(calls.some((c) => c[0] === 'alert' && c[1] === 'מחיקת הארוחה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.'));
+  assert.ok(!calls.includes('updateStreak'));
+  assert.ok(!calls.some((c) => Array.isArray(c) && c[0] === 'goToScreen'));
 });
 
 test('cancelEditedMeal clears edit state, hides the editor, and returns home without persisting', () => {

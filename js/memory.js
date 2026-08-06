@@ -7,6 +7,14 @@
 (function () {
   'use strict';
 
+  // TASK-007 UX-19.1-19.3 (WP6): same dual-environment dependency-resolution convention every
+  // other module in this codebase uses (e.g. js/trigger/triggerController.js) — reused only for
+  // its already-existing, additive classifyError() export (js/persistenceGateway.js WP6
+  // prerequisite); this module's writes still go directly to Firestore, unchanged.
+  var PersistenceGateway = (typeof module !== 'undefined' && module.exports)
+    ? require('./persistenceGateway.js')
+    : window.PersistenceGateway;
+
   // ── סכמה מטויפסת (v3 §4) ─────────────────────────────────────────
   var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal'];
   var MEMORY_SOURCES = ['user_stated', 'inferred_event', 'inferred_pattern', 'coach_generated', 'migrated'];
@@ -16,6 +24,21 @@
   var SCHEMA_VERSION = 1;
 
   function nowTs() { return Date.now(); }
+
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper for this module's D6
+  // transparency-sheet actions (create/confirm/reject/edit/delete). These writes go directly to
+  // Firestore (memCol()...), not through the Persistence Gateway or saveProfile()/saveTodayData()
+  // — but they already produce a real, non-swallowed rejection (unlike those two functions before
+  // the WP6 prerequisite), so PersistenceGateway.classifyError() can classify the raw error
+  // in-place without any routing change. Defensive: if PersistenceGateway is unavailable for any
+  // reason, falls back to a single non-retry-inviting message rather than throwing.
+  function memoryFailureMessage(e, baseMsg) {
+    var retryable = false;
+    try { retryable = !!(PersistenceGateway && PersistenceGateway.classifyError(e).retryable); } catch (_) {}
+    return retryable
+      ? baseMsg + ' עקב בעיית תקשורת זמנית. נסה שוב.'
+      : baseMsg + ' ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
 
   // רשומת זיכרון: id · type · payload · confidence · source ·
   //               created_at · updated_at · last_confirmed_at · status
@@ -317,7 +340,7 @@
       try {
         await createMemory({ type: 'fact', payload: { text: txt.trim() }, confidence: 1, source: 'user_stated', status: 'active' });
         openSheet();
-      } catch (e) { alert('לא הצלחתי לשמור.'); }
+      } catch (e) { alert(memoryFailureMessage(e, 'לא הצלחתי לשמור')); }
     });
     body.appendChild(add);
   }
@@ -351,7 +374,7 @@
           confidence: Math.min(1, (m.confidence || 0) + 0.1)
         });
         openSheet();
-      } catch (e) { alert('נכשל'); }
+      } catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
     });
     actions.appendChild(ok);
 
@@ -361,7 +384,7 @@
       no.textContent = 'לא נכון';
       no.addEventListener('click', async function () {
         try { await updateMemory(m._id, { status: 'rejected' }); openSheet(); }
-        catch (e) { alert('נכשל'); }
+        catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
       });
       actions.appendChild(no);
     }
@@ -378,7 +401,7 @@
       if (m.payload && m.payload.key !== undefined) patch = { payload: { key: m.payload.key, value: nv } };
       else patch = { payload: { text: nv } };
       try { await updateMemory(m._id, patch); openSheet(); }
-      catch (e) { alert('נכשל'); }
+      catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
     });
     actions.appendChild(ed);
 
@@ -389,7 +412,7 @@
     del.addEventListener('click', async function () {
       if (!confirm('למחוק את הפריט הזה מהזיכרון של המאמן?')) return;
       try { await deleteMemory(m._id); openSheet(); }
-      catch (e) { alert('נכשל'); }
+      catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
     });
     actions.appendChild(del);
 
@@ -454,6 +477,6 @@
     boot();
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Object.assign({}, API, { _internal: { makeMemory: makeMemory, validateMemory: validateMemory, safeKey: safeKey } });
+    module.exports = Object.assign({}, API, { _internal: { makeMemory: makeMemory, validateMemory: validateMemory, safeKey: safeKey, memoryFailureMessage: memoryFailureMessage } });
   }
 })();

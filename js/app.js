@@ -516,19 +516,38 @@ async function _loadUserDataCore() {
   } catch(e) { console.error('loadUserData:', e); }
 }
 
+// TASK-007 UX-19.1-19.4 (WP6 prerequisite, Product/Architecture-approved): returns a
+// structured {status, error} result instead of silently swallowing the outcome, using the
+// Persistence Gateway's own error-classification vocabulary (PersistenceGateway.classifyError)
+// so callers can differentiate presentation and preserve entered/pending data on failure — the
+// same {code, message, retryable} shape PersistenceGateway.persist() already produces. This does
+// not route the write through the Gateway itself (still a direct ProfileRepository call, same as
+// before) and does not touch the Gateway's closed operation catalog. Backward-compatible: every
+// existing caller that ignores the return value (previously always undefined) is unaffected.
 async function saveProfile() {
-  if (!currentUser || !userProfile) return;
-  try { await ProfileRepository.mergeProfile(currentUser.uid, userProfile); }
-  catch(e) { console.error('saveProfile:', e); }
+  if (!currentUser || !userProfile) return { status: 'NO_OP', error: null };
+  try {
+    await ProfileRepository.mergeProfile(currentUser.uid, userProfile);
+    return { status: 'SUCCESS', error: null };
+  } catch (e) {
+    console.error('saveProfile:', e);
+    return { status: 'FAILED', error: PersistenceGateway.classifyError(e) };
+  }
 }
 
+// TASK-007 UX-19.1-19.4 (WP6 prerequisite) — same treatment as saveProfile() above, for the
+// legacy day-document write (DayRepository.saveLegacyDay).
 async function saveTodayData() {
-  if (!currentUser) return;
+  if (!currentUser) return { status: 'NO_OP', error: null };
   try {
     await DayRepository.saveLegacyDay(currentUser.uid, currentDayKey, {
       meals: todayData.meals, burned: todayData.burned, steps: todayData.steps, water: waterCount
     });
-  } catch(e) { console.error('saveTodayData:', e); }
+    return { status: 'SUCCESS', error: null };
+  } catch (e) {
+    console.error('saveTodayData:', e);
+    return { status: 'FAILED', error: PersistenceGateway.classifyError(e) };
+  }
 }
 
 // B4 §33 item 5 / Engineering Readiness Review finding 4: הכתיבה הסופית (SOURCE_HISTORY_SAVE_DAY)

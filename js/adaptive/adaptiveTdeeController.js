@@ -104,11 +104,25 @@
     return await deps.coachMessageFn(ctx);
   }
 
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper for applyAdaptiveUpdate()'s
+  // PersistenceGateway result — grounded exclusively in the Gateway's own status/error.code/
+  // error.retryable fields (js/persistenceGateway.js), never a new classification scheme.
+  // error.retryable decides the wording (UX-19.2: invite retry only when true, never when
+  // false); error.code is surfaced to the console for diagnostics only (never user-facing text
+  // invented from it, to avoid fabricating meaning the Gateway itself doesn't assert).
+  function adaptiveApplyFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('applyAdaptiveUpdate failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת היעד נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת היעד נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
   // B4 §16.3/§26: applyAdaptiveUpdate() נשאר מחוץ ל-Registry (B2 SPEC §17/§19, פעולה ידנית
   // מאושרת ע"י המשתמש). candidate state מחושב מקומית ואינו נכתב ל-userProfile לפני הצלחה
   // durable (§26 כלל 2/3/6); goalKcal/adaptiveTdee/currentDeficit/lastTdeeUpdate נכתבים
   // field-scoped (owner: profileGoalsState, B3 §6) במקום saveProfile() המלא. זהה לחלוטין
-  // ל-applyAdaptiveUpdate() המקורי.
+  // ל-applyAdaptiveUpdate() המקורי, עם תוספת UX-19.1-19.3 (WP6): adaptiveApplyFailureMessage לעיל.
   async function applyAdaptiveUpdate() {
     var p = deps.getAdaptProposal();
     var userProfile = deps.getUserProfile();
@@ -147,7 +161,10 @@
     if (result.status !== 'SUCCESS' && result.status !== 'NO_OP') {
       // B4 §16.3: "Not mark the update applied if persistence fails" — proposal נשאר פעיל.
       // REM-002: אין אפקט (alert) אם הסשן כבר אינו נוכחי.
-      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn('שמירת היעד נכשלה. נסה שוב.');
+      // TASK-007 UX-19.1-19.3 (WP6): message is now differentiated by the Persistence Gateway's
+      // own result.error.retryable (adaptiveApplyFailureMessage, below) — no longer a single
+      // generic string regardless of outcome.
+      if (deps.sessionLifecycle.isCurrent(gen)) deps.alertFn(adaptiveApplyFailureMessage(result));
       return;
     }
     if (!deps.sessionLifecycle.isCurrent(gen)) return; // REM-002: stale-on-completion — אין אפקטים
@@ -172,11 +189,31 @@
   // (אין operation ל"רק לדחות תאריך"), והחלפת saveProfile() הייתה מאבדת durability של הדחייה
   // בפועל או מחייבת operation חדש בקטלוג — שניהם אסורים (CD-08/CD-09). סטייה מתועדת מהניסוח
   // המילולי ב-Implementation Notes §25 (ראה דוח היישום).
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper for the saveProfile()-routed
+  // call sites below — grounded in the same status/error.retryable vocabulary as
+  // adaptiveApplyFailureMessage (above), now reachable here because saveProfile() itself returns
+  // a structured result (Product/Architecture-approved WP6 prerequisite, js/app.js).
+  function dismissFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('dismissAdaptiveUpdate failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת הבחירה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת הבחירה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
   async function dismissAdaptiveUpdate() {
     var userProfile = deps.getUserProfile();
     if (!userProfile) return;
+    var previousLastUpdate = userProfile.lastTdeeUpdate; // UX-19.4: snapshot for rollback on failure
     userProfile.lastTdeeUpdate = DateUtils.getTodayKey();
-    await deps.saveProfile();
+    var result = await deps.saveProfile();
+    if (result && result.status === 'FAILED') {
+      // TASK-007 UX-19.3/19.4 (WP6): do not fabricate a successful dismissal — roll back the
+      // optimistic mutation and leave the proposal active, same discipline as applyAdaptiveUpdate().
+      userProfile.lastTdeeUpdate = previousLastUpdate;
+      deps.alertFn(dismissFailureMessage(result));
+      return;
+    }
     try { if (deps.recordFeedbackFn) await deps.recordFeedbackFn('adaptiveTdee', 'adaptive-proposal', 'Dismissed'); } catch (e) {}
     deps.clearAdaptProposal();
     renderAdaptiveCard();
@@ -208,18 +245,45 @@
     el.classList.remove('hidden');
   }
 
-  // זהה לחלוטין ל-confirmDayLight() המקורי.
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper for confirmDayLight().
+  function confirmDayLightFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('confirmDayLight failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת האישור נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת האישור נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
+  // זהה לחלוטין ל-confirmDayLight() המקורי, עם תוספת UX-19.1-19.4 (WP6): שגיאה מובנית +
+  // שימור/שחזור confirmedLightDays בכשל, במקום המשך שקט כאילו הצליח.
   async function confirmDayLight(key) {
     var userProfile = deps.getUserProfile();
     if (!userProfile) return;
     if (!Array.isArray(userProfile.confirmedLightDays)) userProfile.confirmedLightDays = [];
-    if (userProfile.confirmedLightDays.indexOf(key) < 0) userProfile.confirmedLightDays.push(key);
-    await deps.saveProfile();
+    var alreadyConfirmed = userProfile.confirmedLightDays.indexOf(key) >= 0; // UX-19.4: needed to know whether to roll back
+    if (!alreadyConfirmed) userProfile.confirmedLightDays.push(key);
+    var result = await deps.saveProfile();
+    if (result && result.status === 'FAILED') {
+      if (!alreadyConfirmed) userProfile.confirmedLightDays = userProfile.confirmedLightDays.filter(function (k) { return k !== key; });
+      deps.alertFn(confirmDayLightFailureMessage(result));
+      return; // UX-19.3: day-classification engine re-check must not run against an unsaved confirmation
+    }
     renderPartialPrompt();
     await deps.runEngineAction('SOURCE_DATA_CHANGED', 'adaptiveTdeeEngine', 'WEIGHT_CHANGED'); // day-classification affects the TDEE window
   }
 
-  // ── רישום היקפים — זהה לחלוטין ל-logMeasurements() המקורי. ──
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper for logMeasurements().
+  function measurementsFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('logMeasurements failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת ההיקפים נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת ההיקפים נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
+  // ── רישום היקפים — זהה לחלוטין ל-logMeasurements() המקורי, עם תוספת UX-19.1-19.4 (WP6):
+  // שגיאה מובנית, ואי-ניקוי שדות הקלט/אי-הצגת "✓ נשמר" לפני שהשמירה אכן הצליחה (UX-19.3) —
+  // בכשל, ה-entry האופטימי מוסר מ-measurementHistory וה-inputs נשארים כפי שהוזנו (UX-19.4). ──
   async function logMeasurements() {
     var userProfile = deps.getUserProfile();
     if (!userProfile) return;
@@ -234,11 +298,16 @@
     if (arm && arm > 10 && arm < 80) entry.arm = arm;
     if (chest && chest > 40 && chest < 200) entry.chest = chest;
     if (!Array.isArray(userProfile.measurementHistory)) userProfile.measurementHistory = [];
+    var previousHistory = userProfile.measurementHistory; // UX-19.4: snapshot for rollback on failure
     // דריסה אם כבר נרשם היום
-    userProfile.measurementHistory = userProfile.measurementHistory.filter(function (m) { return m.date !== entry.date; });
-    userProfile.measurementHistory.push(entry);
+    userProfile.measurementHistory = previousHistory.filter(function (m) { return m.date !== entry.date; }).concat([entry]);
+    var result = await deps.saveProfile();
+    if (result && result.status === 'FAILED') {
+      userProfile.measurementHistory = previousHistory; // UX-19.4: roll back the optimistic entry
+      deps.alertFn(measurementsFailureMessage(result)); // UX-19.3: never show "✓ נשמר" for a failed save
+      return; // UX-19.4: inputs are NOT cleared — entered values remain visible to retry
+    }
     ['meas-waist', 'meas-arm', 'meas-chest'].forEach(function (id) { var e = deps.documentRef.getElementById(id); if (e) e.value = ''; });
-    await deps.saveProfile();
     renderMeasurements();
     deps.alertFn('ההיקפים נשמרו ✓');
   }
@@ -285,24 +354,52 @@
     }
   }
 
-  // זהה לחלוטין ל-setAdaptiveRate() המקורי.
+  // TASK-007 UX-19.1-19.3 (WP6): shared structured failure-message helper for the two Settings
+  // toggles below — both are simple, equally-weighted profile-field saves, so one differentiated
+  // message pair (retryable/non-retryable) is appropriate for both, per UX-19.1's requirement to
+  // distinguish *categories*, not to give every distinct action its own unique wording.
+  function adaptiveSettingsFailureMessage(result) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error('adaptive settings save failed:', result.status, result.error.code);
+    return retryable
+      ? 'שמירת ההגדרה נכשלה עקב בעיית תקשורת זמנית. נסה שוב.'
+      : 'שמירת ההגדרה נכשלה ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
+  // זהה לחלוטין ל-setAdaptiveRate() המקורי, עם תוספת UX-19.1-19.4 (WP6): שגיאה מובנית +
+  // שחזור הקצב הקודם (state + toggle) בכשל, ודילוג על ה-recheck כשלא נשמר בפועל.
   async function setAdaptiveRate(v) {
     var userProfile = deps.getUserProfile();
     if (!userProfile || !AdaptiveTdeeDomain.ADAPT_RATES[v]) return;
+    var previousRate = userProfile.rate; // UX-19.4: snapshot for rollback on failure
     userProfile.rate = v;
     deps.documentRef.querySelectorAll('#set-adapt-rate .seg-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.val === v); });
-    await deps.saveProfile();
+    var result = await deps.saveProfile();
+    if (result && result.status === 'FAILED') {
+      userProfile.rate = previousRate;
+      deps.documentRef.querySelectorAll('#set-adapt-rate .seg-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.val === previousRate); });
+      deps.alertFn(adaptiveSettingsFailureMessage(result));
+      return;
+    }
     await deps.runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
   }
 
-  // זהה לחלוטין ל-toggleAdaptive() המקורי.
+  // זהה לחלוטין ל-toggleAdaptive() המקורי, עם תוספת UX-19.1-19.4 (WP6): שגיאה מובנית + שחזור
+  // המצב הקודם (state + toggle) בכשל, ודילוג על ה-recheck כשלא נשמר בפועל.
   async function toggleAdaptive() {
     var userProfile = deps.getUserProfile();
     if (!userProfile) return;
-    userProfile.adaptiveEnabled = !AdaptiveTdeeDomain.adaptEnabled(userProfile);
+    var previousEnabled = AdaptiveTdeeDomain.adaptEnabled(userProfile); // UX-19.4: snapshot for rollback on failure
+    userProfile.adaptiveEnabled = !previousEnabled;
     var tog = deps.documentRef.getElementById('adapt-toggle');
     if (tog) tog.classList.toggle('on', userProfile.adaptiveEnabled);
-    await deps.saveProfile();
+    var result = await deps.saveProfile();
+    if (result && result.status === 'FAILED') {
+      userProfile.adaptiveEnabled = previousEnabled;
+      if (tog) tog.classList.toggle('on', previousEnabled);
+      deps.alertFn(adaptiveSettingsFailureMessage(result));
+      return;
+    }
     await deps.runEngineAction('MANUAL', 'adaptiveTdeeEngine', 'ADAPTIVE_RECHECK');
   }
 

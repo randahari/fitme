@@ -404,12 +404,23 @@
   }
   function listOperations() { return Object.keys(OPERATIONS); }
 
+  // TASK-007 UX-19.1-19.3 (WP6 prerequisite): additive, read-only export of the classification
+  // logic already used internally for every repository FAILED result (RETRYABLE_CODES, above).
+  // Exposing it lets non-Gateway-routed legacy writes (js/app.js saveProfile()/saveTodayData(),
+  // js/memory.js) classify their own already-real errors using the exact same status/error
+  // vocabulary the Gateway itself produces, instead of duplicating or inventing a parallel
+  // scheme (UX-19.1's "never a new classification scheme"). This changes no Gateway operation,
+  // no request/response contract, and no OPERATIONS catalog entry — see B4_SPEC.md Appendix B:
+  // "The physical API MAY differ" (only the listed semantics — closed catalog, validation,
+  // normalized result, bounded retry, no arbitrary-path write method — are mandatory, and none
+  // of them are touched by this export).
   var API = {
     VERSION: GATEWAY_VERSION,
     configure: configure,
     persist: persist,
     getOperation: getOperation,
-    listOperations: listOperations
+    listOperations: listOperations,
+    classifyError: classifyRepositoryError
   };
 
   if (typeof window !== 'undefined') {

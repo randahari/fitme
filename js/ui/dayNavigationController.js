@@ -161,12 +161,36 @@
     applyDayViewChrome();
   }
 
+  // TASK-007 UX-19.1-19.3 (WP6): structured failure-message helper shared by the day-data
+  // (saveTodayData()-routed) call sites in this file — grounded in the same status/error
+  // vocabulary as js/adaptive/adaptiveTdeeController.js's per-action helpers, now reachable
+  // because saveTodayData() itself returns a structured result (Product/Architecture-approved
+  // WP6 prerequisite, js/app.js).
+  function dayDataFailureMessage(result, baseMsg) {
+    var retryable = !!(result && result.error && result.error.retryable);
+    if (result && result.error && result.error.code) console.error(baseMsg + ':', result.status, result.error.code);
+    return retryable
+      ? baseMsg + ' עקב בעיית תקשורת זמנית. נסה שוב.'
+      : baseMsg + ' ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
+  // TASK-007 UX-19.1-19.4 (WP6): שגיאה מובנית + שחזור הארוחה שנמחקה בכשל, במקום המשך שקט
+  // כאילו המחיקה נשמרה בפועל.
   async function deleteHomeMeal(idx) {
     var todayData = deps.getTodayData();
-    if (!todayData.meals[idx]) return;
+    var meal = todayData.meals[idx];
+    if (!meal) return;
     if (!deps.confirmFn('למחוק את הארוחה?')) return;
     todayData.meals.splice(idx, 1);
-    await deps.saveTodayData();
+    var result = await deps.saveTodayData();
+    if (result && result.status === 'FAILED') {
+      // UX-19.4: restore the removed meal in memory; no re-render is needed to "undo" a visible
+      // change, since the DOM is only ever updated by the renderHome()/renderFoodMeals() calls
+      // below, which have not run yet at this point — the display still shows the meal intact.
+      todayData.meals.splice(idx, 0, meal);
+      deps.alertFn(dayDataFailureMessage(result, 'מחיקת הארוחה נכשלה'));
+      return;
+    }
     await deps.updateStreak();
     deps.renderHome();
     deps.renderFoodMeals();
@@ -207,6 +231,9 @@
     });
   }
 
+  // TASK-007 UX-19.1-19.4 (WP6): שגיאה מובנית + שימור מצב העריכה (לא ניגשים למסך הבית ולא
+  // מוחקים editingExisting/pendingMeal/food-result) עד לאישור הצלחת השמירה בפועל — כדי שכשל
+  // לא יגרום לאובדן השינויים שהוזנו (UX-19.4) ולא יוצג כאילו הצליח (UX-19.3).
   async function saveEditedMeal() {
     var pendingMeal = deps.getPendingMeal();
     if (!pendingMeal || !pendingMeal.items.length) { deps.alertFn('אין פריטים בארוחה'); return; }
@@ -214,26 +241,40 @@
     var finalMeal = deps.buildMealFromEditor();
     if (editingExisting.time) finalMeal.time = editingExisting.time; // שמירה על שעת הרישום המקורית
     var todayData = deps.getTodayData();
+    var previousMeal = todayData.meals[editingExisting.idx]; // UX-19.4: snapshot for rollback
     todayData.meals[editingExisting.idx] = finalMeal;
+    var result = await deps.saveTodayData();
+    if (result && result.status === 'FAILED') {
+      todayData.meals[editingExisting.idx] = previousMeal; // UX-19.4: roll back the optimistic edit
+      deps.alertFn(dayDataFailureMessage(result, 'שמירת השינויים נכשלה'));
+      return; // editingExisting/pendingMeal/#food-result are untouched — the editor stays open for retry
+    }
     deps.setEditingExisting(null);
     deps.setPendingMeal(null);
     deps.documentRef.getElementById('food-result').classList.add('hidden');
-    await deps.saveTodayData();
     await deps.updateStreak();
     deps.renderFoodMeals();
     deps.goToScreen('home');
   }
 
+  // TASK-007 UX-19.1-19.4 (WP6): שגיאה מובנית + שחזור הארוחה שנמחקה ושימור מצב העריכה בכשל,
+  // באותו דפוס כמו saveEditedMeal() לעיל.
   async function deleteEditedMeal() {
     var editingExisting = deps.getEditingExisting();
     if (!editingExisting) return;
     if (!deps.confirmFn('למחוק את הארוחה?')) return;
     var todayData = deps.getTodayData();
+    var removedMeal = todayData.meals[editingExisting.idx]; // UX-19.4: snapshot for rollback
     todayData.meals.splice(editingExisting.idx, 1);
+    var result = await deps.saveTodayData();
+    if (result && result.status === 'FAILED') {
+      todayData.meals.splice(editingExisting.idx, 0, removedMeal); // UX-19.4: restore the removed meal
+      deps.alertFn(dayDataFailureMessage(result, 'מחיקת הארוחה נכשלה'));
+      return; // editingExisting/pendingMeal/#food-result are untouched — the editor stays open for retry
+    }
     deps.setEditingExisting(null);
     deps.setPendingMeal(null);
     deps.documentRef.getElementById('food-result').classList.add('hidden');
-    await deps.saveTodayData();
     await deps.updateStreak();
     deps.renderFoodMeals();
     deps.goToScreen('home');

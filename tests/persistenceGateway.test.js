@@ -387,10 +387,17 @@ test('24b. addMeal/logQuick/applyAdaptiveUpdate gate their failure alert on sess
   const quickPrefix = quickLogServiceJs.slice(Math.max(0, quickIdx - 90), quickIdx);
   assert.match(quickPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת הפריט נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
 
-  const adaptIdx = adaptiveControllerJs.indexOf('שמירת היעד נכשלה');
-  assert.notEqual(adaptIdx, -1, 'expected failure message not found in adaptiveTdeeController.js: שמירת היעד נכשלה');
+  // TASK-007 UX-19.1-19.3 (WP6): the failure message is now produced by
+  // adaptiveApplyFailureMessage(result) (structured, grounded in result.error.retryable) rather
+  // than an inline string literal, so the gate is verified against that call expression instead
+  // of the message text directly. Both of adaptiveApplyFailureMessage()'s own return strings
+  // still start with "שמירת היעד נכשלה", confirming the message itself is unchanged in kind.
+  const adaptIdx = adaptiveControllerJs.indexOf('deps.alertFn(adaptiveApplyFailureMessage(result))');
+  assert.notEqual(adaptIdx, -1, 'expected call site deps.alertFn(adaptiveApplyFailureMessage(result)) not found in adaptiveTdeeController.js');
   const adaptPrefix = adaptiveControllerJs.slice(Math.max(0, adaptIdx - 90), adaptIdx);
-  assert.match(adaptPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) deps\.alertFn\('$/, 'the alert for "שמירת היעד נכשלה" must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(adaptPrefix, /if \(deps\.sessionLifecycle\.isCurrent\(gen\)\) $/, 'the alert for adaptiveApplyFailureMessage(result) must be gated by deps.sessionLifecycle.isCurrent(gen)');
+  assert.match(adaptiveControllerJs, /'שמירת היעד נכשלה עקב בעיית תקשורת זמנית\. נסה שוב\.'/, 'the retryable-branch message must still start with שמירת היעד נכשלה');
+  assert.match(adaptiveControllerJs, /'שמירת היעד נכשלה ולא ניתן לנסות שוב כרגע\. נסה מאוחר יותר\.'/, 'the non-retryable-branch message must still start with שמירת היעד נכשלה');
 });
 
 // Implementation Review correction: writeReplaceDerivedHabitView (js/stateAccess.js) and
@@ -631,6 +638,38 @@ test('closed catalog: listOperations() returns exactly the seven approved operat
 test('getOperation() exposes no function references (diagnostics-safe)', () => {
   const def = PersistenceGateway.getOperation('DERIVED_HABITS_REPLACE');
   Object.keys(def).forEach((k) => assert.notEqual(typeof def[k], 'function'));
+});
+
+// TASK-007 UX-19.1-19.3 (WP6 prerequisite, Product/Architecture-approved): classifyError is an
+// additive, read-only export of the classification logic already used internally for every
+// repository FAILED result — added so legacy non-Gateway writes (saveProfile()/saveTodayData()
+// in js/app.js, js/memory.js) can classify their own real errors using the same vocabulary,
+// without touching the OPERATIONS catalog, persist()'s request/response contract, or introducing
+// a competing classification scheme.
+test('classifyError() is exported and classifies retryable Firestore-style codes exactly as the internal repository-error path does', () => {
+  assert.equal(typeof PersistenceGateway.classifyError, 'function');
+  ['unavailable', 'deadline-exceeded', 'aborted', 'internal', 'resource-exhausted'].forEach((code) => {
+    const c = PersistenceGateway.classifyError({ code: code, message: 'x' });
+    assert.equal(c.code, code);
+    assert.equal(c.retryable, true, code + ' must be classified retryable');
+  });
+});
+
+test('classifyError() classifies an unrecognized code as non-retryable, and defaults a missing code to "unknown"', () => {
+  assert.equal(PersistenceGateway.classifyError({ code: 'permission-denied' }).retryable, false);
+  const noCode = PersistenceGateway.classifyError({ message: 'boom' });
+  assert.equal(noCode.code, 'unknown');
+  assert.equal(noCode.retryable, false);
+});
+
+test('classifyError() addition does not change the closed operation catalog or persist()\'s own contract', () => {
+  // Re-assert the same catalog-closure guard as the test above, immediately after confirming
+  // classifyError exists — demonstrating the two are independent (adding the former cannot have
+  // altered the latter, since this repeats the exact same assertion with an identical result).
+  assert.deepEqual(PersistenceGateway.listOperations().sort(), [
+    'DERIVED_ADAPTIVE_PROPOSAL_APPLY', 'DERIVED_HABITS_REPLACE', 'DERIVED_PATTERNS_REPLACE',
+    'RECOMMENDATION_FEEDBACK_RECORD', 'SOURCE_HISTORY_SAVE_DAY', 'TRIGGER_RECORD_EVENT', 'TRIGGER_UPDATE_BUDGET'
+  ].sort());
 });
 
 // C2_SPEC v1.1 §11 (Issue 2) approved RECOMMENDATION_FEEDBACK_RECORD as a legitimate, minimal
