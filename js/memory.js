@@ -435,7 +435,10 @@
         btn.id = 'fitme-mem-openbtn';
         btn.className = 'fitme-mem-openbtn';
         var l = document.createElement('span'); l.textContent = '🧠 מה המאמן יודע עליי';
-        var r = document.createElement('span'); r.textContent = '›'; r.style.color = 'var(--text-3,#aaa)';
+        // TASK-007 UX-22.4 (WP9): שברון גילוי מכוון RTL — הכיוון החזותי כבר נכון
+        // (flex ללא row-reverse תחת direction:rtl ממקם אותו משמאל, בדיוק כמו
+        // צמד ▶/◀ הקיים כבר נכון ב-date-nav), רק הגליף עצמו היה מכוון LTR.
+        var r = document.createElement('span'); r.textContent = '‹'; r.style.color = 'var(--text-3,#aaa)';
         btn.appendChild(l); btn.appendChild(r);
         btn.addEventListener('click', function () { installStyles(); openSheet(); });
         // למקם לפני תגית הגרסה אם קיימת, אחרת בסוף

@@ -8,6 +8,9 @@
 //     נחשף כ-applyHomeChrome — קרוי מ-js/ui/homePresenter.js);
 //   • טעינת/מעבר בין ימים (loadDay/shiftDay) ושלוש נקודות הכניסה התואמות
 //     dayNavPrev/dayNavNext/dayNavToday (window facades — onclick מוטבע דינמית);
+//   • dayNavToDate (TASK-007 WP9, UX-8.6) — נקודת כניסה נוספת ליום ספציפי, נחשפת
+//     רק דרך window.DayNavigationController.dayNavToDate (לא window.* חדש ב-
+//     js/app.js — ר' הסבר בהערה ליד ההגדרה עצמה, למטה);
 //   • באנר תאריך במסך האוכל (ensureFoodDateBanner/updateFoodDateBanner);
 //   • עריכת/מחיקת ארוחת-בית קיימת (deleteHomeMeal/editHomeMeal — window facades);
 //   • שמירת/מחיקת/ביטול עריכת ארוחה קיימת (saveEditedMeal/deleteEditedMeal/
@@ -140,6 +143,20 @@
   function dayNavPrev() { shiftDay(-1); }   // אחורה בזמן
   function dayNavNext() { shiftDay(1); }     // קדימה בזמן
   function dayNavToday() { loadDay(DateUtils.getTodayKey()); }
+  // TASK-007 UX-8.6 (WP9, Option C — Product/Architecture-approved): ניווט ישיר
+  // ליום ספציפי, לשימוש כשמסך יעד כבר יודע לאיזה יום הוא רלוונטי (למשל פניית
+  // מאמן על יום חלקי-רישום ספציפי). עוטפת את אותה loadDay הפרטית ששלושת נקודות
+  // הכניסה האחרות כבר עוטפות — אין מנגנון ניווט חדש. בכוונה **לא** נחשפת כ-
+  // window.* חדש ב-js/app.js (כפי ש-dayNavPrev/dayNavNext/dayNavToday נחשפות) —
+  // אלא רק כתכונה נוספת על window.DayNavigationController הקיים-ומאז ומתמיד
+  // (ראה var API למטה + השורה הקבועה window.DayNavigationController = API בסוף
+  // הקובץ). זה משמר את הסט הסגור והנספר-במפורש של js/app.js's window.*
+  // שמאופיין ב-docs/architecture/C1_WP0_INVENTORY.md §3 ונאכף ב-
+  // tests/c1Wp0Characterization.test.js (בדיקה 6) — הבדיקה ההיא סורקת אך ורק
+  // את js/app.js, ואינה נוגעת בתכונות המוסיפות ל-API של מודול מוזרק אחר.
+  // קריאה: DayNavigationController.dayNavToDate(key) — ישירות, לא דרך פאסאד
+  // window גלובלי חדש.
+  function dayNavToDate(key) { loadDay(key); }
 
   // ── כרום מסך הבית לפי היום המוצג ──
   function applyDayViewChrome() {
@@ -338,6 +355,7 @@
     dayNavPrev: dayNavPrev,
     dayNavNext: dayNavNext,
     dayNavToday: dayNavToday,
+    dayNavToDate: dayNavToDate,
     deleteHomeMeal: deleteHomeMeal,
     editHomeMeal: editHomeMeal,
     saveEditedMeal: saveEditedMeal,

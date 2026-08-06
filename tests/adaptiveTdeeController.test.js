@@ -507,8 +507,17 @@ test('renderPartialPrompt renders the suspect list with working onclick handlers
   AdaptiveTdeeController.configure(deps);
   AdaptiveTdeeController.renderPartialPrompt();
   assert.match(listEl.innerHTML, /נרשמו רק 300 קל׳/);
-  assert.match(listEl.innerHTML, /onclick="goToScreen\('food'\)"/);
-  assert.match(listEl.innerHTML, /onclick="confirmDayLight\('/);
+  // TASK-007 UX-8.6 (WP9): "השלם" now scopes the Food-screen handoff to the suspect day via
+  // DayNavigationController.dayNavToDate(key) (called directly on the already-window-exposed
+  // DayNavigationController object — not a new window.* facade), before switching screens.
+  // The suspect day's key is today's real date (no injected date override in this fixture), so
+  // it is extracted rather than hardcoded, and cross-checked against confirmDayLight's own key
+  // to prove both buttons on the row are scoped to the exact same day.
+  const dayNavMatch = listEl.innerHTML.match(/onclick="DayNavigationController\.dayNavToDate\('([\d-]+)'\);goToScreen\('food'\)"/);
+  const lightMatch = listEl.innerHTML.match(/onclick="confirmDayLight\('([\d-]+)'\)"/);
+  assert.ok(dayNavMatch, '"השלם" must call DayNavigationController.dayNavToDate(key) before goToScreen(\'food\')');
+  assert.ok(lightMatch, '"אכלתי קליל" must call confirmDayLight(key)');
+  assert.equal(dayNavMatch[1], lightMatch[1], 'both buttons on the same suspect-day row must reference the same day key');
   assert.equal(txtEl.textContent, 'ראיתי ימים עם מעט מאוד רישום. עדכן אותי כדי שאדייק לך את היעד:');
   assert.equal(revealed, true);
 });

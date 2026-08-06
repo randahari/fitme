@@ -233,7 +233,13 @@
       return '<div class="partial-row">' +
         '<span>' + label + ' — נרשמו רק ' + d.kcal + ' קל׳</span>' +
         '<span style="display:flex;gap:6px">' +
-          '<button class="btn-small" onclick="goToScreen(\'food\')">השלם</button>' +
+          // TASK-007 UX-8.6 (WP9, Option C — Product/Architecture-approved): מעבר
+          // למסך האוכל חייב לשקף את היום שהניע אותו. קורא ל-
+          // DayNavigationController.dayNavToDate ישירות דרך window.DayNavigationController
+          // הקיים-ומאז ומתמיד (לא דרך פאסאד window.* חדש ב-js/app.js — ר' ההערה
+          // ליד dayNavToDate ב-js/ui/dayNavigationController.js), ואז מעבר-מסך
+          // רגיל, בדיוק כמו ש-"אכלתי קליל" שלצידו כבר מעביר את d.key.
+          '<button class="btn-small" onclick="DayNavigationController.dayNavToDate(\'' + d.key + '\');goToScreen(\'food\')">השלם</button>' +
           '<button class="btn-ghost" style="width:auto;padding:6px 10px;margin:0" onclick="confirmDayLight(\'' + d.key + '\')">אכלתי קליל</button>' +
         '</span>' +
       '</div>';
