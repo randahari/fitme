@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-05
+**Last Updated:** 2026-08-06
 
 ---
 
@@ -37,7 +37,80 @@
 - 🟢 FITME Safety Layer Canonical Decision Package approved and closed (`docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md`, v2.6; all fifteen Required Canonical Decisions resolved — RCD-01 SL-001 standalone Work Item, RCD-02 Safety Decision Matrix, RCD-03 closed `reasonCode`/`reasonDetail`, RCD-04 meaning of `ESCALATED`, RCD-05 Constitutional Evaluation/Health Layer/Safety Layer relationship, RCD-06 documentation synchronization, RCD-07 canonical precedence confirmed, RCD-08 single-event safety bypass criteria, RCD-09 Safety Decision Matrix disposition policy, RCD-10 derivation of Safety Matrix dimensions, RCD-11 canonical `reasonCode` catalogue, RCD-12 ordered Safety Rule framework, RCD-13 Safety Layer output contract, RCD-14 Canonical Safety Rule evaluation model, RCD-15 RG-3 resolution — Decision-Level Modification for tied-set Terminal Decisions; documentation-only, no production code changes)
 - 🟢 SL-001 — Safety Layer approved, implemented, verified and closed (`js/coachDecisionSystem/safetyLayer.js`; D3 §17's Composite Engine, fifth of six internal collaborators — Stage 3/8/9 Safety authority behind the existing `safetyIntegrationPort.js`; `index.html`/`sw.js` wiring for the one new file; 4 new tests, full suite 1374/1374 passing)
 - 🟢 Coach Bible Chapters 2–22 completed independent Product and AI Architecture review and are approved and Canonical (docs-only; repository synchronization of a pre-existing document)
-- ⏭️ Next canonical task: TASK-007 — UX System, per SL-001's own designation (RCD-01) of itself as an architectural prerequisite before it; Expression remains the sixth and last undesignated D3 §17 collaborator
+- 🟢 TASK-007 — UX System approved, implemented, verified and closed (cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers, ten Work Packages; 12 test files extended/added, 97 net new/changed tests, full suite 1471/1471 passing; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
+- ⏭️ Next canonical task: TASK-008 — Design System; Expression remains the sixth and last undesignated D3 §17 collaborator
+
+---
+
+## TASK-007 — UX System (Implementation Complete, Closed)
+
+**Date:** 2026-08-06
+**Status:** DONE — implemented, tested, reviewed, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented `docs/specs/TASK_007_SPEC_v1.0.md`'s cross-cutting Experience/Interaction/
+Presentation-Behavior Contracts over the existing UI Presenters/Controllers, across ten Work
+Packages (C1 precedent — one Work Package implemented, tested, self-reviewed, and committed at a
+time, each individually requiring its own Product Review and Architecture Review before commit).
+WP1–WP3: static accessibility baseline — `aria-live` on the four coach-originated cards,
+`aria-label`/`<label for>` across onboarding, Home, Settings, Food, and Workout form controls, a
+`prefers-reduced-motion` guard on the two CSS keyframe animations (`index.html`, `css/app.css`,
+`js/ui/foodScreenPresenter.js`). WP4: keyboard operability for click-only controls and
+deterministic focus-in/focus-restore on the barcode overlay (`index.html`,
+`js/nutrition/barcodeFlowController.js`). WP5: deterministic sequencing among the four
+Home-screen coach-originated cards consistent with each domain's own existing severity signal,
+plus a Dismiss affordance added to `#coach-card` (`js/coach/coachPresenter.js`), which previously
+had none. WP6–WP7: structured failure/success presentation — generic `alert()` calls replaced
+with messages differentiated by the Persistence Gateway's actual `status`/`error.code`/
+`error.retryable` fields, across the Adaptive/Settings domain
+(`js/adaptive/adaptiveTdeeController.js`, `js/ui/dayNavigationController.js`, `js/memory.js`) and
+the Nutrition domain (`js/nutrition/mealCommitService.js`, `quickLogService.js`); required an
+additive, Product/Architecture-approved prerequisite — `js/persistenceGateway.js` additively
+exports `classifyError` (no `OPERATIONS` catalog entry or request/response contract changed), and
+`js/app.js`'s `saveProfile()`/`saveTodayData()` now return a structured `{status, error}` result
+instead of silently swallowing failures. WP8: a return-after-absence continuity signal on Home
+(UX-7.5/UX-14.1a), sourced entirely from the existing day-history data already read by
+`updateStreak()`/`buildWeekChart()`, with no new Persistence field (`js/ui/homePresenter.js`).
+WP9: a cross-cutting audit of every remaining normative rule, finding and fixing two genuine,
+narrow gaps — two un-mirrored RTL disclosure chevrons (`js/app.js`, `js/memory.js`) and one
+cross-surface context-handoff gap (the Adaptive partial-day prompt's "Complete" button now scopes
+the Food screen to the originating day, via a `dayNavToDate(key)` method added to
+`DayNavigationController`'s own already-`window`-exposed API object — a dedicated Engineering
+Options Analysis found this the only approach that introduces no new bare `window.*` facade in
+`js/app.js`, keeping the C1-characterized window-assignment inventory
+(`docs/architecture/C1_WP0_INVENTORY.md` §3) unchanged, Product/Architecture-approved as
+"Option C"). WP10: documentation and closure only.
+
+### Verification
+
+- 12 test files extended or added across WP1–WP9 (+930/-21 lines); 97 net new/changed tests over
+  the pre-TASK-007 baseline; full suite **1471/1471 passing** (from the SL-001/pre-TASK-007
+  baseline of 1374/1374).
+- Every one of WP1 through WP9 individually received Product Review: APPROVED and Architecture
+  Review: APPROVED, communicated directly by the Head of Product and AI Architect before its own
+  commit — see `docs/specs/TASK_007_SPEC_v1.0.md` §1.1's closure revision-history row and §31.4
+  Closure Record.
+- `docs/architecture/C1_WP0_INVENTORY.md`'s closed, test-asserted window-assignment inventory (13
+  sites / 12 properties in `js/app.js`) is unchanged by this task — verified both by direct
+  inspection and by `tests/c1Wp0Characterization.test.js`/`tests/c1Wp10Wiring.test.js` passing
+  unmodified.
+
+### Next
+
+See `docs/specs/TASK_007_SPEC_v1.0.md`'s Closure Record (§31.4) for the full follow-up list (none
+of which expand this task's own scope) — two items were surfaced during closure verification and
+recorded for explicit Product/Architecture disposition rather than resolved unilaterally by
+Engineering: (1) `js/persistenceGateway.js`'s additive `classifyError` export (WP6 prerequisite)
+is a literal exception to §26.4's Explicit No-Touch listing of that file; (2) `APP_VERSION`/`sw.js`
+`VERSION` were not advanced during WP1–WP9 despite shipping user-visible behavior changes, an
+apparent deviation from §26.3's own conditional and from C1's per-Work-Package versioning
+precedent — not corrected during WP10 since a version bump has a real, live effect (service-worker
+cache invalidation for every existing user), outside WP10's documentation-only, no-Runtime-change
+scope. Neither is assessed as blocking. TASK-008 — Design System is the next named work item;
+Expression remains the sixth and last undesignated D3 §17 Coach Decision System collaborator, with
+no work item yet named for it.
 
 ---
 

@@ -570,7 +570,9 @@ architecture phase.
 
 ## TASK-007 — UX System
 
-**Status:** ⏳ PENDING
+**Status:** ✅ DONE (Implementation complete, approved, closed)
+
+`docs/specs/TASK_007_SPEC_v1.0.md` completed implementation across ten Work Packages (C1 precedent — implement, test, self-review, and commit one Work Package at a time, each requiring its own Product Review and Architecture Review before commit), per the Engineering Workflow lifecycle. Implementation is complete: WP1–WP3 static accessibility baseline (`aria-live`, `aria-label`, `<label for>`, `prefers-reduced-motion`) across onboarding, Home, Settings, Food, and Workout; WP4 keyboard operability and deterministic focus management on the barcode overlay; WP5 deterministic Home-card sequencing plus a Dismiss affordance added to the coach card; WP6–WP7 structured failure/success presentation (replacing generic `alert()` calls with messages differentiated by the Persistence Gateway's actual `status`/`error.code`/`error.retryable`) across the Adaptive/Settings and Nutrition domains; WP8 a return-after-absence continuity signal on Home, sourced from existing day-history data with no new Persistence field; WP9 a cross-cutting audit fixing two RTL icon-directionality gaps and one cross-surface context-handoff gap (the Adaptive partial-day prompt's "Complete" button, now day-scoped via a method added to `DayNavigationController`'s own already-exposed API object rather than a new `js/app.js` facade, preserving the C1-characterized window-assignment inventory unchanged); WP10 documentation and closure only. 12 test files extended or added, 97 net new/changed tests, full suite **1471/1471 passing** (from the pre-TASK-007 baseline of 1374/1374). Approved by Head of Product + AI Architect and closed 2026-08-06 — see `docs/specs/TASK_007_SPEC_v1.0.md`'s Closure Record (§31.4) for details, evidence, and two tracked follow-up items surfaced during closure verification (an additive, previously-approved `js/persistenceGateway.js` export that is a literal exception to §26.4's No-Touch list; `APP_VERSION` not advanced despite shipped user-visible behavior — both explicitly non-blocking, neither expanding this task's own scope, both awaiting Product/Architecture disposition).
 
 ## TASK-008 — Design System
 
@@ -595,6 +597,7 @@ D2 — Coach Decision Pipeline Specification is approved and Canonical (orchestr
 D3 — Coach Decision System Architecture is approved and Canonical (architecture specification only, no production code changes).
 TASK-006 — Decision Engine is approved, implemented (fourth of six D3 §17 collaborators) and closed.
 SL-001 — Safety Layer is approved, implemented (fifth of six D3 §17 collaborators) and closed, per the FITME Safety Layer Canonical Decision Package v2.0 (v2.6, Closed — all fifteen Required Canonical Decisions, RCD-01 through RCD-15, resolved).
+TASK-007 — UX System is approved, implemented (WP1–WP10, cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers) and closed.
 
-Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), TASK-006 (Decision Engine), and SL-001 (Safety Layer) are complete and closed.
-Next Work Item: TASK-007 — UX System, per SL-001's own designation (RCD-01) of itself as an architectural prerequisite before it. Expression remains the sixth and last undesignated D3 §17 Coach Decision System collaborator; no work item is yet named for it.
+Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), TASK-006 (Decision Engine), SL-001 (Safety Layer), and TASK-007 (UX System) are complete and closed.
+Next Work Item: TASK-008 — Design System, per this Roadmap's own existing "⏳ PENDING" entry (not yet started as of TASK-007's closure). Expression remains the sixth and last undesignated D3 §17 Coach Decision System collaborator; no work item is yet named for it.
