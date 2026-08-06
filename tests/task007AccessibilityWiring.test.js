@@ -5,9 +5,13 @@
 // names live in tests/foodScreenPresenter.test.js (JS-generated, not static markup); this file
 // adds §21.5 (programmatic <label for>/aria-label for onboarding, Home weight/measurements and
 // Settings form controls) and §21.6 (prefers-reduced-motion guard for the .spinner/.barcode-line
-// keyframe animations in css/app.css). Dependency-free: reads index.html/css/app.css as text and
-// asserts structural facts — same intentional scope limit as every prior *Wiring.test.js in this
-// repository (no DOM/Firebase harness, no execution of app.js).
+// keyframe animations in css/app.css). Work Package 3: the remaining §21.5 instances — visible
+// Food-screen (food-input, ql-morning, ql-breakfast, ql-snack) and Workout-screen (speed-slider,
+// incline-slider, duration-slider, steps-input) form controls left unassigned after WP2's
+// domain-scoped pass (see docs/specs/TASK_007_IMPLEMENTATION_PLAN.md §2.1). Dependency-free:
+// reads index.html/css/app.css as text and asserts structural facts — same intentional scope
+// limit as every prior *Wiring.test.js in this repository (no DOM/Firebase harness, no execution
+// of app.js).
 // Run with: node --test tests/task007AccessibilityWiring.test.js
 
 const test = require('node:test');
@@ -123,4 +127,50 @@ test('UX-21.6 addition does not remove the original spin/scan keyframes or their
   assert.match(appCss, /@keyframes scan { 0%,100% { top: 10%; } 50% { top: 90%; } }/);
   assert.match(appCss, /animation:\s*spin 0\.8s linear infinite;/);
   assert.match(appCss, /animation:\s*scan 2s ease-in-out infinite;/);
+});
+
+// ── UX-21.5 (remainder): Food-screen and Workout-screen form controls (Work Package 3) ──────
+
+const WP3_ARIA_LABEL_INPUTS = [
+  ['food-input', 'תיאור הארוחה'],
+  ['ql-morning', 'מה אתה שותה בבוקר\\?'],
+  ['ql-breakfast', 'ארוחת בוקר טיפוסית\\?'],
+  ['ql-snack', 'חטיף שאתה אוהב\\?'],
+  ['speed-slider', 'מהירות ממוצעת'],
+  ['incline-slider', 'שיפוע'],
+  ['duration-slider', 'משך האימון'],
+  ['steps-input', 'מספר צעדים']
+];
+
+WP3_ARIA_LABEL_INPUTS.forEach(([id, labelText]) => {
+  test('#' + id + ' (no adjacent <label>) carries a non-empty aria-label (UX-21.5, WP3)', () => {
+    const tagMatch = indexHtml.match(new RegExp('<input[^>]*id="' + id + '"[^>]*>'));
+    assert.ok(tagMatch, '#' + id + ' must exist');
+    assert.match(tagMatch[0], new RegExp('aria-label="' + labelText + '"'), '#' + id + ' must carry the expected aria-label');
+  });
+});
+
+test('WP3 additions are attribute-only — every affected control keeps its original id/placeholder/type/onclick wiring', () => {
+  assert.match(indexHtml, /<input type="text" id="food-input" placeholder="למשל: חביתה עם שתי ביצים\.\.\." aria-label="תיאור הארוחה" autocomplete="off">/);
+  assert.match(indexHtml, /<input type="text" id="ql-morning" placeholder="מה אתה שותה בבוקר\? \(קפה עם חלב\.\.\.\)" aria-label="מה אתה שותה בבוקר\?">/);
+  assert.match(indexHtml, /<input type="text" id="ql-breakfast" placeholder="ארוחת בוקר טיפוסית\?" aria-label="ארוחת בוקר טיפוסית\?" style="margin-top:6px">/);
+  assert.match(indexHtml, /<input type="text" id="ql-snack" placeholder="חטיף שאתה אוהב\?" aria-label="חטיף שאתה אוהב\?" style="margin-top:6px">/);
+  assert.match(indexHtml, /<input type="range" min="3" max="18" value="8" step="0\.5" id="speed-slider" aria-label="מהירות ממוצעת" oninput="updateCardio\(\)">/);
+  assert.match(indexHtml, /<input type="range" min="0" max="15" value="0" step="1" id="incline-slider" aria-label="שיפוע" oninput="updateCardio\(\)">/);
+  assert.match(indexHtml, /<input type="range" min="10" max="120" value="45" step="5" id="duration-slider" aria-label="משך האימון" oninput="updateWorkout\(\)">/);
+  assert.match(indexHtml, /<input type="number" id="steps-input" placeholder="מספר צעדים" aria-label="מספר צעדים" style="flex:1">/);
+});
+
+test('WP3 excludes camera-input, adapt-toggle, and dark-toggle — none of them carry a new aria-label', () => {
+  const cameraInput = indexHtml.match(/<input type="file" id="camera-input"[^>]*>/);
+  assert.ok(cameraInput, '#camera-input must still exist');
+  assert.doesNotMatch(cameraInput[0], /aria-label=/, '#camera-input must not have gained an aria-label under WP3');
+
+  const adaptToggle = indexHtml.match(/<div class="toggle" id="adapt-toggle"[^>]*>/);
+  assert.ok(adaptToggle, '#adapt-toggle must still exist');
+  assert.doesNotMatch(adaptToggle[0], /aria-label=/, '#adapt-toggle must not have gained an aria-label under WP3');
+
+  const darkToggle = indexHtml.match(/<div class="toggle" id="dark-toggle"[^>]*>/);
+  assert.ok(darkToggle, '#dark-toggle must still exist');
+  assert.doesNotMatch(darkToggle[0], /aria-label=/, '#dark-toggle must not have gained an aria-label under WP3');
 });

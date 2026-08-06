@@ -310,7 +310,7 @@
         <div class="topbar"><div class="topbar-title">מה אכלת?</div></div>
         <div class="scroll-content">
           <div class="input-group">
-            <input type="text" id="food-input" placeholder="למשל: חביתה עם שתי ביצים..." autocomplete="off">
+            <input type="text" id="food-input" placeholder="למשל: חביתה עם שתי ביצים..." aria-label="תיאור הארוחה" autocomplete="off">
             <button class="send-btn" onclick="analyzeFood()" aria-label="שלח לניתוח">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
@@ -344,9 +344,9 @@
           <div id="quick-learn" class="quick-learn hidden">
             <div class="quick-learn-head">🧭 בוא נלמד את הקבועים שלך</div>
             <p class="quick-learn-sub">כמה שאלות קצרות והמאמן יכין לך רישום בלחיצה אחת.</p>
-            <input type="text" id="ql-morning" placeholder="מה אתה שותה בבוקר? (קפה עם חלב...)">
-            <input type="text" id="ql-breakfast" placeholder="ארוחת בוקר טיפוסית?" style="margin-top:6px">
-            <input type="text" id="ql-snack" placeholder="חטיף שאתה אוהב?" style="margin-top:6px">
+            <input type="text" id="ql-morning" placeholder="מה אתה שותה בבוקר? (קפה עם חלב...)" aria-label="מה אתה שותה בבוקר?">
+            <input type="text" id="ql-breakfast" placeholder="ארוחת בוקר טיפוסית?" aria-label="ארוחת בוקר טיפוסית?" style="margin-top:6px">
+            <input type="text" id="ql-snack" placeholder="חטיף שאתה אוהב?" aria-label="חטיף שאתה אוהב?" style="margin-top:6px">
             <div id="ql-loading" class="ai-loading hidden"><div class="spinner"></div><span>המאמן בונה...</span></div>
             <div style="display:flex;gap:8px;margin-top:10px">
               <button class="btn-primary" onclick="submitQuickLearn()">בנה לי רשימה</button>
@@ -395,12 +395,12 @@
           <div id="cardio-extra" class="extra-fields hidden">
             <div class="section-header"><span>מהירות ממוצעת</span></div>
             <div class="slider-row">
-              <input type="range" min="3" max="18" value="8" step="0.5" id="speed-slider" oninput="updateCardio()">
+              <input type="range" min="3" max="18" value="8" step="0.5" id="speed-slider" aria-label="מהירות ממוצעת" oninput="updateCardio()">
               <span class="slider-val" id="speed-val">8 קמ"ש</span>
             </div>
             <div class="section-header"><span>שיפוע</span></div>
             <div class="slider-row">
-              <input type="range" min="0" max="15" value="0" step="1" id="incline-slider" oninput="updateCardio()">
+              <input type="range" min="0" max="15" value="0" step="1" id="incline-slider" aria-label="שיפוע" oninput="updateCardio()">
               <span class="slider-val" id="incline-val">0%</span>
             </div>
           </div>
@@ -412,7 +412,7 @@
           </div>
           <div class="section-header"><span>משך האימון</span></div>
           <div class="slider-row">
-            <input type="range" min="10" max="120" value="45" step="5" id="duration-slider" oninput="updateWorkout()">
+            <input type="range" min="10" max="120" value="45" step="5" id="duration-slider" aria-label="משך האימון" oninput="updateWorkout()">
             <span class="slider-val" id="duration-val">45 דק׳</span>
           </div>
           <div class="burn-card">
@@ -422,7 +422,7 @@
           </div>
           <div class="section-header"><span>צעדים היום</span></div>
           <div style="display:flex;gap:8px;margin-bottom:16px">
-            <input type="number" id="steps-input" placeholder="מספר צעדים" style="flex:1">
+            <input type="number" id="steps-input" placeholder="מספר צעדים" aria-label="מספר צעדים" style="flex:1">
             <button class="btn-small" onclick="logSteps()">שמור</button>
           </div>
           <button class="btn-primary" id="save-workout-btn" onclick="saveWorkout()" disabled>שמור אימון ✓</button>
