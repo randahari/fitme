@@ -907,3 +907,48 @@ the ports/boundaries this task defines; no real classification source exists yet
 metadata fields that are `NO_SIGNAL` at this baseline). This is a scope decision, not an oversight —
 D3 §17's six-collaborator design was already fixed before TASK-004; TASK-006 realizes four of the
 six, per its own approved scope.
+
+## 24. SL-001 — Safety Layer (Composite Engine, D3 §17, fifth collaborator)
+
+**Added by SL-001** (`docs/specs/SL-001_SPEC_v1.0.md`). Realizes the fifth of D3 §17's six internal
+collaborators: `js/coachDecisionSystem/safetyLayer.js` implements the production Safety Layer behind
+the existing, policy-free `SafetyIntegrationPort` (`js/coachDecisionSystem/safetyIntegrationPort.js`,
+unchanged, Canonical Decision CD-T006-05) — Stage 8 `disqualify()` (binary disqualification against
+one of four D1 Unit 02 absolute-override categories: a known allergy, an active medical-instruction
+conflict, an active high-risk symptom, or a conflict with one of Coach Bible Ch.19 §2's five permanent
+commitments), Stage 9 `finalReview()` (the full Safety Decision Matrix — a deterministic, ordered-rule
+evaluation, never a numeric score or Cartesian lookup table, over four closed-enum dimensions —
+`RiskType` (11 values), `EvidenceConfidence` (6, reusing D1 Unit 11's Evidence Hierarchy unaltered),
+`Correctability` (4), `Urgency` (4) — derived per matched Canonical Safety Rule and resolved to one of
+five dispositions in fixed protective order, `ESCALATED` → `BLOCKED` → `DEFERRED` → `MODIFIED` →
+`UNMODIFIED`, with a deterministic same-disposition tie-break — `Urgency`, then `EvidenceConfidence`,
+then a fixed nine-item Canonical Safety Rule Order — wherever more than one Rule Result ties), and a
+Stage 3 `detectSafetyOpportunities()` contribution, dispatched from
+`js/coachDecisionSystem/internalPipelineOrchestrator.js` (which requires `SafetyLayer` directly, the
+same stable-module pattern already used for the other internal collaborators).
+`decisionFormation.js` (Stage 9 assembly) required no change: its existing `MODIFIED` branch already
+attaches a `modification: { modifiedContent }` sidecar at the decision level, exactly matching RG-3's
+resolution (Canonical Decision RCD-15 — a tied-set Terminal Decision is evaluated as one
+undifferentiated unit; `options[]` is preserved unmutated; the resulting modification is never scoped
+to an individual option). `reasonCode`/`reasonDetail` were added additively to `DisqualificationResult`/
+`SafetyReviewResult`'s existing wire shape (a closed 13-value `reasonCode` catalogue as the sole
+canonical authority; `reasonDetail.secondaryReasonCodes` structured supporting information only,
+scoped to Rule Results that supported the winning disposition but lost only the tie-break) — no
+method or parameter removed, no other field altered. `index.html`/`sw.js` — script/shell wiring added
+for the one new file, positioned after `decisionFormation.js` and before `internalPipelineOrchestrator.js`
+in dependency order.
+
+Per the same repository state already recorded at §23: `internalPipelineOrchestrator.js`'s own
+registered `run()` entry point — the only Composite Engine entry point `registerCoachDecisionSystem.js`
+currently wires into the Engine Registry — still performs no Stage 3/6/8/9 dispatch of any kind.
+`detectSafetyOpportunities()`, `runDecisionPass()`, `disqualify()`, and `finalReview()` are each
+exposed on their respective module's public API and fully covered by tests, but none is yet reached
+from any live call path, for the same reason `detectInitiativeOpportunities()`/
+`runForInitiativeOpportunity()` (TASK-005) and `runForOpportunity()` (TASK-004) are not: no live Stage
+4/5 (Evidence/Eligibility Evaluation) Opportunity source exists yet in this repository — the same
+Repository Gap already recorded at §23 (G-2), unresolved and unaffected by SL-001, since wiring the
+Decision Engine into a live call path was never part of SL-001's own approved scope. Expression
+remains the sixth and last unbuilt D3 §17 collaborator — see `docs/specs/SL-001_SPEC_v1.0.md`'s
+Closure Record (§36) for the current, non-architectural repository gaps this leaves. This is a scope
+decision, not an oversight — D3 §17's six-collaborator design was already fixed before TASK-004;
+SL-001 realizes five of the six, per its own approved scope.
