@@ -104,9 +104,13 @@ test('.toggle and .toggle.on resolve to their exact pre-WP7 values; sizing/box-s
   assert.match(propValue(thumb, 'box-shadow'), /^0 1px 3px rgba\(0,0,0,0\.15\)$/, 'box-shadow must remain untouched (OD-8008-6: elevation out of scope)');
 });
 
-test('.empty-state resolves to its exact pre-WP7 values (color #C0A880, font-size 13px, padding 24px)', () => {
+test('.empty-state resolves to its exact pre-WP7 font-size/padding, and its WP11-remediated color (color #5A4020, font-size 13px, padding 24px)', () => {
+  // Color updated by the WP11 WCAG Resolution Decision Package (Product/Architecture
+  // approved): --color-text-tertiary -> --color-text-secondary, reusing an existing token,
+  // no primitive value changed. font-size/padding are unaffected by that remediation and
+  // remain the original pre-WP7 values.
   const body = ruleBody('.empty-state');
-  assert.equal(resolve(propValue(body, 'color'), allDecls), '#C0A880');
+  assert.equal(resolve(propValue(body, 'color'), allDecls), '#5A4020');
   assert.equal(resolve(propValue(body, 'font-size'), allDecls), '13px');
   assert.equal(resolve(propValue(body, 'padding'), allDecls), '24px');
 });
