@@ -87,6 +87,50 @@ body.dark {
      no fourth tier added (§11.2, not resolved by this Work Package). */
 }
 
+/* ── TASK-008 WP2 — TYPOGRAPHY TOKENS ──
+   Per TASK_008_SPEC_v1.0.md §9 and docs/specs/TASK_008_IMPLEMENTATION_PLAN.md WP2.
+   Font-family token reuses the existing literal unchanged. The size scale names
+   every one of the eighteen font-size values already in use, in ascending order —
+   an "equivalent categorization" (§9.2) by magnitude, not a heading/body/label
+   role assignment: naming which existing size means "heading" vs. "body" vs.
+   "label" is a visual-hierarchy judgment this Work Package does not make; that
+   remains for the Component Catalog (WP7/WP8) or a future Product-reviewed
+   refinement, consistent with not exceeding WP2's own scope.
+   The weight scale offers only the four already-loaded weights (index.html:19:
+   400/500/700/800), resolving §9.3 via its lower-risk option — no new Google
+   Fonts request. The fourteen existing `font-weight: 600` declarations already
+   in this file are NOT modified by this Work Package (no consumer is migrated
+   here, matching WP1's own token-only precedent); each migrates to a compliant
+   weight token when its owning component is consolidated in a later Work
+   Package. */
+:root {
+  --font-family-base: 'Heebo', -apple-system, sans-serif;
+
+  --font-size-1:  9px;
+  --font-size-2:  10px;
+  --font-size-3:  11px;
+  --font-size-4:  12px;
+  --font-size-5:  13px;
+  --font-size-6:  14px;
+  --font-size-7:  15px;
+  --font-size-8:  16px;
+  --font-size-9:  18px;
+  --font-size-10: 20px;
+  --font-size-11: 22px;
+  --font-size-12: 24px;
+  --font-size-13: 26px;
+  --font-size-14: 28px;
+  --font-size-15: 30px;
+  --font-size-16: 36px;
+  --font-size-17: 40px;
+  --font-size-18: 52px;
+
+  --font-weight-regular:   400;
+  --font-weight-medium:    500;
+  --font-weight-bold:      700;
+  --font-weight-extrabold: 800;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 html, body {
