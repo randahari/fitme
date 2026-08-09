@@ -1,7 +1,9 @@
-// TASK-008 WP11 — Contrast fixture (TASK_008_SPEC_v1.0.md §20.1/§20.2, OD-11a/OD-11b).
+// TASK-008 WP11/WP12 — Contrast fixture (TASK_008_SPEC_v1.0.md §20.1/§20.2, OD-11a/OD-11b).
 // A maintained fixture of the actual foreground/background color-token pairings rendered on
-// the Home and Food screens, extracted directly from css/app.css's selector rules (not the
-// :root/body.dark palette in isolation) — per OD-11b's resolved enforcement mechanism.
+// the Home, Food, Workout, Profile, and Settings screens, extracted directly from
+// css/app.css's selector rules (not the :root/body.dark palette in isolation) — per OD-11b's
+// resolved enforcement mechanism. Extended by WP12 per §20.1's "ongoing Engineering
+// responsibility" to maintain this fixture as new components/selectors are migrated.
 //
 // Each entry lists: the selector(s) the pairing comes from, the screen(s) it renders on, the
 // foreground/background CSS expressions exactly as they appear in css/app.css, which WCAG
@@ -51,12 +53,15 @@ module.exports = [
   { id: 'success-on-success-subtle-light-only', selectors: ['.confidence-badge.high', '.quick-chip[disabled]'], screens: ['Food'], kind: 'text', fg: 'var(--color-success)', bg: 'var(--color-success-subtle)', criterion: '1.4.3', threshold: 4.5, note: 'passes light mode only' },
   { id: 'danger-on-danger-subtle-light-only', selectors: ['.confidence-badge.low'], screens: ['Food'], kind: 'text', fg: 'var(--color-danger)', bg: 'var(--color-danger-subtle)', criterion: '1.4.3', threshold: 4.5, note: 'passes light mode only' },
 
+  // ── WP12: Workout/Profile/Settings — already-passing pairings ──
+  { id: 'text-secondary-on-primary-subtle-achievement', selectors: ['.ach-title (in .achievement.earned)'], screens: ['Profile'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
+
   // ── DEFERRED — Product/Architecture reviewed; each fails Option E's condition 5 (requires a
   // new Product/Visual Language judgment, and/or would touch the app's most prominent controls
   // or remove a semantic color signal with no same-tier existing-token alternative available).
   // Per the approved Deferment decision, these do not block TASK-008; they are recorded as
   // deferred Product items for the future Brand/Visual Identity phase. ──
-  { id: 'DEFERRED-white-on-primary-dark', selectors: ['.btn-primary', '.btn-small'], screens: ['Food'], kind: 'text', fg: '#FFFFFF', bg: 'var(--color-primary)', criterion: '1.4.3', threshold: 4.5, mode: 'dark', note: 'fails only in dark mode; light mode passes (see above). Deferred: Decision Package analysis found only existing-token substitutions that would change the primary CTA\'s dark-mode visual identity — a new Product/Visual Language judgment, outside Option E.' },
+  { id: 'DEFERRED-white-on-primary-dark', selectors: ['.btn-primary', '.btn-small', '.int-btn.active'], screens: ['Food', 'Workout'], kind: 'text', fg: '#FFFFFF', bg: 'var(--color-primary)', criterion: '1.4.3', threshold: 4.5, mode: 'dark', note: 'fails only in dark mode; light mode passes (see above). Deferred: Decision Package analysis found only existing-token substitutions that would change the primary CTA\'s dark-mode visual identity — a new Product/Visual Language judgment, outside Option E. .int-btn.active (WP12) is the identical pairing/values, confirmed by the same standing Deferment decision, not a fresh finding.' },
   { id: 'DEFERRED-success-on-success-subtle-dark', selectors: ['.confidence-badge.high', '.quick-chip[disabled]'], screens: ['Food'], kind: 'text', fg: 'var(--color-success)', bg: 'var(--color-success-subtle)', criterion: '1.4.3', threshold: 4.5, mode: 'dark', note: 'fails only in dark mode. Deferred: no --color-success-emphasis (middle) tier exists; every existing-token alternative either removes the success color signal or inverts the component\'s visual pattern — outside Option E.' },
   { id: 'DEFERRED-danger-on-danger-subtle-dark', selectors: ['.confidence-badge.low'], screens: ['Food'], kind: 'text', fg: 'var(--color-danger)', bg: 'var(--color-danger-subtle)', criterion: '1.4.3', threshold: 4.5, mode: 'dark', note: 'fails only in dark mode. Deferred: same reasoning as the success/success-subtle entry above — no --color-danger-emphasis tier exists.' },
 ];

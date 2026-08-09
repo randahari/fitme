@@ -1,8 +1,8 @@
-// TASK-008 WP11 — Contrast fixture verification (TASK_008_SPEC_v1.0.md §20.1/§20.2,
+// TASK-008 WP11/WP12 — Contrast fixture verification (TASK_008_SPEC_v1.0.md §20.1/§20.2,
 // OD-11a/OD-11b). Consumes tests/fixtures/wcagContrastFixtureHomeFood.js — the maintained
-// fixture of every foreground/background color-token pairing actually rendered on the Home
-// and Food screens — and verifies each against the WCAG 2.1 AA bar (4.5:1 text / 3:1
-// large-text or non-text-UI, per §20.1).
+// fixture of every foreground/background color-token pairing actually rendered on the Home,
+// Food, Workout, Profile, and Settings screens — and verifies each against the WCAG 2.1 AA
+// bar (4.5:1 text / 3:1 large-text or non-text-UI, per §20.1).
 //
 // Entries NOT prefixed "DEFERRED-" are asserted to pass, in every mode they apply to — these
 // are ordinary regression guards. Entries prefixed "DEFERRED-" are WCAG AA gaps Product/
