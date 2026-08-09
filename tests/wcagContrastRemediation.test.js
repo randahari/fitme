@@ -7,10 +7,12 @@
 //     rendering on --color-surface or --color-surface-subtle (WCAG 1.4.3, 4.5:1 normal text).
 //   - .send-btn's icon color: white -> var(--color-surface) (WCAG 1.4.11, 3:1 non-text/icon,
 //     since it is an inline SVG with stroke="currentColor", not text).
-// Every other consumer of --color-text-tertiary (.seg-btn, .food-tag, .plan-tab,
-// .wd-badge.rest — none of which render on Home or Food) is deliberately left untouched, per
-// the Decision Package's scope boundary; their WCAG status remains unverified, carried
-// forward for a future Work Package.
+// Every other consumer of --color-text-tertiary (.seg-btn, .plan-tab, .wd-badge.rest — none of
+// which render on Home or Food) is deliberately left untouched, per the Decision Package's
+// scope boundary; their WCAG status remains unverified, carried forward for a future Work
+// Package. (.food-tag was in this set at WP11 time; WP13 found it renders on Onboarding and
+// resolved it via the Semantic Token Usage Contract's Option E — see
+// tests/onboardingLoginBarcodeTokenMigration.test.js.)
 // Run with: node --test tests/wcagContrastRemediation.test.js
 
 const test = require('node:test');
@@ -89,8 +91,8 @@ test('none of the fixed selectors reference --color-text-tertiary any more', () 
   }
 });
 
-test('the four out-of-WP11-scope consumers of --color-text-tertiary are untouched (not part of this remediation)', () => {
-  for (const sel of ['.seg-btn', '.food-tag', '.plan-tab']) {
+test('the remaining out-of-WP11-scope consumers of --color-text-tertiary are untouched (not part of this remediation)', () => {
+  for (const sel of ['.seg-btn', '.plan-tab']) {
     assert.equal(propValue(ruleBody(sel), 'color'), 'var(--color-text-tertiary)', `${sel} color`);
   }
   assert.equal(propValue(ruleBody('.wd-badge.rest'), 'color'), 'var(--color-text-tertiary)');

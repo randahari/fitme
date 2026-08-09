@@ -215,39 +215,39 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
 /* ── LOGIN ── */
 .login-screen {
   position: fixed; inset: 0;
-  background: var(--bg);
+  background: var(--color-surface);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 40px 28px; gap: 0;
+  padding: var(--space-13) var(--space-11); gap: 0;
 }
-.login-hero { text-align: center; margin-bottom: 40px; }
-.login-icon { font-size: 52px; margin-bottom: 16px; }
-.login-hero h1 { font-size: 30px; font-weight: 700; color: var(--gold); letter-spacing: -1px; margin-bottom: 6px; }
-.login-hero p { font-size: 14px; color: var(--text-3); }
+.login-hero { text-align: center; margin-bottom: var(--space-13); }
+.login-icon { font-size: var(--font-size-18); margin-bottom: var(--space-7); }
+.login-hero h1 { font-size: var(--font-size-15); font-weight: var(--font-weight-bold); color: var(--color-primary); letter-spacing: -1px; margin-bottom: 6px; }
+.login-hero p { font-size: var(--font-size-6); color: var(--color-text-secondary); }
 .btn-google {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 24px; border-radius: var(--radius);
-  border: 0.5px solid var(--border-2); background: var(--bg);
-  font-size: 15px; font-weight: 500; cursor: pointer;
-  color: var(--text); width: 100%; max-width: 320px;
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: var(--space-6) var(--space-10); border-radius: var(--radius);
+  border: 0.5px solid var(--color-border-strong); background: var(--color-surface);
+  font-size: var(--font-size-7); font-weight: 500; cursor: pointer;
+  color: var(--color-text); width: 100%; max-width: 320px;
   justify-content: center; transition: background 0.15s;
 }
-.btn-google:active { background: var(--bg-2); }
-.login-sub { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+.btn-google:active { background: var(--color-surface-subtle); }
+.login-sub { font-size: var(--font-size-4); color: var(--color-text-secondary); margin-top: var(--space-7); }
 
 /* ── ONBOARDING ── */
 .onboarding-wrap {
   position: fixed; inset: 0;
-  background: var(--bg);
+  background: var(--color-surface);
   display: flex; flex-direction: column;
   z-index: 100; overflow: hidden;
 }
-.ob-screen { display: none; flex-direction: column; height: 100%; padding: 52px 24px 32px; overflow-y: auto; }
+.ob-screen { display: none; flex-direction: column; height: 100%; padding: var(--space-14) var(--space-10) var(--space-12); overflow-y: auto; }
 .ob-screen.active { display: flex; }
 .ob-hero { margin-bottom: 28px; }
-.ob-emoji { font-size: 40px; margin-bottom: 14px; }
-.ob-hero h1 { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.8px; margin-bottom: 6px; }
-.ob-hero p { font-size: 14px; color: var(--text-3); line-height: 1.5; }
+.ob-emoji { font-size: var(--font-size-17); margin-bottom: var(--space-6); }
+.ob-hero h1 { font-size: var(--font-size-13); font-weight: var(--font-weight-bold); color: var(--color-text); letter-spacing: -0.8px; margin-bottom: 6px; }
+.ob-hero p { font-size: var(--font-size-6); color: var(--color-text-secondary); line-height: 1.5; }
 .ob-form { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-9); }
 .ob-form label { font-size: var(--font-size-4); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); margin-top: var(--space-3); letter-spacing: 0.3px; }
 .ob-form input { width: 100%; padding: var(--space-5) var(--space-6); border: 0.5px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface-subtle); color: var(--color-text); font-size: var(--font-size-7); outline: none; transition: border-color 0.15s; }
@@ -264,14 +264,14 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
 .seg-btn { flex: 1; padding: 9px; border: none; border-radius: 6px; background: none; color: var(--color-text-tertiary); font-size: var(--font-size-5); cursor: pointer; transition: all 0.15s; }
 .seg-btn.active { background: var(--color-surface); color: var(--color-primary); font-weight: var(--font-weight-medium); box-shadow: 0 1px 4px rgba(120,80,30,0.1); }
 
-.goal-cards { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-.goal-card { padding: 14px; border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--bg); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.15s; }
-.goal-card.selected { border-color: var(--gold); background: var(--gold-light); }
-.goal-icon { font-size: 22px; width: 40px; text-align: center; }
-.goal-title { font-size: 14px; font-weight: 500; color: var(--text); }
-.goal-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.goal-cards { display: flex; flex-direction: column; gap: var(--space-4); margin-bottom: var(--space-9); }
+.goal-card { padding: var(--space-6); border: 0.5px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); cursor: pointer; display: flex; align-items: center; gap: var(--space-5); transition: all 0.15s; }
+.goal-card.selected { border-color: var(--color-primary); background: var(--color-primary-subtle); }
+.goal-icon { font-size: var(--font-size-11); width: 40px; text-align: center; }
+.goal-title { font-size: var(--font-size-6); font-weight: var(--font-weight-medium); color: var(--color-text); }
+.goal-sub { font-size: var(--font-size-4); color: var(--color-text-secondary); margin-top: 2px; }
 
-.food-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.food-tags { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-1); }
 /* TASK-008 WP8 — badge/pill/chip consolidation (SPEC §17/§18): border-radius normalized to
    the Product-approved canonical value (20px = var(--radius-lg), the existing large-radius
    primitive). padding is explicitly NOT consolidated (Product decision: split into Static
@@ -280,7 +280,7 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
    NOT consolidated (Product decision: no shared value, current implementations remain
    approved exceptions) — tokenized to each instance's own existing value only, never a
    shared one, per the same discipline used for the segmented-control container spacing. */
-.food-tag { padding: 7px 13px; border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); font-size: var(--font-size-5); color: var(--color-text-tertiary); cursor: pointer; background: var(--color-surface-subtle); transition: all 0.15s; user-select: none; }
+.food-tag { padding: 7px 13px; border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); font-size: var(--font-size-5); color: var(--color-text-secondary); cursor: pointer; background: var(--color-surface-subtle); transition: all 0.15s; user-select: none; }
 .food-tag.selected { background: var(--color-primary-subtle); border-color: var(--color-primary-emphasis); color: var(--color-primary); }
 
 /* ── APP SHELL ── */
@@ -614,8 +614,8 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
 .barcode-close { background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; }
 .barcode-video { flex: 1; position: relative; overflow: hidden; }
 .barcode-video video { width: 100% !important; height: 100% !important; object-fit: cover; }
-.barcode-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 260px; height: 120px; border: 2px solid var(--gold); border-radius: 8px; pointer-events: none; }
-.barcode-line { position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--gold); opacity: 0.8; animation: scan 2s ease-in-out infinite; }
+.barcode-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 260px; height: 120px; border: 2px solid var(--color-primary); border-radius: 8px; pointer-events: none; }
+.barcode-line { position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--color-primary); opacity: 0.8; animation: scan 2s ease-in-out infinite; }
 @keyframes scan { 0%,100% { top: 10%; } 50% { top: 90%; } }
 .barcode-status { padding: 16px 20px 32px; color: rgba(255,255,255,0.7); font-size: 14px; text-align: center; }
 

@@ -44,9 +44,9 @@ module.exports = [
   { id: 'icon-surface-on-primary', selectors: ['.send-btn svg'], screens: ['Food'], kind: 'icon', fg: 'var(--color-surface)', bg: 'var(--color-primary)', criterion: '1.4.11', threshold: 3.0 },
 
   // ── Already-passing pairings verified during this fixture build (no change made) ──
-  { id: 'text-on-surface', selectors: ['.ring-pct', '.ring-kcal', '.stat-v', '.rm-val', '.adaptive-card-text', '.meal-name', '.result-name'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-text)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
+  { id: 'text-on-surface', selectors: ['.ring-pct', '.ring-kcal', '.stat-v', '.rm-val', '.adaptive-card-text', '.meal-name', '.result-name', '.btn-google', '.ob-hero h1', '.goal-title'], screens: ['Home', 'Food', 'Login', 'Onboarding'], kind: 'text', fg: 'var(--color-text)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'text-on-surface-subtle', selectors: ['.rm-val (in .result-macro)'], screens: ['Food'], kind: 'text', fg: 'var(--color-text)', bg: 'var(--color-surface-subtle)', criterion: '1.4.3', threshold: 4.5 },
-  { id: 'primary-on-surface', selectors: ['.link-btn', '.ring-kcal-rem', '.ring-mac-val', '.meal-kcal', '.quick-learn-head', '.adaptive-card-head', '.food-tab.active'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
+  { id: 'primary-on-surface', selectors: ['.link-btn', '.ring-kcal-rem', '.ring-mac-val', '.meal-kcal', '.quick-learn-head', '.adaptive-card-head', '.food-tab.active', '.login-hero h1'], screens: ['Home', 'Food', 'Login'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'primary-on-primary-subtle', selectors: ['.result-note', '.streak-badge', '.coach-card-text', '.confidence-badge.mid'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'text-secondary-on-primary-subtle', selectors: ['.quick-chip:active span'], screens: ['Food'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'white-on-primary-text-light-only', selectors: ['.btn-primary', '.btn-small'], screens: ['Food'], kind: 'text', fg: '#FFFFFF', bg: 'var(--color-primary)', criterion: '1.4.3', threshold: 4.5, note: 'passes light mode only — see failing entries below for the dark-mode result' },
@@ -55,6 +55,14 @@ module.exports = [
 
   // ── WP12: Workout/Profile/Settings — already-passing pairings ──
   { id: 'text-secondary-on-primary-subtle-achievement', selectors: ['.ach-title (in .achievement.earned)'], screens: ['Profile'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
+
+  // ── WP13: Onboarding/Login/Barcode overlay — already-passing pairings ──
+  // The barcode overlay is deliberately theme-independent (always-black viewfinder chrome, per
+  // SPEC §8.2 having no "theme-independent black/white" role category) — these pairings use
+  // literal hex on both sides rather than resolvable tokens, and do not vary by mode.
+  { id: 'white-on-black-barcode-header', selectors: ['.barcode-header'], screens: ['Barcode overlay'], kind: 'text', fg: '#FFFFFF', bg: '#000000', criterion: '1.4.3', threshold: 4.5, literal: true },
+  { id: 'white-on-translucent-white-barcode-close', selectors: ['.barcode-close'], screens: ['Barcode overlay'], kind: 'icon', fg: '#FFFFFF', bg: '#262626', criterion: '1.4.11', threshold: 3.0, literal: true, note: 'background is rgba(255,255,255,0.15) composited over the overlay\'s solid #000 — #262626 is that composited result' },
+  { id: 'translucent-white-on-black-barcode-status', selectors: ['.barcode-status'], screens: ['Barcode overlay'], kind: 'text', fg: '#B3B3B3', bg: '#000000', criterion: '1.4.3', threshold: 4.5, literal: true, note: 'text color is rgba(255,255,255,0.7) composited over the overlay\'s solid #000 — #B3B3B3 is that composited result' },
 
   // ── DEFERRED — Product/Architecture reviewed; each fails Option E's condition 5 (requires a
   // new Product/Visual Language judgment, and/or would touch the app's most prominent controls
