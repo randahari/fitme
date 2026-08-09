@@ -21,9 +21,9 @@
 // Decorative dividers (0.5px card/container borders using --color-border/--color-border-strong)
 // and purely decorative/animated elements (the loading .spinner, emoji glyphs used as icons)
 // are NOT included here — whether WCAG 1.4.11 reaches non-interactive-state decorative
-// borders, as opposed to the interactive icon controls OD-11a names explicitly
-// (`.icon-btn`, `.nav-btn svg`), is an open interpretive question this fixture does not
-// resolve; only the one interactive icon-color case already found (`.send-btn`) is included.
+// borders is an open interpretive question this fixture does not resolve; the interactive
+// icon controls OD-11a names explicitly (`.icon-btn`, `.nav-btn svg`) that carry actual
+// foreground/background color pairings ARE included (`.send-btn svg`, `.nav-btn svg`).
 //
 // Every entry marked passing: true was independently verified passing at the time this
 // fixture was built. Entries prefixed "DEFERRED-" are genuine, currently-measured WCAG AA
@@ -38,7 +38,7 @@
 
 module.exports = [
   // ── Already remediated (WP11 WCAG Resolution Decision Package, Product/Architecture approved) ──
-  { id: 'text-secondary-on-surface', selectors: ['.topbar-greeting', '.ring-pct-lbl', '.ring-kcal-of', '.ring-mac-lbl', '.stat-l', '.week-day', '.meal-time', '.section-header', '.quick-head', '.ai-loading', '.quick-learn-sub', '.adaptive-card-meta'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5, note: '.quick-learn-sub/.adaptive-card-meta resolved separately, under the Semantic Token Usage Contract (Option E) as a mechanical Engineering determination — same pairing/values as the rest of this entry, previously reached via var(--text-3) directly instead of the --color-text-tertiary alias' },
+  { id: 'text-secondary-on-surface', selectors: ['.topbar-greeting', '.ring-pct-lbl', '.ring-kcal-of', '.ring-mac-lbl', '.stat-l', '.week-day', '.meal-time', '.section-header', '.quick-head', '.ai-loading', '.quick-learn-sub', '.adaptive-card-meta', '.nav-btn (label text + svg icon via currentColor)'], screens: ['Home', 'Food', 'Global navbar'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5, note: '.quick-learn-sub/.adaptive-card-meta/.nav-btn resolved separately, under the Semantic Token Usage Contract (Option E) as a mechanical Engineering determination — same pairing/values as the rest of this entry, previously reached via var(--text-3) directly instead of the --color-text-tertiary alias. .nav-btn was WP14\'s own audit finding: initially escalated over its persistent, app-wide visual prominence, then explicitly confirmed by Product/Architecture as covered by Option E on the pairing\'s own merits, not its prominence — see docs/specs/TASK_008_IMPLEMENTATION_PLAN.md WP14.' },
   { id: 'text-secondary-on-surface-subtle', selectors: ['.rm-label', '.food-tab', '.empty-state'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-surface-subtle)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'text-secondary-quick-chip-span', selectors: ['.quick-chip span'], screens: ['Food'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'icon-surface-on-primary', selectors: ['.send-btn svg'], screens: ['Food'], kind: 'icon', fg: 'var(--color-surface)', bg: 'var(--color-primary)', criterion: '1.4.11', threshold: 3.0 },
@@ -46,7 +46,7 @@ module.exports = [
   // ── Already-passing pairings verified during this fixture build (no change made) ──
   { id: 'text-on-surface', selectors: ['.ring-pct', '.ring-kcal', '.stat-v', '.rm-val', '.adaptive-card-text', '.meal-name', '.result-name', '.btn-google', '.ob-hero h1', '.goal-title'], screens: ['Home', 'Food', 'Login', 'Onboarding'], kind: 'text', fg: 'var(--color-text)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'text-on-surface-subtle', selectors: ['.rm-val (in .result-macro)'], screens: ['Food'], kind: 'text', fg: 'var(--color-text)', bg: 'var(--color-surface-subtle)', criterion: '1.4.3', threshold: 4.5 },
-  { id: 'primary-on-surface', selectors: ['.link-btn', '.ring-kcal-rem', '.ring-mac-val', '.meal-kcal', '.quick-learn-head', '.adaptive-card-head', '.food-tab.active', '.login-hero h1'], screens: ['Home', 'Food', 'Login'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
+  { id: 'primary-on-surface', selectors: ['.link-btn', '.ring-kcal-rem', '.ring-mac-val', '.meal-kcal', '.quick-learn-head', '.adaptive-card-head', '.food-tab.active', '.login-hero h1', '.nav-btn.active', '.loading-text'], screens: ['Home', 'Food', 'Login', 'Global navbar', 'Loading'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-surface)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'primary-on-primary-subtle', selectors: ['.result-note', '.streak-badge', '.coach-card-text', '.confidence-badge.mid'], screens: ['Home', 'Food'], kind: 'text', fg: 'var(--color-primary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'text-secondary-on-primary-subtle', selectors: ['.quick-chip:active span'], screens: ['Food'], kind: 'text', fg: 'var(--color-text-secondary)', bg: 'var(--color-primary-subtle)', criterion: '1.4.3', threshold: 4.5 },
   { id: 'white-on-primary-text-light-only', selectors: ['.btn-primary', '.btn-small'], screens: ['Food'], kind: 'text', fg: '#FFFFFF', bg: 'var(--color-primary)', criterion: '1.4.3', threshold: 4.5, note: 'passes light mode only — see failing entries below for the dark-mode result' },
