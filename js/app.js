@@ -466,6 +466,7 @@ function showApp() {
   document.getElementById('onboarding').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   if (darkMode) document.body.classList.add('dark');
+  syncThemeColorMeta();
   setTodayDate();
   renderHome();
   renderSettings();
@@ -1557,9 +1558,24 @@ async function testCoachMessage() { return CoachPresenter.testCoachMessage(); }
 
 // saveApiKey — הוסר: המפתח יושב עכשיו בענן, המשתמשים לא צריכים להזין כלום
 
+// TASK-008 WP6 (SPEC §15, §8.3 staleness fix): keeps the browser-chrome
+// <meta name="theme-color"> in sync with the active theme. Reuses the
+// existing --bg light/dark primitive values already defined in css/app.css
+// (#FAF7F2 / #1A1510) — no new value introduced. manifest.json's own static
+// theme_color/background_color are not updated here: they are read once by
+// the platform at PWA-install time and necessarily represent the light-mode
+// default only; there is no dynamic-manifest mechanism in this repository's
+// existing architecture to keep them in sync with a runtime toggle, and
+// introducing one is outside this Work Package's scope.
+function syncThemeColorMeta() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', darkMode ? '#1A1510' : '#FAF7F2');
+}
+
 async function toggleDark() {
   darkMode = !darkMode;
   document.body.classList.toggle('dark', darkMode);
+  syncThemeColorMeta();
   document.getElementById('dark-toggle-btn').textContent = darkMode?'☀️':'🌙';
   document.querySelectorAll('#dark-toggle').forEach(t=>t.classList.toggle('on',darkMode));
   if (userProfile) { userProfile.darkMode = darkMode; await saveProfile(); }
