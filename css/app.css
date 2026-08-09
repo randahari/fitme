@@ -131,6 +131,25 @@ body.dark {
   --font-weight-extrabold: 800;
 }
 
+/* ── TASK-008 WP3 — MOTION TOKENS ──
+   Per TASK_008_SPEC_v1.0.md §13 and docs/specs/TASK_008_IMPLEMENTATION_PLAN.md WP3.
+   Formalizes the two existing keyframe animations' own duration/easing values,
+   named after their own animation (not a generic fast/slow tier — with only two
+   data points, assigning a tier label would itself be a categorization judgment
+   this Work Package does not make, matching WP2's own "no role assignment"
+   precedent). Only the spin/scan keyframe durations are in WP3's approved scope;
+   the unrelated transition timings elsewhere in this file (0.15s/0.2s/0.3s, on
+   hover/focus states) are not touched — out of scope, not overlooked. The
+   `prefers-reduced-motion` guard below (added by TASK-007 WP1-WP3) is unchanged
+   and remains compatible: both new tokens are consumed only by the two
+   animation declarations that guard already disables under reduced motion. */
+:root {
+  --duration-spin: 0.8s;
+  --easing-spin:   linear;
+  --duration-scan: 2s;
+  --easing-scan:   ease-in-out;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 html, body {
