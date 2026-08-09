@@ -38,6 +38,55 @@ body.dark {
   --teal-light:#0E2820;
 }
 
+/* ── TASK-008 WP1 — SEMANTIC COLOR TOKENS, SPACING SCALE, RADIUS CONFIRMATION ──
+   Per TASK_008_SPEC_v1.0.md §7–§11 and docs/specs/TASK_008_IMPLEMENTATION_PLAN.md WP1.
+   No primitive value above is changed. Each semantic color token below resolves to a
+   primitive token only (§7.1) and inherits body.dark automatically via var() chaining —
+   no separate dark-mode declaration is needed here (§7.4).
+   OD-8008-4a/4b (retain-vs-supersede the primitive layer) and OD-8008-5 (gold/teal/red
+   convention as-is vs. revised) remain open, Product/Architecture items; this formalizes
+   the already-documented implicit convention (§7.3) as-is and decides neither. */
+:root {
+  /* Semantic color roles (§8.2) */
+  --color-primary:          var(--gold);
+  --color-primary-emphasis: var(--gold-2);
+  --color-primary-subtle:   var(--gold-light);
+  --color-success:          var(--teal);
+  --color-success-subtle:   var(--teal-light);
+  --color-danger:           var(--red);
+  --color-danger-subtle:    var(--red-light);
+  --color-neutral:          var(--text-3);
+  --color-surface:          var(--bg);
+  --color-surface-subtle:   var(--bg-2);
+  --color-surface-muted:    var(--bg-3);
+  --color-border:           var(--border);
+  --color-border-strong:    var(--border-2);
+  --color-text:             var(--text);
+  --color-text-secondary:   var(--text-2);
+  --color-text-tertiary:    var(--text-3);
+
+  /* Spacing scale (§10) — the fourteen distinct pixel values already in use
+     throughout this stylesheet, named, not changed; no new numeric value. */
+  --space-1:  4px;
+  --space-2:  6px;
+  --space-3:  8px;
+  --space-4:  10px;
+  --space-5:  12px;
+  --space-6:  14px;
+  --space-7:  16px;
+  --space-8:  18px;
+  --space-9:  20px;
+  --space-10: 24px;
+  --space-11: 28px;
+  --space-12: 32px;
+  --space-13: 40px;
+  --space-14: 52px;
+
+  /* Radius primitives (§11) — --radius/--radius-sm/--radius-lg, defined above,
+     are confirmed as the formalized radius primitive tier; retained unchanged,
+     no fourth tier added (§11.2, not resolved by this Work Package). */
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 html, body {
