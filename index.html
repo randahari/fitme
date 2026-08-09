@@ -191,19 +191,22 @@
         <div class="scroll-content">
 
           <!-- TRIGGER CARD (שלב 5) — תגובת המאמן לאירוע -->
-          <div id="trigger-card" class="coach-card hidden" aria-live="polite">
+          <!-- TASK-008 WP9 — semantic communication surface: Coach Message (OD-8008-9). -->
+          <div id="trigger-card" class="coach-card hidden" data-semantic-surface="coach-message" aria-live="polite">
             <div class="coach-card-icon">💬</div>
             <div class="coach-card-text" id="trigger-card-text"></div>
           </div>
 
           <!-- COACH CARD (המאמן) -->
-          <div id="coach-card" class="coach-card hidden" aria-live="polite">
+          <!-- TASK-008 WP9 — semantic communication surface: Coach Message (OD-8008-9). -->
+          <div id="coach-card" class="coach-card hidden" data-semantic-surface="coach-message" aria-live="polite">
             <div class="coach-card-icon">🧭</div>
             <div class="coach-card-text" id="coach-card-text"></div>
           </div>
 
           <!-- ADAPTIVE TARGET CARD (שלב 4) — הצעת עדכון יעד -->
-          <div id="adaptive-card" class="adaptive-card hidden" aria-live="polite">
+          <!-- TASK-008 WP9 — semantic communication surface: Adaptive Update (OD-8008-9). -->
+          <div id="adaptive-card" class="adaptive-card hidden" data-semantic-surface="adaptive-update" aria-live="polite">
             <div class="adaptive-card-head">🎯 עדכון יעד שבועי</div>
             <div class="adaptive-card-text" id="adaptive-card-text"></div>
             <div class="adaptive-card-meta" id="adaptive-card-meta"></div>
@@ -214,7 +217,8 @@
           </div>
 
           <!-- PARTIAL DAYS PROMPT (שלב 4) — פניית המאמן על רישום חלקי -->
-          <div id="partial-prompt" class="adaptive-card hidden" aria-live="polite">
+          <!-- TASK-008 WP9 — semantic communication surface: Adaptive Update (OD-8008-9). -->
+          <div id="partial-prompt" class="adaptive-card hidden" data-semantic-surface="adaptive-update" aria-live="polite">
             <div class="adaptive-card-head">📝 עזור לי לדייק</div>
             <div class="adaptive-card-text" id="partial-prompt-text"></div>
             <div id="partial-prompt-list" style="margin-top:8px;display:flex;flex-direction:column;gap:6px"></div>

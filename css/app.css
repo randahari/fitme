@@ -655,7 +655,10 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
 
 /* TASK-008 WP8: padding (compound, tokenized without changing shape/value) and
    margin-bottom (already canonical, tokenized) migrated; border rgba(139,94,26,0.15) has
-   no corresponding token — left as an untouched literal, shared verbatim with .goal-banner. */
+   no corresponding token — left as an untouched literal, shared verbatim with .goal-banner.
+   TASK-008 WP9 (SPEC §16.3, OD-8008-9): this class is the "Coach Message" semantic
+   communication surface (used by #trigger-card and #coach-card, index.html) — documentation
+   only; no value here changed by WP9. */
 .coach-card {
   display: flex; align-items: flex-start; gap: 10px;
   background: var(--color-primary-subtle);
@@ -708,7 +711,10 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
    TASK-008 WP8: shell tokenized (border color; padding/margin-bottom already matched the
    canonical values, tokenized without change). This comment's own anticipated fuller visual
    treatment is unresolved by WP8's shell-level consolidation and remains open — see
-   TASK_008_SPEC_v1.0.md §18.4/§4.6, the `.adaptive-card` stop-condition discussion. ── */
+   TASK_008_SPEC_v1.0.md §18.4/§4.6, the `.adaptive-card` stop-condition discussion.
+   TASK-008 WP9 (SPEC §16.3, OD-8008-9): this class is the "Adaptive Update" semantic
+   communication surface (used by #adaptive-card and #partial-prompt, index.html) —
+   documentation only; no value here changed by WP9. ── */
 .adaptive-card {
   background: var(--color-surface);
   border: 0.5px solid var(--color-primary-emphasis);
