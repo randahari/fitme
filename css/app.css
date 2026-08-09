@@ -150,6 +150,36 @@ body.dark {
   --easing-scan:   ease-in-out;
 }
 
+/* ── TASK-008 WP5 — ICONOGRAPHY CONVENTION (documented, no new CSS rule) ──
+   Per TASK_008_SPEC_v1.0.md §14 (excluding §14.3) and
+   docs/specs/TASK_008_IMPLEMENTATION_PLAN.md WP5.
+
+   Sourcing/format convention (§14.2), formalizing existing, verified evidence:
+   icons are inline SVG (stroke="currentColor" or an explicit fill, sized via
+   width/height attributes) or a Unicode emoji/glyph character directly in
+   markup or text content. No <img> tag and no external icon-font dependency
+   is introduced anywhere in this repository (confirmed: zero <img> tags,
+   zero alt attributes in index.html, re-verified this Work Package).
+
+   RTL-mirroring convention (§14.2, realizing TASK-007 UX-22.4's existing
+   behavioral rule): every current directional icon in this repository is a
+   swappable text glyph, and is already mirrored correctly by choosing the
+   RTL-appropriate character at its own source, not by a shared CSS rule —
+   confirmed at both existing instances: `js/ui/dayNavigationController.js`'s
+   date-prev/date-next pair (▶ for previous, ◀ for next, matching RTL
+   reading direction) and `js/memory.js`'s disclosure chevron (‹, corrected
+   from › by TASK-007 WP9). This Work Package formalizes glyph-selection as
+   the documented convention; it does not add a CSS transform/mirror utility,
+   because no current icon is SVG-path-based in a way that would need one
+   (Decision 9 — reuse precedes creation; nothing here to reuse a transform
+   rule for). A future directional SVG icon needing a shared mirror mechanism
+   is a Repository Gap for whichever Work Package introduces it, not one this
+   Work Package invents ahead of need.
+
+   Explicitly excluded from this Work Package: any disposition of
+   js/fitme_dial_elegant_options.png — OD-8008-7 remains open and unresolved;
+   the asset is neither moved, referenced, nor removed here. */
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 html, body {
