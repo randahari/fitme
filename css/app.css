@@ -502,9 +502,14 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
 .food-tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .fav-tag { padding: 5px 11px; background: var(--gold-light); color: var(--gold); border-radius: 20px; font-size: 12px; }
 
-/* TOGGLE */
-.toggle { width: 42px; height: 24px; border-radius: 12px; background: var(--bg-3); border: 0.5px solid var(--border); position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
-.toggle.on { background: var(--gold); border-color: var(--gold); }
+/* TOGGLE — TASK-008 WP7: migrated to semantic color tokens (SPEC §17/§18, button/toggle/
+   empty-state categories; component consolidation not needed, this is a single existing
+   implementation). width/height/position offsets and box-shadow are intentionally left as
+   literals — outside the spacing scale's padding/margin/gap scope, and, for box-shadow,
+   outside Design System scope entirely per OD-8008-6 (no elevation system, existing
+   box-shadow usages unmodified). */
+.toggle { width: 42px; height: 24px; border-radius: 12px; background: var(--color-surface-muted); border: 0.5px solid var(--color-border); position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+.toggle.on { background: var(--color-primary); border-color: var(--color-primary); }
 .toggle-thumb { width: 20px; height: 20px; border-radius: 50%; background: white; position: absolute; top: 2px; right: 2px; transition: right 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
 .toggle.on .toggle-thumb { right: 20px; }
 
@@ -529,13 +534,22 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
 .nav-btn-line { width: 20px; height: 2px; border-radius: 1px; background: transparent; margin-bottom: 1px; }
 .nav-btn.active .nav-btn-line { background: var(--gold); }
 
-/* ── BUTTONS ── */
-.btn-primary { width: 100%; padding: 14px; background: var(--gold); color: white; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 500; cursor: pointer; font-family: 'Heebo', sans-serif; transition: opacity 0.15s; }
+/* ── BUTTONS — TASK-008 WP7: migrated to WP1/WP2's semantic color/spacing/typography
+   tokens (SPEC §17/§18, already-consolidated per §24.2 — no new consolidation decision
+   needed). `font-family: 'Heebo', sans-serif` is intentionally left as a literal, not
+   `var(--font-family-base)`: the token's value is `'Heebo', -apple-system, sans-serif`
+   (matching the html/body rule), a different, more complete fallback chain than this
+   pre-existing override — substituting it would be a real, if fallback-only, behavioral
+   change, which this Work Package does not make. `white`, `border: none`/`0.5px solid`,
+   and every `--radius`/`--radius-sm` reference are unchanged: `white` has no primitive
+   token (outside WP1's 16-color scope), and radius was already the formalized primitive
+   tier since WP1 (§11.2, no semantic layer added). ── */
+.btn-primary { width: 100%; padding: var(--space-6); background: var(--color-primary); color: white; border: none; border-radius: var(--radius); font-size: var(--font-size-7); font-weight: var(--font-weight-medium); cursor: pointer; font-family: 'Heebo', sans-serif; transition: opacity 0.15s; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary:active:not(:disabled) { opacity: 0.85; }
-.btn-ghost { width: 100%; padding: 12px; background: none; color: var(--text-2); border: 0.5px solid var(--border-2); border-radius: var(--radius); font-size: 15px; cursor: pointer; font-family: 'Heebo', sans-serif; margin-top: 8px; }
-.btn-small { padding: 8px 14px; background: var(--gold); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; font-family: 'Heebo', sans-serif; white-space: nowrap; }
-.btn-danger { width: 100%; padding: 12px; background: none; color: var(--red); border: 0.5px solid var(--red); border-radius: var(--radius); font-size: 15px; cursor: pointer; font-family: 'Heebo', sans-serif; }
+.btn-ghost { width: 100%; padding: var(--space-5); background: none; color: var(--color-text-secondary); border: 0.5px solid var(--color-border-strong); border-radius: var(--radius); font-size: var(--font-size-7); cursor: pointer; font-family: 'Heebo', sans-serif; margin-top: var(--space-3); }
+.btn-small { padding: var(--space-3) var(--space-6); background: var(--color-primary); color: white; border: none; border-radius: var(--radius-sm); font-size: var(--font-size-5); cursor: pointer; font-family: 'Heebo', sans-serif; white-space: nowrap; }
+.btn-danger { width: 100%; padding: var(--space-5); background: none; color: var(--color-danger); border: 0.5px solid var(--color-danger); border-radius: var(--radius); font-size: var(--font-size-7); cursor: pointer; font-family: 'Heebo', sans-serif; }
 
 /* ── INPUTS ── */
 input[type=number], input[type=text], input[type=password] {
@@ -550,7 +564,8 @@ input[type=range] { -webkit-appearance: none; height: 4px; background: var(--bg-
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--gold); cursor: pointer; border: 2px solid white; box-shadow: 0 1px 4px rgba(120,80,30,0.3); }
 
 /* ── EMPTY STATE ── */
-.empty-state { text-align: center; color: var(--text-3); font-size: 13px; padding: 24px; line-height: 1.6; }
+/* TASK-008 WP7: migrated to semantic color/spacing/typography tokens (SPEC §17/§18). */
+.empty-state { text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-5); padding: var(--space-10); line-height: 1.6; }
 
 /* ── BARCODE ── */
 .barcode-overlay { position: fixed; inset: 0; z-index: 300; background: #000; display: flex; flex-direction: column; font-family: 'Heebo', sans-serif; }
