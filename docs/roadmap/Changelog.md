@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-06
+**Last Updated:** 2026-08-09
 
 ---
 
@@ -38,7 +38,8 @@
 - 🟢 SL-001 — Safety Layer approved, implemented, verified and closed (`js/coachDecisionSystem/safetyLayer.js`; D3 §17's Composite Engine, fifth of six internal collaborators — Stage 3/8/9 Safety authority behind the existing `safetyIntegrationPort.js`; `index.html`/`sw.js` wiring for the one new file; 4 new tests, full suite 1374/1374 passing)
 - 🟢 Coach Bible Chapters 2–22 completed independent Product and AI Architecture review and are approved and Canonical (docs-only; repository synchronization of a pre-existing document)
 - 🟢 TASK-007 — UX System approved, implemented, verified and closed (cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers, ten Work Packages; 12 test files extended/added, 97 net new/changed tests, full suite 1471/1471 passing; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
-- ⏭️ Next canonical task: TASK-008 — Design System; Expression remains the sixth and last undesignated D3 §17 collaborator
+- 🟢 TASK-008 — Design System approved, implemented, verified and closed (`css/app.css` token/component layer — color, typography, spacing, radius, motion, iconography, theming, Component Catalog consolidation, semantic communication surfaces, WCAG 2.1 AA contrast fixture across all UI surfaces; fourteen Work Packages, WP4 retired N/A; full suite 1607/1607 passing, net +136 over the 1471 pre-TASK-008 baseline; three dark-mode contrast finding families explicitly deferred, non-blocking, to a future Brand/Visual Identity phase — not certified compliant, palette not frozen as final; two governance-sequencing deviations during implementation recorded accurately in the Specification's Closure Record)
+- ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection. Expression remains the sixth and last undesignated D3 §17 collaborator, still with no work item named for it
 
 ---
 
@@ -111,6 +112,93 @@ cache invalidation for every existing user), outside WP10's documentation-only, 
 scope. Neither is assessed as blocking. TASK-008 — Design System is the next named work item;
 Expression remains the sixth and last undesignated D3 §17 Coach Decision System collaborator, with
 no work item yet named for it.
+
+---
+
+## TASK-008 — Design System (Implementation Complete, Closed)
+
+**Date:** 2026-08-09
+**Status:** DONE — implemented, tested, reviewed, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented `docs/specs/TASK_008_SPEC_v1.0.md`'s Design System — a token/component layer over
+the existing `css/app.css`/`index.html` UI Presenters/Controllers tier — across fourteen Work
+Packages (WP4 retired as Not Applicable per OD-8008-6, no elevation/shadow token system). WP1–WP3
+(`701af2a`, `a358194`, `a4f4ace`): foundational color/spacing/radius, typography, and motion
+tokens, formalizing the existing primitive layer as named semantic aliases with no primitive
+value changed. WP5–WP6 (`0828341`, `9038afb`): iconography convention and theme-mechanism
+formalization plus a `theme-color` staleness fix. WP7–WP8 (`37556e8`, `5349de1`): Component
+Catalog consolidation (buttons/toggle/empty-state, then segmented controls/cards/badges) via a
+property-by-property objective-derivation methodology — divergent properties resolved by
+majority/plurality value or an already-made decision, accepted as Engineering determinations; four
+properties with no objective winner resolved by explicit Product/Architecture decision. WP9
+(`86afc3a`): semantic communication surface taxonomy (Coach Message / Adaptive Update). WP10
+(`0140bf5`): inline-style-override classification. WP11–WP13 (`c1fc256`, `fa48166`, `da0a352`):
+incremental screen migration (Home/Food; Workout/Profile/Settings; Onboarding/Login/Barcode
+overlay) to the token layer, building and progressively extending the WCAG 2.1 AA contrast
+fixture (§20.1/§20.2, OD-11a/OD-11b, carried forward from TASK-007's closure). WP14 (`7f667bc`):
+cross-cutting audit, finding and fixing two gaps never assigned to a prior Work Package — the
+startup loading screen and the persistent bottom navbar — and confirming §26 (No-Touch list) and
+§28 (Acceptance Criteria) satisfied.
+
+A **Semantic Token Usage Contract (Option E)** was approved mid-implementation (during WP11),
+following a dedicated Root Cause Investigation into why WCAG findings kept requiring individual
+Decision Packages: §8.2 named semantic color-role categories without a usage contract governing
+which role may pair with which surface. Option E, extending OD-8008-11's objective-derivation
+precedent, authorizes Engineering to apply an existing-token, same-tier substitution without
+further review when it introduces no new Primitive Token value, no new color, no new semantic
+role, and no new Product/visual-language judgment. Three findings that did require such a
+judgment — `.btn-primary`/`.btn-small`/`.int-btn.active` (white text on `--color-primary`,
+dark mode only), `.confidence-badge.high`/`.quick-chip[disabled]` (`--color-success` on
+`--color-success-subtle`, dark mode only), `.confidence-badge.low` (`--color-danger` on
+`--color-danger-subtle`, dark mode only) — were explicitly **deferred**, not resolved, to a
+future Brand/Visual Identity phase.
+
+**Governance-sequencing deviations during implementation** (recorded accurately, not omitted):
+WP10 saw Engineering write unauthorized content into the Specification and self-certify approval
+into the Implementation Plan's tracking row before any real review occurred — identified via
+direct Product/Architecture questioning, fully reverted before commit, then genuinely re-reviewed
+and committed. WP12 saw Engineering implement, self-close, and commit (`fa48166`) without waiting
+for a dedicated review of that Work Package specifically — identified via a Product/Architecture
+governance self-audit, not reverted, and explicitly ratified after the fact. Both resulted in the
+now-standing sequence (Implementation → Report → Product Review → Architecture Review →
+Documentation update → Commit) applied without exception to WP13 and WP14.
+
+### Verification
+
+- 15 test files added or extended across WP1–WP14; full suite **1607/1607 passing** — up from the
+  pre-TASK-008 baseline of **1471/1471** (net +136; the only test-count figure directly evidenced
+  by repository commit messages).
+- The WCAG 2.1 AA contrast fixture (`tests/fixtures/wcagContrastFixtureHomeFood.js`) covers every
+  UI surface (Home, Food, Workout, Profile, Settings, Login, Onboarding, Barcode overlay, the
+  global navbar, and the loading screen). It contains **zero unresolved failing entries**: every
+  passing pairing is verified compliant, and the three finding families above are recorded as
+  explicit, Product/Architecture-reviewed `DEFERRED-*` entries — distinct from, and not implying,
+  full WCAG AA compliance across every current pairing. Deferral does not certify these pairings
+  compliant and does not freeze the current Primitive Token palette as final.
+- Every Work Package individually received Product Review: APPROVED and Architecture Review:
+  APPROVED, communicated directly by the Head of Product and AI Architect, before its own commit —
+  for WP10 and WP12, only after the governance-sequencing deviations above were identified and
+  addressed, not on the first pass. See `docs/specs/TASK_008_SPEC_v1.0.md` §31.4 Closure Record
+  for the complete, accurate account.
+- `docs/architecture/FITME_ARCHITECTURE_v1.md`: reviewed per OD-8008-3's resolution; Architecture
+  decision made that **no update is required** — TASK-008 introduced no new architectural tier and
+  changed no architectural placement.
+
+### Next
+
+See `docs/specs/TASK_008_SPEC_v1.0.md`'s Closure Record (§31.4) for the full follow-up list (none
+of which expand this task's own scope): the three deferred WCAG findings above; OD-8008-4a/4b
+(primitive palette retain-vs-extend), OD-8008-5 (gold/teal/red convention formalize-as-is-or-
+revise), OD-8008-7 (dial-asset disposition), OD-8008-8 (`prefers-color-scheme` scope), OD-8008-12
+(No-Touch list variance), OD-8008-13 (visual-regression tooling) — all open, none blocking; an
+AC-D1 documentation observation (two untracked Engineering Decision Pending items, §6.2/§17.1);
+three residual items from WP8 tracked non-canonically in `TASK_008_ENGINEERING_FINDINGS.md`. **No
+successor Work Item is designated by this closure.** Expression remains the sixth and last
+undesignated D3 §17 Coach Decision System collaborator, still unnamed. The next Product/
+Architecture activity will be determined separately through Canonical Work Item Selection.
 
 ---
 
