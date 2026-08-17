@@ -1,16 +1,22 @@
 # D3 — Coach Decision System Architecture
 
 **Document:** `docs/specs/D3_SPEC.md`
-**Version:** 1.2
+**Version:** 1.3
 **Status:** Canonical
 **Document Type:** Canonical Architecture Specification
 **Owner:** Head of Product + AI Architect
-**Applies Canonical Decisions:** Decision 1 through Decision 6 (this document, §17), issued by the
+**Applies Canonical Decisions:** Decision 1 through Decision 7 (this document, §17), issued by the
 Head of Product and AI Architect, Canonical Review for D3.
-**Prepared by:** Lead Engineer (canonical revision — implements Decisions 1–6 exactly as issued;
+**Prepared by:** Lead Engineer (canonical revision — implements Decisions 1–7 exactly as issued;
 introduces no product or coaching-logic policy of its own, and no architecture decision beyond
 what composing D1's decision policy and D2's orchestration pipeline with FITME's approved
 architecture requires — see §17)
+
+**Amendment Record**
+
+| Version | Context | Scope | Authority |
+|---|---|---|---|
+| 1.3 | Expression Work Package 4 (`EXPRESSION_IMPLEMENTATION_PLAN.md`), following the accepted Expression Rendering Context Architecture investigation | Adds Decision 7 (§17): Expression receives a second, narrow, closed, Memory-Layer-produced Stage-10 input (the Expression Rendering Context), extending Decision 3's Pipeline-Context-ownership scope. §6.3 (Memory Layer/Expression component descriptions), §11.1 (Ownership Rules), and §11.2 (Component Contracts table) updated accordingly. No prior Decision (1–6) is reopened or contradicted; `TerminalDecision` and CD-EXP-01 are unaffected. | Product Review: APPROVED. Architecture Review: APPROVED. Canonical Review: PASSED. |
 
 ------------------------------------------------------------------------
 
@@ -432,7 +438,10 @@ none is independently registered with the Engine Registry:
   Layer owns Pipeline Context Assembly (D2 Stages 1–2) as an internal responsibility (Decision 3):
   reading state, reading memory, reading derived intelligence, and assembling and producing the
   immutable Pipeline Context. There is no shared or independent ownership of Pipeline Context
-  Assembly outside the Memory Layer. The Memory Layer is also the sole architectural bridge between
+  Assembly outside the Memory Layer. As a narrow, closed extension of this same ownership (Decision
+  7), the Memory Layer is also the sole producer of the Expression Rendering Context — a bounded,
+  Stage-10-facing artifact, distinct from Pipeline Context itself, that never exposes Pipeline
+  Context's other members. The Memory Layer is also the sole architectural bridge between
   the Coach Decision System and durable persistence (StateAccess, the Persistence Gateway, and the
   C4 write path), and the sole owner of Coaching History (§10.1, §10.3, Decision 4).
 - **Recommendation Engine** — architectural realization of D2 Unit 07's Recommendation Engine role.
@@ -444,7 +453,11 @@ none is independently registered with the Engine Registry:
 - **Expression** — the architectural handoff point where a formed Terminal Decision is translated
   into a platform-neutral Delivery Intent (Decision 5); explicitly not one of D2 Unit 07's five
   engines (D1 Unit 15), and explicitly unaware of chat, trigger cards, notifications, widgets,
-  push, UI, or platform. Once produced, a Delivery Intent is immutable (§8.6).
+  push, UI, or platform. Consumes exactly two declared inputs: the Terminal Decision, and the
+  Memory Layer's Expression Rendering Context (Decision 7) — a narrow, closed, tone/framing-only
+  signal set that never carries decision content, ranking/priority, rationale, Safety decision
+  authority, platform/UI information, or any other Pipeline Context member. Once produced, a
+  Delivery Intent is immutable (§8.6).
 
 The existing **Coach Runtime** (§10.4, Decision 6), which maps Expression's Delivery Intent into
 platform-specific presentation, is external to this Composite Engine and is not modified by this
@@ -818,6 +831,12 @@ implementation-level items remain, consolidated in §17.
   platform-specific presentation (§10.4; Decision 5, Decision 6).
 - No component other than the Memory Layer may originate a Decision Input read or assemble Pipeline
   Context (§8.1; D2-PP-03; Decision 3).
+- Only the Memory Layer may produce the Expression Rendering Context; only Expression may consume
+  it (§6.3; Decision 7, extending Decision 3). It SHALL remain narrow, closed, and bounded to
+  tone/framing-only signals an already-approved Expression requirement needs; it SHALL NOT carry
+  decision content, ranking/priority information, rationale, Safety decision authority, platform/UI
+  information, the full Pipeline Context, or unrelated user state, and SHALL NOT be embedded inside
+  a Delivery Intent.
 - Exactly one Coach Decision System engine is registered with the B2 Engine Registry; no internal
   collaborator (Memory Layer, Recommendation Engine, Initiative Engine, Decision Engine, Safety
   Layer, Expression) is independently registered (Decision 1).
@@ -833,12 +852,12 @@ boundary is:
 
 | Component | Consumes From | Produces For | Forbidden To Touch |
 |---|---|---|---|
-| Memory Layer (Context Assembly + Feedback/Evidence/Memory, Decision 3) | StateAccess, B5 Consumer, C3 event model (Context Assembly); Coach Runtime's feedback signal, Decision Layer's Terminal Decision (Feedback/Evidence/Memory) | Recommendation/Initiative/Decision Layers (Pipeline Context); StateAccess, Persistence Gateway, C4 write path (durable writes) | Prioritization, Winner Selection, Decision Formation, Candidate generation |
+| Memory Layer (Context Assembly + Feedback/Evidence/Memory, Decision 3) | StateAccess, B5 Consumer, C3 event model (Context Assembly); Coach Runtime's feedback signal, Decision Layer's Terminal Decision (Feedback/Evidence/Memory) | Recommendation/Initiative/Decision Layers (Pipeline Context); Expression (Expression Rendering Context, Decision 7); StateAccess, Persistence Gateway, C4 write path (durable writes) | Prioritization, Winner Selection, Decision Formation, Candidate generation |
 | Recommendation Engine | Memory Layer (Pipeline Context) | Decision Layer | Prioritization, Winner Selection, durable state |
 | Initiative Engine | Memory Layer (Pipeline Context) | Decision Layer | Prioritization, Winner Selection, durable state |
 | Decision Engine | Recommendation/Initiative Layers, Safety Layer | Expression | Candidate generation, durable state |
 | Safety Layer | Health/Safety Profile, Life Event Context (Memory Layer's Pipeline Context); Candidates and Terminal Decisions (Decision Layer) | Decision Layer (disqualification/modify/defer/block results) | Ordinary Recommendation/Initiative content generation |
-| Expression | Decision Layer | Coach Runtime (Delivery Intent only) | Origination of decision content; platform/UI selection (Decision 5, Decision 6) |
+| Expression | Decision Layer (Terminal Decision); Memory Layer (Expression Rendering Context, Decision 7) | Coach Runtime (Delivery Intent only) | Origination of decision content; platform/UI selection (Decision 5, Decision 6); originating or inferring the Expression Rendering Context itself (Decision 7) |
 
 ## 11.3 Forbidden Responsibilities
 
@@ -861,7 +880,7 @@ D1 Units 08/09/12/14/15; D2 Unit 07; B2–B4; C3; C4.
 
 ### Open Engineering Considerations
 
-None; all composition-level questions previously raised are resolved by Decisions 1–6 — see §17 for
+None; all composition-level questions previously raised are resolved by Decisions 1–7 — see §17 for
 genuine implementation-level items only.
 
 ------------------------------------------------------------------------
@@ -994,7 +1013,7 @@ the Coach Decision System's components.
 # 15. Architecture Invariants
 
 The following consolidates every invariant this document establishes (§5.6, restated here as the
-authoritative list per the approved skeleton). These invariants, together with Decisions 1–6 applied
+authoritative list per the approved skeleton). These invariants, together with Decisions 1–7 applied
 throughout this document, are the architectural decisions required to compose D1's decision policy
 and D2's orchestration pipeline with FITME's approved architecture — D3 introduces no new product or
 coaching-logic policy of its own:
@@ -1031,11 +1050,13 @@ coaching-logic policy of its own:
 
 # 17. Canonical Architecture Decisions
 
-## Decisions Applied (Decision 1–6)
+## Decisions Applied (Decision 1–7)
 
-The following canonical decisions were issued by the Head of Product and AI Architect during
-Canonical Review and are applied throughout this document. They are recorded here for traceability;
-none is left open elsewhere in this document.
+Decisions 1–6 were issued by the Head of Product and AI Architect during this document's original
+Canonical Review. Decision 7 was issued later, by amendment (Amendment Record, above; Expression Work
+Package 4), following the same Product Review/Architecture Review/Canonical Review discipline. All
+seven are applied throughout this document and recorded here for traceability; none is left open
+elsewhere in this document.
 
 1. **Decision 1 — Coach Decision System Composition.** The Coach Decision System is registered in
    the existing B2 Engine Registry as exactly one Composite Engine. The Memory Layer, Recommendation
@@ -1060,6 +1081,16 @@ none is left open elsewhere in this document.
    responsible for mapping a Delivery Intent into platform-specific presentation; the Decision
    Engine and Expression remain completely platform-agnostic; no new delivery surface is created
    (§8.6, §10.4).
+7. **Decision 7 — Expression Rendering Context.** Expression receives a second, narrow, closed
+   Stage-10 input — the Expression Rendering Context — produced exclusively by the Memory Layer as
+   a bounded extension of Decision 3's existing Pipeline-Context-ownership scope, and consumed
+   exclusively by Expression. Its current, closed content is exactly `{schemaVersion,
+   relationshipMaturityStage}`, supplying the non-decision, tone/framing-only signal `D1-PER-03`
+   requires that neither `TerminalDecision` nor Expression's original single-input declaration could
+   carry. `TerminalDecision` (`TASK_006_SPEC_v1.0.md` §25) is unchanged; CD-EXP-01 (Delivery Intent
+   output contract) is unaffected — this Context is never embedded in a Delivery Intent. Future
+   fields require an already-approved Expression requirement each time, never speculative addition
+   (§6.3, §11.1, §11.2; D2 Unit 04 Stage 10, Amendment 1, Canonical Decision 8; CDR-2).
 
 ## Implementation-Level Items Deferred to Engineering Readiness Review
 

@@ -74,9 +74,13 @@ test('PLATE_PROMPT/LABEL_PROMPT/ITEMS_JSON_SPEC no longer exist as app.js consta
 // js/coach/coachClient.js (intentional — see tests/c1Wp6Wiring.test.js), so the app.js count
 // dropped from 5 to 4. The "אתה \"המאמן\"" system-prompt text also relocated, into
 // js/coach/coachPromptComposer.js.
+// Expression WP9 subsequently added a 5th call site: ExpressionRenderer.configure({generateFn})
+// reuses the existing callClaude/ClaudeProxyClient path (intentional — "reuse precedes invention",
+// same mechanism identified in the Expression WP4 investigation gate; see
+// tests/coachDecisionSystemWiring.test.js #21) rather than inventing a new generation mechanism.
 test('coach-domain callClaude call sites are untouched (out of WP5A scope)', () => {
   const coachCallSites = (appJs.match(/await callClaude\(/g) || []).length;
-  assert.equal(coachCallSites, 4, 'expected exactly 4 remaining direct callClaude call sites: submitQuickLearn (WP5E) and 3 coach weekly-summary/menu/letter functions');
+  assert.equal(coachCallSites, 5, 'expected exactly 5 remaining direct callClaude call sites: submitQuickLearn (WP5E), 3 coach weekly-summary/menu/letter functions, and ExpressionRenderer.configure({generateFn}) (Expression WP9)');
   const composerJs = fs.readFileSync(path.join(__dirname, '../js/coach/coachPromptComposer.js'), 'utf8');
   assert.match(composerJs, /אתה "המאמן"/, 'coachSystemPrompt-related content must remain intact, now in coachPromptComposer.js');
 });

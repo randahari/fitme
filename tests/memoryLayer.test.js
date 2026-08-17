@@ -246,3 +246,87 @@ test('13. Memory Layer performs no Opportunity Detection, Evidence Evaluation, E
     assert.equal(src.indexOf(token), -1, 'must not contain ' + token);
   });
 });
+
+// ── Expression WP4 (remainder) / Canonical Decision 8 — buildExpressionRenderingContext():
+// strict pass-through of an already-assembled Pipeline Context's own relationshipMaturity.stage;
+// never resolves, infers, calculates, estimates, or otherwise computes a Relationship Maturity
+// Stage of its own (reiterated implementation constraint, EXPRESSION_IMPLEMENTATION_PLAN.md WP4).
+
+test('14. buildExpressionRenderingContext produces a schema-conformant, closed-shape Context from an assembled Pipeline Context', async () => {
+  configureHappyPath();
+  const pipelineContext = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const result = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+  assert.equal(result.status, 'BUILT');
+  assert.equal(result.expressionRenderingContext.relationshipMaturityStage, 'UNKNOWN');
+  assert.deepEqual(Object.keys(result.expressionRenderingContext).sort(), ['relationshipMaturityStage', 'schemaVersion']);
+});
+
+test('15. buildExpressionRenderingContext is a strict pass-through — it never derives relationshipMaturityStage from feedback count, Habit/Pattern signal count, or any other heuristic (mirrors test 9/10\'s own evidence)', async () => {
+  configureHappyPath();
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: Array.from({ length: 500 }, (_, i) => ({ kind: 'feedback', surface: 'recommendation', contextId: 'opp-' + i, feedbackType: 'Accepted', ts: i })) }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1
+  });
+  const pipelineContext = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const result = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+  assert.equal(result.expressionRenderingContext.relationshipMaturityStage, 'UNKNOWN'); // still UNKNOWN, regardless of feedback volume
+});
+
+test('16. buildExpressionRenderingContext never exposes any other Pipeline Context member', async () => {
+  configureHappyPath();
+  const pipelineContext = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const result = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+  const serialized = JSON.stringify(result.expressionRenderingContext);
+  ['derivedIntelligence', 'feedbackHistory', 'initiativeIntelligence', 'lifeEventContext', 'capacityState', 'availability', 'userId', 'sessionGeneration', 'assembledAt', 'basis'].forEach((forbidden) => {
+    assert.equal(serialized.indexOf(forbidden), -1, forbidden);
+  });
+});
+
+test('17. buildExpressionRenderingContext handles a missing/malformed Pipeline Context defensively (falls back to UNKNOWN, never throws, never fabricates a different stage)', () => {
+  assert.equal(MemoryLayer.buildExpressionRenderingContext(null).status, 'BUILT');
+  assert.equal(MemoryLayer.buildExpressionRenderingContext(null).expressionRenderingContext.relationshipMaturityStage, 'UNKNOWN');
+  assert.equal(MemoryLayer.buildExpressionRenderingContext({}).expressionRenderingContext.relationshipMaturityStage, 'UNKNOWN');
+  assert.equal(MemoryLayer.buildExpressionRenderingContext({ relationshipMaturity: {} }).expressionRenderingContext.relationshipMaturityStage, 'UNKNOWN');
+});
+
+// ── Expression WP9 / D2-EF-07 — recordExplicitUserStatementArrival() / getExplicitUserStatement
+// ArrivalTimestamp() (accepted Architecture investigation's own approved mechanism). In-memory
+// only, per-user, within the Memory Layer's own existing Decision-Input-intake ownership.
+
+test('18. getExplicitUserStatementArrivalTimestamp returns null for a user with no recorded arrival', () => {
+  assert.equal(MemoryLayer.getExplicitUserStatementArrivalTimestamp({ userId: 'never-recorded-user' }), null);
+});
+
+test('19. recordExplicitUserStatementArrival()/getExplicitUserStatementArrivalTimestamp() round-trip a real timestamp', () => {
+  const before = Date.now();
+  MemoryLayer.recordExplicitUserStatementArrival({ userId: 'user-arrival-1' });
+  const after = Date.now();
+  const ts = MemoryLayer.getExplicitUserStatementArrivalTimestamp({ userId: 'user-arrival-1' });
+  assert.equal(typeof ts, 'number');
+  assert.ok(ts >= before && ts <= after);
+});
+
+test('20. the arrival marker is scoped per user — recording for one user never affects another\'s', () => {
+  MemoryLayer.recordExplicitUserStatementArrival({ userId: 'user-arrival-a' });
+  assert.equal(MemoryLayer.getExplicitUserStatementArrivalTimestamp({ userId: 'user-arrival-b-untouched' }), null);
+});
+
+test('21. recordExplicitUserStatementArrival()/getExplicitUserStatementArrivalTimestamp() never throw on a missing/malformed identity', () => {
+  assert.doesNotThrow(() => MemoryLayer.recordExplicitUserStatementArrival(null));
+  assert.doesNotThrow(() => MemoryLayer.recordExplicitUserStatementArrival(undefined));
+  assert.doesNotThrow(() => MemoryLayer.recordExplicitUserStatementArrival({}));
+  assert.equal(MemoryLayer.getExplicitUserStatementArrivalTimestamp(null), null);
+  assert.equal(MemoryLayer.getExplicitUserStatementArrivalTimestamp(undefined), null);
+  assert.equal(MemoryLayer.getExplicitUserStatementArrivalTimestamp({}), null);
+});
+
+test('22. a later recordExplicitUserStatementArrival() call for the same user overwrites (updates) the marker, never accumulates a history', async () => {
+  MemoryLayer.recordExplicitUserStatementArrival({ userId: 'user-arrival-overwrite' });
+  const first = MemoryLayer.getExplicitUserStatementArrivalTimestamp({ userId: 'user-arrival-overwrite' });
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  MemoryLayer.recordExplicitUserStatementArrival({ userId: 'user-arrival-overwrite' });
+  const second = MemoryLayer.getExplicitUserStatementArrivalTimestamp({ userId: 'user-arrival-overwrite' });
+  assert.ok(second >= first);
+  assert.equal(typeof second, 'number'); // a single scalar, not an array/history
+});

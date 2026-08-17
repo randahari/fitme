@@ -202,6 +202,36 @@
     });
   }
 
+  // ── Expression WP9 (EXPRESSION_SPEC_v1.0.md §16 EXP-38, §26 EXP-49) — presents an
+  // Expression-produced Delivery Intent via the existing trigger-card DOM element (D3 §17
+  // Decision 6 — no new delivery surface created; the investigation gate confirmed js/trigger/*
+  // as the entry point). Maps/presents only (EXP-54/55): `renderedLanguage` is displayed
+  // verbatim, never generated, rewritten, reinterpreted, softened, or strengthened here.
+  //
+  // Currently dormant in production: no live Opportunity source exists yet
+  // (TASK_006_SPEC_v1.0.md §38 item G-2, non-blocking, not this Work Package's scope), so the
+  // Coach Decision System's own Delivery Intent is never actually produced today (every Decision
+  // Pass resolves to Silence). This function is real and tested, ready for the day a Delivery
+  // Intent exists.
+  //
+  // COEXISTENCE — explicitly NOT resolved by this Work Package, flagged rather than decided: no
+  // canonical arbitration rule exists between this card and the pre-existing, unrelated
+  // TriggerDomain-based trigger-card (runCoachTriggers()/presentTriggerCard() above) for the same
+  // #trigger-card DOM slot within a single APP_READY cycle — the two are independent proactive-
+  // message systems that happen to share one DOM element. This has no live consequence today
+  // (Delivery Intent is never produced), so it does not block this function's own correctness;
+  // the coexistence/arbitration policy itself remains open for a future Product/Architecture
+  // decision, not invented here.
+  async function presentDeliveryIntent(deliveryIntent, sessionGeneration) {
+    if (!deliveryIntent || typeof deliveryIntent.renderedLanguage !== 'string' || !deliveryIntent.renderedLanguage) return;
+    var card = deps.documentRef.getElementById('trigger-card');
+    var textEl = deps.documentRef.getElementById('trigger-card-text');
+    if (!card || !textEl) return;
+    if (typeof sessionGeneration !== 'undefined' && !deps.sessionLifecycle.isCurrent(sessionGeneration)) return;
+    textEl.textContent = deliveryIntent.renderedLanguage;
+    card.classList.remove('hidden');
+  }
+
   var API = {
     configure: configure,
     runCoachTriggers: runCoachTriggers,
@@ -209,7 +239,8 @@
     triggerLiveText: triggerLiveText,
     fireWorkoutTrigger: fireWorkoutTrigger,
     presentWorkoutTriggerCard: presentWorkoutTriggerCard,
-    scheduleLocalNotifications: scheduleLocalNotifications
+    scheduleLocalNotifications: scheduleLocalNotifications,
+    presentDeliveryIntent: presentDeliveryIntent
   };
 
   if (typeof window !== 'undefined') { window.TriggerController = API; }

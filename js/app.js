@@ -248,6 +248,26 @@ CoachClient.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 
+// Expression WP9: מזריק generateFn ל-ExpressionRenderer — עוטף את אותו callClaude הקיים
+// ממש (CoachClient.configure משתמש בו לעיל), עם אותה חילוץ-טקסט בדיוק כמו
+// CoachClient.sendMessage() (data.content[0].text). אין כאן בניית מנגנון קריאת-AI חדש —
+// ר' investigation gate ב-EXPRESSION_IMPLEMENTATION_PLAN.md WP4/WP9. Expression אינו קורא
+// ל-userProfile/todayData/currentUser כאן (בניגוד ל-CoachClient) — payload.system/
+// payload.messages מגיעים כבר מורכבים במלואם מ-ExpressionRenderer עצמו, מ-TerminalDecision
+// בלבד (D2-PP-03). ללא השפעה בפועל כרגע: אין עדיין מקור Opportunity חי (Repository Gap
+// G-2, TASK_006_SPEC_v1.0.md §38) — Expression אינו נקרא בייצור עד שזה יתקיים.
+ExpressionRenderer.configure({
+  generateFn: async function (payload) {
+    var data = await callClaude({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      system: payload.system,
+      messages: payload.messages
+    });
+    return (data.content && data.content[0] && data.content[0].text || '').trim();
+  }
+});
+
 // C1-WP6: מזריק DOM/state/callbacks. coachMessageFn עוטף כ-closure את coachMessage
 // (פסאדה ב-app.js המאצילה ל-CoachClient.sendMessage) — אין שכפול לוגיקה. coachCardShown
 // נשאר משתנה משותף ב-app.js (מאופס גם ב-_resetAppCoreState) — מוזרק כ-getter/setter.
@@ -2074,6 +2094,7 @@ function engineRunContextBase() {
 // (תואם להתנהגות Stages 4-7 הקודמת: showApp עצמה אינה async).
 function runAppReadyEngines() {
   try {
+    var gen = SessionLifecycle.getGeneration(); // REM-002: session guard — נלכד לפני ה-await
     EngineRegistry.run({
       trigger: 'APP_READY',
       actions: {
@@ -2087,6 +2108,18 @@ function runAppReadyEngines() {
         coachDecisionSystem: 'DECISION_PASS'
       },
       context: engineRunContextBase()
+    }).then(function (summary) {
+      // Expression WP9: צריכת תוצאת coachDecisionSystem בפועל, לראשונה — עד כה תוצאת
+      // EngineRegistry.run() כולה נזרקה (.catch(function(){})). Coach Runtime handoff
+      // (EXP-36–39, §16): רק מיפוי/הצגה של Delivery Intent שכבר הופק במלואו — אין כאן
+      // יצירה, שכתוב, ריכוך, או חיזוק של התוכן הסמנטי (EXP-55). ללא השפעה בפועל כרגע —
+      // אין עדיין מקור Opportunity חי (Repository Gap G-2), כך שה-Decision Pass תמיד
+      // מסתיים ב-Silence ואין Delivery Intent להציג.
+      var cdsResult = summary && summary.results && summary.results.coachDecisionSystem;
+      var expression = cdsResult && cdsResult.output && cdsResult.output.expression;
+      if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
+        TriggerController.presentDeliveryIntent(expression.deliveryIntent, gen);
+      }
     }).catch(function () {});
   } catch (e) { /* לעולם לא שובר עלייה */ }
 }

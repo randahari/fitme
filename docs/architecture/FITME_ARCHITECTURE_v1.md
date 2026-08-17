@@ -952,3 +952,52 @@ remains the sixth and last unbuilt D3 §17 collaborator — see `docs/specs/SL-0
 Closure Record (§36) for the current, non-architectural repository gaps this leaves. This is a scope
 decision, not an oversight — D3 §17's six-collaborator design was already fixed before TASK-004;
 SL-001 realizes five of the six, per its own approved scope.
+
+---
+
+## 25. Expression — Coach Decision System, D3 §17's Sixth and Final Collaborator
+
+**Added by Expression** (`docs/specs/EXPRESSION_SPEC_v1.0.md`, fifteen Work Packages). Realizes the
+sixth and final of D3 §17's six internal collaborators — the component responsible for translating an
+already-formed `TerminalDecision` into a platform-neutral Delivery Intent (D3 §8.6 Decision 5):
+`js/coachDecisionSystem/deliveryIntentContract.js` (the Delivery Intent's closed field schema —
+rendered language, structured semantic signals, correlation metadata, Canonical Decision CD-EXP-01),
+`expressionInputGate.js` (defensive `TerminalDecision` validation and Silence-kind no-output
+handling), `expressionRenderingContext.js` (the Expression Rendering Context — a second, narrow,
+closed Stage-10 input, `{schemaVersion, relationshipMaturityStage}`, Canonical Decision 8; D2 Unit 04
+Stage 10 Amendment 1; D3 Decision 7, extending Decision 3 — produced exclusively by the Memory
+Layer, `TerminalDecision` itself unchanged), and `expressionRenderer.js` (the rendering dispatch
+itself — base/`UNMODIFIED`, `REFUSAL`, `ESCALATION`, `MODIFIED`, and multi-option/tied-set cases,
+governed by Canonical Decisions CD-EXP-02/03/04; reuses the existing `callClaude`/`ClaudeProxyClient`
+generative-call path, introducing no new LLM-calling infrastructure).
+
+`js/coachDecisionSystem/internalPipelineOrchestrator.js`'s `run()` now performs the Coach Decision
+System's full live Stage 1→10 sequence: Memory Layer context assembly, `runDecisionPass()` (`SafetyLayer`
+wired as the production `safetyPort`, ordinary Engineering integration within the already-approved
+architecture per the accepted post-SL-001 re-validation of the historical `TASK_006_SPEC_v1.0.md` §38
+item G-6), the D2-EF-07 Pre-Expression User Correction pre-dispatch supersession check (freshness/
+correction-arrival state owned by `memoryLayer.js`, within its existing Decision-Input-intake
+ownership boundary — D3 Decision 3), and `runExpressionStage()` (`ExpressionRenderer` wired as the
+production `expressionPort`). `js/trigger/triggerController.js`'s new `presentDeliveryIntent()`
+reuses the existing `#trigger-card` element to present a dispatched Delivery Intent — no new delivery
+surface was introduced (D3 Decision 6 preserved); `js/app.js`'s `runAppReadyEngines()` wires the two
+together. Expression remains an internal collaborator of the single registered `coachDecisionSystem`
+Composite Engine (D3 §17 Decision 1) throughout — no new B2 Engine Registry entry, no new trigger
+type, at any point across all fifteen Work Packages.
+
+`tests/fixtures/expressionQualitativeVerificationTestDouble.js` — a deterministic, test-only,
+keyword/pattern-based checker for CD-EXP-02/03/04's qualitative content-judgment rules, by direct
+structural analogy to `tests/fixtures/safetyIntegrationPortTestDouble.js` (TASK-006) — is never
+production-reachable, confirmed by its own negative test.
+
+**Repository Gap G-2** (§23, unresolved and unaffected by Expression, exactly as it remained
+unaffected by SL-001 at §24) means the Coach Decision System's Terminal Decision is always
+Decision-Pass-level Silence in production today — the full Stage 1→10 wiring above is real, live, and
+covered by tests, but Expression's Delivery Intent is not yet actually produced anywhere in
+production, and `presentDeliveryIntent()` is not yet actually reached. `APP_VERSION` was not advanced
+at Expression's closure for this reason — no shipped, user-visible behavior resulted. D3 §17's
+Composite Engine is now, with Expression's closure, fully realized: all six internal collaborators
+(Memory Layer, Recommendation Engine, Initiative Engine, Decision Engine, Safety Layer, Expression)
+exist in the repository, each internal to the single `coachDecisionSystem` registration; only G-2's
+own, separate resolution stands between this architecture and a live, user-visible Coach Decision
+System output.

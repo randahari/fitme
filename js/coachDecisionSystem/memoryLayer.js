@@ -45,6 +45,12 @@
   var DerivedIntelligenceConsumer = (typeof module !== 'undefined' && module.exports)
     ? require('../derivedIntelligenceConsumer.js')
     : window.DerivedIntelligenceConsumer;
+  // Expression WP4 (remainder) / Canonical Decision 8 (D3 Decision 7, extending Decision 3) —
+  // schema-conformance builder for the Expression Rendering Context only; see
+  // buildExpressionRenderingContext() below for the pass-through discipline this file observes.
+  var ExpressionRenderingContext = (typeof module !== 'undefined' && module.exports)
+    ? require('./expressionRenderingContext.js')
+    : window.ExpressionRenderingContext;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
@@ -159,7 +165,74 @@
     });
   }
 
-  var API = { assembleContext: assembleContext };
+  // ── Expression WP4 (remainder) / Canonical Decision 8 (D3 Decision 7, extending Decision 3) —
+  // produces the Expression Rendering Context (EXPRESSION_SPEC_v1.0.md §10.1, EXP-73-78), a
+  // narrow, bounded, Stage-10-facing artifact distinct from Pipeline Context itself. This function
+  // is strictly a pass-through of an already-assembled Pipeline Context's own already-computed
+  // relationshipMaturity.stage value (see assembleContext() above and its own header comment) —
+  // it does NOT resolve, infer, calculate, estimate, or otherwise compute a Relationship Maturity
+  // Stage of its own. The pre-existing TASK-005 Relationship Maturity source gap (Section 36 item
+  // E-2 / CD-T005-01) is explicitly NOT addressed here and remains exactly as it was: the value
+  // below is 'UNKNOWN' for every user, always, until that separate, non-blocking gap is resolved
+  // by a future Product/Architecture decision this function does not anticipate, infer, or
+  // substitute for.
+  function buildExpressionRenderingContext(pipelineContext) {
+    var stage = (pipelineContext && pipelineContext.relationshipMaturity && pipelineContext.relationshipMaturity.stage) || 'UNKNOWN';
+    return ExpressionRenderingContext.buildExpressionRenderingContext({ relationshipMaturityStage: stage });
+  }
+
+  // ── Expression WP9 / D2-EF-07 (Pre-Expression User Correction) — the accepted Architecture
+  // investigation's own approved mechanism: freshness/correction-arrival state originates within
+  // the Memory Layer's own, already-exclusive Decision-Input-intake ownership boundary (D3
+  // Decision 3, §11.1 — "No component other than the Memory Layer may originate a Decision Input
+  // read"). In-memory only, per-user, keyed by userId — NOT a durable write (no Persistence
+  // Gateway involved), structurally the same kind of primitive as SessionLifecycle's own
+  // generation counter (js/sessionLifecycle.js): a narrow, purpose-built marker, never a
+  // repurposing of an existing, differently-scoped one.
+  //
+  // recordExplicitUserStatementArrival() is the write side — intended to be called at the moment
+  // a new Explicit User Statement (D1 Unit 11 tier 1; a user-issued correction, not an ordinary
+  // Feedback event) is received. getExplicitUserStatementArrivalTimestamp() is the read side,
+  // queried by the Internal Pipeline Orchestrator's own pre-dispatch supersession check
+  // (internalPipelineOrchestrator.js), immediately before it would invoke runExpressionStage() —
+  // never by Expression itself, which receives no new input and performs no detection of its own.
+  //
+  // HONEST DISCLOSURE (mirrors matchCanonicalSafetyRules()'s/detectSafetyOpportunities()'s own
+  // documented pattern in safetyLayer.js): this repository currently has no live UI/flow through
+  // which a user could send FitMe a chat message or correction at all (verified: no chat-input
+  // element exists anywhere in index.html/js/app.js; every existing coachMessageFn/CoachClient.
+  // sendMessage() call site is an app-composed, one-way coach message — home card, trigger card,
+  // settings test — never a user-typed statement). recordExplicitUserStatementArrival() is
+  // therefore not wired to any live call site by this Work Package — wiring it to an app-composed
+  // message would be a genuine semantic misuse of this primitive (recording a correction that
+  // never actually occurred). This function is real and correctly implemented, not a stub; it
+  // simply has no live trigger to call it yet, exactly the same "correctly yields the
+  // non-differentiated case, given a documented and disclosed absence" pattern already established
+  // for matchCanonicalSafetyRules()/detectSafetyOpportunities() (Health/Safety Profile source) and
+  // the Decision Engine's own Opportunity source (TASK_006_SPEC_v1.0.md §38 item G-2). The
+  // pre-dispatch supersession check below will therefore always, correctly, evaluate "not
+  // superseded" in production today — never incorrectly withholding, never incorrectly exposing.
+  var _explicitUserStatementArrivals = {};
+
+  function recordExplicitUserStatementArrival(identity) {
+    identity = identity || {};
+    if (!identity.userId) return;
+    _explicitUserStatementArrivals[identity.userId] = Date.now();
+  }
+
+  function getExplicitUserStatementArrivalTimestamp(identity) {
+    identity = identity || {};
+    if (!identity.userId) return null;
+    var ts = _explicitUserStatementArrivals[identity.userId];
+    return (typeof ts === 'number') ? ts : null;
+  }
+
+  var API = {
+    assembleContext: assembleContext,
+    buildExpressionRenderingContext: buildExpressionRenderingContext,
+    recordExplicitUserStatementArrival: recordExplicitUserStatementArrival,
+    getExplicitUserStatementArrivalTimestamp: getExplicitUserStatementArrivalTimestamp
+  };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemMemoryLayer = API; }
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }

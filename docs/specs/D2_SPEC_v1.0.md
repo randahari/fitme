@@ -14,6 +14,12 @@
 > 07's Engine Responsibilities required from D1; see Consolidated
 > Canonical Decision Requirements)
 
+**Amendment Record**
+
+| # | Date/Context | Scope | Authority |
+|---|---|---|---|
+| 1 | Expression Work Package 4 (`EXPRESSION_IMPLEMENTATION_PLAN.md`), following the accepted Expression Rendering Context Architecture investigation | Unit 04, Stage 10 (Expression): Inputs, Dependencies, and Cross References amended to add the Expression Rendering Context as a second declared input, produced by the Memory Layer (D3 Decision 7, extending D3 Decision 3). No other Stage Contract, Invariant, or Exceptional Flow is affected. `TerminalDecision` (Unit 04 Stage 9's own output; fixed in full by `TASK_006_SPEC_v1.0.md` §25) is unchanged. See Consolidated Canonical Decision Requirements, CDR-2. | Product Review: APPROVED. Architecture Review: APPROVED. Canonical Review: PASSED. |
+
 # D2 --- Coach Decision Pipeline Specification
 
 ------------------------------------------------------------------------
@@ -881,24 +887,46 @@ Entry Criteria, Exit Criteria, and Cross References.
 - **Purpose.** Translate the already-formed Terminal Decision into
   language, tone, and timing appropriate to the user, without altering
   what was decided.
-- **Inputs.** The Terminal Decision.
+- **Inputs.** The Terminal Decision; the Expression Rendering Context —
+  a second, narrow, closed, Memory-Layer-produced input, added by
+  Amendment 1 (Canonical Decision 8; D3 Decision 7, extending D3
+  Decision 3) to supply Expression the non-decision, tone/framing-only
+  signals D1-PER-01–06 requires that TerminalDecision itself SHALL NOT
+  carry (D1-CDO-03). Its current, closed content is exactly
+  {schemaVersion, relationshipMaturityStage}; it SHALL NOT carry
+  decision content, rationale, ranking/priority information, Safety
+  decision authority (including reasonCode/reasonDetail), platform/UI/
+  surface information, the full Pipeline Context, or any unrelated user
+  state. Future fields may be added only when a specific,
+  already-approved Expression requirement needs a further tone/framing-
+  only signal TerminalDecision cannot carry — never speculatively.
 - **Outputs.** The user-facing message, for Recommendation/Initiative/
   refusal kinds; no user-facing output for a Silence kind.
 - **Responsibilities.** Render the Terminal Decision's content,
   rationale, and confidence into language (Coach Bible Ch.4); calibrate
   delivery firmness to the confidence already established at Decision
   Formation (D1-ER-05); apply D1 Unit 13 personalization to tone and
-  framing only, never to content already fixed.
+  framing only, never to content already fixed, using the Terminal
+  Decision together with the Expression Rendering Context's
+  relationshipMaturityStage value (D1-PER-03) — including its UNKNOWN
+  value, which SHALL be treated at least as conservatively as
+  Observer-stage scope, by direct analogy to the Initiative Engine's own
+  already-accepted treatment of the identical value
+  (TASK_005_SPEC_v1.0.md §17.7, item E-2).
 - **Forbidden Actions.** SHALL NOT originate the underlying decision,
   its priority, or its rationale (D1-CDO-03) — this is the binding
   boundary between Decision Formation and Expression. SHALL NOT soften,
   escalate, or otherwise alter the decision's substance while phrasing
   it (Coach Bible Ch.2 §4.3). SHALL NOT deliver a Terminal Decision
   computed from a Pipeline Context superseded by a Pre-Expression User
-  Correction (Unit 08, D2-EF-07; Canonical Decision 4).
-- **Dependencies.** Decision Formation. Performed by a generative/LLM
-  layer that is not itself one of the five Unit 07 engines (D1 Unit
-  15).
+  Correction (Unit 08, D2-EF-07; Canonical Decision 4). SHALL NOT
+  originate, compute, or infer the Expression Rendering Context itself,
+  or read any Pipeline Context member beyond what that Context supplies
+  (D2-PP-03; D2-INV-03).
+- **Dependencies.** Decision Formation (Terminal Decision); Memory Layer
+  (Expression Rendering Context, D3 Decision 3/7). Performed by a
+  generative/LLM layer that is not itself one of the five Unit 07
+  engines (D1 Unit 15).
 - **Entry Criteria.** A Terminal Decision exists.
 - **Exit Criteria.** For Recommendation/Initiative/refusal kinds not
   superseded by a Pre-Expression User Correction, a user-facing message
@@ -906,8 +934,9 @@ Entry Criteria, Exit Criteria, and Cross References.
   superseded by a Pre-Expression User Correction (Unit 08, D2-EF-07), no
   user-facing message is produced, and the cycle proceeds toward Memory
   Update with Feedback Processing as a no-op (Unit 08).
-- **Cross References.** D1 Unit 15 (D1-CDO-03); Coach Bible Ch.4; Unit
-  08 (D2-EF-07).
+- **Cross References.** D1 Unit 15 (D1-CDO-03); D1 Unit 13
+  (D1-PER-01–06); Coach Bible Ch.4; Unit 08 (D2-EF-07); Consolidated
+  Canonical Decision Requirements, CDR-2.
 
 ## Stage 11 — Feedback Processing
 
@@ -1762,6 +1791,30 @@ Decision, which MAY contain multiple user-selectable options. Pipeline,
 Lifecycle, Feedback, Memory, and Traceability all treat it as a single
 Terminal Decision (Unit 04, Stage 8/9; Unit 06, Lifecycle Rules; Unit
 08, D2-EF-05). No open question remains.
+
+## CDR-2 — Signal for D1-PER-03 (Relationship Maturity Stage) reaching Expression (RESOLVED)
+
+Surfaced during Expression's own implementation (Work Package 4,
+`EXPRESSION_IMPLEMENTATION_PLAN.md`), not during this document's
+original drafting: D1-PER-03 (D1 Unit 13) requires personalization
+depth/directiveness to scale with Relationship Maturity Stage, but
+Expression's originally-fixed single Input (the Terminal Decision alone)
+carried no such signal, and TerminalDecision's own contract
+(TASK_006_SPEC_v1.0.md §25) has no field for it. Investigation confirmed
+this was a genuine Repository Gap (the signal already exists in Pipeline
+Context, assembled by the Memory Layer, but had no canonical path to
+Stage 10) whose resolution required an Architecture-level decision,
+since neither TerminalDecision's contract nor a Stage's declared Input
+list may be amended by Engineering unilaterally. **Resolved by Canonical
+Decision 8 (D3 Decision 7, extending D3 Decision 3):** Expression
+receives a second, narrow, closed, Memory-Layer-produced input — the
+Expression Rendering Context, `{schemaVersion,
+relationshipMaturityStage}` — documented in full at Unit 04, Stage 10,
+above. TerminalDecision itself remains entirely unchanged. The
+Relationship Maturity source itself (i.e., whether `relationshipMaturity
+.stage` ever produces a value other than 'UNKNOWN') remains a separate,
+already-tracked, non-blocking gap (`TASK_005_SPEC_v1.0.md`, Section 36
+item E-2 / CD-T005-01) — not resolved or reopened by this decision.
 
 ## Inherited, Unresolved CDRs from D1
 

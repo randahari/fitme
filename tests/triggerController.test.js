@@ -374,3 +374,73 @@ test('presentTriggerCard never throws when the card DOM double does not support 
   TriggerController.configure(deps);
   await assert.doesNotReject(TriggerController.presentTriggerCard({ type: 'forgot-eat', data: { have: 1 } }, 1));
 });
+
+// ── Expression WP9 — presentDeliveryIntent() (EXPRESSION_SPEC_v1.0.md §16 EXP-38, §26 EXP-49) ──
+
+function fakeDeliveryIntent(overrides) {
+  return Object.assign({
+    schemaVersion: 'coach-decision-system-delivery-intent/1.0',
+    renderedLanguage: 'טקסט לדוגמה מהמאמן',
+    semanticSignal: { kind: 'RECOMMENDATION', safetyDisposition: 'UNMODIFIED' },
+    correlation: { decisionId: 'd-1' },
+    immutable: true
+  }, overrides || {});
+}
+
+test('presentDeliveryIntent shows the existing trigger-card with the Delivery Intent\'s renderedLanguage verbatim — maps/presents only (EXP-54/55)', async () => {
+  const card = fakeElement();
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  let hidden = true;
+  card.classList.remove = (c) => { if (c === 'hidden') hidden = false; };
+  TriggerController.configure(deps);
+  await TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1);
+  assert.equal(textEl.textContent, 'טקסט לדוגמה מהמאמן');
+  assert.equal(hidden, false);
+});
+
+test('presentDeliveryIntent never alters, rewrites, or truncates renderedLanguage — the exact string is used, whatever it is', async () => {
+  const card = fakeElement();
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  TriggerController.configure(deps);
+  const di = fakeDeliveryIntent({ renderedLanguage: 'MARK_EXACT_TEXT_12345' });
+  await TriggerController.presentDeliveryIntent(di, 1);
+  assert.equal(textEl.textContent, 'MARK_EXACT_TEXT_12345');
+});
+
+test('presentDeliveryIntent is a no-op when the card elements are missing', async () => {
+  const { deps } = fakeDeps();
+  TriggerController.configure(deps);
+  await assert.doesNotReject(() => TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1));
+});
+
+test('presentDeliveryIntent is a no-op when no Delivery Intent (or a malformed one) is supplied — never fabricates content', async () => {
+  const card = fakeElement();
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  TriggerController.configure(deps);
+  await TriggerController.presentDeliveryIntent(null, 1);
+  await TriggerController.presentDeliveryIntent(undefined, 1);
+  await TriggerController.presentDeliveryIntent({ renderedLanguage: '' }, 1);
+  await TriggerController.presentDeliveryIntent({}, 1);
+  assert.equal(textEl.textContent, '');
+});
+
+test('presentDeliveryIntent respects the session guard — suppressed when the session has gone stale', async () => {
+  const card = fakeElement();
+  const textEl = fakeElement();
+  const { deps } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  TriggerController.configure(deps);
+  deps.sessionLifecycle._bump(); // session moves from generation 1 to 2
+  await TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1); // stale generation
+  assert.equal(textEl.textContent, '');
+});

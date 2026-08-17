@@ -31,6 +31,14 @@ const decisionFormationJs = fs.readFileSync(path.join(__dirname, '../js/coachDec
 const safetyIntegrationPortJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/safetyIntegrationPort.js'), 'utf8');
 const swJs = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
 const TASK006_MODULES = [eligibilityEvaluatorJs, prioritizationJs, winnerSelectionJs, decisionFormationJs, safetyIntegrationPortJs];
+// Expression (WP1/WP3/WP4) — the Expression module's four dedicated files, per this file's own
+// #12 established enumeration ("Expression WP1 deliveryIntentContract.js + Expression WP3
+// expressionInputGate.js + Expression WP4 expressionRenderingContext.js + expressionRenderer.js").
+const deliveryIntentContractJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/deliveryIntentContract.js'), 'utf8');
+const expressionInputGateJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/expressionInputGate.js'), 'utf8');
+const expressionRenderingContextJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/expressionRenderingContext.js'), 'utf8');
+const expressionRendererJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/expressionRenderer.js'), 'utf8');
+const EXPRESSION_MODULES = [deliveryIntentContractJs, expressionInputGateJs, expressionRenderingContextJs, expressionRendererJs];
 
 function freshRegistry() { EngineRegistry.__resetForTests__(); }
 
@@ -139,10 +147,10 @@ test('11. js/app.js wires coachDecisionSystem into the APP_READY actions map, al
   assert.match(body, /coachDecisionSystem:\s*'DECISION_PASS'/);
 });
 
-test('12. index.html loads all eleven modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five) before js/app.js, after registerEngines.js, in dependency order', () => {
+test('12. index.html loads all fifteen modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five + Expression WP1 deliveryIntentContract.js + Expression WP3 expressionInputGate.js + Expression WP4 expressionRenderingContext.js + expressionRenderer.js) before js/app.js, after registerEngines.js, in dependency order', () => {
   const iReg = indexHtml.indexOf('js/engines/registerEngines.js');
   const iApp = indexHtml.indexOf('src="js/app.js"');
-  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
+  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
   var last = iReg;
   files.forEach((f) => {
     const i = indexHtml.indexOf('js/coachDecisionSystem/' + f);
@@ -155,12 +163,44 @@ test('12. index.html loads all eleven modules (TASK-004 five + TASK-005 initiati
   // in the browser) must load before recommendationEngine.js/initiativeEngine.js consume it.
   assert.ok(indexHtml.indexOf('js/coachDecisionSystem/prioritization.js') < indexHtml.indexOf('js/coachDecisionSystem/recommendationEngine.js'));
   assert.ok(indexHtml.indexOf('js/coachDecisionSystem/prioritization.js') < indexHtml.indexOf('js/coachDecisionSystem/initiativeEngine.js'));
+  // Expression WP2 — deliveryIntentContract.js (window.DeliveryIntentContract) must load before
+  // internalPipelineOrchestrator.js, which now references it (EXP-OD-9 schema-conformance check).
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/deliveryIntentContract.js') < indexHtml.indexOf('js/coachDecisionSystem/internalPipelineOrchestrator.js'));
+  // Expression WP4 — expressionRenderer.js (window.ExpressionRenderer) requires
+  // DeliveryIntentContract.buildDeliveryIntent(), so it must load after deliveryIntentContract.js.
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/deliveryIntentContract.js') < indexHtml.indexOf('js/coachDecisionSystem/expressionRenderer.js'));
+  // Expression WP4 (remainder) / Canonical Decision 8 — expressionRenderingContext.js
+  // (window.ExpressionRenderingContext) must load before memoryLayer.js, which now requires it
+  // (buildExpressionRenderingContext()), and before expressionRenderer.js, which also requires it.
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/expressionRenderingContext.js') < indexHtml.indexOf('js/coachDecisionSystem/memoryLayer.js'));
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/expressionRenderingContext.js') < indexHtml.indexOf('js/coachDecisionSystem/expressionRenderer.js'));
 });
 
-test('12b. sw.js caches all eleven modules in its SHELL manifest, matching index.html', () => {
-  ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
+test('12b. sw.js caches all fifteen modules in its SHELL manifest, matching index.html', () => {
+  ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
     assert.notEqual(swJs.indexOf('js/coachDecisionSystem/' + f), -1, f + ' must be present in sw.js');
   });
+});
+
+// ── Expression WP2 — single-registration assertion extended: Expression's dispatch introduces no
+// second Composite Engine registration, no new B2 Engine Registry entry, no new trigger type ──
+
+test('12c. runExpressionStage is exported alongside the existing five dispatch functions — Expression remains an internal collaborator, never independently registered', () => {
+  const Orchestrator = require('../js/coachDecisionSystem/internalPipelineOrchestrator.js');
+  assert.equal(typeof Orchestrator.runExpressionStage, 'function');
+  freshRegistry();
+  RegisterCoachDecisionSystem.registerAll();
+  assert.equal(EngineRegistry.getAll().length, 1); // still exactly one Composite Engine registration
+});
+
+test('12d. registerCoachDecisionSystem.js and js/engineRegistry.js are unchanged by Expression WP2 (stop-condition check, per EXPRESSION_IMPLEMENTATION_PLAN.md WP2)', () => {
+  const registerJs = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/registerCoachDecisionSystem.js'), 'utf8');
+  assert.equal(registerJs.indexOf('runExpressionStage'), -1); // registers only Orchestrator.run, never a per-function entry
+  assert.equal(registerJs.indexOf('trigger:'), -1); // no new trigger type
+});
+
+test('12e. internalPipelineOrchestrator.js introduces no new trigger type via runExpressionStage', () => {
+  assert.equal(/trigger:\s*\[/.test(orchestratorJs), false);
 });
 
 // ── Feedback and Suppression consumption (C2, unchanged ownership) ──
@@ -301,4 +341,159 @@ test('19. StateAccess coachDecisionSystem/DECISION_PASS permission entry is unch
   assert.doesNotThrow(() => access.read.recommendationFeedbackHistory());
   assert.throws(() => access.read.habitView());
   assert.throws(() => access.read.patternView());
+});
+
+// ── Expression WP9 — Coach Runtime handoff wiring (Safety Layer production injection as ordinary
+// Engineering integration within the already-approved architecture; ExpressionRenderer wired as the
+// production expressionPort; TriggerController.presentDeliveryIntent wired as the presentation call,
+// reusing the existing #trigger-card — D3 Decision 6, no new delivery surface) ──
+
+test('20. internalPipelineOrchestrator.js requires the real SafetyLayer (SL-001) and ExpressionRenderer (Expression WP4) as production ports — no stub/mock port constructed inline', () => {
+  assert.match(orchestratorJs, /require\(['"]\.\/safetyLayer\.js['"]\)/);
+  assert.match(orchestratorJs, /require\(['"]\.\/expressionRenderer\.js['"]\)/);
+});
+
+test('21. js/app.js configures ExpressionRenderer with a real generateFn (reusing the existing callClaude/ClaudeProxyClient path — no new generation mechanism invented)', () => {
+  assert.match(appJs, /ExpressionRenderer\.configure\(/);
+  const start = appJs.indexOf('ExpressionRenderer.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /generateFn/);
+  assert.match(body, /callClaude\(/);
+});
+
+test('22. js/app.js dispatches a DISPATCHED Expression outcome to TriggerController.presentDeliveryIntent — no direct DOM manipulation performed from app.js itself', () => {
+  assert.match(appJs, /TriggerController\.presentDeliveryIntent\(/);
+  const start = appJs.indexOf('function runAppReadyEngines()');
+  const end = appJs.indexOf('\nfunction ', start + 1);
+  const body = appJs.slice(start, end === -1 ? undefined : end);
+  assert.match(body, /expression\.status === 'DISPATCHED'/);
+  assert.match(body, /TriggerController\.presentDeliveryIntent\(/);
+});
+
+test('23. triggerController.js\'s new presentDeliveryIntent() reuses the existing #trigger-card element — introduces no new delivery surface (D3 Decision 6)', () => {
+  const triggerControllerJs = fs.readFileSync(path.join(__dirname, '../js/trigger/triggerController.js'), 'utf8');
+  const start = triggerControllerJs.indexOf('function presentDeliveryIntent');
+  assert.notEqual(start, -1);
+  const end = triggerControllerJs.indexOf('\n  }', start);
+  const body = triggerControllerJs.slice(start, end);
+  assert.match(body, /getElementById\(['"]trigger-card['"]\)/);
+});
+
+test('24. memoryLayer.js\'s new D2-EF-07 correction-arrival functions stay within the Memory Layer\'s own Decision-Input intake ownership — no PersistenceGateway/Firestore durable write introduced by them', () => {
+  assert.match(memoryLayerJs, /function recordExplicitUserStatementArrival/);
+  assert.match(memoryLayerJs, /function getExplicitUserStatementArrivalTimestamp/);
+  assert.equal(memoryLayerJs.indexOf('PersistenceGateway.persist'), -1);
+});
+
+test('25. internalPipelineOrchestrator.js\'s run() performs the D2-EF-07 pre-dispatch supersession check itself — Expression receives no new correction-detection input, and runExpressionStage()\'s own existing signature is unchanged', () => {
+  assert.match(orchestratorJs, /getExplicitUserStatementArrivalTimestamp/);
+  // runExpressionStage's own signature — (terminalDecision, expressionRenderingContext, port) — is
+  // unchanged; the supersession check happens in run() strictly before the call, never inside it.
+  assert.match(orchestratorJs, /runExpressionStage\(terminalDecision, renderingContextResult\.expressionRenderingContext, ExpressionRenderer\)/);
+});
+
+// ── Expression WP11 (EXPRESSION_IMPLEMENTATION_PLAN.md WP11) — Memory/Persistence boundary
+// confirmation (§18, EXP-41; AC-5). Audit only, by direct structural analogy to the already-
+// confirmed absence of one for the Decision Engine (`TASK_006_SPEC_v1.0.md` §29.3, this file's own
+// #14/#16 above) and the Safety Layer (`SL-001_SPEC_v1.0.md` §20/§303) — Expression has no
+// StateAccess capability of its own and performs no durable write of its own; where retention is
+// needed (e.g. Coaching History), that remains the Memory Layer's responsibility (Stages 11-13),
+// not Expression's. This file's own #14/#16 checks above never covered these four files — they
+// cover recommendationEngineJs/initiativeEngineJs/orchestratorJs/memoryLayerJs/TASK006_MODULES
+// only — so this is genuinely new coverage, not a duplicate of existing assertions. ──
+
+test('26. the Expression module (deliveryIntentContract.js, expressionInputGate.js, expressionRenderingContext.js, expressionRenderer.js) performs zero calls to js/persistenceGateway.js (EXP-41, AC-5)', () => {
+  EXPRESSION_MODULES.forEach((src) => {
+    assert.equal(src.indexOf('PersistenceGateway.persist'), -1);
+    assert.equal(src.indexOf("require('../persistenceGateway"), -1);
+    assert.equal(src.indexOf('.persist('), -1);
+  });
+});
+
+test('27. the Expression module holds no StateAccess capability of its own — no StateAccess.createEngineAccess call, no direct require, no window.StateAccess reference (EXP-41, AC-5)', () => {
+  EXPRESSION_MODULES.forEach((src) => {
+    assert.equal(src.indexOf('StateAccess.createEngineAccess'), -1);
+    assert.equal(src.indexOf("require('../stateAccess"), -1);
+    assert.equal(src.indexOf('window.StateAccess'), -1);
+  });
+});
+
+// ── Expression WP12 (EXPRESSION_IMPLEMENTATION_PLAN.md WP12) — Determinism, Explainability,
+// Accessibility, Language, and Cross-Platform confirmation (§20-§24; AC-6, AC-11). Audit findings,
+// cited rather than duplicated: EXP-44 (execution model) and AC-6/EXP-43 (determinism) are
+// confirmed by tests/internalPipelineOrchestrator.test.js's own #16/#43 and
+// tests/expressionRenderer.test.js's own #69; EXP-45/EXP-53/AC-11 (correlation carries traceability
+// without duplication) are already fully, precisely tested by tests/deliveryIntentContract.test.js
+// (correlation schema-locked to ['decisionId']; missing/empty decisionId and any extra field are
+// both REJECTED) — not re-tested here. This section closes the one remaining, previously-unchecked
+// audit surface identified at this Work Package's own Pre-Flight Review: §21/§22/§24
+// accessibility/RTL/native-platform code absence in the Expression module's own four files
+// (Expression produces no UI by construction, D3 §8.6 Decision 5). The `window.X = API`/
+// `window.OtherModule` lines already present in these files are the repository's own established
+// dual-export/module-resolution convention (confirmed identical in every `js/coachDecisionSystem/*`
+// module, TASK-004 onward) — not UI code, and correctly not flagged here. ──
+
+test('28. the Expression module contains no accessibility markup, no RTL/directional layout rule, and no native-platform-specific code of its own (§21 EXP-46; §22 EXP-47\'s Explicit Out of Scope; §24 EXP-48)', () => {
+  EXPRESSION_MODULES.forEach((src) => {
+    assert.equal(/\bdocument\./.test(src), false);
+    assert.equal(/\baria-[a-z]+/i.test(src), false);
+    assert.equal(/\brole\s*=/.test(src), false);
+    assert.equal(/dir\s*=\s*['"]?rtl/i.test(src), false);
+    assert.equal(/direction\s*:/.test(src), false);
+    assert.equal(/Platform\.OS|NativeModules|react-native/i.test(src), false);
+  });
+});
+
+test('29. runExpressionStage() and ExpressionRenderer.render() both use the async/await execution model already established for the B2 async contract (EXP-44) — no further Architecture Decision was required or introduced', () => {
+  assert.match(orchestratorJs, /async function runExpressionStage/);
+  assert.match(expressionRendererJs, /async function render/);
+});
+
+// ── Expression WP13 (EXPRESSION_IMPLEMENTATION_PLAN.md WP13) — resolves `EXP-OD-11`, the
+// deterministic verification mechanism for CD-EXP-02/CD-EXP-03/CD-EXP-04's qualitative
+// content-judgment rules. By direct structural analogy to `tests/safetyIntegrationPort.test.js`'s
+// own identical negative-test convention for `safetyIntegrationPortTestDouble.js` (Canonical
+// Decision CD-T006-05, §21.8) — the qualitative-verification double
+// (tests/fixtures/expressionQualitativeVerificationTestDouble.js) is a test-only fixture and MUST
+// never be reachable from any production Expression/orchestrator module. ──
+
+test('30. no production Expression/orchestrator module imports or references the test-only qualitative-verification double (EXP-OD-11 resolution, mirrors CD-T006-05\'s identical Safety-double guarantee)', () => {
+  EXPRESSION_MODULES.concat([orchestratorJs]).forEach((src) => {
+    assert.equal(src.indexOf('expressionQualitativeVerificationTestDouble'), -1);
+    assert.equal(/require\(['"].*fixtures/.test(src), false); // a documentation mention of "see tests/fixtures/" is fine; an actual require(...) is not
+  });
+});
+
+// ── Expression WP14 (EXPRESSION_IMPLEMENTATION_PLAN.md WP14) — cross-cutting audit. Extends this
+// file's own existing #16 (Coach/Expression boundary) and #14 (Decision Engine reach-back adjacent)
+// checks — which cover only the older TASK-004/005/006 module set — to the Expression module's own
+// four dedicated files, closing the narrow AC-3/AC-4 coverage gap identified at WP14's own
+// Pre-Flight Review. No production code changed; this is additive test coverage of already-correct,
+// already-verified-by-inspection behavior. ──
+
+test('31. the Expression module performs no Decision Engine reach-back (AC-3, EXP-17/EXP-39) — no require() of eligibilityEvaluator.js, winnerSelection.js, decisionFormation.js, recommendationEngine.js, initiativeEngine.js, or prioritization.js', () => {
+  var DECISION_ENGINE_FILES = ['eligibilityEvaluator.js', 'winnerSelection.js', 'decisionFormation.js', 'recommendationEngine.js', 'initiativeEngine.js', 'prioritization.js'];
+  EXPRESSION_MODULES.forEach((src) => {
+    DECISION_ENGINE_FILES.forEach((f) => {
+      assert.equal(src.indexOf("require('./" + f + "')"), -1, f + ' must not be required by the Expression module');
+      assert.equal(src.indexOf("require('../" + f + "')"), -1, f + ' must not be required by the Expression module');
+    });
+  });
+});
+
+test('32. the Expression module has no unauthorized chat/trigger/UI/delivery-surface dependency of its own (AC-4, EXP-15/EXP-20) — no coachPresenter, coachPromptComposer, triggerController, or innerHTML reference in actual code, extending this file\'s own #16 check (previously scoped to the older module set only) to the Expression module', () => {
+  // Investigation-gate comments legitimately cite other files by name (e.g. expressionRenderer.js's
+  // own WP4 investigation-gate note reviewing coachPresenter.js's/coachPromptComposer.js's
+  // dependency-injection pattern before reusing its *shape*, never the module itself) — the same
+  // "a documentation mention is fine; an actual require()/reference is not" discipline already
+  // established by this file's own #30 above and by tests/safetyIntegrationPort.test.js. Line
+  // comments are stripped before matching, mirroring tests/c1Wp5aWiring.test.js's own convention.
+  EXPRESSION_MODULES.forEach((src) => {
+    var code = src.split('\n').map(function (line) { return line.replace(/\/\/.*$/, ''); }).join('\n');
+    assert.equal(code.indexOf('coachPresenter'), -1);
+    assert.equal(code.indexOf('coachPromptComposer'), -1);
+    assert.equal(code.indexOf('triggerController'), -1);
+    assert.equal(code.indexOf('innerHTML'), -1);
+  });
 });

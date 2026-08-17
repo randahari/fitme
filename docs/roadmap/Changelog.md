@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-09
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -39,7 +39,101 @@
 - 🟢 Coach Bible Chapters 2–22 completed independent Product and AI Architecture review and are approved and Canonical (docs-only; repository synchronization of a pre-existing document)
 - 🟢 TASK-007 — UX System approved, implemented, verified and closed (cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers, ten Work Packages; 12 test files extended/added, 97 net new/changed tests, full suite 1471/1471 passing; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
 - 🟢 TASK-008 — Design System approved, implemented, verified and closed (`css/app.css` token/component layer — color, typography, spacing, radius, motion, iconography, theming, Component Catalog consolidation, semantic communication surfaces, WCAG 2.1 AA contrast fixture across all UI surfaces; fourteen Work Packages, WP4 retired N/A; full suite 1607/1607 passing, net +136 over the 1471 pre-TASK-008 baseline; three dark-mode contrast finding families explicitly deferred, non-blocking, to a future Brand/Visual Identity phase — not certified compliant, palette not frozen as final; two governance-sequencing deviations during implementation recorded accurately in the Specification's Closure Record)
-- ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection. Expression remains the sixth and last undesignated D3 §17 collaborator, still with no work item named for it
+- 🟢 Expression — D3 §17's sixth and final Coach Decision System collaborator approved, implemented, verified and closed (`js/coachDecisionSystem/deliveryIntentContract.js`, `expressionInputGate.js`, `expressionRenderingContext.js`, `expressionRenderer.js`; `internalPipelineOrchestrator.js`/`memoryLayer.js`/`js/trigger/triggerController.js`/`js/app.js` extended; fifteen Work Packages; 15 test files added/extended, full suite 1796/1796 passing, net +189 over the 1607 pre-Expression baseline; D3 §17's Composite Engine now fully realized, all six internal collaborators built; live Coach Runtime handoff wired but currently dormant pending Repository Gap G-2's separate resolution, `APP_VERSION` accordingly not advanced; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
+- ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection
+
+---
+
+## Expression — D3 §17's Sixth and Final Coach Decision System Collaborator (Implementation Complete, Closed)
+
+**Date:** 2026-08-17
+**Status:** DONE — implemented, tested, reviewed, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented D3 §17's sixth and final Coach Decision System internal collaborator — Expression — the
+component responsible for translating an already-formed `TerminalDecision` into a platform-neutral
+Delivery Intent, per `docs/specs/EXPRESSION_SPEC_v1.0.md`, across fifteen Work Packages:
+
+- **WP1** — the Delivery Intent field-level schema (`js/coachDecisionSystem/deliveryIntentContract.js`):
+  rendered language, structured semantic signals, correlation metadata (Canonical Decision CD-EXP-01);
+  `schemaVersion`; correlation locked to an opaque `decisionId` only, never embedding/duplicating the
+  complete `TerminalDecision` (`EXP-OD-9` resolved).
+- **WP2** — the dispatch mechanism: `runExpressionStage()` added to `internalPipelineOrchestrator.js`
+  as a separate function invoked after `runDecisionPass()` returns, preserving its existing contract
+  unchanged; no new B2 Engine Registry entry (`EXP-OD-3` resolved).
+- **WP3** — defensive `TerminalDecision` input validation (`js/coachDecisionSystem/expressionInputGate.js`)
+  and Silence-kind no-output handling, both origin cases.
+- **WP4** — base-case (`UNMODIFIED`) rendering (`js/coachDecisionSystem/expressionRenderer.js`), reusing
+  the existing `callClaude`/`ClaudeProxyClient` generative-call path; and, under **Canonical Decision 8**
+  (D2 Unit 04 Stage 10 Amendment 1; D3 Decision 7), the Expression Rendering Context — a second,
+  narrow, closed Stage-10 input (`expressionRenderingContext.js`), `{schemaVersion,
+  relationshipMaturityStage}`, resolving `D1-PER-03`'s signal-availability gap without modifying
+  `TerminalDecision`.
+- **WP5–WP7** — `REFUSAL`, `ESCALATION`, and Safety-intervention-disclosure rendering (Canonical
+  Decisions CD-EXP-02, CD-EXP-03, CD-EXP-04), plus the `MODIFIED`-disposition rendering path.
+- **WP8** — multi-option (tied-set) rendering, `options[]` preserved unmutated.
+- **WP9** — the live Coach Runtime handoff: `SafetyLayer` (SL-001) and `ExpressionRenderer` wired as
+  production `safetyPort`/`expressionPort` in `internalPipelineOrchestrator.js`'s `run()`, now
+  performing the full live Stage 1→10 sequence; `TriggerController.presentDeliveryIntent()` added,
+  reusing the existing `#trigger-card` element — no new delivery surface (D3 Decision 6 preserved);
+  the D2-EF-07 Pre-Expression User Correction supersession guarantee implemented (`memoryLayer.js`
+  owns freshness/correction-arrival state, `run()` performs the pre-dispatch check) (`EXP-OD-4`
+  resolved).
+- **WP10** — exceptional-flow confirmation (§19, EXP-42): `TerminalDecision` validation failure,
+  generative/LLM-layer call containment, and Coach Runtime unavailability all confirmed correctly
+  handled, no fabricated fallback content on any path.
+- **WP11** — Memory/Persistence boundary confirmation (§18, EXP-41): zero calls to
+  `js/persistenceGateway.js`, no StateAccess capability of its own.
+- **WP12** — Determinism, Explainability, Accessibility, Language, and Cross-Platform confirmation
+  (§20–§24).
+- **WP13** — resolved `EXP-OD-11`, the deterministic verification mechanism for CD-EXP-02/03/04's
+  qualitative content-judgment rules: `tests/fixtures/expressionQualitativeVerificationTestDouble.js`,
+  a deterministic, test-only, keyword/pattern-based checker, by direct structural analogy to
+  `tests/fixtures/safetyIntegrationPortTestDouble.js` (TASK-006) — never production-reachable.
+- **WP14** — cross-cutting audit: closed two narrow AC-3/AC-4 test-coverage gaps and synchronized
+  Appendix C's Open Decision Register (`EXP-OD-3`, `EXP-OD-4`, `EXP-OD-7`, `EXP-OD-9`, `EXP-OD-11` all
+  corrected to Resolved, preserving audit history).
+- **WP15** — this documentation and closure pass.
+
+**Repository Gap G-2** (no live Stage 3/4 Opportunity source — pre-existing since TASK-005/TASK-006,
+unaffected by Expression) means the Coach Decision System's Terminal Decision is always
+Decision-Pass-level Silence in production today, so Expression's Delivery Intent is never actually
+produced yet. The full Stage 1→10 wiring is real, live, and tested — not a stub — but currently
+dormant pending G-2's own, separate, not-yet-scoped resolution. **`APP_VERSION` was accordingly not
+advanced** — no shipped, user-visible behavior change resulted from this closure (see
+`docs/specs/EXPRESSION_SPEC_v1.0.md`'s Closure Record, §33.5, for the full evidence).
+
+### Verification
+
+- 15 test files added or extended across the full sequence (`deliveryIntentContract.test.js`,
+  `expressionInputGate.test.js`, `expressionRenderingContext.test.js`, `expressionRenderer.test.js`,
+  `expressionQualitativeVerificationTestDouble.test.js` new; `internalPipelineOrchestrator.test.js`,
+  `memoryLayer.test.js`, `triggerController.test.js`, `coachDecisionSystemWiring.test.js`,
+  `c1Wp5aWiring.test.js` extended).
+- Full suite **1796/1796 passing** (1607 pre-Expression baseline, net +189).
+- All Acceptance Criteria AC-1 through AC-22 confirmed satisfied; `EXP-OD-1` through `EXP-OD-9`,
+  `EXP-OD-11`, and `EXP-OD-12` resolved; `EXP-OD-6` (`APP_VERSION`) resolved as "not advanced," per the
+  evidence above; `EXP-OD-8` remains an inherited, unaffected Canonical Gap; `EXP-OD-10`
+  (bounded-modification content-generation algorithm) remains explicitly open and non-blocking,
+  carried forward as a tracked follow-up — `MODIFIED` is currently unreachable in production, no
+  canonical source exists anywhere in the repository for this algorithm.
+- No file outside `js/coachDecisionSystem/*`, the one confirmed `js/trigger/triggerController.js`
+  variance (WP9's Coach Runtime handoff target), and `js/app.js`'s composition-root wiring was
+  touched; `js/engineRegistry.js`, `js/stateAccess.js`, `js/persistenceGateway.js`, `firestore.rules`,
+  and all Product Bible/Coach Bible/AI Constitution/D1/D2/D3 content remain fully protected and
+  unaffected.
+- D3 §17's Composite Engine is now fully realized: all six internal collaborators (Memory Layer,
+  Recommendation Engine, Initiative Engine, Decision Engine, Safety Layer, Expression) are built,
+  still registered as the single `coachDecisionSystem` Engine Registry entry (D3 Decision 1) — no
+  second registration was ever introduced across the whole engagement.
+- Approved by Head of Product + AI Architect and closed 2026-08-17 — see
+  `docs/specs/EXPRESSION_SPEC_v1.0.md`'s Closure Record (§33.5) for full details, evidence, and
+  tracked follow-up items (none of which expand this task's own scope): `EXP-OD-10`; the D2-EF-07
+  write-side (no live chat-input UI exists anywhere in the repository yet); and the
+  `presentDeliveryIntent()`/`presentTriggerCard()` `#trigger-card` coexistence question (dormant given
+  G-2; falls under `TASK_007_SPEC_v1.0.md`'s own pre-existing, still-open OD-5).
 
 ---
 
