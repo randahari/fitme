@@ -40,6 +40,7 @@
 - 🟢 TASK-007 — UX System approved, implemented, verified and closed (cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers, ten Work Packages; 12 test files extended/added, 97 net new/changed tests, full suite 1471/1471 passing; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
 - 🟢 TASK-008 — Design System approved, implemented, verified and closed (`css/app.css` token/component layer — color, typography, spacing, radius, motion, iconography, theming, Component Catalog consolidation, semantic communication surfaces, WCAG 2.1 AA contrast fixture across all UI surfaces; fourteen Work Packages, WP4 retired N/A; full suite 1607/1607 passing, net +136 over the 1471 pre-TASK-008 baseline; three dark-mode contrast finding families explicitly deferred, non-blocking, to a future Brand/Visual Identity phase — not certified compliant, palette not frozen as final; two governance-sequencing deviations during implementation recorded accurately in the Specification's Closure Record)
 - 🟢 Expression — D3 §17's sixth and final Coach Decision System collaborator approved, implemented, verified and closed (`js/coachDecisionSystem/deliveryIntentContract.js`, `expressionInputGate.js`, `expressionRenderingContext.js`, `expressionRenderer.js`; `internalPipelineOrchestrator.js`/`memoryLayer.js`/`js/trigger/triggerController.js`/`js/app.js` extended; fifteen Work Packages; 15 test files added/extended, full suite 1796/1796 passing, net +189 over the 1607 pre-Expression baseline; D3 §17's Composite Engine now fully realized, all six internal collaborators built; live Coach Runtime handoff wired but currently dormant pending Repository Gap G-2's separate resolution, `APP_VERSION` accordingly not advanced; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
+- 🟢 FITME G-2 Canonical Decision Package approved and closed (`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`, v1.4; three Canonical Decisions resolved — CD-G2-01 Explicit User Statement/Action are Decision Inputs and high-authority evidentiary signals, not an independent Canonical Opportunity Source; CD-G2-02 FITME has one canonical Evidence concept, distinguished by evidentiary sufficiency, not two Evidence concepts; CD-G2-03 Initiative may express minimal contextual assistance, resolving the `InitiativeCandidate.action` content-type ambiguity — plus three Architecture Decisions: AD-G2-01, the G-2 Recognition Architecture (19 items) connecting existing real signals to Stage 3 Opportunity Detection of the existing Coach Decision System, approved after an Adversarial Canonical & Repository Review with no Product/Architecture/Contract blocker and no canonical contradiction; AD-G2-02, narrow Decision Engine orchestration authority for Stage 4 Evidence Evaluation, resolving `TASK_006_SPEC_v1.0.md` §38 item G-2; AD-G2-03, a bounded Goal/Objective and Current-State extension to Pipeline Context, reached only through the Memory Layer's existing exclusive Context Assembly authority; PD-G2-05 "Proactive Contextual Presence" recorded for traceability, approved by Product outside this Package; documentation-only, no production code changes, no implementation performed; synchronized into `D1_SPEC_v1.0.md`, `D2_SPEC_v1.0.md`, `D3_SPEC.md`, `TASK_005_SPEC_v1.0.md`, and `TASK_006_SPEC_v1.0.md`; no deferred-reasoning or user-opt-in pipeline established; the Decision Window closing criterion remains unresolved and non-blocking for G-2 Core per AD-G2-01's own terms; Repository Gap G-2 itself — no live Stage 3/4 Opportunity source — remains open and unaffected, pending future implementation)
 - ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection
 
 ---
@@ -134,6 +135,117 @@ advanced** — no shipped, user-visible behavior change resulted from this closu
   write-side (no live chat-input UI exists anywhere in the repository yet); and the
   `presentDeliveryIntent()`/`presentTriggerCard()` `#trigger-card` coexistence question (dormant given
   G-2; falls under `TASK_007_SPEC_v1.0.md`'s own pre-existing, still-open OD-5).
+
+---
+
+## FITME G-2 Canonical Decision Package (Approved and Closed)
+
+**Date:** 2026-08-17
+**Status:** DONE — Canonical Review completed, both Required Canonical Decisions approved, closed
+**Production Code Changes:** No (documentation only)
+
+`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (v1.1) completed
+Canonical Review; both Canonical Decisions were approved by the Head of Product + AI Architect,
+resolving ambiguity discovered by the "G-2 Investigation" series — a dedicated root-cause and
+canonical-contradiction review of Repository Gap G-2 (no live Stage 3/4 Opportunity source),
+conducted after `docs/specs/D1_SPEC_v1.0.md` and `docs/specs/TASK_005_SPEC_v1.0.md` were both already
+closed, canonical documents:
+
+- **CD-G2-01** — Explicit User Statement and Explicit User Action are Decision Inputs and
+  high-authority evidentiary signals (D1 Unit 11, Tiers 1-2), not independent Canonical Opportunity
+  Sources. D1 Unit 05's closed, five-item Canonical Opportunity Sources taxonomy is unchanged; no
+  sixth source is introduced. Stage 3 may use these signals, through Pipeline Context, toward
+  detecting an Opportunity belonging to one of the existing five sources, with no preferred, primary,
+  or default mapping to any one of them.
+- **CD-G2-02** — FITME has exactly one canonical Evidence concept, governed by D1 Unit 11's Evidence
+  Hierarchy. The distinction between a single Behavioral Event and a confirmed pattern is one of
+  evidentiary sufficiency, not two different Evidence concepts.
+
+Repository synchronization was executed and independently reviewed: `docs/specs/D1_SPEC_v1.0.md`
+(Unit 03, Unit 05's source list, `D1-OD-01`, Unit 11, `D1-ER-02`) and
+`docs/specs/TASK_005_SPEC_v1.0.md` (§9.2, §15.2 Exclusions, §15.7 Ownership, §36 Repository Gap
+G-2 — closed as RESOLVED) were corrected, with each closed SPEC's original text preserved as
+"Originally recorded" for audit history rather than silently rewritten. No implementation,
+architecture, or behavioral change resulted; `APP_VERSION` not advanced. This closure does **not**
+resolve the architecture-level Repository Gap G-2 (no live Stage 3/4 Opportunity source) itself,
+which remains open and unaffected — see Expression's own closure entry, above. Approved by Head of
+Product + AI Architect and closed 2026-08-17 — see
+`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` for full details
+and evidence.
+
+**v1.2 — PD-G2-05 / CD-G2-03 Canonical Update (2026-08-17):** Product approved **PD-G2-05**
+("Proactive Contextual Presence" — FITME may proactively recognize a contextually relevant moment
+and offer a minimal, context-aware invitation without that recognition automatically requiring
+substantive coaching advice, sensitive to goals, context, relationship, relevance, and interruption
+value; explicitly establishes no deferred-reasoning requirement or user-opt-in pipeline gate), and the
+Head of Product + AI Architect approved a third Canonical Decision, **CD-G2-03** ("Initiative May
+Express Minimal Contextual Assistance"), resolving a previously open interpretive question: whether
+the required `InitiativeCandidate.action` field (`docs/specs/TASK_005_SPEC_v1.0.md`) must contain
+behavioral advice, a recommendation, an instruction, or an insight, or whether a minimal proactive
+offer of contextual assistance is sufficient. CD-G2-03 resolves this in favor of the latter, within
+the existing, unmodified Initiative category — no new Terminal Decision type, Candidate family,
+pipeline Stage, or user-opt-in gate is introduced; a subsequent user response is handled by an
+ordinary fresh Decision Pass, with no deferred continuation of the original pass established. A
+single, minimal, additive-only cross-reference was synchronized into `TASK_005_SPEC_v1.0.md`'s
+`InitiativeCandidate.action` field description; no other document required modification. This round
+does not resolve the architecture-level Repository Gap G-2 itself, which remains open and unaffected.
+See `docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (v1.2) for
+full details and evidence.
+
+**v1.3 — AD-G2-01 G-2 Recognition Architecture Canonical Update (2026-08-17):** following an
+Adversarial Canonical & Repository Review of a proposed 19-item G-2 Recognition Architecture
+(`G2-RA-01` through `G2-RA-19`), Product/Architecture authority accepted the review's findings — no
+Product Blocker, no Architecture Blocker, no Contract Blocker, no Canonical Contradiction — subject
+to three exact wording clarifications (`G2-RA-05`, aggregation must explicitly preserve Safety's
+unconditional-bypass status; `G2-RA-09`, Stage-3 detection must not depend on resolving the unresolved
+Decision Window closing criterion; `G2-RA-14`, Recommendation Engine's Stage-3 responsibility narrowed
+to its existing Decision-Window-detection assignment). The Head of Product + AI Architect approved the
+architecture as clarified, recorded as **AD-G2-01**. AD-G2-01 establishes the first live canonical
+Opportunity Recognition path connecting existing real signals (nutrition/workout/body history, Habit
+and Pattern intelligence, recommendation feedback) to Stage 3 of the existing Coach Decision System —
+no new engine, no new Composite Engine registration, no new Terminal Decision type, no new Candidate
+family, and no user-opt-in/deferred-reasoning pipeline is introduced. This Package's title is broadened
+from "Opportunity & Evidence Semantics" to "G-2 Canonical Decision Package" to reflect this expanded
+scope, following the same growth-without-fragmentation pattern the Safety Layer Canonical Decision
+Package itself already demonstrated; no prior recorded content is altered. AD-G2-01 does not resolve
+Repository Gap G-2 itself — resolution requires actual implementation through a future SPEC, not yet
+authored — and does not resolve the Decision Window closing criterion, which remains explicitly
+unresolved and, per AD-G2-01's own terms, non-load-bearing for G-2 Core. No repository synchronization
+beyond this Package was required: D1, D2, D3, TASK-005, TASK-006, the Architecture doc, and the
+Engineering Workflow all remain fully accurate without modification, since AD-G2-01 is an approved plan
+rather than an implemented change. No `APP_VERSION` change; no implementation status recorded as
+complete. See `docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`
+(v1.3) for full details and evidence.
+
+**v1.4 — AD-G2-02 / AD-G2-03 Pre-G-2 Canonical Decisions Update (2026-08-19):** following a Pre-G-2
+Canonical Decisions Architecture Recommendation (advisory, not itself canonical) identifying the
+minimal set of Product/Architecture decisions worth closing before G-2 SPEC authoring — framed around
+long-term architectural stability rather than mere minimum-implementation sufficiency — the Head of
+Product + AI Architect reviewed and approved both of its recommendations. **AD-G2-02 — Stage 4
+Evidence Evaluation Orchestration:** the Decision Engine receives narrow, explicit Stage-4
+orchestration authority, exercised through a dedicated internal execution component (not a new
+Engine, not a seventh collaborator, not independently registered); D1 Unit 11 remains the sole
+Evidence-policy authority; Stage 4 remains distinct from Stage 3 and Stage 5. This resolves
+`TASK_006_SPEC_v1.0.md` §38 item G-2 (Stage 4 orchestration ownership, previously unassigned).
+**AD-G2-03 — Coach Decision Context Foundation:** Pipeline Context receives two new, bounded semantic
+categories — Goal/Objective Context (`goal`, `goalKcal`) and Current-State Context (`consumed`,
+`protein`, `burned`) — reached only through new, least-authority StateAccess reads and the Memory
+Layer's existing, exclusive Context Assembly authority; no Stage-3 contributor receives a direct
+StateAccess read; Activity/Training-profile fields, Body-metric fields, and Location/Chat/Life-Event/
+Capacity/Relationship-Maturity acquisition remain explicitly out of scope. Neither decision reopens
+CD-G2-01/02/03, PD-G2-05, AD-G2-01, or the Decision Window closing criterion, which remains
+unresolved and non-blocking. Unlike AD-G2-01, AD-G2-02 required minimal, additive-only, audit-trail-
+preserving synchronization into `D2_SPEC_v1.0.md` (Stage 4's Orchestration-authority/Dependencies
+lines, matching the existing Stage 5/7/8/9 pattern), `D3_SPEC.md` (§6.4 Responsibility Matrix, §8.3
+Decision Layer), and `TASK_006_SPEC_v1.0.md` (§9.2, §13 item 5, §23.1, §14.7 table, §31 table, and
+§38 item G-2, now marked RESOLVED) — each previously stated, in closed-list or "no owner" form, that
+Stage 4 carried no assigned orchestration authority; original text preserved throughout, per this
+Package's established audit-trail discipline. AD-G2-03 required no repository synchronization beyond
+this Package — it adds bounded new capability without contradicting any existing closed statement in
+D1, D2, D3, TASK-005, or TASK-006. No `APP_VERSION` change; no implementation status recorded as
+complete; documentation-only, no production code changes. See
+`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (v1.4) for full
+details and evidence.
 
 ---
 

@@ -311,9 +311,13 @@ silently bypasses an existing one.
 ## Canonical Input Categories
 
 1. **Behavioral Events** — records of what the user did or how they
-   responded, retained by the system as evidence (C3). A decision process
-   SHALL NOT assume finer correlation between an event and a specific
-   prior recommendation than the system actually records (C3).
+   responded, retained by the system and contributing evidentiary
+   information (C3); a single such event does not by itself constitute
+   evidence sufficient for detecting a standing Opportunity (Unit 11's
+   single canonical Evidence Hierarchy governs sufficiency here, per
+   CD-G2-02). A decision process SHALL NOT assume finer correlation
+   between an event and a specific prior recommendation than the system
+   actually records (C3).
 2. **Derived Intelligence** — Habit and Pattern engine outputs, consumed
    only through the system's approved consumption path (Architecture
    §9-§10). A decision process SHALL NOT read raw Habit/Pattern storage
@@ -463,13 +467,27 @@ Silence decision.
   illness) and sustained body-image or disordered-eating distress
   patterns (Knowledge Base Topics 11, 20).
 
+Explicit User Statement and Explicit User Action (Unit 11, Tiers 1-2) are
+not an independent sixth Opportunity Source. They are high-authority
+evidentiary signals that Stage 3 may use, through Pipeline Context,
+toward detecting an Opportunity belonging to one of the five sources
+above (CD-G2-01, `docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`).
+This does not identify which of the five sources such use would apply to
+in a given case, and establishes no preferred, primary, or default
+mapping to any one of them.
+
 ## SHALL rules
 
 - **D1-OD-01.** Except for safety/high-risk triggers (which act on a
-  single occurrence) and explicit user statements or actions, a single
-  event SHALL be treated as data, not evidence; only a pattern meeting
-  the Unit 11 threshold constitutes evidence sufficient to detect a
-  standing opportunity (Coach Bible Ch.3, Canonical Principle).
+  single occurrence) and explicit user statements or actions (Unit 11,
+  Tiers 1-2), a single event alone does not by itself constitute evidence
+  sufficient to detect a standing opportunity; only a pattern meeting the
+  Unit 11 threshold ordinarily does (Coach Bible Ch.3, Canonical
+  Principle; sufficiency framing per CD-G2-02). This exemption is a
+  matter of evidentiary sufficiency only — it does not make explicit user
+  statements or actions an independent Opportunity Source, and does not
+  by itself grant them the "treated as opportunities on first occurrence"
+  status D1-OD-04 reserves for safety/high-risk triggers (CD-G2-01).
 - **D1-OD-02.** A single prior instance SHALL NOT be treated as
   sufficient basis for anticipatory action (Coach Bible Ch.5 §3).
 - **D1-OD-03.** Every detected opportunity SHALL be evaluated for its
@@ -800,7 +818,12 @@ confidence" resolve to this Unit.
 ## The Evidence Hierarchy
 
 The following ranked tiers of evidentiary support apply throughout this
-specification (C2 §7; consistent with Constitution Ch.10 §10.6):
+specification (C2 §7; consistent with Constitution Ch.10 §10.6) — the
+single canonical Evidence concept referenced everywhere else in this
+document, including Unit 03's Behavioral Events category; the
+distinction elsewhere in this document between a single event and a
+confirmed pattern is one of evidentiary sufficiency against this same
+hierarchy, not a second Evidence concept (CD-G2-02):
 
 1. **Explicit User Statement** (highest tier)
 2. **Explicit User Action**
@@ -824,7 +847,9 @@ specification (C2 §7; consistent with Constitution Ch.10 §10.6):
   behavioral event SHALL NEVER, by itself, independently change a
   confidence-driven decision (C2) — this mirrors, and is the practical
   instantiation of, "a single event is data, only a pattern is evidence"
-  (Coach Bible Ch.3).
+  (Coach Bible Ch.3), read as a sufficiency threshold against Unit 11's
+  single Evidence Hierarchy, not a second definition of Evidence
+  (CD-G2-02).
 - **D1-ER-03 (rejection reduces confidence).** An explicit user rejection
   or correction SHALL reduce confidence in the underlying inference,
   pattern, or strategy; it SHALL NOT be discarded (Constitution Ch.10;

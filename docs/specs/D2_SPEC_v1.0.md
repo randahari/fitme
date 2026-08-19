@@ -520,7 +520,11 @@ order within either cycle.
 4. **Evidence Evaluation** — applies the Evidence Hierarchy (D1 Unit 11)
    to a detected Opportunity. Failure terminates that Opportunity
    internally — an internal orchestration outcome, not an independent
-   Terminal Decision (Unit 08; Canonical Decision 1).
+   Terminal Decision (Unit 08; Canonical Decision 1). Orchestration
+   authority: Decision Engine, narrowly, exercised through a dedicated
+   internal execution component (AD-G2-02, `docs/governance/
+   FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`,
+   Chapter 11); D1 Unit 11 remains the sole Evidence-policy authority.
 5. **Eligibility Evaluation** — applies the Intervention Eligibility
    gate (D1 Unit 06) to the Opportunity as a whole, before any Candidate
    is generated; a Pipeline Gate, not a Decision Lifecycle state (Unit
@@ -696,7 +700,8 @@ Entry Criteria, Exit Criteria, and Cross References.
   5) evidence as sufficient on its own. SHALL NOT communicate or act on
   a Working Hypothesis with Stable-Fact confidence (D1-USM-01).
 - **Dependencies.** Opportunity Detection; Memory Layer (Evidence
-  Hierarchy state).
+  Hierarchy state); Decision Engine (orchestration authority, narrow,
+  per AD-G2-02).
 - **Entry Criteria.** An Opportunity has been detected, and it is not a
   safety/high-risk-triggered Opportunity — those bypass this Stage
   entirely and proceed directly from Opportunity Detection to Candidate

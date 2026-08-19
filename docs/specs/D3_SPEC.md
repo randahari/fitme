@@ -475,7 +475,7 @@ seventh component, not independently registered, and not a second orchestration 
 | Memory Layer | Stages 1–2 (Pipeline Context Assembly, Decision 3), Stages 11–13 | Any Stage 3–9 decision content |
 | Recommendation Engine | Stage 6 (Recommendation-kind), contributes to Stage 3 | Prioritization, Winner Selection, Decision Formation |
 | Initiative Engine | Stage 6 (Initiative-kind), contributes to Stage 3 | Prioritization, Winner Selection, Decision Formation |
-| Decision Engine | Stages 5, 7, 8, 9 | Candidate content generation |
+| Decision Engine | Stage 4 (narrow orchestration only, per AD-G2-02), Stages 5, 7, 8, 9 | Candidate content generation |
 | Safety Layer | Cross-cutting checks at Stages 3, 8, 9 | Ordinary (non-safety) Recommendation/Initiative content |
 | Expression | Stage 10 (Delivery Intent production only) | Origination of decision content; platform/delivery-surface selection (owned by Coach Runtime, Decision 6) |
 
@@ -590,7 +590,9 @@ none new. **Interaction:** one-directional, read-only, through B5.
 
 ## 8.3 Decision Layer
 
-**Responsibility:** host the Decision Engine (D2 Stages 5, 7, 8, 9). **Why it exists:** D1 Unit 07's
+**Responsibility:** host the Decision Engine (D2 Stages 5, 7, 8, 9; plus narrow Stage-4 Evidence
+Evaluation orchestration, per AD-G2-02, exercised through a dedicated internal execution component,
+not this Decision Layer's own Stage 5/7/8/9 logic). **Why it exists:** D1 Unit 07's
 Canonical Decision Hierarchy and D2's requirement that exactly one Terminal Decision be produced per
 Decision Pass require a single component with the authority to evaluate eligibility, rank, select a
 winner, and form the decision — mirroring, at the Coach Decision System's own internal scope, the
