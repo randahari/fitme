@@ -1,6 +1,6 @@
 
 # FITME — G-2 CANONICAL DECISION PACKAGE
-## v1.4 — CANONICAL (Expanded — CD-G2-01/02/03 and AD-G2-01/02/03 Approved and Synchronized; PD-G2-05 Recorded)
+## v1.5 — CANONICAL (Expanded — CD-G2-01/02/03 and AD-G2-01/02/03 Approved and Synchronized; PD-G2-05 Recorded; Coach Semantic Foundation Package cross-referenced)
 
 > **Document role:** Decision Package. Not a SPEC. Not an implementation document. Modeled structurally on `docs/governance/FITME_Safety_Layer_Canonical_Decision_Package_v2.0.md` (the repository's only prior standalone Canonical Decision Package), per the repository-architecture precedent review that preceded this document.
 > **Prepared by:** Lead Engineer / Repository Analyst / Repository Maintainer, recording decisions presented as approved by the Head of Product + AI Architect, without reinterpretation.
@@ -9,6 +9,7 @@
 > **Title note (v1.3):** This Package's title is broadened from "Opportunity & Evidence Semantics" to "G-2 Canonical Decision Package" to accurately reflect its now-expanded scope (semantic decisions CD-G2-01/02/03 plus the architecture decision AD-G2-01), following the same growth-without-fragmentation pattern the Safety Layer Canonical Decision Package (SLDP) itself demonstrated when its own content grew from policy-semantic RCDs into architecture-defining ones (RCD-12, RCD-13) without ever splitting into a second document. No prior content is altered by this title change.
 > **Revision note:** v1.0 recorded CD-G2-01 and CD-G2-02 as DRAFT, pending Product & Architecture review of this Package itself (content resolved, document not yet accepted). **v1.1 recorded closure:** Product & Architecture reviewed and APPROVED this Package in full, including the correction removing an unsupported illustrative mapping from CD-G2-01's Decision Statement. Repository synchronization into `D1_SPEC_v1.0.md` and `TASK_005_SPEC_v1.0.md` was executed and independently reviewed, per Chapter 06. **v1.2 records a further Final Canonical Update:** Product approved **PD-G2-05** ("Proactive Contextual Presence," a Product decision, recorded for traceability at Chapter 07 — this Package did not make that decision) and the Head of Product + AI Architect approved **CD-G2-03** ("Initiative May Express Minimal Contextual Assistance," Chapter 04), resolving a previously-identified open ambiguity in the required `InitiativeCandidate.action` field. A minimal, additive cross-reference synchronization into `TASK_005_SPEC_v1.0.md`'s `InitiativeCandidate.action` field description was executed, per Chapter 08. **v1.3 records a further Final Canonical Update:** following an Adversarial Canonical & Repository Review of a proposed G-2 Recognition Architecture (19 items, G2-RA-01 through G2-RA-19), Product/Architecture authority accepted the review's findings — no Product Blocker, no Architecture Blocker, no Contract Blocker, no Canonical Contradiction — subject to three exact clarifications (to `G2-RA-05`, `G2-RA-09`, `G2-RA-14`). The Head of Product + AI Architect approved the architecture as clarified, recorded as **AD-G2-01** (Chapter 09). AD-G2-01 establishes the first live canonical Opportunity Recognition path connecting existing real signals to Stage 3 of the existing Coach Decision System; it introduces no new engine, no new Composite Engine registration, no new Terminal Decision type, no new Candidate family, and no user-opt-in/deferred-reasoning pipeline. It does not resolve Repository Gap G-2 itself (which requires actual implementation, not yet performed) and does not resolve the Decision Window closing criterion, which remains explicitly unresolved and, per `AD-G2-01`'s own terms, non-load-bearing for G-2 Core. `docs/roadmap/Changelog.md` updated per repository precedent, per Chapter 10; `docs/roadmap/Roadmap.md` requires no update — this remains a canonical architecture decision, not a completed or in-progress implementation task, consistent with the precedent already applied at v1.1/v1.2. This Package remains CANONICAL and CLOSED at each recorded decision. It does not resolve Repository Gap G-2 itself, which remains open.
 > **v1.4 further records:** following the Pre-G-2 Canonical Decisions Architecture Recommendation (advisory, not itself canonical), the Head of Product + AI Architect reviewed and approved its two recommendations as **AD-G2-02** ("Stage 4 Evidence Evaluation Orchestration," Chapter 11) and **AD-G2-03** ("Coach Decision Context Foundation," Chapter 13). AD-G2-02 assigns the Decision Engine narrow, explicit Stage-4 orchestration authority — resolving `T005`'s/`T006`'s previously-tracked Stage-4 ownership gap (T006 §38 item G-2) — exercised through a dedicated internal execution component, with D1 Unit 11 remaining the sole Evidence-policy authority. AD-G2-03 establishes a bounded Goal/Objective and Current-State extension to the existing Memory Layer / Pipeline Context foundation, preserving Memory Layer's exclusive Context Assembly authority and introducing no new engine, no direct StateAccess reads for any Stage-3 contributor, and no general-purpose Profile exposure. Unlike AD-G2-01, AD-G2-02 required minimal, additive-only synchronization into `D2_SPEC_v1.0.md`, `D3_SPEC.md`, and `TASK_006_SPEC_v1.0.md`, each of which previously stated, in various closed-list or "no owner" form, that Stage 4 carried no assigned orchestration authority — now corrected, with original text preserved per this Package's established audit-trail discipline (Chapter 12). AD-G2-03 required no synchronization beyond this Package (Chapter 14) — it adds new capability without contradicting any existing closed statement. Neither decision reopens CD-G2-01/02/03, PD-G2-05, AD-G2-01, or the Decision Window closing criterion, which remains explicitly unresolved and non-load-bearing.
+> **v1.5 further records:** a bounded cross-reference (Chapter 15) to the newly-closed `docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` — the Product + Architecture foundation supplying the Contextual Meaning/`validReasonCategory` derivation that G-2's Stage-3 construction requires. This is additive cross-reference only; no content from that Package is duplicated here, and no decision recorded in this Package (`CD-G2-01/02/03`, `PD-G2-05`, `AD-G2-01/02/03`) is reopened, reinterpreted, or altered by it.
 > **Status of this version:** CANONICAL — CLOSED for CD-G2-01, CD-G2-02, CD-G2-03, AD-G2-01, AD-G2-02, and AD-G2-03; PD-G2-05 recorded for traceability only (approved by Product outside this Package). See Chapter 05 (Status and Closure). G-2 itself (live implementation) remains an open, not-yet-implemented architecture/specification work item.
 
 ---
@@ -484,4 +485,36 @@ No architectural change beyond AD-G2-03 itself. No behavioral change. No impleme
 
 ---
 
-**This Package is CANONICAL and CLOSED for CD-G2-01, CD-G2-02, CD-G2-03, AD-G2-01, AD-G2-02, and AD-G2-03, all approved and fully synchronized. PD-G2-05 is recorded for traceability, approved by Product outside this Package. No deferred-reasoning or user-opt-in pipeline has been established by any decision in this Package. Repository Gap G-2 itself (no live Stage 3/4 Opportunity source) remains open — AD-G2-01 is the approved architecture for resolving it, AD-G2-02 and AD-G2-03 are foundational architecture closed in preparation for it, and none of the three is its resolution. No implementation status is recorded as complete anywhere in this Package.**
+---
+
+# 15. Cross-Reference — Coach Semantic Foundation Canonical Decision Package
+
+## Purpose
+
+Records this Package's relationship to `docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` (CSF), closed at v1.1, without duplicating its content.
+
+## Relationship to G-2
+
+- CSF is now a canonical prerequisite/dependency of G-2's Stage-3 construction: it supplies the Observation → User Context → Contextual Meaning → Coaching Opportunity → Engagement Permission sequence and the `validReasonCategory` derivation mechanism that `AD-G2-01` (`G2-RA-06`, `G2-RA-07`) always required but left to a future SPEC to operationalize.
+- CSF's first approved ordinary semantic path: Habit-sourced `FOOD_LOGGING` Observation → Habit lifecycle `WEAKENING` → `validReasonCategory: REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION` → well-formed `DetectedOpportunity` → Stage 4 → Stage 5 → `TRUST_TEST_UNCERTAIN` → Silence.
+- CSF's Lifecycle-Aware B5 Eligibility Architecture Decision (its Chapter 27) is synchronized into `docs/tasks/B5/B5_SPEC_v1.0.md` §19.3 and Appendix A.3.
+
+## Explicit Non-Reopening
+
+This cross-reference does not reopen, reinterpret, or narrow/widen `CD-G2-01`, `CD-G2-02`, `CD-G2-03`, `PD-G2-05`, `AD-G2-01` (including `G2-RA-01`–`G2-RA-19`), `AD-G2-02`, or `AD-G2-03` — all remain exactly as previously approved. CSF's own scope (Contextual Meaning derivation) is additive to, not a substitute for or amendment of, any of them.
+
+## G-2 Status, Restated
+
+Repository Gap G-2 (no live Stage 3/4 Opportunity source) **remains open**. Neither this cross-reference nor CSF's own closure implements, closes, or marks G-2 READY. `docs/specs/G2_SPEC_v1.0.md` requires substantial revision (CSF Chapter 24) before it can proceed to Canonical Review, Engineering Review, and READY. No implementation has begun.
+
+## Approval Evidence
+
+Head of Product + AI Architect, Canonical Synchronization — Coach Semantic Foundation closure round.
+
+## Documents Affected
+
+None beyond this Package and `B5_SPEC_v1.0.md` (already synchronized, see above).
+
+---
+
+**This Package is CANONICAL and CLOSED for CD-G2-01, CD-G2-02, CD-G2-03, AD-G2-01, AD-G2-02, and AD-G2-03, all approved and fully synchronized. PD-G2-05 is recorded for traceability, approved by Product outside this Package. No deferred-reasoning or user-opt-in pipeline has been established by any decision in this Package. Repository Gap G-2 itself (no live Stage 3/4 Opportunity source) remains open — AD-G2-01 is the approved architecture for resolving it, AD-G2-02 and AD-G2-03 are foundational architecture closed in preparation for it, and none of the three is its resolution. The Coach Semantic Foundation Canonical Decision Package (Chapter 15) is cross-referenced, not duplicated, as G-2's Contextual Meaning dependency. No implementation status is recorded as complete anywhere in this Package.**

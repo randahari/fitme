@@ -22,9 +22,9 @@
 
 **Blocks:**  
 - Recommendation Engine specification and implementation (now unblocked, subject to its own separate specification and approval)  
-- Initiative Engine consumption of derived intelligence (remains disabled pending separate approval)  
+- Initiative Engine consumption of derived intelligence (**originally recorded here as** "remains disabled pending separate approval" — enabled by Canonical Decision CD-T005-01, `docs/specs/TASK_005_SPEC_v1.0.md` §25/§32/§36 item A-1; its `INITIATIVE_SUPPORT_V1` eligibility policy is now lifecycle-aware per the Coach Semantic Foundation Canonical Decision Package's Architecture Decision — see §19.3, Appendix A.3)  
 - Decision Engine consumption of derived intelligence (remains disabled pending separate approval)  
-- Any coach behavior that claims to use Habit or Pattern outputs (now unblocked — AI Coach integrated under `COACH_PROMPT_V1`)  
+- Any coach behavior that claims to use Habit or Pattern outputs (now unblocked — AI Coach integrated under `COACH_PROMPT_V1`; Initiative Engine integrated under `INITIATIVE_SUPPORT_V1` per CD-T005-01)  
 
 ---
 
@@ -873,9 +873,24 @@ This policy is contract-ready but SHALL not be treated as Recommendation Engine 
 
 ### 19.3 Policy: `INITIATIVE_SUPPORT_V1`
 
-Reserved for future work.
+**Originally recorded:** Reserved for future work. Disabled under B5 unless separately approved.
 
-Disabled under B5 unless separately approved.
+**Enabled by Canonical Decision CD-T005-01** (`docs/specs/TASK_005_SPEC_v1.0.md` §25/§32/§36 item A-1), solely as part of the Memory Layer's focused Pipeline Context extension for the Initiative Engine's Stage-3 confirmed-pattern-anticipation contribution — not as a standalone or general-purpose enablement.
+
+Purpose:
+
+Provide evidence signals to the Initiative Engine's Stage-3 confirmed-pattern-anticipation contribution.
+
+Rules:
+
+- `ACTIVE`/`CONFIRMED` signals: allowed lifecycle; minimum confidence 0.65; minimum evidence count 3, producer-specific minimum may raise but never lower this default; maximum total signals 20; maximum habits 10; maximum patterns 10 — the same shape as `RECOMMENDATION_SUPPORT_V1` (§19.2). Per `docs/specs/TASK_005_SPEC_v1.0.md`'s own disclosure (Section 36, item E-1), these concrete values remain Engineering-authored, provisional, and a CDR candidate — unchanged by this synchronization.
+- Contradictions retained as structured annotations; no recommendation or Initiative content is produced by this policy itself.
+- **`WEAKENING`, Habit-derived only** — eligible for semantic consideration on the structural guarantee that the Habit Engine's own lifecycle model admits `WEAKENING` status only after a record has already satisfied confirmed-tier occurrence and confidence requirements (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, Chapter 27.1) — not on the current, decayed confidence remaining above `minimumConfidence`. Current decayed confidence remains preserved honestly on the signal; it is never inflated, replaced, or presented as historical confidence.
+- **`WEAKENING`, Pattern-derived — excluded.** Pattern Engine's `WEAKENING` transition does not structurally guarantee prior confirmed-tier establishment, and its decay path does not preserve complete prior evidence-state provenance (Coach Semantic Foundation Package, Chapter 27.1). Historical confidence is not reconstructed by reversing decay for this policy.
+- `minimumConfidence` (0.65) is **not** globally lowered by this policy — it continues to govern `ACTIVE`/`CONFIRMED` admission and Pattern-derived signals unchanged.
+- All other B5 mechanics (structural validation §17, durable-alignment §18, evidence rules §21, contradiction/overlap detection §25-26) apply exactly as already specified, unmodified.
+
+This policy remains a consumption/eligibility boundary only. It does not create coaching meaning, assign a coaching Reason (`validReasonCategory`), perform Stage-3 Opportunity Detection, or perform Trust/Stage-5-Eligibility determination (Coach Semantic Foundation Package, Chapter 27.3). The Initiative Engine remains the Stage-3 semantic owner of any resulting `DetectedOpportunity`.
 
 ### 19.4 Policy: `DECISION_SUPPORT_V1`
 
@@ -3218,6 +3233,38 @@ hardStalenessMultiplier = 3.0
 ```
 
 These values are canonical B5 policy behavior. Producer-specific minimum evidence may only raise, never lower, the stated default and must be defined in the closed normalization mapping.
+
+## A.3 `INITIATIVE_SUPPORT_V1`
+
+Added by the Coach Semantic Foundation Canonical Decision Package's Lifecycle-Aware B5 Eligibility Architecture Decision (Chapter 27). Unlike A.1/A.2, the base numeric values below remain Engineering-authored/provisional (`docs/specs/TASK_005_SPEC_v1.0.md` Section 36 item E-1, unchanged); only the lifecycle-aware branching for `WEAKENING` is newly canonical.
+
+```text
+allowedLifecycle = [ACTIVE, CONFIRMED, WEAKENING]
+minimumConfidence = 0.65   # governs ACTIVE/CONFIRMED and Pattern-derived WEAKENING; never globally lowered
+minimumEvidenceDefault = 3
+producerSpecificMinimumMayRaiseDefault = true
+maxSignals = 20
+maxHabits = 10
+maxPatterns = 10
+includeUnresolvedContradictions = true
+includeDetailedDiagnostics = false
+hardStalenessMultiplier = 3.0
+
+# Lifecycle-aware WEAKENING eligibility (canonical, this Architecture Decision):
+weakeningEligibility:
+  habitDerived:
+    admitted = true
+    basis = "structural: Habit Engine's own statusOf() guarantees prior confirmed-tier
+             establishment (occ >= confirmed threshold, conf >= confirmed threshold)
+             before WEAKENING is ever returned"
+    currentDecayedConfidence = "preserved honestly; never inflated, replaced, or
+             presented as historical confidence"
+  patternDerived:
+    admitted = false
+    basis = "Pattern Engine's WEAKENING branch does not structurally guarantee prior
+             confirmed-tier establishment, and evidenceCount resets to 0 on decay;
+             historical confidence reconstruction by reversing decay is not performed"
+```
 
 ---
 

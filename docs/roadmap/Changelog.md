@@ -40,7 +40,8 @@
 - 🟢 TASK-007 — UX System approved, implemented, verified and closed (cross-cutting Experience/Interaction/Presentation-Behavior contracts over the existing UI Presenters/Controllers, ten Work Packages; 12 test files extended/added, 97 net new/changed tests, full suite 1471/1471 passing; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
 - 🟢 TASK-008 — Design System approved, implemented, verified and closed (`css/app.css` token/component layer — color, typography, spacing, radius, motion, iconography, theming, Component Catalog consolidation, semantic communication surfaces, WCAG 2.1 AA contrast fixture across all UI surfaces; fourteen Work Packages, WP4 retired N/A; full suite 1607/1607 passing, net +136 over the 1471 pre-TASK-008 baseline; three dark-mode contrast finding families explicitly deferred, non-blocking, to a future Brand/Visual Identity phase — not certified compliant, palette not frozen as final; two governance-sequencing deviations during implementation recorded accurately in the Specification's Closure Record)
 - 🟢 Expression — D3 §17's sixth and final Coach Decision System collaborator approved, implemented, verified and closed (`js/coachDecisionSystem/deliveryIntentContract.js`, `expressionInputGate.js`, `expressionRenderingContext.js`, `expressionRenderer.js`; `internalPipelineOrchestrator.js`/`memoryLayer.js`/`js/trigger/triggerController.js`/`js/app.js` extended; fifteen Work Packages; 15 test files added/extended, full suite 1796/1796 passing, net +189 over the 1607 pre-Expression baseline; D3 §17's Composite Engine now fully realized, all six internal collaborators built; live Coach Runtime handoff wired but currently dormant pending Repository Gap G-2's separate resolution, `APP_VERSION` accordingly not advanced; two non-blocking follow-ups recorded at closure for Product/Architecture disposition, neither expanding this task's own scope)
-- 🟢 FITME G-2 Canonical Decision Package approved and closed (`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`, v1.4; three Canonical Decisions resolved — CD-G2-01 Explicit User Statement/Action are Decision Inputs and high-authority evidentiary signals, not an independent Canonical Opportunity Source; CD-G2-02 FITME has one canonical Evidence concept, distinguished by evidentiary sufficiency, not two Evidence concepts; CD-G2-03 Initiative may express minimal contextual assistance, resolving the `InitiativeCandidate.action` content-type ambiguity — plus three Architecture Decisions: AD-G2-01, the G-2 Recognition Architecture (19 items) connecting existing real signals to Stage 3 Opportunity Detection of the existing Coach Decision System, approved after an Adversarial Canonical & Repository Review with no Product/Architecture/Contract blocker and no canonical contradiction; AD-G2-02, narrow Decision Engine orchestration authority for Stage 4 Evidence Evaluation, resolving `TASK_006_SPEC_v1.0.md` §38 item G-2; AD-G2-03, a bounded Goal/Objective and Current-State extension to Pipeline Context, reached only through the Memory Layer's existing exclusive Context Assembly authority; PD-G2-05 "Proactive Contextual Presence" recorded for traceability, approved by Product outside this Package; documentation-only, no production code changes, no implementation performed; synchronized into `D1_SPEC_v1.0.md`, `D2_SPEC_v1.0.md`, `D3_SPEC.md`, `TASK_005_SPEC_v1.0.md`, and `TASK_006_SPEC_v1.0.md`; no deferred-reasoning or user-opt-in pipeline established; the Decision Window closing criterion remains unresolved and non-blocking for G-2 Core per AD-G2-01's own terms; Repository Gap G-2 itself — no live Stage 3/4 Opportunity source — remains open and unaffected, pending future implementation)
+- 🟢 FITME G-2 Canonical Decision Package approved and closed (`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md`, v1.5; three Canonical Decisions resolved — CD-G2-01 Explicit User Statement/Action are Decision Inputs and high-authority evidentiary signals, not an independent Canonical Opportunity Source; CD-G2-02 FITME has one canonical Evidence concept, distinguished by evidentiary sufficiency, not two Evidence concepts; CD-G2-03 Initiative may express minimal contextual assistance, resolving the `InitiativeCandidate.action` content-type ambiguity — plus three Architecture Decisions: AD-G2-01, the G-2 Recognition Architecture (19 items) connecting existing real signals to Stage 3 Opportunity Detection of the existing Coach Decision System, approved after an Adversarial Canonical & Repository Review with no Product/Architecture/Contract blocker and no canonical contradiction; AD-G2-02, narrow Decision Engine orchestration authority for Stage 4 Evidence Evaluation, resolving `TASK_006_SPEC_v1.0.md` §38 item G-2; AD-G2-03, a bounded Goal/Objective and Current-State extension to Pipeline Context, reached only through the Memory Layer's existing exclusive Context Assembly authority; PD-G2-05 "Proactive Contextual Presence" recorded for traceability, approved by Product outside this Package; v1.5 additively cross-references the new Coach Semantic Foundation Package (below) as G-2's Contextual Meaning dependency, reopening nothing; documentation-only, no production code changes, no implementation performed; synchronized into `D1_SPEC_v1.0.md`, `D2_SPEC_v1.0.md`, `D3_SPEC.md`, `TASK_005_SPEC_v1.0.md`, and `TASK_006_SPEC_v1.0.md`; no deferred-reasoning or user-opt-in pipeline established; the Decision Window closing criterion remains unresolved and non-blocking for G-2 Core per AD-G2-01's own terms; Repository Gap G-2 itself — no live Stage 3/4 Opportunity source — remains open and unaffected, pending future implementation)
+- 🟢 FITME Coach Semantic Foundation Canonical Decision Package approved and closed (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, v1.1; establishes the Observation → User Context → Contextual Meaning → Coaching Opportunity → Engagement Permission sequence as an explicit, non-collapsible Coach Decision System capability, filling a gap between D1 Units 05/06 that FITME's own governing philosophy already required but never operationalized; initial Alignment/Trajectory Contextual Meaning dimensions, explicitly extensible; a structured, machine-testable `ContextualMeaning` traceability artifact; the first and only active v1 Product Reason Policy rule — `validReasonCategory: REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION`, scoped exclusively to Habit-sourced `FOOD_LOGGING` degradation into the Habit Engine's `WEAKENING` lifecycle state, where that lifecycle structurally guarantees prior confirmed-tier establishment — all six other D1-IE-01 reasons remain `NO AUTOMATIC V1 RULE`/`NO_VALID_REASON` unless separately approved; a Lifecycle-Aware B5 Eligibility Architecture Decision admitting Habit-derived `WEAKENING` signals on that structural guarantee (not on decayed confidence alone) while explicitly excluding Pattern-derived `WEAKENING` from v1, with no global lowering of B5's `minimumConfidence` and no coaching-semantic authority granted to B5; Trust remains fully independent — `trustTestSignal.glad = null` pending an approved affirmative Trust source, so the approved first path correctly and honestly resolves `TRUST_TEST_UNCERTAIN` → Silence, not engagement; weight/body-composition semantics, protein-Goal exposure, and the celebration/meaningful-progress threshold are explicitly recorded as deferred/non-blocking, not silently invented; documentation-only, no production code changes, no implementation performed; synchronized into `docs/tasks/B5/B5_SPEC_v1.0.md` (§19.3, Appendix A.3) and cross-referenced additively from the G-2 Canonical Decision Package (v1.5, above); `docs/specs/TASK_005_SPEC_v1.0.md` inspected and confirmed to require no change — its own text already discloses `INITIATIVE_SUPPORT_V1`'s concrete values as Engineering-authored/provisional pending exactly this kind of future CDR (§36 item E-1); **Coach Semantic Foundation: CANONICAL / CLOSED. G-2 itself: OPEN — SPEC revision pending, not implemented.** `docs/specs/G2_SPEC_v1.0.md` requires substantial revision (not yet performed) before Canonical Review, Engineering Review, and READY; no G-2 implementation has begun; `APP_VERSION` unchanged)
 - ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection
 
 ---
@@ -246,6 +247,89 @@ D1, D2, D3, TASK-005, or TASK-006. No `APP_VERSION` change; no implementation st
 complete; documentation-only, no production code changes. See
 `docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (v1.4) for full
 details and evidence.
+
+**v1.5 — Coach Semantic Foundation Cross-Reference (2026-08-19):** a bounded, additive cross-reference
+(Chapter 15) to the newly-closed `docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_
+Package_v1.0.md` — the Product + Architecture foundation supplying the Contextual Meaning /
+`validReasonCategory` derivation `AD-G2-01`'s `G2-RA-06`/`G2-RA-07` always required but left to a
+future SPEC. No content is duplicated between the two Packages; no existing G-2 decision
+(`CD-G2-01/02/03`, `PD-G2-05`, `AD-G2-01/02/03`) is reopened, reinterpreted, or altered. Repository
+Gap G-2 itself remains open and unaffected. See the Coach Semantic Foundation Package's own entry,
+below, for its full content.
+
+---
+
+## FITME Coach Semantic Foundation Canonical Decision Package (Approved and Closed)
+
+**Date:** 2026-08-19
+**Status:** DONE — Canonical Review completed, all decisions approved, closed
+**Production Code Changes:** No (documentation only)
+
+`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` (v1.1) completed
+Canonical Review during G-2 SPEC review, when the `validReasonCategory`/`trustTestSignal` construction
+problem was found to be evidence of a deeper, previously-unbuilt capability rather than a missing
+lookup table: FITME's own governing philosophy ("Context Determines Meaning" — Intelligence &
+Relationship Philosophy, Principle 6; "Without context there is no coaching" — Constitution) was never
+operationalized into D1's own operational Unit sequence, which moves directly from Unit 05
+(Opportunity Detection) to Unit 06 (Intervention Eligibility) with no intervening interpretive Unit.
+
+The Head of Product + AI Architect approved:
+
+- The canonical conceptual sequence **Observation → User Context → Contextual Meaning → Coaching
+  Opportunity → Engagement Permission**, non-collapsible, not a new D3 collaborator/Engine/Stage.
+- Initial Contextual Meaning dimensions — **Alignment** (`ALIGNED`/`DEVIATING`/`NEUTRAL`/`UNKNOWN`) and
+  **Trajectory** (`IMPROVING`/`WORSENING`/`STABLE`/`UNKNOWN`) — explicitly initial and extensible, not
+  permanently exhaustive; Meaning may legitimately exist with Alignment `UNKNOWN`.
+- Semantic ownership: the detecting Stage-3 contributor remains the sole semantic owner
+  (`G2-RA-07`); shared policy logic may be used to avoid duplication/drift but is pure, stateless, has
+  no StateAccess/orchestration/Engine/collaborator/Registry status, and does not transfer semantic
+  accountability away from the contributor.
+- A structured, machine-testable `ContextualMeaning` traceability artifact (`alignment`, `trajectory`,
+  `basis`/provenance) carried on `DetectedOpportunity` — not lossy free text.
+- The **first and only active v1 Product Reason Policy rule**: `validReasonCategory:
+  REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION`, approved exclusively for Habit-sourced `FOOD_LOGGING`
+  degradation into the Habit Engine's `WEAKENING` lifecycle state — repository-verified
+  (`habitEngine.js`'s `statusOf()`) to structurally guarantee prior confirmed-tier establishment before
+  `WEAKENING` can ever be returned. Not a generic missing-data rule; not Pattern-derived; no inference
+  about cause. All six other D1-IE-01 reasons remain `NO AUTOMATIC V1 RULE`/`NO_VALID_REASON` unless
+  separately approved — including `PROTECT_STATED_LONG_TERM_GOALS`, whose plausible `goalKcal`-
+  deviation basis was found, on investigation, to have no approved numeric threshold and to conflict
+  with Coach Bible §45's own multi-hypothesis restraint requirement for exactly this situation.
+- A **Lifecycle-Aware B5 Eligibility Architecture Decision**: `ACTIVE`/`CONFIRMED` signals keep B5's
+  existing eligibility policy unchanged; Habit-derived `WEAKENING` signals are admitted on the
+  structural prior-establishment guarantee above, not on decayed confidence remaining above the same
+  floor used for `ACTIVE`/`CONFIRMED`; Pattern-derived `WEAKENING` is explicitly excluded from v1
+  (Pattern Engine's own `WEAKENING` transition carries no equivalent structural guarantee, and
+  reconstructing historical confidence by reversing decay is explicitly not performed); B5's
+  `minimumConfidence` is not globally lowered; B5 gains no coaching-semantic, Stage-3, Trust, or
+  Stage-5 authority.
+- Trust remains fully independent of Meaning and Reason: no affirmative Trust basis exists yet, so
+  `trustTestSignal.glad = null` and the approved first path correctly, honestly resolves
+  `INELIGIBLE`/`TRUST_TEST_UNCERTAIN` → Silence — a genuine, non-fabricated outcome, not a failure of
+  the Opportunity.
+- Weight/body-composition semantics (`weight` vs. `currentWeight`), protein-Goal exposure, and the
+  `CELEBRATE_MEANINGFUL_PROGRESS` restraint threshold are explicitly recorded **deferred /
+  non-blocking** — none prevented this Package from closing; none is silently invented.
+
+Repository synchronization was executed and reviewed: `docs/tasks/B5/B5_SPEC_v1.0.md` (§19.3's
+previously-reserved `INITIATIVE_SUPPORT_V1` placeholder populated with the approved lifecycle-aware
+rules; Appendix A.3 added; the pre-existing, already-stale "Initiative Engine consumption... remains
+disabled" line in the document's own header `Blocks:` list corrected, original text preserved per this
+repository's established audit-trail discipline) and
+`docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (v1.5, additive
+cross-reference only, Chapter 15 — see above). `docs/specs/TASK_005_SPEC_v1.0.md` was inspected and
+found to require **no change**: its own Section 36 item E-1 already discloses `INITIATIVE_SUPPORT_V1`'s
+concrete values as "Engineering-authored provisional logic... a CDR candidate," meaning this exact kind
+of future resolution was already anticipated and the document remains accurate as written. D1, D2, D3,
+TASK-004, TASK-006, `AD-G2-01/02/03`, the Architecture document, and the Roadmap were each inspected
+and confirmed to require no change (full reasoning in the Package's own Chapter 28).
+
+**Coach Semantic Foundation: CANONICAL / CLOSED. G-2 itself: OPEN — SPEC revision pending, not
+implemented.** `docs/specs/G2_SPEC_v1.0.md` requires substantial revision (Sections 17-20, 22, 24, 41)
+before Canonical Review, Engineering Review, and READY; no G-2 implementation has begun; `APP_VERSION`
+unchanged. Approved by Head of Product + AI Architect and closed 2026-08-19 — see
+`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` for full details
+and evidence.
 
 ---
 
