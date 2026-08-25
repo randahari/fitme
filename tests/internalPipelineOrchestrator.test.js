@@ -115,10 +115,10 @@ test('7. runForInitiativeOpportunity() withholds when Relationship-Maturity gati
   assert.deepEqual(result.candidates, []);
 });
 
-test('8. detectInitiativeOpportunities() exposes the Stage-3 detection contribution (confirmed-pattern anticipation, disruption, milestone/recovery)', () => {
+test('8. detectInitiativeOpportunities() exposes the Stage-3 detection contribution (confirmed-pattern anticipation, disruption, milestone/recovery, and — G-2 §32 — semanticOpportunities)', () => {
   const pipelineContext = { initiativeIntelligence: { signals: [] } };
   const result = Orchestrator.detectInitiativeOpportunities(pipelineContext);
-  assert.deepEqual(Object.keys(result).sort(), ['confirmedPatternAnticipation', 'disruption', 'milestoneRecovery']);
+  assert.deepEqual(Object.keys(result).sort(), ['confirmedPatternAnticipation', 'disruption', 'milestoneRecovery', 'semanticOpportunities']);
 });
 
 test('9. run()\'s overall contract is preserved unchanged by the TASK-005 extension (still candidates: [] at this baseline)', async () => {
@@ -585,4 +585,152 @@ test('43. Expression WP12 / AC-6/EXP-43 — runExpressionStage()\'s own dispatch
   const s2 = await Orchestrator.runExpressionStage(fakeZeroCandidatesSilence(), fakeExpressionRenderingContext(), port1);
   assert.equal(s1.status, 'NO_DELIVERY_INTENT');
   assert.equal(s2.status, 'NO_DELIVERY_INTENT');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §18, §27, §29) — Stage-3 Aggregation, Stage 4->5 Handoff,
+// and the full opportunities-building pipeline.
+// ══════════════════════════════════════════════════════════════════
+
+function makeSufficientWeakeningOpportunity(overrides) {
+  return Object.assign({
+    id: 'g2-food-logging-info-request:HABIT:nutrition:log-consistency',
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    detectingContributor: 'INITIATIVE_ENGINE',
+    proposedAction: 'Request updated food-logging information from the user',
+    confidence: 0.51,
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    detectedAt: 123,
+    valueDimensions: ['UNDERSTANDING'],
+    contextualMeaning: {
+      alignment: 'UNKNOWN', trajectory: 'WORSENING',
+      basis: {
+        observation: { sourceType: 'HABIT', lifecycle: 'WEAKENING', domain: 'NUTRITION', topic: 'FOOD_LOGGING' },
+        priorEstablishmentBasis: 'provenance.currentEpisodeEstablished === true (Habit Engine Current-Episode Establishment Authority, CSF Ch.29 AD-HL-02)',
+        contextConsulted: { goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED' },
+        unavailableOrUncertain: []
+      }
+    },
+    validReasonCategory: 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION',
+    trustTestSignal: { glad: null, basis: 'no approved affirmative Trust source' },
+    safetyHighRiskBypass: false
+  }, overrides);
+}
+
+test('G-2 §18: collectDetectedOpportunities() collects only Initiative Engine\'s semanticOpportunities bucket — never confirmedPatternAnticipation/disruption/milestoneRecovery (no Reason Policy rule constructs a DetectedOpportunity for them)', () => {
+  const pipelineContext = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:a', sourceType: 'HABIT', lifecycle: 'ACTIVE', domain: 'NUTRITION', topic: 'FOOD_LOGGING', confidence: 0.8, evidence: { count: 8 } },
+        { id: 'HABIT:nutrition:log-consistency', sourceType: 'HABIT', domain: 'NUTRITION', topic: 'FOOD_LOGGING', lifecycle: 'WEAKENING', confidence: 0.51, evidence: { count: 3 }, provenance: { currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-01-31' } }
+      ]
+    }
+  };
+  const detected = Orchestrator.collectDetectedOpportunities(pipelineContext);
+  assert.equal(detected.length, 1, 'only the WEAKENING+established signal should produce a DetectedOpportunity, via Initiative Engine\'s semanticOpportunities');
+  assert.equal(detected[0].sourceCategory, 'CONFIRMED_PATTERN_ANTICIPATION');
+  assert.equal(detected[0].detectingContributor, 'INITIATIVE_ENGINE');
+});
+
+test('G-2 §18: collectDetectedOpportunities() performs no semantic construction — it never invents rationale/evidence/confidence/proposedAction for a signal (verified: an empty Pipeline Context collects nothing)', () => {
+  assert.deepEqual(Orchestrator.collectDetectedOpportunities({}), []);
+  assert.deepEqual(Orchestrator.collectDetectedOpportunities(undefined), []);
+});
+
+test('G-2 §27: buildEligibilityAndCandidateInputs() produces a well-formed {eligibilityInput, eligibleOpportunity} pair for a sufficient, semantically-complete DetectedOpportunity', () => {
+  const d = makeSufficientWeakeningOpportunity();
+  const pair = Orchestrator.buildEligibilityAndCandidateInputs(d, {});
+  assert.equal(pair.eligibilityInput.id, d.id);
+  assert.equal(pair.eligibilityInput.sourceCategory, 'CONFIRMED_PATTERN_ANTICIPATION');
+  assert.equal(pair.eligibilityInput.validReasonCategory, 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION');
+  assert.deepEqual(pair.eligibilityInput.trustTestSignal, { glad: null, basis: 'no approved affirmative Trust source' });
+  assert.equal(pair.eligibilityInput.lowCoachingValuePeriodActive, false);
+  assert.equal(pair.eligibilityInput.safetyHighRiskBypass, false);
+  assert.equal(pair.eligibleOpportunity, d);
+});
+
+test('G-2 (Readiness Review finding): lowCoachingValuePeriodActive is always a real boolean, never undefined — eligibilityEvaluator.js\'s validateInput() never rejects this construction as MALFORMED', () => {
+  const EligibilityEvaluator = require('../js/coachDecisionSystem/eligibilityEvaluator.js');
+  const d = makeSufficientWeakeningOpportunity();
+  const pair = Orchestrator.buildEligibilityAndCandidateInputs(d, {});
+  assert.equal(typeof pair.eligibilityInput.lowCoachingValuePeriodActive, 'boolean');
+  const result = EligibilityEvaluator.evaluate(pair.eligibilityInput);
+  assert.notEqual(result.outcome, 'MALFORMED');
+});
+
+test('G-2 §29: buildOpportunitiesForDecisionPass() excludes an INSUFFICIENT DetectedOpportunity (Section 26 — never reaches Stage 5)', () => {
+  const pipelineContext = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:a', sourceType: 'HABIT', lifecycle: 'ACTIVE', domain: 'NUTRITION', topic: 'FOOD_LOGGING', confidence: 0.8, evidence: { count: 8 } }
+      ]
+    }
+  };
+  const opportunities = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
+  assert.deepEqual(opportunities, [], 'an ACTIVE Habit signal produces no DetectedOpportunity at all (no Reason Policy rule covers it) — nothing to exclude, correctly empty');
+});
+
+test('G-2 §29: buildOpportunitiesForDecisionPass() includes a sufficient, established Habit WEAKENING DetectedOpportunity, correctly paired for Stage 5', () => {
+  const pipelineContext = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:nutrition:log-consistency', sourceType: 'HABIT', domain: 'NUTRITION', topic: 'FOOD_LOGGING', lifecycle: 'WEAKENING', confidence: 0.51, evidence: { count: 3 }, temporal: {}, provenance: { currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-01-31' } }
+      ]
+    }
+  };
+  const opportunities = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
+  assert.equal(opportunities.length, 1);
+  assert.equal(opportunities[0].eligibilityInput.validReasonCategory, 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION');
+});
+
+test('G-2 §29: the fixture-level V1 path resolves INELIGIBLE/TRUST_TEST_UNCERTAIN at Stage 5, never MALFORMED', () => {
+  const EligibilityEvaluator = require('../js/coachDecisionSystem/eligibilityEvaluator.js');
+  const pipelineContext = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:nutrition:log-consistency', sourceType: 'HABIT', domain: 'NUTRITION', topic: 'FOOD_LOGGING', lifecycle: 'WEAKENING', confidence: 0.51, evidence: { count: 3 }, temporal: {}, provenance: { currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-01-31' } }
+      ]
+    }
+  };
+  const opportunities = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
+  const elig = EligibilityEvaluator.evaluate(opportunities[0].eligibilityInput);
+  assert.equal(elig.outcome, 'INELIGIBLE');
+  assert.equal(elig.reason, 'TRUST_TEST_UNCERTAIN');
+});
+
+test('G-2 §18.2: a Safety-sourced DetectedOpportunity\'s safetyHighRiskBypass status is preserved unconditionally through aggregation and routes around Stage 4', () => {
+  const SafetyLayer = require('../js/coachDecisionSystem/safetyLayer.js');
+  const original = SafetyLayer.detectSafetyOpportunities;
+  SafetyLayer.detectSafetyOpportunities = () => [{
+    id: 'safety-1', sourceCategory: 'SAFETY_HIGH_RISK', detectingContributor: 'SAFETY_LAYER', safetyHighRiskBypass: true,
+    validReasonCategory: 'PROTECT_STATED_LONG_TERM_GOALS', trustTestSignal: { glad: true, basis: 'safety' }
+  }];
+  try {
+    const opportunities = Orchestrator.buildOpportunitiesForDecisionPass({});
+    assert.equal(opportunities.length, 1);
+    assert.equal(opportunities[0].eligibilityInput.safetyHighRiskBypass, true);
+  } finally {
+    SafetyLayer.detectSafetyOpportunities = original;
+  }
+});
+
+test('G-2 §29: determinism — same Pipeline Context yields byte-identical opportunities across repeated calls', () => {
+  const pipelineContext = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:nutrition:log-consistency', sourceType: 'HABIT', domain: 'NUTRITION', topic: 'FOOD_LOGGING', lifecycle: 'WEAKENING', confidence: 0.51, evidence: { count: 3 }, temporal: {}, provenance: { currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-01-31' } }
+      ]
+    }
+  };
+  const r1 = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
+  const r2 = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
+  assert.deepEqual(r1, r2);
+});
+
+test('G-2: run() end-to-end still produces an empty-signal Silence byte-for-byte, with the new aggregation wired in (regression)', async () => {
+  configureHappyPath();
+  const result = await Orchestrator.run({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
+  assert.equal(result.status, 'SUCCESS');
+  assert.deepEqual(result.output.candidates, []);
+  assert.equal(result.output.terminalDecision.kind, 'SILENCE');
 });

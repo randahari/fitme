@@ -811,3 +811,76 @@ test('CSF Ch.29: a WEAKENING HABIT signal (established current episode, real deg
   assert.equal(sig.lifecycle, 'WEAKENING');
   assert.equal(sig.provenance.currentEpisodeEstablished, true, 'WEAKENING is only meaningful for an established current episode — B5 must pass this through faithfully, not re-derive it');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §23; CSF Ch.27.2, Ch.29 AD-HL-06/PD-HL-06) — B5
+// lifecycle-aware INITIATIVE_SUPPORT_V1 eligibility: Habit-derived WEAKENING admitted only on
+// provenance.currentEpisodeEstablished === true; Pattern-derived WEAKENING excluded
+// unconditionally; global minimumConfidence never lowered; ACTIVE/CONFIRMED unaffected.
+// ══════════════════════════════════════════════════════════════════
+
+test('G-2 §23: an established Habit-derived WEAKENING signal below minimumConfidence is still admitted under INITIATIVE_SUPPORT_V1, with current decayed confidence preserved unmodified', async () => {
+  makeEnv({ habits: [makeHabit({
+    id: 'nutrition:log-consistency', type: 'nutrition', key: 'log-consistency',
+    status: 'weakening', confidence: 0.2, // well below INITIATIVE_SUPPORT_V1's minimumConfidence (0.65)
+    currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-05-01',
+    everEstablishedHistorically: true, firstEstablishedAt: '2026-05-01'
+  })] });
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:log-consistency');
+  assert.notEqual(sig, undefined, 'expected the established WEAKENING signal to be admitted despite low confidence');
+  assert.equal(sig.confidence, 0.2, 'current decayed confidence must be preserved honestly, never inflated or replaced');
+});
+
+test('G-2 §23: a Habit-derived WEAKENING signal WITHOUT current-episode establishment authority is not specially admitted (falls through to the ordinary confidence floor, same as ACTIVE/CONFIRMED)', async () => {
+  makeEnv({ habits: [makeHabit({
+    id: 'nutrition:log-consistency', type: 'nutrition', key: 'log-consistency',
+    status: 'weakening', confidence: 0.2, // below minimumConfidence, and NOT established
+    currentEpisodeEstablished: false, currentEpisodeEstablishedAt: null,
+    everEstablishedHistorically: false, firstEstablishedAt: null
+  })] });
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:log-consistency');
+  assert.equal(sig, undefined, 'without the establishment basis, a low-confidence WEAKENING signal must not be admitted via the special bypass');
+});
+
+test('G-2 §23: a Pattern-derived WEAKENING signal remains excluded under INITIATIVE_SUPPORT_V1 regardless of confidence (unconditional exclusion)', async () => {
+  makeEnv({ patterns: [makePattern({ status: 'weakening', confidence: 0.99 })] });
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  const sig = result.context.signals.find((s) => s.sourceType === 'PATTERN');
+  assert.equal(sig, undefined, 'Pattern-derived WEAKENING must remain excluded from INITIATIVE_SUPPORT_V1 even at very high confidence');
+});
+
+test('G-2 §23: ACTIVE/CONFIRMED admission under INITIATIVE_SUPPORT_V1 is unchanged (regression)', async () => {
+  makeEnv({ habits: [makeHabit({ status: 'active', confidence: 0.9 })] });
+  const result = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  assert.equal(result.context.signals.length, 1);
+  makeEnv({ habits: [makeHabit({ status: 'active', confidence: 0.2 })] });
+  const belowFloor = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  assert.equal(belowFloor.context.signals.length, 0, 'an ACTIVE signal below minimumConfidence must still be excluded — no special bypass for non-WEAKENING lifecycles');
+});
+
+test('G-2 §23: COACH_PROMPT_V1/RECOMMENDATION_SUPPORT_V1 WEAKENING behavior is unchanged (regression — the lifecycle-aware branch is INITIATIVE_SUPPORT_V1-only)', async () => {
+  makeEnv({ habits: [makeHabit({
+    status: 'weakening', confidence: 0.2,
+    currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-05-01'
+  })] });
+  const coachResult = await Consumer.build(baseRequest());
+  assert.equal(coachResult.context.signals.length, 0, 'COACH_PROMPT_V1 excludes WEAKENING entirely, exactly as before (test 25)');
+
+  makeEnv({ habits: [makeHabit({
+    status: 'weakening', confidence: 0.2,
+    currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-05-01'
+  })] });
+  const recResult = await Consumer.build(baseRequest({ consumer: 'RECOMMENDATION_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
+  assert.equal(recResult.context.signals.length, 0, 'RECOMMENDATION_SUPPORT_V1 still applies the ordinary confidence floor to WEAKENING — the establishment bypass is scoped to INITIATIVE_SUPPORT_V1 only, per §23');
+});
+
+test('G-2 §23: minimumConfidence (0.65) is not globally lowered — every non-bypassed policy/lifecycle combination still enforces it', async () => {
+  makeEnv({ habits: [makeHabit({ status: 'active', confidence: 0.64 })] });
+  const initiative = await Consumer.build(baseRequest({ consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1' }));
+  assert.equal(initiative.context.signals.length, 0, 'INITIATIVE_SUPPORT_V1 minimumConfidence (0.65) still applies to ACTIVE signals');
+  makeEnv({ habits: [makeHabit({ status: 'active', confidence: 0.64 })] });
+  const recommendation = await Consumer.build(baseRequest({ consumer: 'RECOMMENDATION_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
+  assert.equal(recommendation.context.signals.length, 0, 'RECOMMENDATION_SUPPORT_V1 minimumConfidence (0.65) is unaffected by this change');
+});

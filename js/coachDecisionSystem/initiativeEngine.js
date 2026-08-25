@@ -58,6 +58,12 @@
   var Prioritization = (typeof module !== 'undefined' && module.exports)
     ? require('./prioritization.js')
     : window.Prioritization;
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §32; CSF-08) — shared, pure Contextual Meaning / Product
+  // Reason Policy utility. Semantic accountability for the resulting judgment remains with this
+  // module (the calling Stage-3 contributor), never transferred to the shared utility (CSF-08).
+  var ContextualMeaningPolicy = (typeof module !== 'undefined' && module.exports)
+    ? require('./contextualMeaningPolicy.js')
+    : window.ContextualMeaningPolicy;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -332,12 +338,74 @@
     return []; // no milestone/setback data source exists in Pipeline Context at this baseline
   }
 
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §32; CSF Ch.26, Ch.29) — Semantic Opportunity construction.
+  // For every signal already present in pipelineContext.initiativeIntelligence.signals (already
+  // B5-admitted — see js/derivedIntelligenceConsumer.js's lifecycle-aware evaluateEligibility(),
+  // G2_SPEC §23): interpret it via ContextualMeaningPolicy (Contextual Meaning, then the Product
+  // Reason Policy — both pure, shared functions this module calls, never delegates semantic
+  // authority to). Construct a complete DetectedOpportunity (§21.3) only where a valid Reason
+  // results — currently, only ever REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION, for the exact V1
+  // Habit FOOD_LOGGING WEAKENING condition established via provenance.currentEpisodeEstablished
+  // === true (§21.1, CSF Ch.29). No fabrication anywhere: a NO_VALID_REASON Observation
+  // contributes nothing (§21.1) — it is never forced into a Stage-5-bound Opportunity. This
+  // function performs no direct StateAccess read, no Habit/Pattern re-derivation, and no Context
+  // fabrication (G2-RA-13) — every input is already present on pipelineContext.
+  function detectSemanticOpportunities(pipelineContext) {
+    var intelligence = pipelineContext && pipelineContext.initiativeIntelligence;
+    var signals = (intelligence && Array.isArray(intelligence.signals)) ? intelligence.signals : [];
+    var out = [];
+    signals.forEach(function (observation) {
+      var contextualMeaning;
+      try {
+        contextualMeaning = ContextualMeaningPolicy.computeContextualMeaning(observation, pipelineContext);
+      } catch (e) {
+        contextualMeaning = null; // defensive — mirrors eligibilityEvaluator.js's discipline
+      }
+      if (!contextualMeaning) return; // malformed Observation — contributes nothing, no crash
+
+      var validReasonCategory;
+      try {
+        validReasonCategory = ContextualMeaningPolicy.deriveValidReasonCategory(observation, contextualMeaning);
+      } catch (e) {
+        return; // defensive — never fabricate a Reason on failure
+      }
+      if (validReasonCategory !== 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION') return; // §21.1 — no other V1 Reason exists
+
+      out.push(freezeShallow({
+        id: 'g2-food-logging-info-request:' + observation.id,
+        sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+        detectingContributor: 'INITIATIVE_ENGINE',
+        proposedAction: 'Request updated food-logging information from the user',
+        confidence: observation.confidence, // current, honestly decayed — never inflated (CSF Ch.26.4/27.2)
+        explanation: freezeShallow({
+          rationale: 'A previously established, reliable food-logging habit has entered the Habit Engine\'s WEAKENING lifecycle state within its current, uninterrupted episode.',
+          evidenceBasis: contextualMeaning.basis.priorEstablishmentBasis,
+          expectedValue: 'Requesting renewed food-logging information may significantly improve FITME\'s ability to understand and coach the user (D1-IE-01).',
+          uncertainty: 'No affirmative Trust source exists for this Opportunity; the cause of the observed degradation is not inferred (CSF Ch.26.2/26.4).'
+        }),
+        detectedAt: pipelineContext.assembledAt, // this Decision Pass's own timestamp — real, never fabricated
+        valueDimensions: freezeShallow(['UNDERSTANDING']), // D1-IP-03 — matches D1-IE-01's own wording exactly
+        contextualMeaning: contextualMeaning,
+        validReasonCategory: validReasonCategory,
+        // §21.2 — no affirmative Trust source is approved for v1; constructed by this same
+        // detecting Stage-3 contributor, never fabricated by the Decision Engine (T006 §15.11).
+        trustTestSignal: freezeShallow({
+          glad: null,
+          basis: 'No approved affirmative Trust source exists for this Opportunity (Coach Semantic Foundation Ch.18/Ch.26.5). glad remains honestly null.'
+        }),
+        safetyHighRiskBypass: false
+      }));
+    });
+    return out;
+  }
+
   function detectOpportunities(pipelineContext) {
     pipelineContext = pipelineContext || {};
     return freezeShallow({
       confirmedPatternAnticipation: freezeShallow(detectConfirmedPatternAnticipation(pipelineContext)),
       disruption: freezeShallow(detectDisruptionOpportunities(pipelineContext)),
-      milestoneRecovery: freezeShallow(detectMilestoneRecoveryOpportunities(pipelineContext))
+      milestoneRecovery: freezeShallow(detectMilestoneRecoveryOpportunities(pipelineContext)),
+      semanticOpportunities: freezeShallow(detectSemanticOpportunities(pipelineContext))
     });
   }
 

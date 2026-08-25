@@ -637,7 +637,11 @@
   <script src="js/coachDecisionSystem/safetyIntegrationPort.js"></script>
   <script src="js/coachDecisionSystem/prioritization.js"></script>
   <script src="js/coachDecisionSystem/eligibilityEvaluator.js"></script>
+  <!-- G-2 (docs/specs/G2_SPEC_v1.0.md §24, AD-G2-02 Item 3) -->
+  <script src="js/coachDecisionSystem/evidenceEvaluator.js"></script>
   <script src="js/coachDecisionSystem/recommendationEngine.js"></script>
+  <!-- G-2 (docs/specs/G2_SPEC_v1.0.md §19-21, CSF-08) — loaded before initiativeEngine.js, its sole consumer -->
+  <script src="js/coachDecisionSystem/contextualMeaningPolicy.js"></script>
   <script src="js/coachDecisionSystem/initiativeEngine.js"></script>
   <script src="js/coachDecisionSystem/winnerSelection.js"></script>
   <script src="js/coachDecisionSystem/decisionFormation.js"></script>

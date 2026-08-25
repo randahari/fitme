@@ -179,6 +179,16 @@
     return freezeShallow({ consumed: deps.getTodayConsumed(), protein: deps.getTodayProtein(), burned: deps.getTodayBurned() });
   }
 
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §14.1, AD-G2-03 Item 2/5/9): bounded read for
+  // GoalObjectiveContext — exactly {goal, goalKcal}, mirroring readTodayNutrition's own
+  // pattern exactly (session-currency check, freezeShallow, no mutation of
+  // deps.getUserProfile()'s own object). Field scope is closed to these two fields.
+  function readGoalObjectiveContext(identity) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var p = deps.getUserProfile() || {};
+    return freezeShallow({ goal: p.goal, goalKcal: p.goalKcal });
+  }
+
   function readTriggerBudget(identity) {
     if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
     var cd = deps.getTriggerBudget();
@@ -335,6 +345,7 @@
     adaptiveProfile: readAdaptiveProfile,
     triggerProfile: readTriggerProfile,
     todayNutrition: readTodayNutrition,
+    goalObjectiveContext: readGoalObjectiveContext,
     triggerBudget: readTriggerBudget,
     canFire: readCanFire,
     workoutPayload: readWorkoutPayload,
@@ -400,9 +411,12 @@
     // TASK-004: ה-Composite Engine היחיד (D3 §17 Decision 1) — Memory Layer's Context
     // Assembly בלבד (CD-02). recommendationFeedbackHistory כבר קיים (C2); אין writes (Memory
     // Layer, כפי שממומש כאן, קורא-בלבד — אין Persistence ספקולטיבי).
+    // G-2 (docs/specs/G2_SPEC_v1.0.md §14.3): extended with goalObjectiveContext (new, bounded)
+    // and todayNutrition (existing, reused) for Pipeline Context's GoalObjectiveContext/
+    // CurrentStateContext (§12-13). No other engine/action entry is touched.
     coachDecisionSystem: {
       DECISION_PASS: {
-        reads: ['recommendationFeedbackHistory'],
+        reads: ['recommendationFeedbackHistory', 'goalObjectiveContext', 'todayNutrition'],
         writes: []
       }
     }

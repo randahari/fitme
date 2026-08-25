@@ -139,6 +139,30 @@
     var lifeEventContext = null;
     var capacityState = null;
 
+    // ── G-2 (docs/specs/G2_SPEC_v1.0.md §12, AD-G2-03 Item 2) — GoalObjectiveContext: bounded,
+    // read-only, field-scope-closed to exactly {goal, goalKcal}. Structurally identical try/catch
+    // pattern to feedbackHistory/derivedIntelligence above.
+    var goalObjectiveContext = null;
+    var goalObjectiveContextAvailable = true;
+    try {
+      var g = access.read.goalObjectiveContext();
+      goalObjectiveContext = { goal: g.goal, goalKcal: g.goalKcal };
+    } catch (e) {
+      goalObjectiveContextAvailable = false; // graceful degradation, D3 §12.3
+    }
+
+    // ── G-2 (docs/specs/G2_SPEC_v1.0.md §13, AD-G2-03 Item 2) — CurrentStateContext: reuses the
+    // existing readTodayNutrition read as-is, field-scope-closed to exactly
+    // {consumed, protein, burned}.
+    var currentStateContext = null;
+    var currentStateContextAvailable = true;
+    try {
+      var t = access.read.todayNutrition();
+      currentStateContext = { consumed: t.consumed, protein: t.protein, burned: t.burned };
+    } catch (e) {
+      currentStateContextAvailable = false; // graceful degradation, D3 §12.3
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -150,6 +174,8 @@
       relationshipMaturity: relationshipMaturity,
       lifeEventContext: lifeEventContext,
       capacityState: capacityState,
+      goalObjectiveContext: goalObjectiveContext,
+      currentStateContext: currentStateContext,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -160,7 +186,9 @@
         // UNAVAILABLE, same honest-absence semantics as lifeEventContext/capacityState below.
         relationshipMaturity: 'UNAVAILABLE',
         lifeEventContext: 'UNAVAILABLE',
-        capacityState: 'UNAVAILABLE'
+        capacityState: 'UNAVAILABLE',
+        goalObjectiveContext: goalObjectiveContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }

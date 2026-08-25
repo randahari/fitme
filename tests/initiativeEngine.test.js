@@ -370,3 +370,111 @@ test('Stage 3: disruption/milestone detection correctly yields zero Opportunitie
   assert.deepEqual(r.disruption, []);
   assert.deepEqual(r.milestoneRecovery, []);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §32) — semanticOpportunities (NEW key on detectOpportunities()).
+// ══════════════════════════════════════════════════════════════════
+
+function makeWeakeningFoodLoggingSignal(overrides) {
+  return Object.assign({
+    id: 'HABIT:nutrition:log-consistency',
+    sourceType: 'HABIT',
+    domain: 'NUTRITION',
+    topic: 'FOOD_LOGGING',
+    lifecycle: 'WEAKENING',
+    confidence: 0.51,
+    evidence: { count: 3 },
+    temporal: { firstObservedAt: '2026-01-31', lastObservedAt: '2026-05-01', expectedIntervalDays: 9 },
+    provenance: { currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-01-31' }
+  }, overrides);
+}
+
+test('G-2 §32: detectOpportunities()\'s existing three keys are byte-identical to today\'s output for an existing fixture (regression)', () => {
+  const ctx = {
+    initiativeIntelligence: {
+      signals: [
+        { id: 'HABIT:a', lifecycle: 'ACTIVE', domain: 'NUTRITION', topic: 'FOOD_LOGGING', confidence: 0.8, evidence: { count: 8 } }
+      ]
+    }
+  };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.equal(r.confirmedPatternAnticipation.length, 1);
+  assert.deepEqual(r.disruption, []);
+  assert.deepEqual(r.milestoneRecovery, []);
+  assert.deepEqual(r.semanticOpportunities, [], 'a signal lacking sourceType/provenance is not a well-formed Observation — contributes nothing, never fabricated');
+});
+
+test('G-2 §32: semanticOpportunities contains exactly one well-formed DetectedOpportunity for a Habit FOOD_LOGGING WEAKENING fixture', () => {
+  const ctx = { assembledAt: 123456, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal()] } };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.equal(r.semanticOpportunities.length, 1);
+  const d = r.semanticOpportunities[0];
+  assert.equal(d.sourceCategory, 'CONFIRMED_PATTERN_ANTICIPATION');
+  assert.equal(d.detectingContributor, 'INITIATIVE_ENGINE');
+  assert.equal(typeof d.proposedAction, 'string');
+  assert.ok(d.proposedAction.length > 0);
+  assert.equal(typeof d.explanation.rationale, 'string');
+  assert.equal(typeof d.explanation.evidenceBasis, 'string');
+  assert.equal(typeof d.explanation.expectedValue, 'string');
+  assert.notEqual(d.explanation.uncertainty, undefined);
+  assert.notEqual(d.explanation.uncertainty, null);
+  assert.notEqual(d.explanation.uncertainty, '');
+  assert.equal(d.detectedAt, 123456);
+  assert.deepEqual(d.valueDimensions, ['UNDERSTANDING']);
+  assert.equal(d.validReasonCategory, 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION');
+  assert.equal(d.trustTestSignal.glad, null);
+  assert.equal(typeof d.trustTestSignal.basis, 'string');
+  assert.equal(d.safetyHighRiskBypass, false);
+  assert.equal(typeof d.contextualMeaning, 'object');
+  assert.equal(d.contextualMeaning.trajectory, 'WORSENING');
+  assert.equal(d.contextualMeaning.alignment, 'UNKNOWN');
+});
+
+test('G-2 §32: the constructed DetectedOpportunity\'s confidence matches the fixture\'s own value exactly (never inflated)', () => {
+  const ctx = { assembledAt: 1, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal({ confidence: 0.13 })] } };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.equal(r.semanticOpportunities[0].confidence, 0.13);
+});
+
+test('G-2 §32: semanticOpportunities is empty for ACTIVE/CONFIRMED FOOD_LOGGING Habit signals (no Reason exists for them)', () => {
+  ['ACTIVE', 'CONFIRMED'].forEach((lifecycle) => {
+    const ctx = { assembledAt: 1, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal({ lifecycle })] } };
+    const r = InitiativeEngine.detectOpportunities(ctx);
+    assert.deepEqual(r.semanticOpportunities, []);
+  });
+});
+
+test('G-2 §32: semanticOpportunities is empty for WEAKENING signals of any other topic', () => {
+  const ctx = { assembledAt: 1, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal({ topic: 'WORKOUT_FREQUENCY', domain: 'WORKOUT' })] } };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.deepEqual(r.semanticOpportunities, []);
+});
+
+test('G-2 §32: semanticOpportunities is empty for a Pattern-sourced FOOD_LOGGING WEAKENING signal (defensive — excluded upstream at B5)', () => {
+  const ctx = { assembledAt: 1, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal({ sourceType: 'PATTERN' })] } };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.deepEqual(r.semanticOpportunities, []);
+});
+
+test('G-2 §32: semanticOpportunities is empty for a Habit FOOD_LOGGING WEAKENING signal lacking the real establishment fact (never fabricated on lifecycle label alone)', () => {
+  const ctx = {
+    assembledAt: 1,
+    initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal({ provenance: { currentEpisodeEstablished: false, currentEpisodeEstablishedAt: null } })] }
+  };
+  const r = InitiativeEngine.detectOpportunities(ctx);
+  assert.deepEqual(r.semanticOpportunities, []);
+});
+
+test('G-2 §32: determinism — same pipelineContext yields byte-identical semanticOpportunities across repeated calls', () => {
+  const ctx = { assembledAt: 999, initiativeIntelligence: { signals: [makeWeakeningFoodLoggingSignal()] } };
+  const r1 = InitiativeEngine.detectOpportunities(ctx);
+  const r2 = InitiativeEngine.detectOpportunities(ctx);
+  assert.deepEqual(r1.semanticOpportunities, r2.semanticOpportunities);
+});
+
+test('G-2 §32: existing exports/behavior are preserved byte-for-byte (generate/validateCandidateShape/VALUE_DIMENSIONS/MATURITY_STAGES unaffected)', () => {
+  assert.equal(typeof InitiativeEngine.generate, 'function');
+  assert.equal(typeof InitiativeEngine.validateCandidateShape, 'function');
+  assert.deepEqual(InitiativeEngine.VALUE_DIMENSIONS, ['TRUST', 'MOTIVATION', 'CONSISTENCY', 'UNDERSTANDING', 'RELATIONSHIP', 'DECISION_QUALITY']);
+  assert.deepEqual(InitiativeEngine.MATURITY_STAGES, ['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH']);
+});

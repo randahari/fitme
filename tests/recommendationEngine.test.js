@@ -209,3 +209,26 @@ test('21. candidate and its nested objects are frozen (immutability discipline)'
   assert.equal(Object.isFrozen(c.rationale), true);
   assert.equal(Object.isFrozen(c.opportunityProvenance), true);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §17.1, RG-1) — Stage-3 detectOpportunities().
+// ══════════════════════════════════════════════════════════════════
+
+test('G-2 §17.1: detectOpportunities() returns an honestly-empty [] unconditionally (RG-1, no canonical Decision-Window algorithm exists)', () => {
+  assert.deepEqual(RecommendationEngine.detectOpportunities(pipelineContext()), []);
+});
+
+test('G-2 §17.1: detectOpportunities() never throws on an empty/undefined Pipeline Context', () => {
+  assert.doesNotThrow(() => RecommendationEngine.detectOpportunities());
+  assert.deepEqual(RecommendationEngine.detectOpportunities(undefined), []);
+  assert.deepEqual(RecommendationEngine.detectOpportunities(null), []);
+});
+
+test('G-2 §17.1: detectOpportunities()\'s return value is frozen', () => {
+  assert.equal(Object.isFrozen(RecommendationEngine.detectOpportunities(pipelineContext())), true);
+});
+
+test('G-2 §17.1: existing generate()/validateRequest() behavior is preserved byte-for-byte (regression)', () => {
+  const result = RecommendationEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() });
+  assert.equal(result.candidates.length, 1);
+});

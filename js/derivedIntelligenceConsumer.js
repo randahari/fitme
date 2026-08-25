@@ -373,10 +373,37 @@
   // ══════════════════════════════════════════════════════════════════
   // ── Eligibility (B5 §16/§18/§20/§21/§22) ──
   // ══════════════════════════════════════════════════════════════════
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §23; CSF Ch.27.2, Ch.29 AD-HL-06/PD-HL-06 — approved, now
+  // implemented): INITIATIVE_SUPPORT_V1's WEAKENING admission is lifecycle-AND-source-aware.
+  // Habit-derived WEAKENING is admitted on the explicit, persisted CSF Ch.29 Current-Episode
+  // Establishment Authority fact — signal.provenance.currentEpisodeEstablished === true — never
+  // an inference from statusOf()'s branch order (the superseded Ch.27.1 basis), and never the
+  // historical-ever everEstablishedHistorically/firstEstablishedAt fields (not authoritative
+  // here — CSF Ch.29 PD-HL-05). Pattern-derived WEAKENING remains excluded, unconditionally
+  // (CSF Ch.27.2) — Pattern Engine's decay path does not preserve complete prior evidence-state
+  // provenance. ACTIVE/CONFIRMED admission and every other policy (COACH_PROMPT_V1,
+  // RECOMMENDATION_SUPPORT_V1, TEST_FULL_DIAGNOSTIC_V1) are entirely unaffected — this branch is
+  // reached only for policy === INITIATIVE_SUPPORT_V1 AND signal.lifecycle === 'WEAKENING'.
   function evaluateEligibility(signal, policy, now) {
     var codes = [];
-    if (policy.allowedLifecycle.indexOf(signal.lifecycle) === -1) codes.push('INELIGIBLE_LIFECYCLE');
-    if (signal.confidence < policy.minimumConfidence) codes.push('BELOW_CONFIDENCE_THRESHOLD');
+    var isInitiativeWeakening = (policy === POLICIES.INITIATIVE_SUPPORT_V1) && signal.lifecycle === 'WEAKENING';
+
+    if (isInitiativeWeakening && signal.sourceType === 'PATTERN') {
+      codes.push('INELIGIBLE_LIFECYCLE'); // Pattern-derived WEAKENING excluded from v1, unconditionally
+    } else if (policy.allowedLifecycle.indexOf(signal.lifecycle) === -1) {
+      codes.push('INELIGIBLE_LIFECYCLE');
+    }
+
+    // Only a Habit-derived WEAKENING signal carrying the real, persisted establishment fact
+    // skips the minimumConfidence floor — CSF Ch.27.2's structural guarantee, now backed by an
+    // implemented, verified fact (CSF Ch.29.7) rather than an inference. Current decayed
+    // confidence is still carried on the signal, honestly, never inflated or replaced. Absent
+    // this basis, a Habit-derived WEAKENING signal is not specially exempted — it is evaluated
+    // under the ordinary confidence floor below, exactly like any ACTIVE/CONFIRMED signal.
+    var habitWeakeningEstablished = isInitiativeWeakening && signal.sourceType === 'HABIT'
+      && !!(signal.provenance && signal.provenance.currentEpisodeEstablished === true);
+
+    if (!habitWeakeningEstablished && signal.confidence < policy.minimumConfidence) codes.push('BELOW_CONFIDENCE_THRESHOLD');
     var minEvidence = policy.minimumEvidenceDefault;
     if (signal.evidence.count < minEvidence) codes.push('INSUFFICIENT_EVIDENCE');
     var fresh = computeFreshness(signal, now, policy);

@@ -519,3 +519,57 @@ test('C2-6. a capability built for triggerEngine cannot record Adaptive TDEE fee
   assert.equal((await trigger.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' })).status, 'APPLIED');
   assert.equal((await adaptive.write.recordRecommendationFeedback({ surface: 'adaptiveTdee', contextId: 'adaptive-proposal', feedbackType: 'Accepted' })).status, 'APPLIED');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §14) — readGoalObjectiveContext (new, bounded) and the
+// coachDecisionSystem/DECISION_PASS permission extension (goalObjectiveContext, todayNutrition).
+// ══════════════════════════════════════════════════════════════════
+
+test('G2-1. readGoalObjectiveContext returns exactly {goal, goalKcal}', () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  assert.deepEqual(decisionPass.read.goalObjectiveContext(), { goal: 'cut', goalKcal: 2000 });
+});
+
+test('G2-2. readGoalObjectiveContext throws StaleSessionError under a stale session generation', () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  env.setGeneration(2);
+  assert.throws(() => decisionPass.read.goalObjectiveContext(), (e) => e.code === 'STALE_SESSION');
+});
+
+test('G2-3. coachDecisionSystem/DECISION_PASS can read goalObjectiveContext and todayNutrition (newly granted)', () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  assert.deepEqual(decisionPass.read.goalObjectiveContext(), { goal: 'cut', goalKcal: 2000 });
+  assert.deepEqual(decisionPass.read.todayNutrition(), { consumed: 300, protein: 20, burned: 100 });
+  // pre-existing grant, unaffected by this extension
+  assert.equal((decisionPass.read.recommendationFeedbackHistory()) && true, true);
+});
+
+test('G2-4. every other engine\'s access to goalObjectiveContext/todayNutrition remains exactly as already permitted/denied today (regression)', () => {
+  const env = makeEnv(); configure(env);
+  const habit = access('habitEngine', 'RECOMPUTE', env);
+  assert.throws(() => habit.read.goalObjectiveContext(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const pattern = access('patternEngine', 'RECOMPUTE', env);
+  assert.throws(() => pattern.read.goalObjectiveContext(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  assert.throws(() => dailyCheck.read.goalObjectiveContext(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  // triggerEngine's own pre-existing todayNutrition grant is unaffected
+  assert.deepEqual(dailyCheck.read.todayNutrition(), { consumed: 300, protein: 20, burned: 100 });
+});
+
+test('G2-5. readGoalObjectiveContext returns a frozen, protected snapshot (not a live reference)', () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  const g = decisionPass.read.goalObjectiveContext();
+  assert.equal(Object.isFrozen(g), true);
+});
+
+test('G2-6. readGoalObjectiveContext returns {goal: undefined, goalKcal: undefined} honestly when neither is set on the profile (never a fabricated default)', () => {
+  const env = makeEnv({ profile: { goal: undefined, goalKcal: undefined } }); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  const g = decisionPass.read.goalObjectiveContext();
+  assert.equal(g.goal, undefined);
+  assert.equal(g.goalKcal, undefined);
+});

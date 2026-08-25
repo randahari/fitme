@@ -147,10 +147,10 @@ test('11. js/app.js wires coachDecisionSystem into the APP_READY actions map, al
   assert.match(body, /coachDecisionSystem:\s*'DECISION_PASS'/);
 });
 
-test('12. index.html loads all fifteen modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five + Expression WP1 deliveryIntentContract.js + Expression WP3 expressionInputGate.js + Expression WP4 expressionRenderingContext.js + expressionRenderer.js) before js/app.js, after registerEngines.js, in dependency order', () => {
+test('12. index.html loads all seventeen modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five + Expression WP1 deliveryIntentContract.js + Expression WP3 expressionInputGate.js + Expression WP4 expressionRenderingContext.js + expressionRenderer.js + G-2 evidenceEvaluator.js + contextualMeaningPolicy.js) before js/app.js, after registerEngines.js, in dependency order', () => {
   const iReg = indexHtml.indexOf('js/engines/registerEngines.js');
   const iApp = indexHtml.indexOf('src="js/app.js"');
-  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
+  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'evidenceEvaluator.js', 'recommendationEngine.js', 'contextualMeaningPolicy.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
   var last = iReg;
   files.forEach((f) => {
     const i = indexHtml.indexOf('js/coachDecisionSystem/' + f);
@@ -174,10 +174,16 @@ test('12. index.html loads all fifteen modules (TASK-004 five + TASK-005 initiat
   // (buildExpressionRenderingContext()), and before expressionRenderer.js, which also requires it.
   assert.ok(indexHtml.indexOf('js/coachDecisionSystem/expressionRenderingContext.js') < indexHtml.indexOf('js/coachDecisionSystem/memoryLayer.js'));
   assert.ok(indexHtml.indexOf('js/coachDecisionSystem/expressionRenderingContext.js') < indexHtml.indexOf('js/coachDecisionSystem/expressionRenderer.js'));
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §24) — evidenceEvaluator.js (window.EvidenceEvaluator) must
+  // load before internalPipelineOrchestrator.js, which now requires it.
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/evidenceEvaluator.js') < indexHtml.indexOf('js/coachDecisionSystem/internalPipelineOrchestrator.js'));
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §19-21, CSF-08) — contextualMeaningPolicy.js
+  // (window.ContextualMeaningPolicy) must load before initiativeEngine.js, its sole consumer.
+  assert.ok(indexHtml.indexOf('js/coachDecisionSystem/contextualMeaningPolicy.js') < indexHtml.indexOf('js/coachDecisionSystem/initiativeEngine.js'));
 });
 
-test('12b. sw.js caches all fifteen modules in its SHELL manifest, matching index.html', () => {
-  ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'recommendationEngine.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
+test('12b. sw.js caches all seventeen modules in its SHELL manifest, matching index.html', () => {
+  ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'evidenceEvaluator.js', 'recommendationEngine.js', 'contextualMeaningPolicy.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'].forEach((f) => {
     assert.notEqual(swJs.indexOf('js/coachDecisionSystem/' + f), -1, f + ' must be present in sw.js');
   });
 });
@@ -311,8 +317,11 @@ test('16f. the Decision Engine has no direct Coach Runtime invocation path anywh
 
 // ── No ranking / no second registry / no parallel runtime (Ranking Policy, D3 Invariant AI-01) ──
 
-test('17. the Recommendation Engine module exposes generate() only — no rank/prioritize/selectWinner export', () => {
-  assert.deepEqual(Object.keys(RecommendationEngine).sort(), ['generate']);
+test('17. the Recommendation Engine module exposes generate() and (G-2 §17.1, additive) detectOpportunities() only — no rank/prioritize/selectWinner export', () => {
+  assert.deepEqual(Object.keys(RecommendationEngine).sort(), ['detectOpportunities', 'generate']);
+  ['rank', 'prioritize', 'selectWinner', 'formDecision', 'disqualify'].forEach((fn) => {
+    assert.equal(typeof RecommendationEngine[fn], 'undefined');
+  });
 });
 
 test('17b. the Initiative Engine module exposes no rank/prioritize/selectWinner/formDecision export (D2 Unit 07 Forbidden Responsibilities)', () => {

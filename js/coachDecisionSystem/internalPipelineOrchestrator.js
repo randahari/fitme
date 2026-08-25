@@ -64,6 +64,12 @@
   var SafetyLayer = (typeof module !== 'undefined' && module.exports)
     ? require('./safetyLayer.js')
     : window.SafetyLayer;
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §24, AD-G2-02 Item 3) — Stage-4 Evidence Evaluation, an
+  // internal Decision Engine component, structurally identical in pattern to EligibilityEvaluator
+  // above (not a new Engine/collaborator/Registry entry).
+  var EvidenceEvaluator = (typeof module !== 'undefined' && module.exports)
+    ? require('./evidenceEvaluator.js')
+    : window.EvidenceEvaluator;
   // Expression WP1 (EXPRESSION_IMPLEMENTATION_PLAN.md) — Delivery Intent schema-conformance
   // validator only; no rendering logic exists here or in this module (WP4-WP8).
   var DeliveryIntentContract = (typeof module !== 'undefined' && module.exports)
@@ -103,15 +109,17 @@
       return { status: 'FAILED', error: { code: 'CONTEXT_ASSEMBLY_FAILED', message: (e && e.message) || 'Memory Layer context assembly failed' } };
     }
 
-    // Expression WP9 — Stage 5-9 dispatch, now live. No genuine EligibleOpportunity source exists
-    // yet (Stage 3/4, Repository Gap G-2 — not resolved, not this Work Package's scope);
-    // opportunities is always [] here, which runDecisionPass() correctly, canonically resolves to
-    // a Decision-Pass-level Silence (D2-INV-05) — a fully-formed, valid outcome, not a failure.
-    // safetyPort: SafetyLayer is the real, already-approved SL-001 production implementation
-    // (ordinary Engineering integration, Product/Architecture-confirmed) — never exercised while
-    // the pool is empty (runDecisionPass() short-circuits to Silence before Stage 8/9 run), so
-    // this remains dormant today for the same G-2 reason, not a defect.
-    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: [], safetyPort: SafetyLayer });
+    // G-2 (docs/specs/G2_SPEC_v1.0.md §22/§29) — Stage 3 detection -> Stage 3 aggregation
+    // (mechanical collection only, §18.2) -> Stage 4 Evidence Evaluation (§24-26) -> Stage 4->5
+    // handoff (§27) now runs for real. `opportunities` remains empty on every cycle that produces
+    // no sufficient DetectedOpportunity (e.g. no qualifying Habit/Pattern signal this cycle) —
+    // runDecisionPass() correctly, canonically resolves that to a Decision-Pass-level Silence
+    // (D2-INV-05), a fully-formed, valid outcome, not a failure — exactly as before. The one real
+    // V1 path (Habit FOOD_LOGGING WEAKENING, established) now reaches Stage 5 for real; its own
+    // approved outcome is INELIGIBLE/TRUST_TEST_UNCERTAIN (Section 22), still Silence overall.
+    // safetyPort: SafetyLayer is the real, already-approved SL-001 production implementation.
+    var opportunities = buildOpportunitiesForDecisionPass(pipelineContext);
+    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer });
 
     if (passResult.status !== 'FORMED') {
       // Defensive only — with opportunities always [], this cannot currently occur (an empty
@@ -199,6 +207,99 @@
     if (rec && Array.isArray(rec.candidates)) out = out.concat(rec.candidates);
     var init = InitiativeEngine.generate({ opportunity: eligibleOpportunity, pipelineContext: pipelineContext });
     if (init && Array.isArray(init.candidates)) out = out.concat(init.candidates);
+    return out;
+  }
+
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §18) — Stage-3 Aggregation: mechanical collection ONLY. Per
+  // §18.2's correction from the prior draft: this step performs NO semantic construction
+  // whatsoever — it only collects DetectedOpportunity objects each contributor's own Stage-3
+  // function has already fully constructed. It SHALL NOT invent rationale, evidence, confidence,
+  // proposedAction, contextualMeaning, or validReasonCategory for any signal a contributor did not
+  // itself supply; SHALL NOT perform Eligibility Evaluation, prioritize, select a winner, or
+  // produce Expression content.
+  //
+  // Recommendation Engine's own detectOpportunities() is a real, honestly-empty detector (RG-1,
+  // §17.1). Initiative Engine's confirmedPatternAnticipation/disruption/milestoneRecovery buckets
+  // remain descriptive-only and are never collected here — no Product Reason Policy rule
+  // constructs a DetectedOpportunity for them at this baseline (§21.1); only its
+  // semanticOpportunities bucket (§32) ever contains already-complete DetectedOpportunity objects.
+  // Safety Layer's detectSafetyOpportunities() is a real, honestly-empty detector at this baseline
+  // (no Health/Safety Profile source exists yet, §17.3) — a Safety-sourced detection's
+  // safetyHighRiskBypass:true status is preserved unconditionally through this collection step
+  // (G2-RA-05 corrected wording) since no field of any collected object is altered here.
+  function collectDetectedOpportunities(pipelineContext) {
+    var out = [];
+    var recDetections = RecommendationEngine.detectOpportunities(pipelineContext);
+    if (Array.isArray(recDetections)) out = out.concat(recDetections);
+
+    var initDetections = InitiativeEngine.detectOpportunities(pipelineContext);
+    if (initDetections && Array.isArray(initDetections.semanticOpportunities)) {
+      out = out.concat(initDetections.semanticOpportunities);
+    }
+
+    var safetyDetections = SafetyLayer.detectSafetyOpportunities(pipelineContext);
+    if (Array.isArray(safetyDetections)) out = out.concat(safetyDetections);
+
+    return out;
+  }
+
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §27) — Stage 4->5 Handoff, mechanical construction. Called
+  // only on a DetectedOpportunity that already carries a non-null validReasonCategory and a
+  // fully-formed trustTestSignal (§21.1 guarantees no DetectedOpportunity is ever constructed at
+  // all when the Product Reason Policy resolves NO_VALID_REASON — §18's aggregation step above
+  // never collects, and this function is therefore never called on, a semantically-incomplete
+  // Opportunity). Performs no semantic invention and no defaulting — a pure field-selection copy
+  // from an already-complete DetectedOpportunity into the two existing, unmodified downstream
+  // contracts (AD-G2-02 Item 2, restated: grants the Decision Engine no Stage-3 detection
+  // authority, no D1 Evidence-policy ownership, and no authority to invent
+  // validReasonCategory/trustTestSignal values).
+  //
+  // G-2 Engineering Readiness Review finding: lifeEventContext/capacityState are always null at
+  // this baseline (Life Event/Capacity acquisition is explicitly out of scope, §8 item 5,
+  // memoryLayer.js) — lowCoachingValuePeriodActive is therefore constructed directly as false,
+  // per the existing T006 §15.3 rule ("defaults to false only when both are structurally
+  // UNAVAILABLE"), never as an illustrative ternary that could emit undefined and trip
+  // eligibilityEvaluator.js's own strict boolean requirement (validateInput(), line ~79). This
+  // does not implement Life Event Context or Capacity State acquisition — it remains hardcoded
+  // false, correctly, until that separate, out-of-scope Future Item is ever approved.
+  function buildEligibilityAndCandidateInputs(d, pipelineContext) {
+    var eligibilityInput = {
+      id: d.id,
+      sourceCategory: d.sourceCategory,
+      validReasonCategory: d.validReasonCategory, // always non-null here — see above
+      trustTestSignal: d.trustTestSignal,          // always {glad, basis} — see above
+      lowCoachingValuePeriodActive: false,
+      safetyHighRiskBypass: d.safetyHighRiskBypass === true
+    };
+    return { eligibilityInput: eligibilityInput, eligibleOpportunity: d };
+  }
+
+  // G-2 (docs/specs/G2_SPEC_v1.0.md §29) — orchestrates Stage 3 detection (collectDetectedOpportunities
+  // above) -> Stage 4 Evidence Evaluation (§24-26) -> Stage 4->5 handoff (buildEligibilityAndCandidateInputs
+  // above), producing the exact `opportunities` array runDecisionPass() already expects
+  // (unchanged shape). A safetyHighRiskBypass:true DetectedOpportunity routes around Stage 4
+  // entirely (D1-OD-04/D2-EF-01(a); §18.2) — EvidenceEvaluator.evaluate() is never called for it.
+  // An INSUFFICIENT DetectedOpportunity is excluded here — it never reaches Stage 5 (§26); no
+  // fabricated Silence or synthetic outcome is created for it, it is simply not included in the
+  // array runDecisionPass() iterates.
+  function buildOpportunitiesForDecisionPass(pipelineContext) {
+    var detected = collectDetectedOpportunities(pipelineContext);
+    var out = [];
+    detected.forEach(function (d) {
+      if (!d) return;
+      if (d.safetyHighRiskBypass === true) {
+        out.push(buildEligibilityAndCandidateInputs(d, pipelineContext));
+        return;
+      }
+      var evidence;
+      try {
+        evidence = EvidenceEvaluator.evaluate(d);
+      } catch (e) {
+        return; // defensive — never fabricate SUFFICIENT on a thrown evaluation (§26/§37)
+      }
+      if (!evidence || evidence.outcome !== 'SUFFICIENT') return; // §26 — INSUFFICIENT never reaches Stage 5
+      out.push(buildEligibilityAndCandidateInputs(d, pipelineContext));
+    });
     return out;
   }
 
@@ -372,7 +473,12 @@
     detectInitiativeOpportunities: detectInitiativeOpportunities,
     detectSafetyOpportunities: detectSafetyOpportunities,
     runDecisionPass: runDecisionPass,
-    runExpressionStage: runExpressionStage
+    runExpressionStage: runExpressionStage,
+    // G-2 (docs/specs/G2_SPEC_v1.0.md §18/§27/§29) — exposed for direct unit/integration testing,
+    // structurally parallel to the other direct-dispatch exports above.
+    collectDetectedOpportunities: collectDetectedOpportunities,
+    buildEligibilityAndCandidateInputs: buildEligibilityAndCandidateInputs,
+    buildOpportunitiesForDecisionPass: buildOpportunitiesForDecisionPass
   };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemOrchestrator = API; }

@@ -128,7 +128,23 @@
     return freezeShallow({ candidates: freezeShallow([candidate]) });
   }
 
-  var API = { generate: generate };
+  // ══════════════════════════════════════════════════════════════════
+  // Stage 3 contribution (D2 Unit 04 Stage 3; G2_SPEC §17.1, G2-RA-14 corrected wording) — a
+  // real, correctly-typed, honestly-empty detector. Its Stage-3 responsibility is to determine
+  // whether current approved evidence/context supports carrying forward a DECISION_WINDOW-sourced
+  // Opportunity. No canonical source defines the concrete detection algorithm or threshold — this
+  // is Repository Gap RG-1 (docs/specs/G2_SPEC_v1.0.md §44), explicitly non-blocking per
+  // G2-RA-19's per-contributor allowance for an honest, permanently-empty detector (CSF Ch.13, row
+  // 13.2: "Blocked on a separate Repository Gap, not this Package"). This function does not
+  // fabricate a Recommendation Opportunity, does not solve RG-1, and does not invent a
+  // Decision-Window-closing algorithm — it returns [] unconditionally until RG-1 is separately
+  // resolved by a future, dedicated decision. Never throws; never reads StateAccess directly
+  // (reads only the already-assembled Pipeline Context, D3 §8.1/§11.1).
+  function detectOpportunities(pipelineContext) {
+    return freezeShallow([]);
+  }
+
+  var API = { generate: generate, detectOpportunities: detectOpportunities };
 
   if (typeof window !== 'undefined') { window.RecommendationEngine = API; }
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }

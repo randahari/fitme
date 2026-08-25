@@ -330,3 +330,96 @@ test('22. a later recordExplicitUserStatementArrival() call for the same user ov
   assert.ok(second >= first);
   assert.equal(typeof second, 'number'); // a single scalar, not an array/history
 });
+
+// ══════════════════════════════════════════════════════════════════
+// G-2 (docs/specs/G2_SPEC_v1.0.md §12-13, §15) — GoalObjectiveContext / CurrentStateContext
+// Pipeline Context extension.
+// ══════════════════════════════════════════════════════════════════
+
+function configureGoalObjectiveHappyPath() {
+  StateAccess.configure({
+    getUserProfile: () => ({ goal: 'lose_weight', goalKcal: 1800, coachEvents: [] }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    getTodayConsumed: () => 1200, getTodayProtein: () => 90, getTodayBurned: () => 300
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+}
+
+test('23. goalObjectiveContext carries exactly {goal, goalKcal} when the underlying read succeeds', async () => {
+  configureGoalObjectiveHappyPath();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.goalObjectiveContext, { goal: 'lose_weight', goalKcal: 1800 });
+  assert.equal(ctx.availability.goalObjectiveContext, 'AVAILABLE');
+});
+
+test('24. goalObjectiveContext is null with availability UNAVAILABLE when the underlying read throws (never fabricated)', async () => {
+  StateAccess.configure({
+    getUserProfile: () => { throw new Error('profile read failed'); },
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.goalObjectiveContext, null);
+  assert.equal(ctx.availability.goalObjectiveContext, 'UNAVAILABLE');
+});
+
+test('25. currentStateContext carries exactly {consumed, protein, burned} when the underlying read succeeds (readTodayNutrition reused, not duplicated)', async () => {
+  configureGoalObjectiveHappyPath();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.currentStateContext, { consumed: 1200, protein: 90, burned: 300 });
+  assert.equal(ctx.availability.currentStateContext, 'AVAILABLE');
+});
+
+test('26. currentStateContext is null with availability UNAVAILABLE when the underlying read throws (never fabricated)', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ goal: 'lose_weight', goalKcal: 1800, coachEvents: [] }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1
+    // getTodayConsumed/getTodayProtein/getTodayBurned intentionally omitted — readTodayNutrition throws
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.currentStateContext, null);
+  assert.equal(ctx.availability.currentStateContext, 'UNAVAILABLE');
+  // one category's absence does not block another
+  assert.deepEqual(ctx.goalObjectiveContext, { goal: 'lose_weight', goalKcal: 1800 });
+});
+
+test('27. goalObjectiveContext/currentStateContext do not affect any other existing Pipeline Context field (regression)', async () => {
+  configureGoalObjectiveHappyPath();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userId, 'user-1');
+  assert.equal(ctx.sessionGeneration, 1);
+  assert.ok(Array.isArray(ctx.feedbackHistory));
+  assert.equal(ctx.relationshipMaturity.stage, 'UNKNOWN');
+  assert.equal(ctx.lifeEventContext, null);
+  assert.equal(ctx.capacityState, null);
+  assert.equal(Object.isFrozen(ctx), true);
+});
+
+test('28. Pipeline Context (including the two new fields) is frozen exactly as every existing field already is', async () => {
+  configureGoalObjectiveHappyPath();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(Object.isFrozen(ctx), true);
+  assert.equal(Object.isFrozen(ctx.availability), true);
+});

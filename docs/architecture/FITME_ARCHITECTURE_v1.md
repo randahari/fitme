@@ -869,8 +869,8 @@ Engine — no second Engine Registry entry, no second orchestration authority (D
 §11.1); `js/coachDecisionSystem/internalPipelineOrchestrator.js` gained `runDecisionPass()`,
 structurally parallel to the existing `runForOpportunity`/`runForInitiativeOpportunity` pattern,
 sequencing Stage 5 through Stage 9 for a caller-supplied set of Opportunities; `run()`'s existing
-contract is unchanged, since no live Stage 3/4 Opportunity source exists yet in this repository
-(Repository Gap G-2).
+contract is unchanged. **Repository Gap G-2 (no live Stage 3/4 Opportunity source) has since been
+implemented and production-backed verified for its one approved V1 path — see §26 below.**
 
 `js/coachDecisionSystem/safetyIntegrationPort.js` defines the **Safety Integration Port** — the
 platform-neutral call/response contract (`disqualify()` at Stage 8, `finalReview()` at Stage 9)
@@ -991,13 +991,82 @@ structural analogy to `tests/fixtures/safetyIntegrationPortTestDouble.js` (TASK-
 production-reachable, confirmed by its own negative test.
 
 **Repository Gap G-2** (§23, unresolved and unaffected by Expression, exactly as it remained
-unaffected by SL-001 at §24) means the Coach Decision System's Terminal Decision is always
-Decision-Pass-level Silence in production today — the full Stage 1→10 wiring above is real, live, and
-covered by tests, but Expression's Delivery Intent is not yet actually produced anywhere in
-production, and `presentDeliveryIntent()` is not yet actually reached. `APP_VERSION` was not advanced
-at Expression's closure for this reason — no shipped, user-visible behavior resulted. D3 §17's
-Composite Engine is now, with Expression's closure, fully realized: all six internal collaborators
-(Memory Layer, Recommendation Engine, Initiative Engine, Decision Engine, Safety Layer, Expression)
-exist in the repository, each internal to the single `coachDecisionSystem` registration; only G-2's
-own, separate resolution stands between this architecture and a live, user-visible Coach Decision
-System output.
+unaffected by SL-001 at §24) meant the Coach Decision System's Terminal Decision was always
+Decision-Pass-level Silence in production at Expression's own closure — the full Stage 1→10 wiring
+above was real, live, and covered by tests, but Expression's Delivery Intent was not yet actually
+produced anywhere in production, and `presentDeliveryIntent()` was not yet actually reached.
+`APP_VERSION` was not advanced at Expression's closure for this reason — no shipped, user-visible
+behavior resulted. **G-2 has since been implemented (§26) for its one approved V1 path — the
+Terminal Decision for that path remains Decision-Pass-level Silence, by design (`TRUST_TEST_UNCERTAIN`,
+no affirmative Trust source approved for v1), so this remains user-invisible and `APP_VERSION`'s
+own G-2-driven advance (§26) reflects the shell/runtime registration change, not a new user-visible
+Coach behavior.** D3 §17's Composite Engine remains, since Expression's closure, fully realized: all
+six internal collaborators (Memory Layer, Recommendation Engine, Initiative Engine, Decision Engine,
+Safety Layer, Expression) exist in the repository, each internal to the single `coachDecisionSystem`
+registration.
+
+---
+
+## 26. G-2 — Live Stage 3/4 Opportunity Recognition (Repository Gap G-2, Closed)
+
+**Added by G-2** (`docs/specs/G2_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). Closes Repository
+Gap G-2 (§23) for its one approved V1 path — Habit-derived `FOOD_LOGGING`/`log-consistency`
+`WEAKENING`, established via the Habit Lifecycle Establishment Correction's
+`provenance.currentEpisodeEstablished === true` fact (Coach Semantic Foundation Canonical Decision
+Package Chapter 29). No new Engine, collaborator, or Engine Registry entry — every new/modified file
+below is an internal component of the single, already-registered `coachDecisionSystem` Composite
+Engine (D3 §17 Decision 1), or an addition to `js/stateAccess.js`/`js/derivedIntelligenceConsumer.js`
+within their own existing boundaries.
+
+**New files:** `js/coachDecisionSystem/contextualMeaningPolicy.js` — a pure, stateless policy
+utility (not a collaborator) implementing Contextual Meaning construction and the Product Reason
+Policy's one approved V1 rule (`REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION`, exclusively for Habit
+`FOOD_LOGGING` `WEAKENING`); `js/coachDecisionSystem/evidenceEvaluator.js` — Stage 4 Evidence
+Evaluation, an internal Decision Engine component classifying Habit-derived, established `WEAKENING`
+as `SUFFICIENT`/`REPEATED_BEHAVIOUR` on the real `provenance.currentEpisodeEstablished` fact, never on
+`statusOf()`'s branch order.
+
+**Modified files:** `js/stateAccess.js` (new bounded `readGoalObjectiveContext` read;
+`PERMISSIONS.coachDecisionSystem.DECISION_PASS` extended with `goalObjectiveContext`/
+`todayNutrition`); `js/coachDecisionSystem/memoryLayer.js` (Pipeline Context gains
+`goalObjectiveContext`/`currentStateContext`, both read-only, honest-`UNAVAILABLE`-on-failure);
+`js/coachDecisionSystem/recommendationEngine.js` (new, honestly-empty `detectOpportunities()` —
+Repository Gap RG-1, no canonical Decision-Window algorithm, non-blocking); `js/coachDecisionSystem/
+initiativeEngine.js` (`detectOpportunities()` gains a `semanticOpportunities` bucket, additive — the
+existing `confirmedPatternAnticipation`/`disruption`/`milestoneRecovery` buckets and every existing
+export are unchanged); `js/coachDecisionSystem/internalPipelineOrchestrator.js` (`run()` now builds a
+real `opportunities` array via mechanical Stage-3 collection → Stage-4 Evidence Evaluation → Stage
+4→5 handoff, replacing the previously-hardcoded `[]`; the Orchestrator itself still constructs no
+semantic meaning — that remains the detecting Stage-3 contributor's responsibility via the shared
+`contextualMeaningPolicy.js`); `js/derivedIntelligenceConsumer.js` (`evaluateEligibility()` gains
+lifecycle-aware branching for `INITIATIVE_SUPPORT_V1` — Habit-derived `WEAKENING` admitted only on
+`provenance.currentEpisodeEstablished===true`, Pattern-derived `WEAKENING` excluded unconditionally,
+`minimumConfidence` unchanged for every other case); `index.html`/`sw.js` (script-tag and precache
+registration for the two new files, following the existing `coachDecisionSystem/` pattern exactly).
+
+**Production-backed verified** using the real, unmodified-elsewhere `runHabitEngine()` driven across
+simulated calendar days — no hand-injected `WEAKENING` status, no fabricated `ContextualMeaning`, no
+fabricated Reason: real `FOOD_LOGGING` history establishes and naturally deteriorates the real Habit
+Engine's `log-consistency` record into `WEAKENING` with a genuine `currentEpisodeEstablished===true`
+fact, which the real B5 admits, the real Memory Layer assembles, the real Initiative Engine
+interprets via `contextualMeaningPolicy.js` into a complete `DetectedOpportunity`, the real
+`evidenceEvaluator.js` classifies `SUFFICIENT`/`REPEATED_BEHAVIOUR`, and the real, unmodified
+`eligibilityEvaluator.js` resolves `INELIGIBLE`/`TRUST_TEST_UNCERTAIN` — Decision-Pass-level Silence,
+confirmed not `MALFORMED`. This Silence outcome is intentional and correct: no affirmative Trust
+source is approved for v1 (CSF Ch.18/26.5), and none was fabricated by this implementation.
+
+**Downstream boundary preservation confirmed:** Stages 5–10 (`eligibilityEvaluator.js`,
+`prioritization.js`, `winnerSelection.js`, `decisionFormation.js`, Safety Layer, Expression) carry
+zero diff from before this implementation. Safety's unconditional bypass and precedence are
+unaffected. Pattern-derived `WEAKENING` remains excluded from both B5 admission and the
+`REPEATED_BEHAVIOUR` mapping. `everEstablishedHistorically`/`firstEstablishedAt` are not used as
+authority anywhere in this implementation — only `provenance.currentEpisodeEstablished` is.
+
+**Not resolved by this closure** (remain open/future, per `docs/specs/G2_SPEC_v1.0.md` §44): RG-1
+(Recommendation Engine's Decision-Window detection algorithm), RG-2 (Disruption/Milestone-Recovery
+data sources), and Future Items 1-5 (Pattern-derived `WEAKENING` support, an affirmative Trust
+foundation, additional Product Reason Policy rules, deferred Goal/Weight/Protein semantic
+expansions, the Decision Window closing criterion).
+
+Full repository regression at this closure: **1896/1896 passing** (1816 pre-G-2 baseline, net +80).
+See `docs/specs/G2_SPEC_v1.0.md` §53 (Closure Record) for complete evidence.
