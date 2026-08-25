@@ -219,14 +219,74 @@
 
   // ── מחזור-חיים: קביעת סטטוס דטרמיניסטית מביטחון + מופעים + רעננות ──
   // Observed → Candidate → Confirmed → Active → Weakening → Inactive
-  function statusOf(conf, occ, daysSince, interval) {
+  //
+  // Habit Lifecycle Establishment Correction (CSF Ch.29, PD-HL-01/02/03/04; AD-HL-02/03) —
+  // establishment-aware: `currentEpisodeEstablished` distinguishes a habit whose CURRENT,
+  // uninterrupted lifecycle episode has already legitimately cleared the confirmed-tier bar
+  // (occ>=OCC_CONFIRMED && conf>=CONF_CONFIRMED) from one that never has (or whose prior
+  // episode ended at INACTIVE). No numeric constant below changes; only the meaning of a
+  // degradation below the confirmed-tier bar changes for an already-established episode
+  // (floor becomes 'weakening', not 'candidate' — PD-HL-02). A never-established episode's
+  // ladder (below) is byte-identical to the pre-Ch.29 function — it can still reach
+  // 'weakening' only via the pre-existing rare instant-of-first-crossing case, exactly as
+  // before (AD-HL-04 — no daily-habit regression, since a daily-period habit's occurrence
+  // never actually falls below OCC_CONFIRMED before lateness crosses its own threshold).
+  function statusOf(conf, occ, daysSince, interval, currentEpisodeEstablished) {
     var late = interval > 0 ? daysSince / interval : 0;
     if (conf < CONF_INACTIVE || late > 4) return 'inactive';
-    if (occ < OCC_CANDIDATE || conf < CONF_CANDIDATE) return 'observed';
-    if (occ < OCC_CONFIRMED || conf < CONF_CONFIRMED) return 'candidate';
-    if (late > 1.5) return 'weakening';        // מבוסס אך מחליק
-    if (conf < CONF_ACTIVE) return 'confirmed'; // מוצק אך לא "פעיל" חזק
-    return 'active';                            // חזק + בקצב
+    if (!currentEpisodeEstablished) {
+      if (occ < OCC_CANDIDATE || conf < CONF_CANDIDATE) return 'observed';
+      if (occ < OCC_CONFIRMED || conf < CONF_CONFIRMED) return 'candidate';
+      if (late > 1.5) return 'weakening';        // מבוסס אך מחליק — הרגע הראשון של establishment
+      if (conf < CONF_ACTIVE) return 'confirmed'; // מוצק אך לא "פעיל" חזק
+      return 'active';                            // חזק + בקצב
+    }
+    // הפרק הנוכחי כבר legitimately established — הרצפה כעת 'weakening', לא 'candidate'
+    // (CSF Ch.29 PD-HL-02: "WEAKENING does not require the Habit to continue satisfying all
+    // original confirmation thresholds while deteriorating").
+    if (occ >= OCC_CONFIRMED && conf >= CONF_CONFIRMED) {
+      if (late > 1.5) return 'weakening';
+      return conf < CONF_ACTIVE ? 'confirmed' : 'active';
+    }
+    return 'weakening';
+  }
+
+  // Habit Lifecycle Establishment Correction (CSF Ch.29, AD-HL-01/02) — derives the four new
+  // establishment fields from `prev` (possibly absent/legacy, per AD-HL-05 — never assumed
+  // established) and this update's own already-computed `status`/`occ`/`conf`. Pure, shared by
+  // both upsertFromSignal and decayAbsent so the episode-boundary rule (reset exactly on the
+  // SAME transition that produces 'inactive') is expressed once, not duplicated.
+  function deriveEstablishment(prev, status, occ, conf, todayKey) {
+    var wasEpisodeEstablished = !!(prev && prev.currentEpisodeEstablished);
+    var currentEpisodeEstablished, currentEpisodeEstablishedAt;
+    if (status === 'inactive') {
+      // PD-HL-03: INACTIVE terminates current-episode authority in the SAME transition.
+      currentEpisodeEstablished = false;
+      currentEpisodeEstablishedAt = null;
+    } else if (wasEpisodeEstablished) {
+      // carried forward unchanged through CONFIRMED/ACTIVE/WEAKENING within one episode.
+      currentEpisodeEstablished = true;
+      currentEpisodeEstablishedAt = prev.currentEpisodeEstablishedAt;
+    } else if (occ >= OCC_CONFIRMED && conf >= CONF_CONFIRMED) {
+      // legitimately earns authority for the current episode, fresh timestamp (PD-HL-04:
+      // a later episode's establishment never reuses an earlier episode's timestamp).
+      currentEpisodeEstablished = true;
+      currentEpisodeEstablishedAt = todayKey;
+    } else {
+      currentEpisodeEstablished = false;
+      currentEpisodeEstablishedAt = null;
+    }
+    // Historical Fact (PD-HL-01.A) — permanent, sticky, OR-forward, never reset; grants no
+    // current authority (AD-HL-02). Never fabricated for a record that has never legitimately
+    // earned it (AD-HL-05).
+    var everEstablishedHistorically = !!(prev && prev.everEstablishedHistorically) || currentEpisodeEstablished;
+    var firstEstablishedAt = (prev && prev.firstEstablishedAt) || (currentEpisodeEstablished ? todayKey : null);
+    return {
+      everEstablishedHistorically: everEstablishedHistorically,
+      firstEstablishedAt: firstEstablishedAt,
+      currentEpisodeEstablished: currentEpisodeEstablished,
+      currentEpisodeEstablishedAt: currentEpisodeEstablishedAt
+    };
   }
 
   // עדכון/יצירה מתוך אות נוכחי
@@ -235,15 +295,22 @@
     var conf = prev ? round2(prev.confidence * INERTIA + rawC * (1 - INERTIA)) : round2(rawC * 0.5);
     var interval = sig.period === 'weekly' ? INTERVAL_WEEKLY : INTERVAL_DAILY;
     var daysSince = sig.lastDay ? daysBetween(sig.lastDay, todayKey) : 0;
+    var wasEpisodeEstablished = !!(prev && prev.currentEpisodeEstablished);
+    var status = statusOf(conf, sig.occ, daysSince, interval, wasEpisodeEstablished);
+    var est = deriveEstablishment(prev, status, sig.occ, conf, todayKey);
     return {
       id: sig.id, type: sig.type, key: sig.key,
       description: sig.description, frequency: sig.frequency,
       confidence: conf, consistency: round2(rawC), streak: sig.streak,
-      status: statusOf(conf, sig.occ, daysSince, interval),
+      status: status,
       firstObserved: prev ? prev.firstObserved : (sig.sourceDates[0] || todayKey),
       lastObserved: sig.lastDay || (prev ? prev.lastObserved : todayKey),
       period: sig.period, expectedIntervalDays: interval,
-      sourceEvents: { count: sig.occ, window: WINDOW_DAYS, dates: sig.sourceDates.slice(-12) }
+      sourceEvents: { count: sig.occ, window: WINDOW_DAYS, dates: sig.sourceDates.slice(-12) },
+      everEstablishedHistorically: est.everEstablishedHistorically,
+      firstEstablishedAt: est.firstEstablishedAt,
+      currentEpisodeEstablished: est.currentEpisodeEstablished,
+      currentEpisodeEstablishedAt: est.currentEpisodeEstablishedAt
     };
   }
 
@@ -253,10 +320,17 @@
     var interval = prev.expectedIntervalDays || (prev.period === 'weekly' ? INTERVAL_WEEKLY : INTERVAL_DAILY);
     var occ = (prev.sourceEvents && prev.sourceEvents.count) || 0;
     var daysSince = prev.lastObserved ? daysBetween(prev.lastObserved, todayKey) : 999;
+    var wasEpisodeEstablished = !!prev.currentEpisodeEstablished;
+    var status = statusOf(conf, occ, daysSince, interval, wasEpisodeEstablished);
+    var est = deriveEstablishment(prev, status, occ, conf, todayKey);
     return Object.assign({}, prev, {
       confidence: conf,
       consistency: round2((prev.consistency || 0) * INERTIA),
-      status: statusOf(conf, occ, daysSince, interval)
+      status: status,
+      everEstablishedHistorically: est.everEstablishedHistorically,
+      firstEstablishedAt: est.firstEstablishedAt,
+      currentEpisodeEstablished: est.currentEpisodeEstablished,
+      currentEpisodeEstablishedAt: est.currentEpisodeEstablishedAt
     });
   }
 

@@ -669,6 +669,8 @@ DerivedSignal:
     sourceView: HABITS_VIEW | PATTERNS_VIEW
     sourceFingerprint?: string
     durableAligned: boolean
+    currentEpisodeEstablished?: boolean          # HABIT only — see §15.4. IMPLEMENTED AND VERIFIED.
+    currentEpisodeEstablishedAt?: date | null    # HABIT only — see §15.4. IMPLEMENTED AND VERIFIED.
   consumption:
     relevanceScore: number
     freshnessScore: number
@@ -706,6 +708,17 @@ Qualifiers preserve conditions such as:
 - `WHEN_LOGGING_IS_ACTIVE`
 
 Qualifiers SHALL be normalized and sorted deterministically.
+
+### 15.4 Establishment Provenance Extension — IMPLEMENTED AND VERIFIED
+
+Per `docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` Chapter 29 (PD-HL-06, AD-HL-06): for `HABIT`-sourced signals only, `provenance` gains exactly two additional fields, pass-through only:
+
+- `currentEpisodeEstablished: boolean` — whether the Habit's current, uninterrupted lifecycle episode has itself earned confirmed-tier establishment authority (owned and determined exclusively by Habit Engine; resets to `false` on the same transition that produces `lifecycle:'INACTIVE'`).
+- `currentEpisodeEstablishedAt: date | null` — when the current episode earned that authority; cleared to `null` at the same reset.
+
+B5 performs **no inference** on these fields — it copies them from the Habit record exactly as it already copies `sourceFingerprint`/`durableAligned`. B5's own eligibility logic (§18, §19.3, §20) is unaffected in structure; these fields are additional traceability only. **Not exposed for `PATTERN`-sourced signals** (Pattern Engine's lifecycle model is unaffected by this correction — Chapter 27.1/27.4, unaltered; `normalizePatternRecord()` repository-verified to carry neither field). The permanent, all-time `everEstablishedHistorically`/`firstEstablishedAt` Historical Fact fields (CSF Chapter 29, PD-HL-01/PD-HL-05) are **not** exposed through B5 — they remain internal Habit Engine provenance only, per CSF's own Coach-facing boundary decision (repository-verified absent from the Coach-facing signal by direct serialization inspection).
+
+**Implementation status: IMPLEMENTED AND VERIFIED** (CSF Chapter 29.7). `js/engines/habitEngine.js` produces all four underlying Habit-record fields (`everEstablishedHistorically`, `firstEstablishedAt`, `currentEpisodeEstablished`, `currentEpisodeEstablishedAt`); `js/derivedIntelligenceConsumer.js`'s `normalizeHabitRecord()` passes the two approved fields through to `provenance` exactly as specified above, with no inference. Production-backed and unit-level test coverage: `tests/habitEngineLifecycleEstablishment.test.js` (14 tests) and 6 tests in `tests/derivedIntelligenceConsumer.test.js`. No change to B5's closed policy catalog (§19), eligibility rules (§18/§20-22), or any locked Appendix A constant. **Note — separate, unaffected item:** `§19.3`'s own Chapter-27 lifecycle-aware eligibility *branching* (using this provenance as `evaluateEligibility()`'s actual `WEAKENING` admission basis, rather than today's uniform `minimumConfidence` gate) is a distinct, earlier Architecture Decision not in scope for this correction and remains unimplemented — see the note at §19.3.
 
 ---
 
@@ -885,7 +898,7 @@ Rules:
 
 - `ACTIVE`/`CONFIRMED` signals: allowed lifecycle; minimum confidence 0.65; minimum evidence count 3, producer-specific minimum may raise but never lower this default; maximum total signals 20; maximum habits 10; maximum patterns 10 — the same shape as `RECOMMENDATION_SUPPORT_V1` (§19.2). Per `docs/specs/TASK_005_SPEC_v1.0.md`'s own disclosure (Section 36, item E-1), these concrete values remain Engineering-authored, provisional, and a CDR candidate — unchanged by this synchronization.
 - Contradictions retained as structured annotations; no recommendation or Initiative content is produced by this policy itself.
-- **`WEAKENING`, Habit-derived only** — eligible for semantic consideration on the structural guarantee that the Habit Engine's own lifecycle model admits `WEAKENING` status only after a record has already satisfied confirmed-tier occurrence and confidence requirements (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, Chapter 27.1) — not on the current, decayed confidence remaining above `minimumConfidence`. Current decayed confidence remains preserved honestly on the signal; it is never inflated, replaced, or presented as historical confidence.
+- **`WEAKENING`, Habit-derived only** — eligible for semantic consideration on the structural guarantee that the Habit Engine's own lifecycle model admits `WEAKENING` status only after a record has already satisfied confirmed-tier occurrence and confidence requirements (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, Chapter 27.1) — not on the current, decayed confidence remaining above `minimumConfidence`. Current decayed confidence remains preserved honestly on the signal; it is never inflated, replaced, or presented as historical confidence. **Correction (CSF Chapter 29, §15.4 — the provenance field is now IMPLEMENTED AND VERIFIED, Chapter 29.7):** Chapter 27.1's branch-order-only reasoning was found empirically insufficient for `period:'weekly'` Habit signals — the actual, explicit basis for this eligibility is `signal.provenance.currentEpisodeEstablished === true`, which now exists and is repository-verified reachable on real production data, not an inference from `statusOf()`'s branch order alone. **This policy's own `WEAKENING` *branching logic* remains a separate, unimplemented item** — Chapter 29's closure supplies the field; it does not itself implement Chapter 27's eligibility-branching Architecture Decision. `js/derivedIntelligenceConsumer.js`'s `evaluateEligibility()` today still applies `minimumConfidence` uniformly to every `WEAKENING` signal regardless of `sourceType` (see G2 SPEC evidence) — wiring `evaluateEligibility()` to branch on `provenance.currentEpisodeEstablished` remains future work, out of scope for the Habit Lifecycle Establishment Correction.
 - **`WEAKENING`, Pattern-derived — excluded.** Pattern Engine's `WEAKENING` transition does not structurally guarantee prior confirmed-tier establishment, and its decay path does not preserve complete prior evidence-state provenance (Coach Semantic Foundation Package, Chapter 27.1). Historical confidence is not reconstructed by reversing decay for this policy.
 - `minimumConfidence` (0.65) is **not** globally lowered by this policy — it continues to govern `ACTIVE`/`CONFIRMED` admission and Pattern-derived signals unchanged.
 - All other B5 mechanics (structural validation §17, durable-alignment §18, evidence rules §21, contradiction/overlap detection §25-26) apply exactly as already specified, unmodified.

@@ -282,7 +282,16 @@
         weekday: undefined, timeSegment: undefined
       }),
       qualifiers: normalizeQualifiers(topicInfo.qualifiers),
-      provenance: freezeShallow({ sourceView: 'HABITS_VIEW', sourceFingerprint: undefined, durableAligned: true }),
+      // B5 §15.4 (approved, CSF Ch.29 PD-HL-06/AD-HL-06) — HABIT-only, pass-through/normalization
+      // only, never inferred: currentEpisodeEstablished/-At mirror the Habit Engine record's own
+      // fields exactly. A pre-migration record lacking these fields normalizes to the honest,
+      // non-fabricated false/null — never assumed established (AD-HL-05). everEstablishedHistorically/
+      // firstEstablishedAt are NOT exposed here per PD-HL-05/AD-HL-06's Coach-facing boundary.
+      provenance: freezeShallow({
+        sourceView: 'HABITS_VIEW', sourceFingerprint: undefined, durableAligned: true,
+        currentEpisodeEstablished: rec.currentEpisodeEstablished === true,
+        currentEpisodeEstablishedAt: (typeof rec.currentEpisodeEstablishedAt === 'string' || typeof rec.currentEpisodeEstablishedAt === 'number') ? rec.currentEpisodeEstablishedAt : null
+      }),
       consumption: { relevanceScore: 0, freshnessScore: 0, inclusionReasons: [] } // מולא בהמשך
     };
     return { signal: signal };

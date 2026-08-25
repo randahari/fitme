@@ -741,3 +741,73 @@ test('TASK-005: DECISION_ENGINE remains fully disabled — enabling INITIATIVE_E
   assert.equal(result.status, 'REJECTED');
   assert.equal(result.error.code, 'UNKNOWN_CONSUMER');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CSF Ch.29 (Habit Lifecycle Establishment Correction, PD-HL-05/06, AD-HL-06) — B5 §15.4:
+// currentEpisodeEstablished/currentEpisodeEstablishedAt are pass-through-only, HABIT-derived
+// signals only, never inferred, never fabricated for legacy records, and everEstablishedHistorically/
+// firstEstablishedAt are never Coach-facing (not exposed on the signal at all).
+// ══════════════════════════════════════════════════════════════════
+
+test('CSF Ch.29: a HABIT signal from an established currentEpisode carries provenance.currentEpisodeEstablished === true with the record\'s own timestamp, pass-through only', async () => {
+  makeEnv({ habits: [makeHabit({ currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-06-01', everEstablishedHistorically: true, firstEstablishedAt: '2026-06-01' })] });
+  const result = await Consumer.build(baseRequest());
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:meal:evening');
+  assert.notEqual(sig, undefined);
+  assert.equal(sig.provenance.currentEpisodeEstablished, true);
+  assert.equal(sig.provenance.currentEpisodeEstablishedAt, '2026-06-01');
+});
+
+test('CSF Ch.29: a HABIT signal whose current episode is NOT established normalizes to the honest false/null, never fabricated', async () => {
+  makeEnv({ habits: [makeHabit({ currentEpisodeEstablished: false, currentEpisodeEstablishedAt: null, everEstablishedHistorically: false, firstEstablishedAt: null })] });
+  const result = await Consumer.build(baseRequest());
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:meal:evening');
+  assert.notEqual(sig, undefined);
+  assert.equal(sig.provenance.currentEpisodeEstablished, false);
+  assert.equal(sig.provenance.currentEpisodeEstablishedAt, null);
+});
+
+test('CSF Ch.29: a pre-migration HABIT record lacking the new establishment fields entirely normalizes safely to false/null (non-inference — never assumed established)', async () => {
+  const legacy = makeHabit();
+  delete legacy.currentEpisodeEstablished;
+  delete legacy.currentEpisodeEstablishedAt;
+  delete legacy.everEstablishedHistorically;
+  delete legacy.firstEstablishedAt;
+  makeEnv({ habits: [legacy] });
+  const result = await Consumer.build(baseRequest());
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:meal:evening');
+  assert.notEqual(sig, undefined);
+  assert.equal(sig.provenance.currentEpisodeEstablished, false, 'a legacy record missing the field must never be inferred/assumed established');
+  assert.equal(sig.provenance.currentEpisodeEstablishedAt, null);
+});
+
+test('CSF Ch.29: everEstablishedHistorically and firstEstablishedAt are NOT exposed anywhere on the HABIT-derived signal (not Coach-facing, PD-HL-05)', async () => {
+  makeEnv({ habits: [makeHabit({ currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-06-01', everEstablishedHistorically: true, firstEstablishedAt: '2025-01-01' })] });
+  const result = await Consumer.build(baseRequest());
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:meal:evening');
+  assert.notEqual(sig, undefined);
+  const json = JSON.stringify(sig);
+  assert.ok(!json.includes('everEstablishedHistorically'), 'everEstablishedHistorically must not appear anywhere on the Coach-facing signal');
+  assert.ok(!json.includes('firstEstablishedAt'), 'firstEstablishedAt must not appear anywhere on the Coach-facing signal');
+  assert.ok(!json.includes('2025-01-01'), 'the historical firstEstablishedAt VALUE must not leak onto the Coach-facing signal even under a different key');
+});
+
+test('CSF Ch.29: PATTERN-derived signals never carry currentEpisodeEstablished/-At — the extension is HABIT-only', async () => {
+  makeEnv({ patterns: [makePattern()] });
+  const result = await Consumer.build(baseRequest());
+  const sig = result.context.signals.find((s) => s.sourceType === 'PATTERN');
+  assert.notEqual(sig, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(sig.provenance, 'currentEpisodeEstablished'), false, 'Pattern Engine is untouched by this correction — its signals must not gain the new HABIT-only provenance fields');
+  assert.equal(Object.prototype.hasOwnProperty.call(sig.provenance, 'currentEpisodeEstablishedAt'), false);
+});
+
+test('CSF Ch.29: a WEAKENING HABIT signal (established current episode, real degradation) still carries provenance.currentEpisodeEstablished === true', async () => {
+  makeEnv({ habits: [makeHabit({ id: 'nutrition:log-consistency', type: 'nutrition', key: 'log-consistency', status: 'weakening', confidence: 0.7, currentEpisodeEstablished: true, currentEpisodeEstablishedAt: '2026-05-01', everEstablishedHistorically: true, firstEstablishedAt: '2026-05-01' })] });
+  // COACH_PROMPT_V1 excludes WEAKENING entirely (see test 25) — use RECOMMENDATION_SUPPORT_V1
+  // (test 26's policy) so the signal survives eligibility and its provenance can be inspected.
+  const result = await Consumer.build(baseRequest({ consumer: 'RECOMMENDATION_ENGINE', policyId: 'RECOMMENDATION_SUPPORT_V1' }));
+  const sig = result.context.signals.find((s) => s.id === 'HABIT:nutrition:log-consistency');
+  assert.notEqual(sig, undefined);
+  assert.equal(sig.lifecycle, 'WEAKENING');
+  assert.equal(sig.provenance.currentEpisodeEstablished, true, 'WEAKENING is only meaningful for an established current episode — B5 must pass this through faithfully, not re-derive it');
+});
