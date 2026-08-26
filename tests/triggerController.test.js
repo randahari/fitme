@@ -444,3 +444,103 @@ test('presentDeliveryIntent respects the session guard — suppressed when the s
   await TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1); // stale generation
   assert.equal(textEl.textContent, '');
 });
+
+// ── RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — Shared-Card Precedence, Initiative-Owned Dismiss ──
+
+function attribution(overrides) {
+  return Object.assign({ opportunityId: 'g2-food-logging-info-request:HABIT:nutrition:log-consistency', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }, overrides);
+}
+
+test('RGEF: Initiative-only — no ordinary Trigger shown, Composite Initiative presented with its own Dismiss control, correct text/attribution', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  deps.recordInitiativeFeedbackFn = (surface, contextId, feedbackType, domain, topic) => calls.push(['recordInitiativeFeedback', surface, contextId, feedbackType, domain, topic]);
+  TriggerController.configure(deps);
+
+  await TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1, attribution());
+  assert.equal(textEl.textContent, 'טקסט לדוגמה מהמאמן');
+
+  const btn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+  assert.ok(btn, 'a Dismiss control must exist on an Initiative-only presented card (UX-12.5)');
+  let hidden = false;
+  card.classList.add = (c) => { if (c === 'hidden') hidden = true; };
+  btn.onclick();
+  assert.equal(hidden, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ['recordInitiativeFeedback', 'initiative', 'g2-food-logging-info-request:HABIT:nutrition:log-consistency', 'Dismissed', 'NUTRITION', 'FOOD_LOGGING']);
+});
+
+test('RGEF: Trigger + Initiative in the same cycle — Composite Initiative becomes the final visible content and Dismiss owner; the prior Trigger-bound handler is fully replaced, not merely shadowed', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  deps.recordFeedbackFn = (surface, contextId, feedbackType) => calls.push(['recordFeedback', surface, contextId, feedbackType]);
+  deps.recordInitiativeFeedbackFn = (surface, contextId, feedbackType, domain, topic) => calls.push(['recordInitiativeFeedback', surface, contextId, feedbackType, domain, topic]);
+  TriggerController.configure(deps);
+
+  // Trigger presents first, exactly as triggerEngineAdapter.js's own run() already does before
+  // EngineRegistry.run()'s promise resolves.
+  await TriggerController.presentTriggerCard({ type: 'forgot-eat', live: false, data: { have: 100 } }, 1);
+  assert.ok(textEl.textContent.length > 0, 'Trigger set some real text first'); // real TriggerDomain.triggerLocalText() output
+  const triggerText = textEl.textContent;
+
+  // Initiative presents second (app.js's .then() continuation), as it always structurally does.
+  await TriggerController.presentDeliveryIntent(fakeDeliveryIntent({ renderedLanguage: 'INITIATIVE_WINS_TEXT' }), 1, attribution());
+  assert.equal(textEl.textContent, 'INITIATIVE_WINS_TEXT');
+  assert.notEqual(textEl.textContent, triggerText);
+
+  // Exactly one dismiss button exists (idempotent reuse of the same element, per
+  // ensureInitiativeDismissButton's own querySelector-first pattern).
+  assert.equal(card._children.filter((c) => c.className.indexOf('trigger-card-dismiss') !== -1).length, 1);
+  const btn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+
+  // Clicking Dismiss now records Initiative feedback ONLY — the Trigger-bound closure was fully
+  // replaced by btn.onclick's plain reassignment, not merely covered up.
+  btn.onclick();
+  assert.equal(calls.filter((c) => c[0] === 'recordInitiativeFeedback').length, 1, 'exactly one Initiative feedback event');
+  assert.equal(calls.filter((c) => c[0] === 'recordFeedback').length, 0, 'zero Trigger feedback events from this click');
+});
+
+test('RGEF: Trigger-only regression — when no Composite Initiative is presentable, ordinary Trigger presentation/dismiss/surface/context remain byte-identical to pre-RGEF behavior', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  deps.recordFeedbackFn = (surface, contextId, feedbackType) => calls.push(['recordFeedback', surface, contextId, feedbackType]);
+  TriggerController.configure(deps);
+
+  await TriggerController.presentTriggerCard({ type: 'forgot-eat', live: false, data: { have: 100 } }, 1);
+  const btn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+  assert.ok(btn);
+  let hidden = false;
+  card.classList.add = (c) => { if (c === 'hidden') hidden = true; };
+  btn.onclick();
+  assert.equal(hidden, true);
+  assert.deepEqual(calls, [['recordFeedback', 'trigger', 'forgot-eat', 'Dismissed']]);
+});
+
+test('RGEF: missing Initiative attribution — Dismiss control still exists and the card still hides, but no feedback event is fabricated and no Trigger identity is used as a fallback', async () => {
+  const card = fakeCardWithChildren();
+  const textEl = fakeElement();
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  deps.recordFeedbackFn = (surface, contextId, feedbackType) => calls.push(['recordFeedback', surface, contextId, feedbackType]);
+  deps.recordInitiativeFeedbackFn = (surface, contextId, feedbackType, domain, topic) => calls.push(['recordInitiativeFeedback', surface, contextId, feedbackType, domain, topic]);
+  TriggerController.configure(deps);
+
+  await TriggerController.presentDeliveryIntent(fakeDeliveryIntent(), 1, null);
+  const btn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+  assert.ok(btn, 'Dismiss must still exist even without attribution (UX-12.5)');
+  let hidden = false;
+  card.classList.add = (c) => { if (c === 'hidden') hidden = true; };
+  btn.onclick();
+  assert.equal(hidden, true, 'the card still hides on dismiss');
+  assert.equal(calls.length, 0, 'no feedback event of any kind is fabricated');
+});

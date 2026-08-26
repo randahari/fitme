@@ -239,12 +239,168 @@ test('Safety: a Candidate is produced normally even though no Safety Layer compo
 
 // ── §33.5 Recommendation/Initiative separation ──
 
-test('Separation: no FeedbackDomain module dependency — D1-IP-08 is enforced locally, not via C2 (Repository Gap A-2)', () => {
-  assert.equal(initiativeEngineJs.indexOf("require('../feedback/feedbackDomain"), -1);
-  assert.equal(initiativeEngineJs.indexOf('window.FeedbackDomain'), -1);
-  assert.equal(initiativeEngineJs.indexOf('SUPPRESSION_RECOVERY_POLICY'), -1);
-  assert.equal(typeof InitiativeEngine.FeedbackDomain, 'undefined');
+// RGEF WP7 (RGEF_SPEC_v1.0.md §5.4/§19.1) — Repository Gap A-2 is now narrowly, explicitly
+// resolved by Head of Product + AI Architect for exactly the Domain/Topic receptiveness
+// capability: initiativeEngine.js is authorized to depend on feedbackDomain.js for
+// evaluateDomainTopicReceptiveness() ONLY. This replaces the prior, now-stale "no dependency
+// ever" assertion with a narrower, still-meaningful boundary: the dependency exists, but is not a
+// blanket coupling, does not duplicate the policy, and D1-IP-08's own exact-Opportunity-id check
+// (wasIgnoredBefore()) remains untouched, local, and self-contained.
+test('Separation (RGEF-narrowed A-2): initiativeEngine.js depends on feedbackDomain.js ONLY for the approved evaluateDomainTopicReceptiveness() capability — never a blanket FeedbackDomain coupling', () => {
+  assert.notEqual(initiativeEngineJs.indexOf("require('../feedback/feedbackDomain.js')"), -1, 'the approved RGEF WP7 dependency must exist');
+  assert.notEqual(initiativeEngineJs.indexOf('evaluateDomainTopicReceptiveness'), -1);
+  // No other FeedbackDomain capability is consumed — evaluateSuppression()/classifyFeedback() are
+  // Trigger/Adaptive-TDEE-exclusive and remain so; Initiative never calls them.
+  assert.equal(initiativeEngineJs.indexOf('.evaluateSuppression('), -1);
+  assert.equal(initiativeEngineJs.indexOf('.classifyFeedback('), -1);
 });
+
+test('Separation (RGEF-narrowed A-2): initiativeEngine.js does NOT locally duplicate SUPPRESSION_RECOVERY_POLICY_V1\'s policy constants — the policy is consumed only through FeedbackDomain, by reference, never copied', () => {
+  assert.equal(initiativeEngineJs.indexOf('SUPPRESSION_RECOVERY_POLICY'), -1, 'no local re-declaration of the policy name/table');
+  assert.equal(initiativeEngineJs.indexOf('windowDays'), -1);
+  assert.equal(initiativeEngineJs.indexOf('patternThreshold'), -1);
+  assert.equal(initiativeEngineJs.indexOf('overrideTypes'), -1);
+});
+
+test('Separation (RGEF-narrowed A-2): wasIgnoredBefore() (D1-IP-08, exact-Opportunity-id) remains local, self-contained, and independently functional — not moved into or rewritten to depend on FeedbackDomain', () => {
+  const opp = validOpportunity({ id: 'ignored-opp' });
+  const ctx = pipelineContext({ feedbackHistory: [{ surface: 'initiative', contextId: 'ignored-opp', feedbackType: 'Dismissed', occurredAt: Date.now() }] });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, [], 'wasIgnoredBefore() still independently suppresses a previously-dismissed exact Opportunity id');
+});
+
+test('Separation (RGEF-narrowed A-2): no true Ignored producer is introduced by this dependency — Ignored remains a valid, distinct, unproduced feedbackType', () => {
+  assert.equal(initiativeEngineJs.indexOf("feedbackType: 'Ignored'"), -1);
+  assert.equal(initiativeEngineJs.indexOf('recordFeedbackFn'), -1, 'initiativeEngine.js never writes feedback itself — presentation-layer concern, unchanged');
+});
+
+// ── RGEF WP7 test gate (RGEF_SPEC_v1.0.md §18/§19.1) — Domain/Topic learned-receptiveness,
+// exercised through the real generate() entry point, not just at the FeedbackDomain unit level.
+// Fixed nowTs so window/expiry arithmetic is exact and readable; a fresh opportunity id in every
+// case so wasIgnoredBefore() (D1-IP-08, exact-id) never itself explains the outcome — only
+// domainTopicRecentlyUnwelcome() is under test here.
+(function () {
+  var NOW = 1700000000000;
+  var DAY = 24 * 60 * 60 * 1000;
+  function negFeedback(occurredAt, domain, topic, feedbackType) {
+    return { surface: 'initiative', contextId: 'unrelated-opp-id', domain: domain, topic: topic, feedbackType: feedbackType || 'Dismissed', occurredAt: occurredAt };
+  }
+
+  test('RGEF WP7: 2 negative Domain/Topic events (below patternThreshold=3) do NOT suppress — a single/double event never suppresses independently', () => {
+    const opp = validOpportunity({ id: 'wp7-1', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [negFeedback(NOW - DAY, 'NUTRITION', 'FOOD_LOGGING'), negFeedback(NOW - 2 * DAY, 'NUTRITION', 'FOOD_LOGGING')]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.equal(result.candidates.length, 1, 'below threshold — candidate must still be produced');
+  });
+
+  test('RGEF WP7: 3 negative Domain/Topic events (meets patternThreshold=3) DOES suppress the Candidate', () => {
+    const opp = validOpportunity({ id: 'wp7-2', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 2 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 3 * DAY, 'NUTRITION', 'FOOD_LOGGING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.deepEqual(result.candidates, [], 'repeated-pattern on this exact Domain+Topic must suppress');
+  });
+
+  test('RGEF WP7: an explicit positive override (Accepted) more recent than the negative pattern restores eligibility', () => {
+    const opp = validOpportunity({ id: 'wp7-3', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - DAY, 'NUTRITION', 'FOOD_LOGGING', 'Accepted'),
+        negFeedback(NOW - 2 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 3 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 4 * DAY, 'NUTRITION', 'FOOD_LOGGING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.equal(result.candidates.length, 1, 'most-recent explicit positive overrides prior negative pattern (CD-03/CD-07)');
+  });
+
+  test('RGEF WP7: an expired suppression (suppressionDurationDays=7 elapsed) no longer suppresses — dichotomy is always temporary/reversible', () => {
+    const opp = validOpportunity({ id: 'wp7-4', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - 20 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 21 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 22 * DAY, 'NUTRITION', 'FOOD_LOGGING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    // Note: 20-22 days ago also falls outside the 14-day evidence window entirely — both the
+    // window boundary and the expiry guarantee independently predict "not suppressed" here.
+    assert.equal(result.candidates.length, 1, 'suppression must not be permanent — old evidence must not suppress indefinitely');
+  });
+
+  test('RGEF WP7: a matching Domain but different Topic never suppresses — no Topic-to-Domain bleed (RGEF Invariant 6)', () => {
+    const opp = validOpportunity({ id: 'wp7-5', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - DAY, 'NUTRITION', 'MEAL_TIMING'),
+        negFeedback(NOW - 2 * DAY, 'NUTRITION', 'MEAL_TIMING'),
+        negFeedback(NOW - 3 * DAY, 'NUTRITION', 'MEAL_TIMING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.equal(result.candidates.length, 1, 'different Topic under the same Domain must not cross-suppress');
+  });
+
+  test('RGEF WP7: a matching Topic but different Domain never suppresses — exact Domain+Topic match only', () => {
+    const opp = validOpportunity({ id: 'wp7-6', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - DAY, 'WORKOUT', 'FOOD_LOGGING'),
+        negFeedback(NOW - 2 * DAY, 'WORKOUT', 'FOOD_LOGGING'),
+        negFeedback(NOW - 3 * DAY, 'WORKOUT', 'FOOD_LOGGING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.equal(result.candidates.length, 1, 'different Domain sharing the same Topic label must not cross-suppress');
+  });
+
+  test('RGEF WP7: an Opportunity with no domain/topic identity is never suppressed by this check — no basis, never fabricated', () => {
+    const opp = validOpportunity({ id: 'wp7-7' }); // no domain/topic at all
+    const ctx = pipelineContext({
+      assembledAt: NOW,
+      feedbackHistory: [
+        negFeedback(NOW - DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 2 * DAY, 'NUTRITION', 'FOOD_LOGGING'),
+        negFeedback(NOW - 3 * DAY, 'NUTRITION', 'FOOD_LOGGING')
+      ]
+    });
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+    assert.equal(result.candidates.length, 1, 'missing domain/topic on the Opportunity itself must never be treated as a suppression basis');
+  });
+
+  test('RGEF WP7: shared-policy integrity — the suppression threshold observed at generate() is exactly FeedbackDomain\'s own patternThreshold (3), not a locally-invented number', () => {
+    const FeedbackDomain = require('../js/feedback/feedbackDomain.js');
+    const policy = FeedbackDomain.RECOVERY_POLICIES[FeedbackDomain.DEFAULT_POLICY_ID];
+    const events = [];
+    for (var i = 0; i < policy.patternThreshold - 1; i++) events.push(negFeedback(NOW - (i + 1) * DAY, 'NUTRITION', 'FOOD_LOGGING'));
+    const belowThreshold = InitiativeEngine.generate({
+      opportunity: validOpportunity({ id: 'wp7-8a', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }),
+      pipelineContext: pipelineContext({ assembledAt: NOW, feedbackHistory: events })
+    });
+    assert.equal(belowThreshold.candidates.length, 1, 'one short of FeedbackDomain\'s own threshold must not suppress');
+    events.push(negFeedback(NOW - policy.patternThreshold * DAY, 'NUTRITION', 'FOOD_LOGGING'));
+    const atThreshold = InitiativeEngine.generate({
+      opportunity: validOpportunity({ id: 'wp7-8b', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }),
+      pipelineContext: pipelineContext({ assembledAt: NOW, feedbackHistory: events })
+    });
+    assert.deepEqual(atThreshold.candidates, [], 'reaching FeedbackDomain\'s own threshold, read live (not copied), must suppress');
+  });
+})();
 
 test('Separation: candidate kind is "INITIATIVE", distinct from RecommendationCandidate.kind ("Recommendation")', () => {
   const c = InitiativeEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() }).candidates[0];
@@ -477,4 +633,48 @@ test('G-2 §32: existing exports/behavior are preserved byte-for-byte (generate/
   assert.equal(typeof InitiativeEngine.validateCandidateShape, 'function');
   assert.deepEqual(InitiativeEngine.VALUE_DIMENSIONS, ['TRUST', 'MOTIVATION', 'CONSISTENCY', 'UNDERSTANDING', 'RELATIONSHIP', 'DECISION_QUALITY']);
   assert.deepEqual(InitiativeEngine.MATURITY_STAGES, ['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH']);
+});
+
+// ── RGEF §13 — Stage 6 Source × Reason Maturity Gating (WP4) ──
+
+function boundedOpportunity(overrides) {
+  return validOpportunity(Object.assign({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    validReasonCategory: 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION',
+    domain: 'NUTRITION',
+    topic: 'FOOD_LOGGING'
+  }, overrides));
+}
+
+test('RGEF §13.3 — the approved combination (CONFIRMED_PATTERN_ANTICIPATION + REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION) is permitted at every stage, including Observer/Assistant', () => {
+  ['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'].forEach((stage) => {
+    const result = InitiativeEngine.generate({ opportunity: boundedOpportunity(), pipelineContext: pipelineContext({ relationshipMaturity: { stage } }) });
+    assert.equal(result.candidates.length, 1, 'stage ' + stage + ' must permit the approved Source×Reason combination');
+  });
+});
+
+test('RGEF §13.2 — Observer does NOT broaden to general CONFIRMED_PATTERN_ANTICIPATION access: a different validReasonCategory under the same Source remains blocked at Observer/Assistant', () => {
+  const opp = boundedOpportunity({ validReasonCategory: 'CELEBRATE_MEANINGFUL_PROGRESS' });
+  ['OBSERVER', 'ASSISTANT'].forEach((stage) => {
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: pipelineContext({ relationshipMaturity: { stage } }) });
+    assert.deepEqual(result.candidates, [], 'stage ' + stage + ' must not permit a non-approved Reason under CONFIRMED_PATTERN_ANTICIPATION');
+  });
+  ['TRUSTED_COACH', 'PERSONAL_COACH'].forEach((stage) => {
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: pipelineContext({ relationshipMaturity: { stage } }) });
+    assert.equal(result.candidates.length, 1, 'stage ' + stage + ' still permits ordinary confirmed-pattern anticipation, unaffected by RGEF');
+  });
+});
+
+test('RGEF §13.2 — a different Source under the approved Reason does not gain the override (e.g. DISRUPTION_DETECTION at Observer remains blocked)', () => {
+  const opp = boundedOpportunity({ sourceCategory: 'DISRUPTION_DETECTION' });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: pipelineContext({ relationshipMaturity: { stage: 'OBSERVER' } }) });
+  assert.deepEqual(result.candidates, []);
+});
+
+test('RGEF §13.1 — every other Source×Reason combination preserves pre-RGEF effective behavior (D1-IP-02 base table unchanged)', () => {
+  const opp = validOpportunity({ sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION' }); // no validReasonCategory set — same as pre-RGEF tests
+  ['OBSERVER', 'ASSISTANT'].forEach((stage) => {
+    const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: pipelineContext({ relationshipMaturity: { stage } }) });
+    assert.deepEqual(result.candidates, [], 'stage ' + stage + ' must still not permit confirmed-pattern anticipation absent the approved Reason');
+  });
 });

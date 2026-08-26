@@ -106,6 +106,36 @@
     };
   }
 
+  // ── RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — Initiative-owned Dismiss control, structurally
+  // parallel to ensureTriggerCardDismissButton() above but a distinct function: never reuses or
+  // falls through to the Trigger-bound handler, never reads a Trigger `t.type`. `attribution` is
+  // { opportunityId, domain, topic } derived from the real Terminal Decision's own
+  // candidateProvenance (Section 16.1) — or null/undefined if unavailable, in which case the
+  // control still exists (UX-12.5) but its handler records no feedback rather than fabricating
+  // an attribution (Section 16.5). btn.onclick is a plain property assignment — always fully
+  // replacing whatever handler (Trigger-bound or a prior Initiative call's own) was there before,
+  // exactly like ensureTriggerCardDismissButton()'s own, already-proven idempotent-rebind pattern.
+  function ensureInitiativeDismissButton(card, attribution) {
+    var btn = card.querySelector ? card.querySelector('.trigger-card-dismiss') : null;
+    if (!btn) {
+      btn = deps.documentRef.createElement('button');
+      btn.className = 'btn-ghost trigger-card-dismiss';
+      btn.style.cssText = 'width:auto;padding:6px 10px;margin:8px 0 0;font-size:12px;display:block';
+      btn.textContent = 'לא רלוונטי';
+      card.appendChild(btn);
+    }
+    btn.onclick = function () {
+      card.classList.add('hidden');
+      try {
+        if (deps.recordInitiativeFeedbackFn && attribution && attribution.opportunityId) {
+          deps.recordInitiativeFeedbackFn('initiative', attribution.opportunityId, 'Dismissed', attribution.domain, attribution.topic);
+        }
+        // No opportunityId: dismiss still works (card hides), but no feedback event is written —
+        // never fabricated, never falls back to a Trigger-shaped attribution (RGEF §16.5).
+      } catch (e) {}
+    };
+  }
+
   // ── בקשת טקסט חי מהמאמן לטריגר (רגעים גדולים) — זהה לחלוטין ל-triggerLiveText()
   // המקורי. ──
   async function triggerLiveText(t) {
@@ -214,21 +244,28 @@
   // Pass resolves to Silence). This function is real and tested, ready for the day a Delivery
   // Intent exists.
   //
-  // COEXISTENCE — explicitly NOT resolved by this Work Package, flagged rather than decided: no
-  // canonical arbitration rule exists between this card and the pre-existing, unrelated
-  // TriggerDomain-based trigger-card (runCoachTriggers()/presentTriggerCard() above) for the same
-  // #trigger-card DOM slot within a single APP_READY cycle — the two are independent proactive-
-  // message systems that happen to share one DOM element. This has no live consequence today
-  // (Delivery Intent is never produced), so it does not block this function's own correctness;
-  // the coexistence/arbitration policy itself remains open for a future Product/Architecture
-  // decision, not invented here.
-  async function presentDeliveryIntent(deliveryIntent, sessionGeneration) {
+  // COEXISTENCE (RGEF_SPEC_v1.0.md §16.3, Shared Coach Card Architecture Decision) — Composite
+  // Initiative owns #trigger-card whenever a presentable Delivery Intent exists in the same
+  // cycle: this function always runs strictly after triggerEngineAdapter.js's own
+  // presentTriggerCard() call (the latter is awaited *inside* the Trigger Engine's own
+  // EngineRegistry.run(), the former only in app.js's subsequent .then() continuation — verified,
+  // not assumed), so unconditionally overwriting the card's content AND explicitly (re)binding
+  // its own Dismiss control below is sufficient to make Initiative authoritative — no arbitration
+  // framework, no engine rerun, no race. This does not resolve TASK-007's own broader, still-open
+  // OD-5 (cross-*element* Home-card precedence, a different, unrelated question).
+  //
+  // `attribution` is { opportunityId, domain, topic }, derived by the caller (app.js) from
+  // terminalDecision.candidateProvenance[0] — never opportunitiesConsidered, never decisionId,
+  // never a Trigger t.type (RGEF §16.1/§16.3). May be omitted/null if genuinely unavailable
+  // (e.g. a future unresolved tied-set) — the card remains dismissible either way (Section 16.5).
+  async function presentDeliveryIntent(deliveryIntent, sessionGeneration, attribution) {
     if (!deliveryIntent || typeof deliveryIntent.renderedLanguage !== 'string' || !deliveryIntent.renderedLanguage) return;
     var card = deps.documentRef.getElementById('trigger-card');
     var textEl = deps.documentRef.getElementById('trigger-card-text');
     if (!card || !textEl) return;
     if (typeof sessionGeneration !== 'undefined' && !deps.sessionLifecycle.isCurrent(sessionGeneration)) return;
     textEl.textContent = deliveryIntent.renderedLanguage;
+    try { ensureInitiativeDismissButton(card, attribution); } catch (e) {} // never let Dismiss wiring break presentation
     card.classList.remove('hidden');
   }
 

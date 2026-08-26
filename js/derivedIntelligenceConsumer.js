@@ -14,6 +14,13 @@
 (function () {
   'use strict';
 
+  // RGEF WP1 (RGEF_SPEC_v1.0.md §14.1) — DOMAINS/TOPICS promoted to a shared, dependency-free
+  // module reusable by future non-B5 producers; this file's own derivation logic (below) remains
+  // B5-owned, B5-local, unmodified — only the two closed value lists are now sourced externally.
+  var DomainTopicVocabulary = (typeof module !== 'undefined' && module.exports)
+    ? require('./domain/domainTopicVocabulary.js')
+    : window.DomainTopicVocabulary;
+
   var SCHEMA_VERSION = 'derived-intelligence-context/1.0';
 
   // ── תלויות מוזרקות (B5 §43: B3-approved state access בלבד) ──
@@ -38,12 +45,11 @@
   // Memory Layer הממוקדת (js/coachDecisionSystem/memoryLayer.js); אין נתיב קריאה ישיר של
   // ה-Initiative Engine עצמו (B5 §10.1, CD-T005-01 rule 2). DECISION_ENGINE נותר מושבת לחלוטין.
   var ENABLED_CONSUMERS = ['AI_COACH_PROMPT', 'RECOMMENDATION_ENGINE', 'INITIATIVE_ENGINE', 'TEST_HARNESS'];
-  var DOMAINS = ['NUTRITION', 'WORKOUT', 'WEIGHT', 'MEASUREMENT', 'ENGAGEMENT', 'GENERAL_COACHING'];
-  // B5 §12.5: "the initial implementation MAY define only the topic IDs represented by current
-  // producer records" — הרשימה כאן היא בדיוק מה שנדרש לקטלוג ה-catalog IDs הקיים של
-  // Habit/Pattern (ראה HABIT_KEY_MAP / PATTERN_ID_MAP למטה), ללא הרחבה.
-  var TOPICS = ['MEAL_TIMING', 'PROTEIN_INTAKE', 'FOOD_LOGGING', 'WORKOUT_FREQUENCY',
-    'WEIGH_IN_FREQUENCY', 'WEEKDAY_BEHAVIOR', 'SEQUENCE_BEHAVIOR', 'MEASUREMENT_LOGGING'];
+  // RGEF WP1 — sourced from the shared js/domain/domainTopicVocabulary.js module (values
+  // unchanged, verbatim); B5 §12.5's own "initial implementation MAY define only the topic IDs
+  // represented by current producer records" precedent is preserved, not widened.
+  var DOMAINS = DomainTopicVocabulary.DOMAINS;
+  var TOPICS = DomainTopicVocabulary.TOPICS;
   var CONTEXT_EVENTS = ['WORKOUT_COMPLETED', 'WEIGH_IN_RECORDED', 'MEASUREMENT_RECORDED', 'MEAL_LOGGED'];
   var TIME_SEGMENTS = ['MORNING', 'MIDDAY', 'EVENING', 'NIGHT'];
   var LIFECYCLES = ['OBSERVED', 'CANDIDATE', 'CONFIRMED', 'ACTIVE', 'WEAKENING', 'INACTIVE', 'UNKNOWN'];

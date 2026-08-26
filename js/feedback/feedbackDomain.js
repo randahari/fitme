@@ -25,7 +25,10 @@
   var GESTURE_TYPE = {
     'trigger:dismiss': 'Dismissed',
     'adaptiveTdee:apply': 'Accepted',
-    'adaptiveTdee:dismiss': 'Dismissed'
+    'adaptiveTdee:dismiss': 'Dismissed',
+    // RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — Composite Initiative's own dismiss gesture, distinct
+    // surface from 'trigger', never conflated with it.
+    'initiative:dismiss': 'Dismissed'
   };
 
   function classifyFeedback(surface, gesture) {
@@ -55,24 +58,13 @@
 
   function dayMs(n) { return n * 24 * 60 * 60 * 1000; }
 
-  // פונקציה טהורה: מחשבת מחדש מהמקור (recompute-from-source) בכל קריאה —
-  // ללא state מאוחסן/מוטציה כלשהי (CD-06). ארבע הערבויות הקנוניות (החוזה
-  // הקבוע, §13):
-  //  1. אירוע משוב בודד לעולם אינו מדכא באופן עצמאי (CD-02).
-  //  2. הדיכוי תמיד זמני והפיך, לעולם לא ענישה/חסימה קבועה (CD-07).
-  //  3. מצב הדיכוי תמיד מחושב מחדש מהמקור, לעולם לא flag שמור/מוטט (CD-06).
-  //  4. פעולת משתמש חיובית מפורשת גוברת על עדות שלילית קודמת (CD-03/CD-07).
-  function evaluateSuppression(feedbackEvents, surface, contextId, nowTs, policyId) {
-    policyId = policyId || DEFAULT_POLICY_ID;
-    var policy = RECOVERY_POLICIES[policyId];
-    if (!policy) throw new Error('FeedbackDomain.evaluateSuppression: unknown policyId ' + policyId);
-
-    var windowStart = nowTs - dayMs(policy.windowDays);
-    var relevant = (feedbackEvents || []).filter(function (e) {
-      return e && e.surface === surface && e.contextId === contextId &&
-        typeof e.occurredAt === 'number' && e.occurredAt >= windowStart && e.occurredAt <= nowTs;
-    }).sort(function (a, b) { return b.occurredAt - a.occurredAt; }); // חדש -> ישן
-
+  // פונקציה טהורה משותפת: מיישמת את ארבע הערבויות הקנוניות (§13) על כבר-
+  // מסונן `relevant` (חדש->ישן), ללא ידיעה על מפתח ה-matching שהפיק אותו —
+  // evaluateSuppression() (matching: surface+contextId מדויק) ו-
+  // evaluateDomainTopicReceptiveness() (matching: surface+domain+topic מדויק,
+  // RGEF WP6) חולקות בדיוק את אותו אלגוריתם ואת אותה טבלת RECOVERY_POLICIES —
+  // ללא טבלת מדיניות כפולה, ללא סטייה סמנטית בין השתיים.
+  function evaluateRecoveryFromRelevant(relevant, policy, nowTs, policyId) {
     if (!relevant.length) {
       return { suppressed: false, reason: 'no-evidence', suppressedUntil: null, policyId: policyId };
     }
@@ -99,12 +91,61 @@
     return { suppressed: true, reason: 'repeated-pattern', suppressedUntil: until, policyId: policyId };
   }
 
+  // פונקציה טהורה: מחשבת מחדש מהמקור (recompute-from-source) בכל קריאה —
+  // ללא state מאוחסן/מוטציה כלשהי (CD-06). ארבע הערבויות הקנוניות (החוזה
+  // הקבוע, §13):
+  //  1. אירוע משוב בודד לעולם אינו מדכא באופן עצמאי (CD-02).
+  //  2. הדיכוי תמיד זמני והפיך, לעולם לא ענישה/חסימה קבועה (CD-07).
+  //  3. מצב הדיכוי תמיד מחושב מחדש מהמקור, לעולם לא flag שמור/מוטט (CD-06).
+  //  4. פעולת משתמש חיובית מפורשת גוברת על עדות שלילית קודמת (CD-03/CD-07).
+  function evaluateSuppression(feedbackEvents, surface, contextId, nowTs, policyId) {
+    policyId = policyId || DEFAULT_POLICY_ID;
+    var policy = RECOVERY_POLICIES[policyId];
+    if (!policy) throw new Error('FeedbackDomain.evaluateSuppression: unknown policyId ' + policyId);
+
+    var windowStart = nowTs - dayMs(policy.windowDays);
+    var relevant = (feedbackEvents || []).filter(function (e) {
+      return e && e.surface === surface && e.contextId === contextId &&
+        typeof e.occurredAt === 'number' && e.occurredAt >= windowStart && e.occurredAt <= nowTs;
+    }).sort(function (a, b) { return b.occurredAt - a.occurredAt; }); // חדש -> ישן
+
+    return evaluateRecoveryFromRelevant(relevant, policy, nowTs, policyId);
+  }
+
+  // RGEF WP6 (RGEF_SPEC_v1.0.md §18) — Domain/Topic receptiveness, reusing
+  // RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1 BY REFERENCE (RGEF V1 Product-approved
+  // policy reuse, RGEF §18.1 — 14-day window, threshold 3, existing overrideTypes semantics; not
+  // a new, independently-invented policy table). The ONLY difference from evaluateSuppression()
+  // is the matching predicate: exact surface==='initiative' + exact domain + exact topic, never a
+  // partial/hierarchical match — Topic-to-Domain bleed and cross-topic suppression are both
+  // structurally impossible here (RGEF Invariant 6). Pure, recompute-from-source, no persisted
+  // score of any kind (RGEF §19.3) — every one of C2's own four guarantees applies identically.
+  // Missing domain/topic on either the call or an individual event never matches anything —
+  // never a suppression basis (RGEF §19.1's own defensive check is the caller-side mirror of this).
+  function evaluateDomainTopicReceptiveness(feedbackEvents, domain, topic, nowTs, policyId) {
+    policyId = policyId || DEFAULT_POLICY_ID;
+    var policy = RECOVERY_POLICIES[policyId];
+    if (!policy) throw new Error('FeedbackDomain.evaluateDomainTopicReceptiveness: unknown policyId ' + policyId);
+    if (!domain || !topic) {
+      return { suppressed: false, reason: 'no-domain-topic-identity', suppressedUntil: null, policyId: policyId };
+    }
+
+    var windowStart = nowTs - dayMs(policy.windowDays);
+    var relevant = (feedbackEvents || []).filter(function (e) {
+      return e && e.surface === 'initiative' && e.domain === domain && e.topic === topic &&
+        typeof e.occurredAt === 'number' && e.occurredAt >= windowStart && e.occurredAt <= nowTs;
+    }).sort(function (a, b) { return b.occurredAt - a.occurredAt; }); // חדש -> ישן
+
+    return evaluateRecoveryFromRelevant(relevant, policy, nowTs, policyId);
+  }
+
   var API = {
     FEEDBACK_TYPES: FEEDBACK_TYPES,
     RECOVERY_POLICIES: RECOVERY_POLICIES,
     DEFAULT_POLICY_ID: DEFAULT_POLICY_ID,
     classifyFeedback: classifyFeedback,
-    evaluateSuppression: evaluateSuppression
+    evaluateSuppression: evaluateSuppression,
+    evaluateDomainTopicReceptiveness: evaluateDomainTopicReceptiveness
   };
 
   if (typeof window !== 'undefined') { window.FeedbackDomain = API; }

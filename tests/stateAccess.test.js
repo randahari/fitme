@@ -73,10 +73,12 @@ function makeEnv(overrides) {
     checkCanFire: (type) => profile.coachDay.fired.indexOf(type) === -1,
     getTriggerBudget: () => profile.coachDay,
     // C2 (Rejection and Suppression Feedback): mirrors recordCoachEvent's test-double shape above.
-    recordFeedbackEvent: async (identity, surface, contextId, feedbackType) => {
+    // RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — domain/topic are new, optional, trailing parameters;
+    // existing Trigger/Adaptive calls never supply them (recorded as undefined, unchanged).
+    recordFeedbackEvent: async (identity, surface, contextId, feedbackType, domain, topic) => {
       if (!Array.isArray(profile.coachEvents)) profile.coachEvents = [];
-      profile.coachEvents.push({ kind: 'feedback', surface, contextId, feedbackType, ts: Date.now() });
-      calls.feedbackEvents.push({ surface, contextId, feedbackType });
+      profile.coachEvents.push({ kind: 'feedback', surface, contextId, feedbackType, domain, topic, ts: Date.now() });
+      calls.feedbackEvents.push({ surface, contextId, feedbackType, domain, topic });
       return { status: 'SUCCESS', changed: true, requestId: 'req-feedback', receipt: {} };
     }
   };
@@ -456,7 +458,7 @@ test('C2-1. triggerEngine/DAILY_COACH_CHECK can read feedback history and record
   assert.deepEqual(dailyCheck.read.recommendationFeedbackHistory(), []);
   const result = await dailyCheck.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' });
   assert.equal(result.status, 'APPLIED');
-  assert.deepEqual(env.calls.feedbackEvents, [{ surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed' }]);
+  assert.deepEqual(env.calls.feedbackEvents, [{ surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed', domain: undefined, topic: undefined }]);
 
   const workoutCompleted = access('triggerEngine', 'WORKOUT_COMPLETED', env);
   assert.throws(() => workoutCompleted.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
@@ -572,4 +574,57 @@ test('G2-6. readGoalObjectiveContext returns {goal: undefined, goalKcal: undefin
   const g = decisionPass.read.goalObjectiveContext();
   assert.equal(g.goal, undefined);
   assert.equal(g.goalKcal, undefined);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// RGEF WP5 (RGEF_SPEC_v1.0.md §16.4) — Stage-6 Ownership Enforcement Correction precedent:
+// coachDecisionSystem/DECISION_PASS gains its own honest recordRecommendationFeedback write
+// grant for Initiative-surface dismiss feedback — never triggerEngine's identity.
+// ══════════════════════════════════════════════════════════════════
+
+test('RGEF-1. coachDecisionSystem/DECISION_PASS can now record Initiative-surface feedback, carrying domain/topic additively', async () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  const result = await decisionPass.write.recordRecommendationFeedback({ surface: 'initiative', contextId: 'g2-food-logging-info-request:HABIT:nutrition:log-consistency', feedbackType: 'Dismissed', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  assert.equal(result.status, 'APPLIED');
+  assert.deepEqual(env.calls.feedbackEvents, [{ surface: 'initiative', contextId: 'g2-food-logging-info-request:HABIT:nutrition:log-consistency', feedbackType: 'Dismissed', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }]);
+});
+
+test('RGEF-2. Initiative-surface feedback is never written under a triggerEngine-identified capability — coachDecisionSystem is the only newly-authorized identity, Trigger/Adaptive grants are unaffected', async () => {
+  const env = makeEnv(); configure(env);
+  // Trigger and Adaptive TDEE retain exactly their pre-RGEF grants — unaffected regression.
+  const dailyCheck = access('triggerEngine', 'DAILY_COACH_CHECK', env);
+  assert.equal((await dailyCheck.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' })).status, 'APPLIED');
+  const adaptiveCheck = access('adaptiveTdeeEngine', 'ADAPTIVE_CHECK', env);
+  assert.equal((await adaptiveCheck.write.recordRecommendationFeedback({ surface: 'adaptiveTdee', contextId: 'adaptive-proposal', feedbackType: 'Accepted' })).status, 'APPLIED');
+});
+
+test('RGEF-3. every other coachDecisionSystem-unrelated engine/action remains exactly as already permitted/denied for recordRecommendationFeedback (regression)', async () => {
+  const env = makeEnv(); configure(env);
+  const habit = access('habitEngine', 'RECOMPUTE', env);
+  assert.equal((await habit.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' })).status, 'REJECTED');
+  const workoutCompleted = access('triggerEngine', 'WORKOUT_COMPLETED', env);
+  assert.equal((await workoutCompleted.write.recordRecommendationFeedback({ surface: 'trigger', contextId: 'x', feedbackType: 'Dismissed' })).status, 'REJECTED');
+});
+
+test('RGEF-4. a stale session cannot write Initiative-surface feedback through coachDecisionSystem/DECISION_PASS', async () => {
+  const env = makeEnv(); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  env.setGeneration(2);
+  const result = await decisionPass.write.recordRecommendationFeedback({ surface: 'initiative', contextId: 'x', feedbackType: 'Dismissed' });
+  assert.equal(result.status, 'REJECTED');
+  assert.equal(result.error.code, 'STALE_SESSION');
+});
+
+test('RGEF-5. recommendationFeedbackHistory passes domain/topic through additively; an old record lacking them reads back as undefined, never fabricated', () => {
+  const env = makeEnv(); configure(env);
+  env.profile.coachEvents.push({ kind: 'feedback', surface: 'trigger', contextId: 'forgot-eat', feedbackType: 'Dismissed', ts: 1 }); // pre-RGEF record, no domain/topic
+  env.profile.coachEvents.push({ kind: 'feedback', surface: 'initiative', contextId: 'opp-1', feedbackType: 'Dismissed', domain: 'NUTRITION', topic: 'FOOD_LOGGING', ts: 2 });
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  const history = decisionPass.read.recommendationFeedbackHistory();
+  assert.equal(history.length, 2);
+  assert.equal(history[0].domain, undefined);
+  assert.equal(history[0].topic, undefined);
+  assert.equal(history[1].domain, 'NUTRITION');
+  assert.equal(history[1].topic, 'FOOD_LOGGING');
 });

@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.41.0';
+const APP_VERSION = '2.42.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -330,7 +330,14 @@ TriggerController.configure({
   coachLineFn: function (kind, d) { return coachLine(kind, d); },
   // C2 (Rejection and Suppression Feedback, §12/§14): יוצר StateAccess capability אד-הוק
   // (triggerEngine/DAILY_COACH_CHECK) מחוץ למחזור ריצת ה-Engine — ר' הערה זהה ב-AdaptiveTdeeController.configure לעיל.
-  recordFeedbackFn: function (surface, contextId, feedbackType) { return recordRecommendationFeedback('triggerEngine', 'DAILY_COACH_CHECK', surface, contextId, feedbackType); }
+  recordFeedbackFn: function (surface, contextId, feedbackType) { return recordRecommendationFeedback('triggerEngine', 'DAILY_COACH_CHECK', surface, contextId, feedbackType); },
+  // RGEF WP5 (RGEF_SPEC_v1.0.md §16.4, Stage-6 Ownership Enforcement Correction precedent) —
+  // a SEPARATE capability, honestly identified as coachDecisionSystem/DECISION_PASS — never
+  // triggerEngine — for Initiative-surface (presentDeliveryIntent-originated) dismiss feedback.
+  // Carries domain/topic additively; Trigger's own recordFeedbackFn above is unmodified.
+  recordInitiativeFeedbackFn: function (surface, contextId, feedbackType, domain, topic) {
+    return recordRecommendationFeedback('coachDecisionSystem', 'DECISION_PASS', surface, contextId, feedbackType, domain, topic);
+  }
 });
 
 // C1-WP9: מזריק appVersion/sessionLifecycle/state getters/persistenceSummaryFn (המשותף עם
@@ -1908,13 +1915,16 @@ PersistenceGateway.configure({
 // טריגר / דחיית או אישור הצעת TDEE) — אותו דפוס בדיוק כמו habitEngine.js's own
 // "access || StateAccess.createEngineAccess(...)". owner (triggerState/profileGoalsState)
 // נגזר בתוך deps.recordFeedbackEvent (StateAccess.configure, למטה) לפי ה-surface.
-function recordRecommendationFeedback(engineId, action, surface, contextId, feedbackType) {
+// RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — domain/topic are new, optional, trailing parameters,
+// passed through only when supplied (Initiative-surface feedback); existing Trigger/Adaptive
+// callers below are unaffected.
+function recordRecommendationFeedback(engineId, action, surface, contextId, feedbackType, domain, topic) {
   if (!currentUser) return Promise.resolve(null);
   var access = StateAccess.createEngineAccess({
     engineId: engineId, action: action,
     userId: currentUser.uid, sessionGeneration: SessionLifecycle.getGeneration(), runId: null
   });
-  return access.write.recordRecommendationFeedback({ surface: surface, contextId: contextId, feedbackType: feedbackType });
+  return access.write.recordRecommendationFeedback({ surface: surface, contextId: contextId, feedbackType: feedbackType, domain: domain, topic: topic });
 }
 
 // B3: מזריק את התלויות האמיתיות (userProfile, todayData וכו') לתוך js/stateAccess.js.
@@ -2028,11 +2038,14 @@ StateAccess.configure({
   // ה-Gateway (RECOMMENDATION_FEEDBACK_RECORD). owner נגזר מה-surface: 'triggerState' לטריגרים,
   // 'profileGoalsState' ל-Adaptive TDEE (שני הבעלים כבר קיימים בקטלוג הסגור — אין owner חדש,
   // ר' C2_SPEC v1.1 §11 Issue 2). rollback בכשל durable — אותה עקביות כמו recordCoachEvent.
-  recordFeedbackEvent: function (identity, surface, contextId, feedbackType) {
+  // RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — domain/topic are new, optional, trailing parameters.
+  // Existing Trigger/Adaptive callers never supply them, so they arrive undefined for those
+  // callers, exactly as before this change; only Initiative-surface feedback populates them.
+  recordFeedbackEvent: function (identity, surface, contextId, feedbackType, domain, topic) {
     if (!userProfile) return Promise.resolve(null);
     ensureCoachMemory();
     var snapshot = userProfile.coachEvents;
-    var entry = { kind: 'feedback', surface: surface, contextId: contextId, feedbackType: feedbackType, date: getTodayKey(), ts: Date.now() };
+    var entry = { kind: 'feedback', surface: surface, contextId: contextId, feedbackType: feedbackType, date: getTodayKey(), ts: Date.now(), domain: domain, topic: topic };
     var nextEvents = snapshot.concat([entry]);
     if (nextEvents.length > COACH_EVENTS_CAP) nextEvents = nextEvents.slice(-COACH_EVENTS_CAP);
     userProfile.coachEvents = nextEvents;
@@ -2118,7 +2131,17 @@ function runAppReadyEngines() {
       var cdsResult = summary && summary.results && summary.results.coachDecisionSystem;
       var expression = cdsResult && cdsResult.output && cdsResult.output.expression;
       if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
-        TriggerController.presentDeliveryIntent(expression.deliveryIntent, gen);
+        // RGEF WP5 (RGEF_SPEC_v1.0.md §16.1/§16.3) — opportunityId/domain/topic derived ONLY from
+        // the real terminalDecision.candidateProvenance[0] returned alongside expression in this
+        // same summary — never opportunitiesConsidered, never decisionId, never a heuristic. A
+        // future tied-set (candidateProvenance.length !== 1) is out of this Work Item's
+        // single-winner scope (§8) — attribution is correctly omitted rather than guessed.
+        var terminalDecision = cdsResult.output.terminalDecision;
+        var provenance = terminalDecision && Array.isArray(terminalDecision.candidateProvenance) && terminalDecision.candidateProvenance.length === 1
+          ? terminalDecision.candidateProvenance[0]
+          : null;
+        var attribution = provenance ? { opportunityId: provenance.opportunityId, domain: provenance.domain, topic: provenance.topic } : null;
+        TriggerController.presentDeliveryIntent(expression.deliveryIntent, gen, attribution);
       }
     }).catch(function () {});
   } catch (e) { /* לעולם לא שובר עלייה */ }

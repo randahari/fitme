@@ -1,6 +1,6 @@
 # FITME — Changelog & Sprint Status
 
-**Last Updated:** 2026-08-25
+**Last Updated:** 2026-08-26
 
 ---
 
@@ -44,7 +44,185 @@
 - 🟢 FITME Coach Semantic Foundation Canonical Decision Package approved and closed (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, v1.1; establishes the Observation → User Context → Contextual Meaning → Coaching Opportunity → Engagement Permission sequence as an explicit, non-collapsible Coach Decision System capability, filling a gap between D1 Units 05/06 that FITME's own governing philosophy already required but never operationalized; initial Alignment/Trajectory Contextual Meaning dimensions, explicitly extensible; a structured, machine-testable `ContextualMeaning` traceability artifact; the first and only active v1 Product Reason Policy rule — `validReasonCategory: REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION`, scoped exclusively to Habit-sourced `FOOD_LOGGING` degradation into the Habit Engine's `WEAKENING` lifecycle state, where that lifecycle structurally guarantees prior confirmed-tier establishment — all six other D1-IE-01 reasons remain `NO AUTOMATIC V1 RULE`/`NO_VALID_REASON` unless separately approved; a Lifecycle-Aware B5 Eligibility Architecture Decision admitting Habit-derived `WEAKENING` signals on that structural guarantee (not on decayed confidence alone) while explicitly excluding Pattern-derived `WEAKENING` from v1, with no global lowering of B5's `minimumConfidence` and no coaching-semantic authority granted to B5; Trust remains fully independent — `trustTestSignal.glad = null` pending an approved affirmative Trust source, so the approved first path correctly and honestly resolves `TRUST_TEST_UNCERTAIN` → Silence, not engagement; weight/body-composition semantics, protein-Goal exposure, and the celebration/meaningful-progress threshold are explicitly recorded as deferred/non-blocking, not silently invented; documentation-only, no production code changes, no implementation performed; synchronized into `docs/tasks/B5/B5_SPEC_v1.0.md` (§19.3, Appendix A.3) and cross-referenced additively from the G-2 Canonical Decision Package (v1.5, above); `docs/specs/TASK_005_SPEC_v1.0.md` inspected and confirmed to require no change — its own text already discloses `INITIATIVE_SUPPORT_V1`'s concrete values as Engineering-authored/provisional pending exactly this kind of future CDR (§36 item E-1); **Coach Semantic Foundation: CANONICAL / CLOSED. G-2 itself: OPEN — SPEC revision pending, not implemented.** `docs/specs/G2_SPEC_v1.0.md` requires substantial revision (not yet performed) before Canonical Review, Engineering Review, and READY; no G-2 implementation has begun; `APP_VERSION` unchanged)
 - 🟢 FITME Coach Semantic Foundation Canonical Decision Package Habit Lifecycle Establishment Correction approved, IMPLEMENTED, VERIFIED AND CLOSED (`docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md`, v1.3, Chapter 29/29.7; discovered during `docs/specs/G2_SPEC_v1.0.md`'s Engineering Readiness Review, which empirically executed the real, unmodified `js/engines/habitEngine.js` against simulated histories and found Chapter 27.1's "structural guarantee" claim — accurate as to `statusOf()`'s branch ordering, insufficient as an end-to-end reachability proof — left `WEAKENING` effectively unreachable for `period:'weekly'` Habit signals, including the exact `FOOD_LOGGING`/`log-consistency` signal G-2's v1 path depends on, while `period:'daily'` signals were unaffected; approved correction separates a permanent Historical Fact (`everEstablishedHistorically`/`firstEstablishedAt`, no current authority) from a resettable Current-Episode Establishment Authority (`currentEpisodeEstablished`/`currentEpisodeEstablishedAt`, reset at every `INACTIVE` transition, re-earned from fresh evidence afterward), reusing every existing numeric constant (`WINDOW_DAYS`, `OCC_CONFIRMED`, `CONF_CONFIRMED`, `INTERVAL_WEEKLY`, `INERTIA`) unchanged; **now implemented** in `js/engines/habitEngine.js` (`statusOf()` gains `currentEpisodeEstablished`; new `deriveEstablishment()` helper; `upsertFromSignal()`/`decayAbsent()` compute/persist all four fields) and `js/derivedIntelligenceConsumer.js` (`normalizeHabitRecord()`'s `provenance` gains pass-through-only `currentEpisodeEstablished`/`currentEpisodeEstablishedAt`, HABIT-only, never inferred); no new Engine/collaborator/Registry entry; Pattern Engine repository-verified unaffected and not redesigned; **production-backed verified** using the real, unmodified-elsewhere `runHabitEngine()` driven across simulated calendar days (virtual-clock technique, never a hand-constructed `status:'weakening'` fixture) — `FOOD_LOGGING`/`log-consistency` establishes, naturally deteriorates into `WEAKENING` with honest current confidence/occurrence, continues to `INACTIVE` clearing `currentEpisodeEstablished`/`currentEpisodeEstablishedAt` while `everEstablishedHistorically`/`firstEstablishedAt` survive; recovers `WEAKENING`→`CONFIRMED`/`ACTIVE` within the same episode; re-establishes after `INACTIVE` with a fresh episode timestamp; generalizes to `workout:weekday:N`, `weight:weigh-in`, `measurement:measure`; daily-period `nutrition:meal:evening` non-regression confirmed; legacy-record migration is lazy/forward-only/non-fabricating; determinism confirmed by byte-identical replay — new test file `tests/habitEngineLifecycleEstablishment.test.js` (14 tests) plus 6 tests appended to `tests/derivedIntelligenceConsumer.test.js` (76→82); **full repository regression: 1816/1816 passing, 0 failing**; additively synchronized into `docs/architecture/FITME_ARCHITECTURE_v1.md` (§9, §15 item 4 — corrective annotations updated to implemented state, original text preserved) and `docs/tasks/B5/B5_SPEC_v1.0.md` (§15.4, §19.3 — updated to implemented state); `docs/specs/G2_SPEC_v1.0.md` additively corrected (Status, Sections 1/9/19/20/22/25.1/44/47/51) to record this prerequisite as CLOSED / IMPLEMENTED / VERIFIED; **this correction: IMPLEMENTED AND VERIFIED, CLOSED.** `APP_VERSION` unchanged at this correction's own closure — an internal Habit Engine/B5 provenance change with no user-facing behavior change on its own. **G-2 itself has since been implemented — see the entry immediately below.**)
 - 🟢 G-2 — Live Stage 3/4 Opportunity Recognition — IMPLEMENTED, VERIFIED AND CLOSED (`docs/specs/G2_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED; closes Repository Gap G-2 — no live Stage 3/4 Opportunity source — for its one approved V1 path: Habit-derived `FOOD_LOGGING`/`log-consistency` `WEAKENING`, established via `provenance.currentEpisodeEstablished===true` (Coach Semantic Foundation Canonical Decision Package Chapter 29). Following a Post-Prerequisite Engineering Readiness Review (PASS, READY FOR IMPLEMENTATION, no remaining Product/Architecture/Canonical blocker), implemented exactly per the approved SPEC: **new** `js/coachDecisionSystem/contextualMeaningPolicy.js` (Contextual Meaning construction + the one approved V1 Product Reason Policy rule) and `js/coachDecisionSystem/evidenceEvaluator.js` (Stage-4 Evidence Evaluation, `SUFFICIENT`/`REPEATED_BEHAVIOUR` on the real establishment fact, never on `statusOf()`'s branch order); **modified** `js/stateAccess.js` (new bounded `readGoalObjectiveContext`), `js/coachDecisionSystem/memoryLayer.js` (Pipeline Context gains `goalObjectiveContext`/`currentStateContext`), `js/coachDecisionSystem/recommendationEngine.js` (new, honestly-empty `detectOpportunities()`, RG-1 preserved non-blocking), `js/coachDecisionSystem/initiativeEngine.js` (`detectOpportunities()` gains `semanticOpportunities`, additive — existing three keys/exports byte-identical), `js/coachDecisionSystem/internalPipelineOrchestrator.js` (`run()` now builds a real `opportunities` array via mechanical Stage-3 collection → Stage-4 Evidence Evaluation → Stage 4→5 handoff, replacing the hardcoded `[]`), `js/derivedIntelligenceConsumer.js` (`evaluateEligibility()` lifecycle-aware branching — Habit-derived `WEAKENING` admitted only on `provenance.currentEpisodeEstablished===true`, Pattern-derived excluded unconditionally, `minimumConfidence` unchanged), `index.html`/`sw.js` (script-tag/precache registration for the two new modules); no new Engine/collaborator/Registry entry. **Production-backed verified** using the real, unmodified-elsewhere `runHabitEngine()` (virtual-clock technique, no hand-injected status): real `FOOD_LOGGING` history → real establishment → real `WEAKENING` → real B5 admission → real Memory Layer → real Initiative Engine (`ContextualMeaningPolicy` → Product Reason Policy → `DetectedOpportunity`) → real Stage-3 aggregation → real `EvidenceEvaluator` (`SUFFICIENT`/`REPEATED_BEHAVIOUR`) → real Stage 4→5 handoff → real, unmodified `eligibilityEvaluator.js` → **`INELIGIBLE`/`TRUST_TEST_UNCERTAIN`** (Decision-Pass-level Silence), confirmed not `MALFORMED`; a second test confirms the real recovery arc produces no `DetectedOpportunity` once recovered; deterministic replay confirmed. **This Silence outcome is intentional and correct — no affirmative Trust source is approved for v1 (CSF Ch.18/26.5), and none was fabricated. The Coach does not proactively speak on this path.** New test files `tests/contextualMeaningPolicy.test.js` (23 tests), `tests/evidenceEvaluator.test.js` (14 tests), `tests/g2ProductionBackedAcceptance.test.js` (2 tests); 7 test files extended; **full repository regression: 1896/1896 passing, 0 failing** (1816 pre-G-2 baseline, net +80). Additively synchronized into `docs/governance/FITME_Coach_Semantic_Foundation_Canonical_Decision_Package_v1.0.md` (v1.4, Chapter 29.8), `docs/governance/FITME_G2_Opportunity_Evidence_Canonical_Decision_Package_v1.0.md` (closure status note, decisions unaltered), `docs/architecture/FITME_ARCHITECTURE_v1.md` (new §26), `docs/tasks/B5/B5_SPEC_v1.0.md` (§15.4/§19.3 updated to implemented state). **Open/future items explicitly not resolved by this closure:** RG-1 (Recommendation Engine's Decision-Window algorithm), RG-2, and Future Items 1-5 (`docs/specs/G2_SPEC_v1.0.md` §44) all remain exactly as open/future as before. `APP_VERSION`/service-worker `VERSION` inspected at this closure and left unchanged (`2.41.0`/`v2.41.0`) — matching Expression's own precedent (which also added new files to `sw.js`'s `SHELL` array without a version bump): `sw.js`'s `install` handler performs an unconditional `cache.addAll(SHELL)` against the current cache name on every service-worker update (triggered by `sw.js`'s own byte change, independent of the `VERSION` constant), and `skipWaiting()`/`clients.claim()` mean the new/modified files reach returning PWA users on the very next load regardless; no new user-visible Coach behavior ships (the V1 path's outcome remains Silence, unchanged from before) — consistent with every prior no-bump closure (Expression, TASK-004/005/006, C4, the Canonical Decision Packages))
+- 🟢 RGEF — Relationship-Guided Engagement Foundation — IMPLEMENTED, VERIFIED AND CLOSED
+  (`docs/specs/RGEF_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED; the first Work Item to make the
+  G-2 Opportunity actually reach the user: a closed, narrow Stage-5 "Bounded Early-Relationship
+  Engagement" admission path for exactly one Source×Reason combination
+  (`CONFIRMED_PATTERN_ANTICIPATION`/`REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION`, `glad === null`,
+  never mutated), a matching closed Stage-6 Source×Reason override admitting it at Observer stage,
+  a promoted `js/domain/domainTopicVocabulary.js` Domain/Topic shared vocabulary carried additively
+  through `DetectedOpportunity`/`opportunityProvenance`/`candidateProvenance`, same-cycle
+  Composite-Initiative-over-Trigger `#trigger-card` precedence with the Initiative's own Dismiss
+  control and honest `coachDecisionSystem`-identified feedback write
+  (`PERMISSIONS.coachDecisionSystem.DECISION_PASS.writes: ['recordRecommendationFeedback']`,
+  correcting a would-be `triggerEngine` ownership-leakage draft), and a bounded Domain/Topic
+  learned-receptiveness suppression (`feedbackDomain.js`'s new `evaluateDomainTopicReceptiveness()`,
+  reusing `RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1` by reference — 14-day window,
+  3-event pattern threshold, existing `overrideTypes` mechanics — as an explicit RGEF V1
+  Product-approved policy reuse, not a new invented policy). Eight Work Packages, implemented after
+  two genuine implementation-time blockers were found, escalated, and explicitly resolved by Head
+  of Product + AI Architect rather than patched around: **(1)** a latent Stage-6 rule-leakage defect
+  — `recommendationEngine.js` had no source-ownership gate and would have constructed an unowned
+  `'Recommendation'`-kind Candidate for Initiative-exclusive/Safety-exclusive sources — closed by a
+  new `STAGE6_ACCEPTED_SOURCES` gate on both `recommendationEngine.js` (`['DECISION_WINDOW']`) and
+  `initiativeEngine.js`; **(2)** `initiativeEngine.js`'s Domain/Topic consumption design was found to
+  require its first-ever dependency on `js/feedback/feedbackDomain.js`, contradicting an existing
+  passing test and TASK-005 §36's deliberately-left-open Repository Gap A-2 — resolved by an explicit,
+  narrow Architecture Decision granting `initiativeEngine.js` dependency on `feedbackDomain.js` for
+  exactly `evaluateDomainTopicReceptiveness()`, never a blanket coupling; `wasIgnoredBefore()`
+  (D1-IP-08, exact-Opportunity-id) remains local and unchanged. **Production-backed verified**
+  end-to-end using the real, unmodified-elsewhere `runHabitEngine()` arc (virtual-clock technique):
+  real `FOOD_LOGGING` history → established `WEAKENING` → real B5 → real Memory Layer → real
+  Internal Pipeline Orchestrator → a real `INITIATIVE` Terminal Decision (`glad` verified to remain
+  `null`, Stage-5 reason verified to be the closed `BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT` value,
+  never `TRUST_TEST_UNCERTAIN`'s absence mistaken for confirmation) → real Expression → real
+  `presentDeliveryIntent()` → a simulated Dismiss → a real `coachDecisionSystem`-identified
+  StateAccess feedback write, with `opportunityId`/`domain`/`topic` derived only from the real
+  `terminalDecision.candidateProvenance[0]`, never `opportunitiesConsidered`, never a hand-injected
+  id or heuristic. All fourteen Section 28 acceptance criteria plus the five Section 28.1
+  shared-card-precedence/dismiss-ownership criteria (Initiative-only, simultaneous eligibility,
+  Trigger-only regression, StateAccess attribution, UX-12.5 compliance) demonstrated against real
+  production code. New test file coverage added/extended across `initiativeEngine.test.js`,
+  `eligibilityEvaluator.test.js`, `feedbackDomain.test.js`, `triggerController.test.js`,
+  `stateAccess.test.js`, `recommendationEngine.test.js`, `internalPipelineOrchestrator.test.js`,
+  `g2ProductionBackedAcceptance.test.js`, `derivedIntelligenceConsumer.test.js`; **full repository
+  regression: 1946/1946 passing, 0 failing** (1896 pre-RGEF baseline, net +50). Additively
+  synchronized into `docs/architecture/FITME_ARCHITECTURE_v1.md`, `docs/tasks/B5/B5_SPEC_v1.0.md`,
+  and `docs/specs/TASK_005_SPEC_v1.0.md` (§36 items E-2 and A-2). **Open/deferred, explicitly not
+  resolved by this closure:** TASK-005 §36 Repository Gap G-3 (whether Safety-triggered
+  Opportunities reach Initiative-kind Candidate Generation); TASK-007's own OD-5 (broader,
+  cross-element Home-card precedence); true `Ignored`-feedback production (RGEF-OI-2); Stage-7
+  Domain/Topic-informed prioritization (RGEF-OI-3); general resolution of TASK-005 §36 E-2 beyond
+  the one approved Source×Reason combination (RGEF-OI-4); future receptiveness-policy calibration
+  (RGEF-OI-5). `APP_VERSION`/service-worker `VERSION` advanced from `2.41.0`/`v2.41.0` to
+  `2.42.0`/`v2.42.0` — this is the first closure in this program where the G-2 Opportunity actually
+  reaches Expression/presentation, a genuinely new user-visible Coach behavior.)
 - ⏭️ Next canonical task: not yet designated — to be determined through Canonical Work Item Selection
+
+---
+
+## RGEF — Relationship-Guided Engagement Foundation (Implementation Complete, Closed)
+
+**Date:** 2026-08-26
+**Status:** DONE — implemented, tested, reviewed, approved, and closed
+**Production Code Changes:** Yes
+
+### Summary
+
+Implemented `docs/specs/RGEF_SPEC_v1.0.md` across eight Work Packages — the first Work Item to make
+the G-2 Opportunity (closed 2026-08-25 and prior, resolving to `INELIGIBLE`/`TRUST_TEST_UNCERTAIN`
+Silence for lack of an approved affirmative-Trust path) actually reach the user, via a closed,
+narrow Bounded Early-Relationship Engagement admission at Stage 5/6:
+
+- **WP1** — `js/domain/domainTopicVocabulary.js` (new): the `DOMAINS`/`TOPICS` closed vocabulary
+  promoted verbatim out of `js/derivedIntelligenceConsumer.js` into its own shared module, B5's own
+  derivation logic unmodified.
+- **WP2** — Domain/Topic propagation: `initiativeEngine.js`'s `detectSemanticOpportunities()` now
+  carries `domain`/`topic` onto the `DetectedOpportunity` it constructs.
+- **WP3** — Stage 5 Bounded Early-Relationship Engagement (`eligibilityEvaluator.js`): a new, closed
+  branch resolves `ELIGIBLE`/`BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT` for exactly one compound
+  condition — `trustTestSignal.glad === null` AND `sourceCategory === 'CONFIRMED_PATTERN_ANTICIPATION'`
+  AND `validReasonCategory === 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION'` — never mutating `glad`,
+  never inferring or fabricating Trust. Every other Source×Reason combination resolves exactly as
+  before (`TRUST_TEST_UNCERTAIN`).
+- **WP4** — Stage 6 Source×Reason gating (`initiativeEngine.js`): a new `SOURCE_REASON_MATURITY_OVERRIDES`
+  table, layered atop the existing one-dimensional `MATURITY_GATING`, admits that one approved
+  combination at every Relationship Maturity Stage including Observer/Assistant — a narrow resolution
+  of `TASK_005_SPEC_v1.0.md` §36 Repository Gap E-2 for this one combination only.
+- **WP5** — Feedback identity, shared-card precedence, and the write path, implemented in dependency
+  order: `stateAccess.js` gains an honest `PERMISSIONS.coachDecisionSystem.DECISION_PASS.writes:
+  ['recordRecommendationFeedback']` grant (correcting a would-be `triggerEngine`-identity
+  ownership-leakage draft caught during Engineering Readiness Review); `app.js`'s composition root
+  derives `opportunityId`/`domain`/`topic` from the real, already-existing
+  `terminalDecision.candidateProvenance[0]` — never `opportunitiesConsidered`, never a heuristic —
+  and passes it into `TriggerController.presentDeliveryIntent()`; `triggerController.js` gains its
+  own `ensureInitiativeDismissButton()`, never inheriting `presentTriggerCard()`'s existing handler,
+  per Head of Product's Shared Coach Card Architecture Decision — when a presentable Composite
+  Initiative Delivery Intent exists in a cycle, it is the authoritative visible content of the shared
+  `#trigger-card` element for that cycle; when none exists, ordinary Trigger presentation is
+  byte-identical to before.
+- **WP6** — Domain/Topic pattern aggregation: `feedbackDomain.js` gains
+  `evaluateDomainTopicReceptiveness()`, sharing a new `evaluateRecoveryFromRelevant()` helper with the
+  existing `evaluateSuppression()` — same algorithm, same
+  `RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1` (14-day window, 3-event pattern threshold,
+  existing `overrideTypes`/`negativeTypes` mechanics) reused **by reference**, an explicit RGEF V1
+  Product-approved policy-reuse decision, not a newly invented policy. Matching is exact
+  `surface==='initiative'` + exact `domain` + exact `topic` — no Topic-to-Domain bleed, no
+  cross-Domain leakage (Invariant 6).
+- **WP7** — Stage 6 consumption (`initiativeEngine.js`): `generate()`'s existing
+  `wasIgnoredBefore()` exact-Opportunity-id check is joined, additively, by a new
+  `domainTopicRecentlyUnwelcome()` check — either alone is sufficient to suppress, neither replaces
+  the other.
+- **WP8** — end-to-end production-backed verification (below) and this closure.
+
+### Two Implementation-Time Blockers — Escalated, Not Patched Around
+
+Per this program's standing discipline, two genuine Product/Architecture contradictions were found
+during implementation, halted on, reported with full evidence, and resolved only by explicit Head of
+Product + AI Architect decision before implementation resumed:
+
+1. **Stage-6 rule leakage.** `recommendationEngine.js` had no source-ownership gate and would have
+   constructed an unowned `'Recommendation'`-kind Candidate for Initiative-exclusive
+   (`CONFIRMED_PATTERN_ANTICIPATION`) and even Safety-exclusive (`SAFETY_HIGH_RISK`) Opportunity
+   sources. Closed by a new `STAGE6_ACCEPTED_SOURCES` closed-source gate on both
+   `recommendationEngine.js` (`['DECISION_WINDOW']`) and `initiativeEngine.js`, each engine now
+   constructing a Candidate only for the source category it actually owns (D1 Unit 05's closed
+   five-source taxonomy).
+2. **TASK-005 §36 Repository Gap A-2.** WP7's own design required `initiativeEngine.js`'s first-ever
+   dependency on `js/feedback/feedbackDomain.js` — directly contradicting the module's own existing
+   header text and an existing, passing test asserting no such dependency may ever exist (A-2 was
+   deliberately left open by TASK-005, correctly, since no Product/Architecture authority existed at
+   that time). Resolved by an explicit, narrow Architecture Decision: `initiativeEngine.js` may depend
+   on `feedbackDomain.js` for exactly `evaluateDomainTopicReceptiveness()` — never a blanket coupling,
+   never duplicating the policy locally, never moving or rewriting `wasIgnoredBefore()` (D1-IP-08,
+   which remains local, self-contained, and independently functional).
+
+### Production-Backed Verification
+
+Using the real, unmodified-elsewhere `runHabitEngine()` arc (virtual-clock technique, no
+hand-injected state — the same proven arc as G-2's own acceptance test): real `FOOD_LOGGING` history
+→ established `WEAKENING` → real B5 admission → real Memory Layer → real Internal Pipeline
+Orchestrator → a real `INITIATIVE` Terminal Decision (`glad` verified to remain `null` throughout;
+the Stage-5 trace's `reason` verified to be the closed `BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT` value,
+never `TRUST_TEST_UNCERTAIN`'s absence mistaken for confirmation) → real Expression (`DISPATCHED`,
+a real Delivery Intent) → real `presentDeliveryIntent()` → a simulated Dismiss → a real
+`coachDecisionSystem`-identified StateAccess feedback write, with `opportunityId`/`domain`/`topic`
+derived only from the real `terminalDecision.candidateProvenance[0]`. All fourteen Section 28
+acceptance criteria (cold-start engagement, no fake Trust, narrowness, Recommendation isolation,
+Domain/Topic attribution, 1/2/3-event thresholds, positive override, expiry, cross-topic protection,
+G-2 integrity, Safety regression, full regression) and the five Section 28.1 shared-card-precedence/
+dismiss-ownership criteria (Initiative-only, simultaneous eligibility, Trigger-only regression,
+StateAccess attribution, UX-12.5 compliance) were demonstrated against real, unmodified-elsewhere
+production code — none hand-injected, none stubbed at the boundary under test.
+
+### Test Coverage and Regression
+
+Test coverage added/extended across `tests/eligibilityEvaluator.test.js`,
+`tests/initiativeEngine.test.js`, `tests/recommendationEngine.test.js`, `tests/feedbackDomain.test.js`,
+`tests/triggerController.test.js`, `tests/stateAccess.test.js`, `tests/internalPipelineOrchestrator.test.js`,
+`tests/g2ProductionBackedAcceptance.test.js`, and `tests/derivedIntelligenceConsumer.test.js` (regression
+only, no change required). **Full repository regression: 1946/1946 passing, 0 failing** (1896
+pre-RGEF baseline, net +50).
+
+### Version
+
+`APP_VERSION`/service-worker `VERSION` advanced from `2.41.0`/`v2.41.0` to **`2.42.0`/`v2.42.0`**,
+per `RGEF_SPEC_v1.0.md` §23's own pre-approved criterion ("advanced only if this Work Item ships
+user-visible behavior at closure — i.e., the G-2 Opportunity actually reaching Expression for the
+first time"): this is the first closure in this program where that condition is actually met. Every
+hardcoded `2.41.0`/`v2.41.0` version-sync assertion across the C1/B2/C2 wiring test files was updated
+to `2.42.0`/`v2.42.0` in the same mechanical, non-behavior-altering way (comparing the real, live
+constant to the real, live constant) as every prior version bump in this repository's history.
+
+### Open / Deferred (Explicitly Not Resolved by This Closure)
+
+TASK-005 §36 Repository Gap G-3 (whether Safety-triggered Opportunities reach Initiative-kind
+Candidate Generation); TASK-007's own OD-5 (broader, cross-*element* Home-card precedence — RGEF
+resolves only the narrower same-*element* producer-precedence question, Section 16.3); true
+`Ignored`-feedback production (RGEF-OI-2); Stage-7 Domain/Topic-informed prioritization (RGEF-OI-3);
+general resolution of TASK-005 §36 E-2 beyond the one approved Source×Reason combination (RGEF-OI-4);
+future receptiveness-policy calibration (RGEF-OI-5). See `docs/specs/RGEF_SPEC_v1.0.md`'s Closure
+Record (§32) for full details and evidence.
 
 ---
 
@@ -137,7 +315,13 @@ advanced** — no shipped, user-visible behavior change resulted from this closu
   tracked follow-up items (none of which expand this task's own scope): `EXP-OD-10`; the D2-EF-07
   write-side (no live chat-input UI exists anywhere in the repository yet); and the
   `presentDeliveryIntent()`/`presentTriggerCard()` `#trigger-card` coexistence question (dormant given
-  G-2; falls under `TASK_007_SPEC_v1.0.md`'s own pre-existing, still-open OD-5).
+  G-2 at the time). **Correction (RGEF closure, below):** this prior entry's citation of that
+  coexistence question as falling under `TASK_007_SPEC_v1.0.md`'s own pre-existing, still-open OD-5
+  was inaccurate — OD-5 (`TASK_007_SPEC_v1.0.md` §12.2, UX-12.6) governs precedence among four
+  *different* Home-screen DOM elements (`#trigger-card`/`#coach-card`/`#adaptive-card`/
+  `#partial-prompt`), not two different *producers* sharing the same `#trigger-card` element. That
+  narrower, same-element producer-precedence question is resolved by RGEF (Section 16.3, below);
+  TASK-007's own OD-5 remains exactly as open as before.
 
 ---
 

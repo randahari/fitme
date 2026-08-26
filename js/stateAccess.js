@@ -207,8 +207,11 @@
     if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
     var p = deps.getUserProfile() || {};
     var events = Array.isArray(p.coachEvents) ? p.coachEvents : [];
+    // RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — domain/topic passed through additively, alongside the
+    // four pre-existing fields. An older event lacking them reads back as undefined — never
+    // fabricated, never migrated — per RGEF §23 (Backward Compatibility).
     var feedback = events.filter(function (e) { return e && e.kind === 'feedback'; })
-      .map(function (e) { return { surface: e.surface, contextId: e.contextId, feedbackType: e.feedbackType, occurredAt: e.ts }; });
+      .map(function (e) { return { surface: e.surface, contextId: e.contextId, feedbackType: e.feedbackType, occurredAt: e.ts, domain: e.domain, topic: e.topic }; });
     return copyArrayOfObjects(feedback);
   }
 
@@ -322,13 +325,16 @@
   // (RECOMMENDATION_FEEDBACK_RECORD). owner (triggerState/profileGoalsState) נבחר ב-app.js
   // לפי ה-engineId שיצר את ה-capability הזה.
   async function writeRecordRecommendationFeedback(identity, command) {
-    var domain = 'feedback', op = 'recordRecommendationFeedback';
-    if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', domain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+    var pgDomain = 'feedback', op = 'recordRecommendationFeedback';
+    if (!isCurrent(identity.sessionGeneration)) return makeCommandResult('REJECTED', pgDomain, op, false, 'STALE_SESSION', 'session changed before write', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     try {
-      var pr = await deps.recordFeedbackEvent(identity, command.surface, command.contextId, command.feedbackType);
-      return mapPersistenceResult(domain, op, identity, pr);
+      // RGEF WP5 (RGEF_SPEC_v1.0.md §16.3) — command.domain/command.topic passed through
+      // additively (Initiative-surface feedback only; existing Trigger/Adaptive callers never
+      // supply them, so they arrive as undefined, exactly as before this change).
+      var pr = await deps.recordFeedbackEvent(identity, command.surface, command.contextId, command.feedbackType, command.domain, command.topic);
+      return mapPersistenceResult(pgDomain, op, identity, pr);
     } catch (e) {
-      return makeCommandResult('FAILED', domain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
+      return makeCommandResult('FAILED', pgDomain, op, false, 'STATE_WRITE_FAILED', (e && e.message) || 'persist failed', { runId: identity.runId, sessionGeneration: identity.sessionGeneration });
     }
   }
 
@@ -413,11 +419,17 @@
     // Layer, כפי שממומש כאן, קורא-בלבד — אין Persistence ספקולטיבי).
     // G-2 (docs/specs/G2_SPEC_v1.0.md §14.3): extended with goalObjectiveContext (new, bounded)
     // and todayNutrition (existing, reused) for Pipeline Context's GoalObjectiveContext/
-    // CurrentStateContext (§12-13). No other engine/action entry is touched.
+    // CurrentStateContext (§12-13).
+    // RGEF WP5 (RGEF_SPEC_v1.0.md §16.4, Stage-6 Ownership Enforcement Correction precedent) —
+    // recordRecommendationFeedback authorized under this engine's own honest identity, for
+    // Initiative-surface dismiss feedback. Reuses the existing operation unchanged (surface-
+    // agnostic write op; owner-selection in app.js's recordFeedbackEvent() is surface-derived,
+    // not engineId-derived) — no new StateAccess capability kind, no change to
+    // triggerEngine/adaptiveTdeeEngine's own existing grants.
     coachDecisionSystem: {
       DECISION_PASS: {
         reads: ['recommendationFeedbackHistory', 'goalObjectiveContext', 'todayNutrition'],
-        writes: []
+        writes: ['recordRecommendationFeedback']
       }
     }
   };

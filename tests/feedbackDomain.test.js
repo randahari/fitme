@@ -107,3 +107,99 @@ test('evaluateSuppression defaults to SUPPRESSION_RECOVERY_POLICY_V1 and reports
   const r = FeedbackDomain.evaluateSuppression([], 'trigger', 'x', Date.now());
   assert.equal(r.policyId, 'SUPPRESSION_RECOVERY_POLICY_V1');
 });
+
+// ── RGEF WP6 (RGEF_SPEC_v1.0.md §18) — evaluateDomainTopicReceptiveness() ──────────────────
+
+function initiativeEvent(overrides) {
+  return Object.assign({ surface: 'initiative', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: Date.now() }, overrides);
+}
+
+test('RGEF: 1 qualifying negative event does not suppress (CD-02, mirrors evaluateSuppression\'s own guarantee 1)', () => {
+  const now = Date.now();
+  const events = [initiativeEvent({ occurredAt: now })];
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'insufficient-pattern');
+});
+
+test('RGEF: 2 qualifying negative events do not suppress (threshold is 3, not 2)', () => {
+  const now = Date.now();
+  const events = [0, 1].map((i) => initiativeEvent({ occurredAt: now - i * DAY }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'insufficient-pattern');
+});
+
+test('RGEF: 3 qualifying negative events within the 14-day window produce suppression (RGEF V1 Product-approved policy reuse — SUPPRESSION_RECOVERY_POLICY_V1, not an Engineering default)', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => initiativeEvent({ occurredAt: now - i * DAY }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, true);
+  assert.equal(r.reason, 'repeated-pattern');
+  assert.equal(r.policyId, 'SUPPRESSION_RECOVERY_POLICY_V1');
+});
+
+test('RGEF: a qualifying explicit positive event newer than the negative pattern immediately lifts suppression (existing, unmodified overrideTypes semantics)', () => {
+  const now = Date.now();
+  const events = [
+    initiativeEvent({ feedbackType: 'Accepted', occurredAt: now }),
+    ...[1, 2, 3].map((i) => initiativeEvent({ occurredAt: now - i * DAY }))
+  ];
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'explicit-positive-override');
+});
+
+test('RGEF: negative evidence outside the 14-day window does not qualify', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => initiativeEvent({ occurredAt: now - (20 + i) * DAY }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'no-evidence');
+});
+
+test('RGEF: a different Topic within the same Domain is unaffected (no Topic-to-Domain bleed, no cross-topic suppression, Invariant 6)', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => initiativeEvent({ occurredAt: now - i * DAY, topic: 'PROTEIN_INTAKE' }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'no-evidence');
+});
+
+test('RGEF: a different Domain is unaffected', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => initiativeEvent({ occurredAt: now - i * DAY, domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY' }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'no-evidence');
+});
+
+test('RGEF: old records missing domain/topic are ignored safely, never fabricated into a match', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => ({ surface: 'initiative', feedbackType: 'Dismissed', occurredAt: now - i * DAY })); // no domain/topic at all
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'no-evidence');
+});
+
+test('RGEF: a missing domain or topic argument on the call itself yields a defensive, non-suppressing result — never a basis to suppress', () => {
+  const now = Date.now();
+  assert.equal(FeedbackDomain.evaluateDomainTopicReceptiveness([initiativeEvent()], null, 'FOOD_LOGGING', now).suppressed, false);
+  assert.equal(FeedbackDomain.evaluateDomainTopicReceptiveness([initiativeEvent()], 'NUTRITION', undefined, now).suppressed, false);
+});
+
+test('RGEF: a Trigger-surface event never counts toward Initiative Domain/Topic receptiveness, even with a matching domain/topic value by coincidence', () => {
+  const now = Date.now();
+  const events = [0, 1, 2].map((i) => ({ surface: 'trigger', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: now - i * DAY }));
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness(events, 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.suppressed, false);
+  assert.equal(r.reason, 'no-evidence');
+});
+
+test('RGEF: evaluateDomainTopicReceptiveness reuses SUPPRESSION_RECOVERY_POLICY_V1 by reference — no duplicate policy table exists', () => {
+  const now = Date.now();
+  const r = FeedbackDomain.evaluateDomainTopicReceptiveness([], 'NUTRITION', 'FOOD_LOGGING', now);
+  assert.equal(r.policyId, 'SUPPRESSION_RECOVERY_POLICY_V1');
+  assert.equal(FeedbackDomain.RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1.windowDays, 14);
+  assert.equal(FeedbackDomain.RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1.patternThreshold, 3);
+});

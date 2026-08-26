@@ -24,6 +24,8 @@ const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const Orchestrator = require('../js/coachDecisionSystem/internalPipelineOrchestrator.js');
 const DateUtils = require('../js/core/dateUtils.js');
+const TriggerController = require('../js/trigger/triggerController.js'); // RGEF WP8 vertical (below)
+const ExpressionRenderer = require('../js/coachDecisionSystem/expressionRenderer.js'); // RGEF WP8 vertical (below)
 
 function addDays(dateKey, n) {
   const parts = dateKey.split('-').map(Number);
@@ -45,6 +47,12 @@ function makeEnv() {
   };
   const history = {};
   let generation = 1;
+  // RGEF WP8 (§16.3/§16.4, Acceptance Criterion 5/28.1-D) — real recordFeedbackEvent mock, mirroring
+  // js/app.js's own deps.recordFeedbackEvent contract exactly (identity, surface, contextId,
+  // feedbackType, domain, topic), so the real StateAccess permission-matrix path
+  // (createEngineAccess -> write.recordRecommendationFeedback) can be exercised end-to-end without
+  // pulling in app.js's full composition root / PersistenceGateway.
+  const feedbackCalls = [];
   const deps = {
     getUserProfile: () => profile,
     getCurrentUser: () => ({ uid: 'user-1' }),
@@ -64,7 +72,11 @@ function makeEnv() {
     markTriggerFired: async () => ({ status: 'SUCCESS', changed: true, requestId: 'req', receipt: {} }),
     checkCanFire: () => true, getTriggerBudget: () => ({ date: '2026-01-01', fired: [], count: 0 }),
     getTodayConsumed: () => 1200, getTodayProtein: () => 90, getTodayBurned: () => 300,
-    getLocalDate: () => DateUtils.getTodayKey(), getWeekday: () => 0
+    getLocalDate: () => DateUtils.getTodayKey(), getWeekday: () => 0,
+    recordFeedbackEvent: async (identity, surface, contextId, feedbackType, domain, topic) => {
+      feedbackCalls.push({ identity: identity, surface: surface, contextId: contextId, feedbackType: feedbackType, domain: domain, topic: topic });
+      return { status: 'SUCCESS', changed: true, requestId: 'req-feedback', receipt: {} };
+    }
   };
   StateAccess.configure(deps);
   HabitEngine.configure({
@@ -82,8 +94,12 @@ function makeEnv() {
     getWeekday: () => 0
   });
   return {
-    profile, history,
-    habitAccess: () => StateAccess.createEngineAccess({ engineId: 'habitEngine', action: 'RECOMPUTE', userId: 'user-1', sessionGeneration: generation, runId: null })
+    profile, history, feedbackCalls,
+    habitAccess: () => StateAccess.createEngineAccess({ engineId: 'habitEngine', action: 'RECOMPUTE', userId: 'user-1', sessionGeneration: generation, runId: null }),
+    // RGEF WP8 — the same real capability app.js's recordInitiativeFeedbackFn uses
+    // (js/app.js:338-339): engineId 'coachDecisionSystem', action 'DECISION_PASS' — honest
+    // Initiative-surface identity, never 'triggerEngine' (28.1-D).
+    coachDecisionSystemAccess: () => StateAccess.createEngineAccess({ engineId: 'coachDecisionSystem', action: 'DECISION_PASS', userId: 'user-1', sessionGeneration: generation, runId: null })
   };
 }
 
@@ -166,17 +182,39 @@ test('G-2 CRITICAL PRODUCTION-BACKED ACCEPTANCE PROOF: real FOOD_LOGGING history
 
     // ── Step 4-9: real Initiative Engine (ContextualMeaning -> Product Reason Policy ->
     // DetectedOpportunity) -> real Stage-3 aggregation -> real Stage-4 Evidence Evaluation ->
-    // real Stage 4->5 handoff -> real EligibilityEvaluator -> Silence. All of this already ran
-    // inside Orchestrator.run() above; verify its real trace below. ──
+    // real Stage 4->5 handoff -> real EligibilityEvaluator. All of this already ran
+    // inside Orchestrator.run() above; verify its real trace below.
+    //
+    // RGEF (Relationship-Guided Engagement Foundation, RGEF_SPEC_v1.0.md §12/§13) WP3/WP4 plus
+    // the Stage-6 Ownership Enforcement Correction (recommendationEngine.js's new
+    // STAGE6_ACCEPTED_SOURCES gate) together change this path's real, intended outcome from the
+    // pre-RGEF Decision-Pass-level Silence to a real, honest INITIATIVE Terminal Decision:
+    // Stage 5 now legitimately resolves ELIGIBLE via the closed Bounded Early-Relationship
+    // Engagement path (glad remains null throughout — no Trust is fabricated, see the assertion
+    // below); Stage 6 now legitimately admits it at Observer stage via the closed Source×Reason
+    // override; and the previously-latent Stage-6 rule-leakage defect (an unowned
+    // 'Recommendation'-kind Candidate being constructed for this Initiative-exclusive
+    // CONFIRMED_PATTERN_ANTICIPATION source) is closed, so the real, correctly-owned
+    // InitiativeCandidate now wins Stage 7/8 on its own merits — not by a tie-break or
+    // Candidate-kind preference (Stage 7/8 are themselves unmodified). ──
     const terminalDecision = runResult.output.terminalDecision;
-    assert.equal(terminalDecision.kind, 'SILENCE', 'the approved V1 path resolves to a Decision-Pass-level Silence — this is correct, expected Product behavior, not a failure');
+    assert.equal(terminalDecision.kind, 'INITIATIVE', 'RGEF WP3/WP4 + the Stage-6 Ownership Enforcement Correction: this real path now correctly produces a live Initiative Terminal Decision, not Silence and not an unowned Recommendation');
 
     const considered = terminalDecision.decisionPassTrace.opportunitiesConsidered;
     const ourEntry = considered.find((c) => c.sourceCategory === 'CONFIRMED_PATTERN_ANTICIPATION' && String(c.opportunityId || '').indexOf('log-consistency') !== -1);
     assert.notEqual(ourEntry, undefined, 'expected the real, non-fabricated DetectedOpportunity to actually reach Stage 5 and be recorded in the Decision Pass trace');
-    assert.equal(ourEntry.internalOutcome, 'INELIGIBLE');
-    assert.equal(ourEntry.reason, 'TRUST_TEST_UNCERTAIN', 'the expected Stage-5 result for this V1 path');
+    assert.equal(ourEntry.internalOutcome, 'ELIGIBLE');
+    assert.equal(ourEntry.reason, 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT', 'the closed RGEF Stage-5 reason — never the ordinary validReasonCategory, never implying affirmative Trust');
     assert.notEqual(ourEntry.internalOutcome, 'MALFORMED', 'this path must never resolve MALFORMED — validReasonCategory/trustTestSignal/lowCoachingValuePeriodActive must all be well-formed');
+
+    // No fake Trust (RGEF A2): the reason assertion above (BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT,
+    // never REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION) is itself the proof — eligibilityEvaluator.js
+    // returns that closed reason only when glad === null took the bounded branch, never when
+    // glad === true; the winning Candidate's own provenance is checked below for completeness.
+    const winningCandidateProvenance = terminalDecision.candidateProvenance;
+    assert.equal(Array.isArray(winningCandidateProvenance), true);
+    assert.equal(winningCandidateProvenance.length, 1);
+    assert.equal(winningCandidateProvenance[0].sourceCategory, 'CONFIRMED_PATTERN_ANTICIPATION');
 
     // ── Determinism: replaying the exact same real state twice produces the identical Stage-5 outcome ──
     const runResult2 = await Orchestrator.run({ userId: 'user-1', sessionGeneration: 1, runId: 'acceptance-run-2', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
@@ -209,6 +247,106 @@ test('G-2 acceptance: the real recovery arc (WEAKENING -> CONFIRMED/ACTIVE withi
     const considered = runResult.output.terminalDecision.decisionPassTrace.opportunitiesConsidered;
     const ourEntry = considered.find((c) => String(c.opportunityId || '').indexOf('log-consistency') !== -1);
     assert.equal(ourEntry, undefined, 'once recovered to CONFIRMED/ACTIVE, no Reason Policy rule applies — no DetectedOpportunity should reach Stage 5 for this signal at all');
+  } finally {
+    clock.restore();
+  }
+});
+
+// ── RGEF WP8 (RGEF_SPEC_v1.0.md §27/§28 criterion 5, §28.1) — the complete production-backed
+// vertical, continued past this file's own Terminal Decision proof above, through real Expression
+// and real presentation/dismiss/feedback-write, using only real production modules end-to-end. ──
+
+function fakeCardElement() {
+  const el = { classList: { add() {}, remove() {} }, style: {}, innerHTML: '', textContent: '', _children: [] };
+  el.querySelector = (sel) => (sel === '.trigger-card-dismiss' ? (el._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1) || null) : null);
+  el.appendChild = (child) => { el._children.push(child); };
+  return el;
+}
+function fakeTextElement() { return { classList: { add() {}, remove() {} }, style: {}, innerHTML: '', textContent: '' }; }
+function fakeDocumentForPresentation(card, textEl) {
+  const elements = { 'trigger-card': card, 'trigger-card-text': textEl };
+  return {
+    getElementById: (id) => elements[id] || null,
+    createElement: (tag) => ({ tagName: tag, className: '', onclick: null, classList: { add() {}, remove() {} }, style: {}, textContent: '' })
+  };
+}
+
+test('RGEF WP8 CRITICAL PRODUCTION-BACKED VERTICAL: the real cold-start Initiative Terminal Decision above continues through real Expression, real presentDeliveryIntent(), a simulated Dismiss, and a real coachDecisionSystem-identified StateAccess feedback write — opportunityId/domain/topic all derived from the real terminalDecision.candidateProvenance[0], never hand-injected (Acceptance Criterion 5, 28.1-D)', async () => {
+  const env = makeEnv();
+  const clock = useVirtualClock();
+  try {
+    const plans = plansOf(nutritionLoggingPlan, 70).concat(plansOf(nutritionStopPlan, 90));
+    const trace = await driveRealHabitEngine(env, clock, '2026-01-01', plans, (h) => h.status === 'weakening');
+    assert.equal(trace[trace.length - 1].habit.status, 'weakening'); // precondition, proven above
+
+    await Consumer.build({
+      requestId: 'wp8-b5', consumer: 'INITIATIVE_ENGINE', policyId: 'INITIATIVE_SUPPORT_V1',
+      session: { uid: 'user-1', generation: 1 }, intent: { domain: 'GENERAL_COACHING', purpose: 'IMMEDIATE' }
+    });
+
+    // Expression WP9's own real, unmodified render() requires a configured generative dependency
+    // (js/app.js wires ExpressionRenderer.configure({generateFn: callClaude}) at composition-root
+    // time) — a fake generateFn here plays exactly that one narrow role, real render()/schema-
+    // conformance logic (buildBaseSystemInstruction/buildUserContent/DeliveryIntentContract) is
+    // otherwise fully exercised, unmodified.
+    ExpressionRenderer.configure({ generateFn: async () => 'שמתי לב שההרגל שלך בתיעוד תזונה נחלש קצת — רוצה שאני אזכיר לך?' });
+
+    // ── Real Terminal Decision + real Expression, from the real Orchestrator, in one run() ──
+    const runResult = await Orchestrator.run({ userId: 'user-1', sessionGeneration: 1, runId: 'wp8-run', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
+    const terminalDecision = runResult.output.terminalDecision;
+    assert.equal(terminalDecision.kind, 'INITIATIVE');
+    assert.equal(runResult.output.expression.status, 'DISPATCHED', 'a real Delivery Intent must actually be dispatched for this real cold-start Initiative — never SILENCE/SUPERSEDED');
+    const deliveryIntent = runResult.output.expression.deliveryIntent;
+    assert.notEqual(deliveryIntent, undefined);
+
+    // ── Attribution derived exactly as js/app.js's own runAppReadyEngines() derives it
+    // (js/app.js:2140-2143) — candidateProvenance[0], never opportunitiesConsidered, never a
+    // hand-injected id/heuristic. ──
+    const provenance = terminalDecision.candidateProvenance;
+    assert.equal(Array.isArray(provenance), true);
+    assert.equal(provenance.length, 1);
+    const attribution = { opportunityId: provenance[0].opportunityId, domain: provenance[0].domain, topic: provenance[0].topic };
+    assert.equal(attribution.domain, 'NUTRITION');
+    assert.equal(attribution.topic, 'FOOD_LOGGING');
+    assert.notEqual(attribution.opportunityId, undefined);
+
+    // ── Real presentDeliveryIntent() + real Dismiss binding (js/trigger/triggerController.js) ──
+    const card = fakeCardElement();
+    const textEl = fakeTextElement();
+    TriggerController.configure({
+      documentRef: fakeDocumentForPresentation(card, textEl),
+      sessionLifecycle: { getGeneration: () => 1, isCurrent: (g) => g === 1 },
+      goalLabels: { cut: 'חיטוב 🔥', bulk: 'מסה 💪', maintain: 'שימור ⚖️' },
+      getUserProfile: () => env.profile,
+      getTodayData: () => ({ meals: [], burned: 0, steps: 0 }),
+      persistenceSummaryFn: (r) => r,
+      scheduleAtFn: () => {}, sendLocalNotificationFn: () => {},
+      coachNameFn: () => 'רן', coachMessageFn: async () => 'x', coachLineFn: () => 'x',
+      // The exact real capability js/app.js wires (js/app.js:338-339): honest
+      // 'coachDecisionSystem'/'DECISION_PASS' identity, through the real StateAccess permission
+      // matrix and the real writeRecordRecommendationFeedback() — not a bespoke test-only path.
+      recordInitiativeFeedbackFn: (surface, contextId, feedbackType, domain, topic) =>
+        env.coachDecisionSystemAccess().write.recordRecommendationFeedback({ surface: surface, contextId: contextId, feedbackType: feedbackType, domain: domain, topic: topic })
+    });
+
+    await TriggerController.presentDeliveryIntent(deliveryIntent, 1, attribution);
+    assert.equal(textEl.textContent, deliveryIntent.renderedLanguage, 'presentation must map/present the real renderedLanguage verbatim, never rewritten (EXP-55)');
+    const dismissBtn = card._children.find((c) => c.className.indexOf('trigger-card-dismiss') !== -1);
+    assert.ok(dismissBtn, 'UX-12.5: a non-blocking Composite Initiative card must always expose a Dismiss control');
+
+    assert.equal(env.feedbackCalls.length, 0, 'no feedback event before the Dismiss is actually clicked');
+    dismissBtn.onclick();
+    await new Promise((resolve) => setImmediate(resolve)); // let the async write settle
+
+    // ── The real, persisted feedback event — surface/contextId/domain/topic all correct, and
+    // engineId honestly 'coachDecisionSystem' (28.1-D), never 'triggerEngine' ──
+    assert.equal(env.feedbackCalls.length, 1);
+    const fb = env.feedbackCalls[0];
+    assert.equal(fb.surface, 'initiative');
+    assert.equal(fb.contextId, attribution.opportunityId);
+    assert.equal(fb.domain, 'NUTRITION');
+    assert.equal(fb.topic, 'FOOD_LOGGING');
+    assert.equal(fb.identity.engineId, 'coachDecisionSystem');
   } finally {
     clock.restore();
   }

@@ -100,17 +100,34 @@
 
     // D1-IE-02 — Trust Test. glad === null is "uncertain," which itself resolves to ineligible;
     // glad === false is an explicit, non-uncertain "would not be glad," also ineligible. Only
-    // glad === true clears this gate.
+    // glad === true clears this gate — UNLESS the narrow Bounded Early-Relationship Engagement
+    // path (RGEF_SPEC_v1.0.md §12) applies, below.
+    var viaBoundedEarlyEngagement = false;
     if (input.trustTestSignal.glad !== true) {
-      return freezeShallow({
-        outcome: 'INELIGIBLE',
-        reason: input.trustTestSignal.glad === null ? 'TRUST_TEST_UNCERTAIN' : 'TRUST_TEST_NOT_GLAD'
-      });
+      // RGEF §12.2 — exhaustive compound precondition. All three conditions are mandatory;
+      // validReasonCategory alone is explicitly insufficient and prohibited (RGEF §12.5, A3/A11)
+      // — this is what structurally excludes every Recommendation-kind Opportunity, since
+      // sourceCategory 'CONFIRMED_PATTERN_ANTICIPATION' is Initiative-Engine-exclusive
+      // (TASK_005_SPEC_v1.0.md §9.1, D2 Unit 07) and can never legitimately be produced by
+      // recommendationEngine.js. glad itself is read here, never written — no Trust is claimed
+      // or fabricated (RGEF A2).
+      if (input.trustTestSignal.glad === null &&
+          input.sourceCategory === 'CONFIRMED_PATTERN_ANTICIPATION' &&
+          input.validReasonCategory === 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION') {
+        viaBoundedEarlyEngagement = true;
+      } else {
+        return freezeShallow({
+          outcome: 'INELIGIBLE',
+          reason: input.trustTestSignal.glad === null ? 'TRUST_TEST_UNCERTAIN' : 'TRUST_TEST_NOT_GLAD'
+        });
+      }
     }
 
     // D1-IE-04 — reduced-frequency adjustment during low-coaching-value periods. See file header
     // for the engineering interpretation of "reduce" as a full reduction for this Decision Pass,
-    // absent any canonical formula or persistent per-period counter.
+    // absent any canonical formula or persistent per-period counter. Applies identically whether
+    // or not the Bounded Early-Relationship Engagement path was taken above — RGEF does not
+    // weaken this gate (RGEF §12.2).
     if (input.lowCoachingValuePeriodActive === true) {
       return freezeShallow({ outcome: 'INELIGIBLE', reason: 'LOW_COACHING_VALUE_PERIOD' });
     }
@@ -118,7 +135,12 @@
     // D1-IE-03 is enforced structurally: this function never declares eligibility from anything
     // other than the closed contract above — there is no "event occurred" signal it could act on
     // even if one were supplied.
-    return freezeShallow({ outcome: 'ELIGIBLE', reason: input.validReasonCategory });
+    // RGEF §12.1 (A12, Explainability Integrity) — a closed, distinct reason for the bounded
+    // path, never input.validReasonCategory, so the trace can never be misread as Trust-conferred.
+    return freezeShallow({
+      outcome: 'ELIGIBLE',
+      reason: viaBoundedEarlyEngagement ? 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT' : input.validReasonCategory
+    });
   }
 
   var API = {

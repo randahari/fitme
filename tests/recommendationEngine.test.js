@@ -11,7 +11,11 @@ const RecommendationCategories = require('../js/coachDecisionSystem/recommendati
 function validOpportunity(overrides) {
   return Object.assign({
     id: 'opp-1',
-    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    // Stage-6 Ownership Enforcement Correction — DECISION_WINDOW is the only Recommendation-owned
+    // Opportunity Source (TASK_005_SPEC_v1.0.md §9.1/§22); the prior default,
+    // CONFIRMED_PATTERN_ANTICIPATION, was Initiative-Engine-exclusive and encoded the since-fixed
+    // Stage-6 rule-leakage defect.
+    sourceCategory: 'DECISION_WINDOW',
     proposedAction: 'Log dinner tonight at the usual time.',
     confidence: 0.8,
     explanation: {
@@ -91,12 +95,35 @@ test('9. determinism: identical input yields an identical candidate set across r
 
 // ── Recommendation Categories (Stage 2) ──
 
-test('10. every valid opportunity source produces a candidate whose category is one of the four canonical values', () => {
-  RecommendationCategories.OPPORTUNITY_SOURCES.forEach((src) => {
+test('10. DECISION_WINDOW (the only Recommendation-owned source) produces a candidate whose category is one of the four canonical values', () => {
+  const result = RecommendationEngine.generate({ opportunity: validOpportunity({ sourceCategory: 'DECISION_WINDOW' }), pipelineContext: pipelineContext() });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(RecommendationCategories.isValidCategory(result.candidates[0].category), true);
+});
+
+// ── Stage-6 Ownership Enforcement Correction ──
+
+test('Ownership: DECISION_WINDOW is accepted — Recommendation Candidate Generation proceeds normally under otherwise-valid inputs', () => {
+  const result = RecommendationEngine.generate({ opportunity: validOpportunity({ sourceCategory: 'DECISION_WINDOW' }), pipelineContext: pipelineContext() });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].kind, 'Recommendation');
+});
+
+test('Ownership: every non-owned Opportunity Source yields zero Recommendation Candidates (D2 Unit 07 / TASK_005_SPEC_v1.0.md §9.1/§22 — no rule leakage)', () => {
+  ['CONFIRMED_PATTERN_ANTICIPATION', 'DISRUPTION_DETECTION', 'MILESTONE_RECOVERY', 'SAFETY_HIGH_RISK'].forEach((src) => {
     const result = RecommendationEngine.generate({ opportunity: validOpportunity({ sourceCategory: src }), pipelineContext: pipelineContext() });
-    assert.equal(result.candidates.length, 1, 'source ' + src);
-    assert.equal(RecommendationCategories.isValidCategory(result.candidates[0].category), true);
+    assert.deepEqual(result.candidates, [], 'source ' + src + ' must not produce a Recommendation Candidate');
   });
+});
+
+test('Ownership: an unrecognized sourceCategory still fails closed (rejected earlier, by validateRequest, as MALFORMED-equivalent empty result)', () => {
+  const result = RecommendationEngine.generate({ opportunity: validOpportunity({ sourceCategory: 'NOT_REAL' }), pipelineContext: pipelineContext() });
+  assert.deepEqual(result.candidates, []);
+});
+
+test('Ownership: SAFETY_HIGH_RISK specifically does not produce a Recommendation Candidate (Safety-adjacent leak closed; TASK-005 G-3 remains open/unmodified — this does not resolve or claim to resolve it)', () => {
+  const result = RecommendationEngine.generate({ opportunity: validOpportunity({ sourceCategory: 'SAFETY_HIGH_RISK' }), pipelineContext: pipelineContext() });
+  assert.deepEqual(result.candidates, []);
 });
 
 // ── Explainability completeness / unexplainable candidate withheld (Stage 6) ──

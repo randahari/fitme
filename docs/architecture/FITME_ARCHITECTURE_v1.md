@@ -1070,3 +1070,124 @@ expansions, the Decision Window closing criterion).
 
 Full repository regression at this closure: **1896/1896 passing** (1816 pre-G-2 baseline, net +80).
 See `docs/specs/G2_SPEC_v1.0.md` §53 (Closure Record) for complete evidence.
+
+## 27. RGEF — Relationship-Guided Engagement Foundation (Closed)
+
+**Added by RGEF** (`docs/specs/RGEF_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). The first Work
+Item to carry G-2's one live Opportunity (§26 above) past Stage 5's Silence outcome to a real,
+presented `INITIATIVE` Terminal Decision — via a closed, narrow admission path, never a general
+relaxation of Trust or maturity gating. No new Engine, collaborator, or Engine Registry entry; every
+change below is additive within an already-registered component's own existing boundary.
+
+**New file:** `js/domain/domainTopicVocabulary.js` — the `DOMAINS`/`TOPICS` closed vocabulary,
+promoted verbatim out of `js/derivedIntelligenceConsumer.js` (B5) into its own shared module (same
+architectural layer as `js/domain/profileMetrics.js`/`js/core/dateUtils.js`), consumed by both B5 and
+`initiativeEngine.js` — B5's own derivation logic is unchanged.
+
+**Modified files:**
+- `js/coachDecisionSystem/eligibilityEvaluator.js` (Stage 5) — a new, closed Bounded
+  Early-Relationship Engagement branch resolves `ELIGIBLE`/`BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT`
+  for exactly one compound condition (`trustTestSignal.glad === null` AND `sourceCategory ===
+  'CONFIRMED_PATTERN_ANTICIPATION'` AND `validReasonCategory ===
+  'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION'`); `glad` is read, never mutated. Every other
+  Source×Reason combination is unaffected — the pre-existing `TRUST_TEST_UNCERTAIN` path is
+  unchanged for the other four sources in D1 Unit 05's closed taxonomy and for every other Reason
+  under `CONFIRMED_PATTERN_ANTICIPATION`.
+- `js/coachDecisionSystem/initiativeEngine.js` (Stage 6) — a new `SOURCE_REASON_MATURITY_OVERRIDES`
+  two-dimensional table, layered atop the pre-existing one-dimensional `MATURITY_GATING`, admits the
+  one approved Source×Reason combination at every Relationship Maturity Stage including
+  Observer/Assistant; a new closed `STAGE6_ACCEPTED_SOURCES` gate (§ below) enforces this engine's
+  own source ownership; `detectSemanticOpportunities()` now carries `domain`/`topic` onto the
+  `DetectedOpportunity`; `opportunityProvenance` now additively carries `domain`/`topic` alongside
+  `opportunityId`/`sourceCategory`/`detectedAt` (survives byte-identical through Stage 7/8/9 to
+  `terminalDecision.candidateProvenance`, an already-existing, unmodified mechanism); and — the one
+  Architecture Decision reached mid-implementation — this module gains its first-ever, narrowly
+  scoped dependency on `js/feedback/feedbackDomain.js`, for exactly
+  `evaluateDomainTopicReceptiveness()` (see "Stage-6/A-2 note" below). `wasIgnoredBefore()` (D1-IP-08,
+  exact-Opportunity-id) remains local, self-contained, and does not call `feedbackDomain.js`.
+- `js/coachDecisionSystem/recommendationEngine.js` (Stage 6) — gains the same kind of closed
+  `STAGE6_ACCEPTED_SOURCES` gate (`['DECISION_WINDOW']`), correcting a latent rule-leakage defect
+  found during implementation (see below) — this engine now constructs a Candidate only for the one
+  source category D1 Unit 05 actually assigns it.
+- `js/feedback/feedbackDomain.js` (C2) — new `evaluateDomainTopicReceptiveness()`, sharing a new
+  `evaluateRecoveryFromRelevant()` helper with the pre-existing `evaluateSuppression()` — identical
+  algorithm, identical `RECOVERY_POLICIES.SUPPRESSION_RECOVERY_POLICY_V1` values, reused **by
+  reference**, differing only in matching predicate (exact `surface==='initiative'` + exact `domain`
+  + exact `topic`, vs. exact `surface`+`contextId`). New `GESTURE_TYPE` entry:
+  `'initiative:dismiss': 'Dismissed'`.
+- `js/stateAccess.js` (B3) — `PERMISSIONS.coachDecisionSystem.DECISION_PASS.writes` changed from `[]`
+  to `['recordRecommendationFeedback']`, an honest permission grant under the Composite Engine's own
+  identity (never `triggerEngine`'s); `readRecommendationFeedbackHistory()`/
+  `writeRecordRecommendationFeedback()` gain additive, optional `domain`/`topic` fields.
+- `js/trigger/triggerController.js` — `presentDeliveryIntent()` gains its own
+  `ensureInitiativeDismissButton()`/dismiss-binding, structurally distinct from and never inheriting
+  `presentTriggerCard()`'s own `ensureTriggerCardDismissButton()`; `presentTriggerCard()` itself is
+  byte-identical to before this Work Item.
+- `js/app.js` — composition-root wiring only: `recordRecommendationFeedback()`/
+  `recordFeedbackEvent()` gain optional trailing `domain`/`topic` parameters; a new
+  `recordInitiativeFeedbackFn` under the `coachDecisionSystem`/`DECISION_PASS` identity;
+  `runAppReadyEngines()` derives presentation attribution from
+  `terminalDecision.candidateProvenance[0]` (only when exactly one entry) and passes it to
+  `presentDeliveryIntent()`.
+- `index.html`/`sw.js` — script-tag/precache registration for the one new file.
+
+**Architecture Decision — shared `#trigger-card` ownership.** When a presentable Composite Initiative
+Delivery Intent exists in an `APP_READY` cycle, it is the authoritative visible content of the shared
+`#trigger-card` element for that cycle — an ordinary Trigger presentation from the same cycle does
+not remain authoritative underneath it. This is achievable by simple unconditional overwrite plus
+fresh dismiss-binding, with no new arbitration framework, because `triggerEngineAdapter.js`'s own
+`run()` already awaits `presentTriggerCard()` to completion *inside* `EngineRegistry.run()`'s own
+tracked promise, while `presentDeliveryIntent()` is only ever invoked afterward, in `app.js`'s
+subsequent `.then()` — a structural, not racy, "Trigger always first, Initiative always last"
+ordering. When no Composite Initiative is presentable, ordinary Trigger presentation is unaffected.
+This does not resolve TASK-007's own broader, still-open OD-5 (cross-*element* Home-card precedence
+among `#trigger-card`/`#coach-card`/`#adaptive-card`/`#partial-prompt`) — only the narrower,
+same-*element* producer-precedence question between two producers of `#trigger-card` itself.
+
+**Stage-6 rule-leakage correction (found during implementation).** `recommendationEngine.js` had no
+source-ownership gate prior to this Work Item, and would have constructed an unowned
+`'Recommendation'`-kind Candidate for Initiative-exclusive (`CONFIRMED_PATTERN_ANTICIPATION`) and even
+Safety-exclusive (`SAFETY_HIGH_RISK`) Opportunity sources reaching Stage 6 — a genuine defect, halted
+on and reported rather than patched around, then corrected by explicit Head of Product + AI Architect
+authorization: both `recommendationEngine.js` and `initiativeEngine.js` now enforce a closed
+`STAGE6_ACCEPTED_SOURCES` list matching D1 Unit 05's own closed five-source taxonomy exactly.
+
+**TASK-005 §36 Repository Gap A-2 — bounded resolution (found during implementation).** A-2
+("Extending C2's suppression mechanism to an Initiative surface") was deliberately left open by
+TASK-005, correctly, since no Product/Architecture authority existed at that time for
+`initiativeEngine.js` to depend on `feedbackDomain.js`. RGEF's own WP7 design required exactly that
+dependency, directly contradicting `initiativeEngine.js`'s own then-existing header text and an
+existing, passing test. Head of Product + AI Architect approved a bounded, explicit resolution:
+`initiativeEngine.js` may depend on `feedbackDomain.js` for exactly
+`evaluateDomainTopicReceptiveness()` — never a blanket `FeedbackDomain` coupling, never a locally
+duplicated policy table, never moving or rewriting `wasIgnoredBefore()`. TASK-005's original text is
+preserved as historically accurate ("originally recorded"), not silently rewritten — see
+`docs/specs/TASK_005_SPEC_v1.0.md` §36 item A-2.
+
+**Production-backed verified** using the real, unmodified-elsewhere `runHabitEngine()` arc
+(virtual-clock technique — the same proven arc as G-2's own acceptance test): real `FOOD_LOGGING`
+history → established `WEAKENING` → real B5 admission → real Memory Layer → real Internal Pipeline
+Orchestrator → a real `INITIATIVE` Terminal Decision (`glad` confirmed to remain `null`; Stage-5's
+`reason` confirmed `BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT`, never Trust-confirmation) → real
+Expression (`DISPATCHED`) → real `presentDeliveryIntent()` → a simulated Dismiss → a real
+`coachDecisionSystem`-identified StateAccess feedback write, with `opportunityId`/`domain`/`topic`
+derived only from the real `terminalDecision.candidateProvenance[0]` — never `opportunitiesConsidered`,
+never a hand-injected id or heuristic.
+
+**Downstream boundary preservation confirmed:** Stage 7/8 (`prioritization.js`, `winnerSelection.js`)
+are unmodified — the real `InitiativeCandidate` wins on its own merits under this Work Item's
+correction of the Stage-6 rule leakage, not by tie-break or Candidate-kind preference. Safety's
+unconditional bypass/precedence and `safetyLayer.js`/`safetyIntegrationPort.js` are untouched.
+`deliveryIntentContract.js`/`expressionRenderer.js`/`expressionRenderingContext.js` are unmodified.
+
+**Not resolved by this closure** (remain open/future, per `docs/specs/RGEF_SPEC_v1.0.md` §30): TASK-005
+§36 Repository Gap G-3 (whether Safety-triggered Opportunities reach Initiative-kind Candidate
+Generation); TASK-007's own OD-5 (broader, cross-element Home-card precedence); true
+`Ignored`-feedback production (RGEF-OI-2); Stage-7 Domain/Topic-informed prioritization (RGEF-OI-3);
+general resolution of TASK-005 §36 E-2 beyond the one approved Source×Reason combination (RGEF-OI-4);
+future receptiveness-policy calibration (RGEF-OI-5).
+
+Full repository regression at this closure: **1946/1946 passing** (1896 pre-RGEF baseline, net +50).
+`APP_VERSION`/service-worker `VERSION` advanced `2.41.0`/`v2.41.0` → `2.42.0`/`v2.42.0` — the first
+closure in this program where the G-2 Opportunity actually reaches Expression/presentation. See
+`docs/specs/RGEF_SPEC_v1.0.md` §32 (Closure Record) for complete evidence.

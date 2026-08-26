@@ -905,6 +905,20 @@ Rules:
 
 This policy remains a consumption/eligibility boundary only. It does not create coaching meaning, assign a coaching Reason (`validReasonCategory`), perform Stage-3 Opportunity Detection, or perform Trust/Stage-5-Eligibility determination (Coach Semantic Foundation Package, Chapter 27.3). The Initiative Engine remains the Stage-3 semantic owner of any resulting `DetectedOpportunity`.
 
+**Note — `DOMAINS`/`TOPICS` vocabulary promoted (RGEF, `docs/specs/RGEF_SPEC_v1.0.md` §14, WP1,
+IMPLEMENTED AND VERIFIED).** The closed `DOMAINS`/`TOPICS` vocabulary this policy's `intent.domain`/
+`intent.topics` validation (§17) has always used was originally defined as private module-level
+constants inside `js/derivedIntelligenceConsumer.js` itself. RGEF promoted it, verbatim and
+unmodified in content, to its own shared module — `js/domain/domainTopicVocabulary.js` — so that
+`js/coachDecisionSystem/initiativeEngine.js` could consume the same closed vocabulary for its own,
+separate purpose (attaching `domain`/`topic` identity onto a `DetectedOpportunity`, for later
+Domain/Topic-scoped feedback learning — RGEF §15/§18/§19), without a duplicate, potentially-diverging
+vocabulary definition. `js/derivedIntelligenceConsumer.js` now reads `DOMAINS`/`TOPICS` from the new
+module by reference (`DomainTopicVocabulary.DOMAINS`/`.TOPICS`); the values themselves, and every one
+of B5's own eligibility/validation rules that consume them (§17, this section), are byte-identical to
+before this promotion. This is a location-of-definition change only — B5's own derivation logic,
+policy catalog, and every locked Appendix A constant are unaffected.
+
 ### 19.4 Policy: `DECISION_SUPPORT_V1`
 
 Reserved for future work.

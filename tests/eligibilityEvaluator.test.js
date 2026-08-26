@@ -126,3 +126,68 @@ test('identical input yields identical outcome across repeated evaluation', () =
   const b = EligibilityEvaluator.evaluate(i);
   assert.deepEqual(a, b);
 });
+
+// ── RGEF §12 — Bounded Early-Relationship Engagement (WP3) ──
+
+function boundedInput(overrides) {
+  return input(Object.assign({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    validReasonCategory: 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION',
+    trustTestSignal: { glad: null, basis: 'No approved affirmative Trust source exists for this Opportunity.' }
+  }, overrides));
+}
+
+test('RGEF §12.2 — the exact compound condition (glad===null + CONFIRMED_PATTERN_ANTICIPATION + REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION) resolves ELIGIBLE via the bounded path', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput());
+  assert.equal(r.outcome, 'ELIGIBLE');
+  assert.equal(r.reason, 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT');
+});
+
+test('RGEF §12.1 — the bounded path never reuses validReasonCategory as its reason, preventing conflation with an ordinary Trust-confirmed eligibility', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput());
+  assert.notEqual(r.reason, 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION');
+});
+
+test('RGEF §12 (No Fake Trust) — trustTestSignal.glad is read, never mutated: the input object is untouched by evaluate()', () => {
+  const i = boundedInput();
+  const before = JSON.parse(JSON.stringify(i.trustTestSignal));
+  EligibilityEvaluator.evaluate(i);
+  assert.deepEqual(i.trustTestSignal, before);
+  assert.equal(i.trustTestSignal.glad, null);
+});
+
+test('RGEF §12.2 (Invariant 2) — glad === false is NEVER admitted by the bounded path, even with the exact matching Source+Reason pair', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput({ trustTestSignal: { glad: false, basis: 'explicit negative signal' } }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'TRUST_TEST_NOT_GLAD');
+});
+
+test('RGEF §12.2 — Narrowness: a different, valid validReasonCategory under the same CONFIRMED_PATTERN_ANTICIPATION source does NOT qualify for the bounded path', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput({ validReasonCategory: 'CELEBRATE_MEANINGFUL_PROGRESS' }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'TRUST_TEST_UNCERTAIN');
+});
+
+test('RGEF §12.5 (A11, Recommendation isolation) — DECISION_WINDOW + REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION + glad:null does NOT inherit the bounded path (validReasonCategory alone is insufficient)', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput({ sourceCategory: 'DECISION_WINDOW' }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'TRUST_TEST_UNCERTAIN');
+});
+
+test('RGEF §12.2 — lowCoachingValuePeriodActive still blocks eligibility after the bounded path would otherwise apply (D1-IE-04 not weakened)', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput({ lowCoachingValuePeriodActive: true }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'LOW_COACHING_VALUE_PERIOD');
+});
+
+test('RGEF §12.4 — safetyHighRiskBypass still short-circuits before the bounded path is ever considered', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput({ safetyHighRiskBypass: true }));
+  assert.equal(r.outcome, 'ELIGIBLE');
+  assert.equal(r.reason, 'SAFETY_HIGH_RISK_BYPASS');
+});
+
+test('RGEF §12.3 — a malformed bounded-shaped input still resolves MALFORMED before the new branch is ever reached', () => {
+  const i = boundedInput(); delete i.trustTestSignal.basis;
+  const r = EligibilityEvaluator.evaluate(i);
+  assert.equal(r.outcome, 'MALFORMED');
+});

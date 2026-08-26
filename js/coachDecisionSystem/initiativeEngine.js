@@ -33,13 +33,13 @@
 // נושא שדה category (Canonical Decision CD-T005-02).
 //
 // D1-IP-08 (no repeating an ignored Initiative) נאכף כאן מקומית, ישירות
-// מול pipelineContext.feedbackHistory שכבר מסופק — זהו *לא* שימוש
-// חוזר ב-FeedbackDomain.evaluateSuppression() (C2): מנגנון זה מוגבל
-// במפורש ל-Trigger/Adaptive-TDEE (Repository Gap A-2, Follow-up,
-// TASK_005_SPEC_v1.0.md §36 — הרחבתו ל-Initiative אינה מאושרת ב-TASK-005
-// זה). אין כיום כל writer שכותב אירועי feedback על surface='initiative'
-// באף מקום ברפוזיטורי — הבדיקה כאן היא לוגיקה אמיתית, דטרמיניסטית,
-// שתחזיר כיום תמיד "לא נמצא" נתון אמיתי, לא stub.
+// מול pipelineContext.feedbackHistory שכבר מסופק — פונקציית ה-C2 המקבילה
+// (matching מדויק surface+contextId) אינה נקראת כאן כלל; wasIgnoredBefore()
+// עצמאית לחלוטין, ללא תלות ב-FeedbackDomain. RGEF WP7 (ראה
+// domainTopicRecentlyUnwelcome() למטה) מוסיף בנפרד, באופן תחום ומאושר
+// במפורש (Repository Gap A-2, TASK_005_SPEC_v1.0.md §36 — resolution
+// RGEF_SPEC_v1.0.md §5.4/§19.1), תלות יחידה ומצומצמת ב-FeedbackDomain
+// לצורך יכולת ה-Domain/Topic receptiveness בלבד — לא הרחבה גורפת.
 //
 // Stage-3 disruption/milestone detection: אין כיום שום מקור נתונים
 // ברפוזיטורי ליומן/אירועי ציון-דרך/התאוששות-לאחר-משבר (repository gap,
@@ -64,6 +64,16 @@
   var ContextualMeaningPolicy = (typeof module !== 'undefined' && module.exports)
     ? require('./contextualMeaningPolicy.js')
     : window.ContextualMeaningPolicy;
+  // RGEF WP7 (RGEF_SPEC_v1.0.md §5.4/§19.1) — Architecture Decision, narrow resolution of
+  // TASK-005 §36 Repository Gap A-2: this module's first-ever dependency on feedbackDomain.js,
+  // authorized EXCLUSIVELY for evaluateDomainTopicReceptiveness() (Domain/Topic learned
+  // receptiveness, Stage 6 consumption, below). No other FeedbackDomain capability is consumed —
+  // evaluateSuppression()/classifyFeedback() remain Trigger/Adaptive-TDEE-exclusive.
+  // wasIgnoredBefore() (D1-IP-08, exact-Opportunity-id) is NOT affected by this dependency — it
+  // remains local, self-contained, and untouched, per the approved boundary of this resolution.
+  var FeedbackDomain = (typeof module !== 'undefined' && module.exports)
+    ? require('../feedback/feedbackDomain.js')
+    : window.FeedbackDomain;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -123,6 +133,21 @@
     PERSONAL_COACH: Object.freeze(['DISRUPTION_DETECTION', 'MILESTONE_RECOVERY', 'CONFIRMED_PATTERN_ANTICIPATION'])
   });
 
+  // RGEF WP4 (RGEF_SPEC_v1.0.md §13) — closed Source×Reason maturity-gating override, evolving
+  // the one-dimensional table above without changing it. Contains EXACTLY one entry at authoring
+  // time (RGEF §13.2, mandatory scope discipline): CONFIRMED_PATTERN_ANTICIPATION ×
+  // REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION, permitted at every Relationship Maturity Stage
+  // including Observer/Assistant — resolving TASK-005 §36 item E-2 for this one specific
+  // combination only. Every other (sourceCategory, validReasonCategory) pair — including every
+  // OTHER validReasonCategory under CONFIRMED_PATTERN_ANTICIPATION — falls through to
+  // MATURITY_GATING[sourceCategory] above, unmodified. A second entry SHALL NOT be added without
+  // a new, explicit Product/Architecture decision (RGEF §13.2).
+  var SOURCE_REASON_MATURITY_OVERRIDES = Object.freeze({
+    CONFIRMED_PATTERN_ANTICIPATION: Object.freeze({
+      REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'])
+    })
+  });
+
   // D1-IP-08 — closed feedback tokens (reused verbatim from C2's already-canonical closed
   // vocabulary, FEEDBACK_TYPES in js/feedback/feedbackDomain.js — not a new taxonomy) that count
   // as "an ignored Initiative" for the local check below.
@@ -167,17 +192,42 @@
     return MATURITY_STAGES.indexOf(stage) !== -1 ? stage : 'OBSERVER';
   }
 
-  function categoryPermittedAtStage(stage, sourceCategory) {
+  // RGEF WP4 — gains validReasonCategory (optional third parameter, backward-compatible with
+  // this function's single existing call site below, which now always supplies it). The override
+  // table (above) is consulted first; if no override entry matches this exact (sourceCategory,
+  // validReasonCategory) pair, the existing MATURITY_GATING[sourceCategory] default governs,
+  // byte-identical to pre-RGEF behavior.
+  function categoryPermittedAtStage(stage, sourceCategory, validReasonCategory) {
+    // RGEF override is keyed [sourceCategory][validReasonCategory] -> array of allowed STAGES;
+    // check membership of `stage` in that array. Absent an override, fall through to the
+    // original, unmodified semantics: MATURITY_GATING is keyed by STAGE -> array of allowed
+    // sourceCategory values; check membership of `sourceCategory` in that array.
+    var override = SOURCE_REASON_MATURITY_OVERRIDES[sourceCategory] &&
+      SOURCE_REASON_MATURITY_OVERRIDES[sourceCategory][validReasonCategory];
+    if (override) return override.indexOf(stage) !== -1;
     var allowed = MATURITY_GATING[stage] || [];
     return allowed.indexOf(sourceCategory) !== -1;
   }
 
-  // D1-IP-08 — see file header. Local, self-contained; does not call FeedbackDomain.
+  // D1-IP-08 — see file header. Local, self-contained; does not call FeedbackDomain. Unaffected
+  // by RGEF WP7's new dependency (below) — a wholly separate, additive check.
   function wasIgnoredBefore(feedbackHistory, opportunityId) {
     return (feedbackHistory || []).some(function (e) {
       return e && e.surface === 'initiative' && e.contextId === opportunityId &&
         IGNORED_FEEDBACK_TYPES.indexOf(e.feedbackType) !== -1;
     });
+  }
+
+  // RGEF WP7 (RGEF_SPEC_v1.0.md §19.1) — Stage-6 Domain/Topic learned-receptiveness consumption.
+  // Additive to, and independent of, wasIgnoredBefore() above — either check alone is sufficient
+  // to suppress. Reuses FeedbackDomain's own recompute-from-source algorithm and its named
+  // recovery policy's values by reference only (never copied locally — no policy constant of any
+  // kind is re-declared in this file). Missing domain/topic yields no suppression basis — never
+  // fabricated.
+  function domainTopicRecentlyUnwelcome(feedbackHistory, domain, topic, nowTs) {
+    if (!domain || !topic) return false;
+    var result = FeedbackDomain.evaluateDomainTopicReceptiveness(feedbackHistory, domain, topic, nowTs);
+    return result.suppressed === true;
   }
 
   // Section 19 contract shape check — mirrors recommendationEngine.js's internal-construction
@@ -234,7 +284,7 @@
 
     // step 5: Relationship-Maturity gating (D1-IP-02)
     var stage = maturityStageOf(pipelineContext);
-    if (!categoryPermittedAtStage(stage, opportunity.sourceCategory)) return emptyResult();
+    if (!categoryPermittedAtStage(stage, opportunity.sourceCategory, opportunity.validReasonCategory)) return emptyResult();
 
     // step 6: Initiative-policy checks
     // D1-IP-06 — celebration restraint: never assumed; a MILESTONE_RECOVERY Opportunity must be
@@ -244,6 +294,11 @@
     // D1-IP-08 — no repeating an ignored Initiative.
     var feedbackHistory = Array.isArray(pipelineContext.feedbackHistory) ? pipelineContext.feedbackHistory : [];
     if (wasIgnoredBefore(feedbackHistory, opportunity.id)) return emptyResult();
+
+    // RGEF WP7 (RGEF_SPEC_v1.0.md §19.1) — Domain/Topic learned-receptiveness. Additive to,
+    // independent of, and never a replacement for wasIgnoredBefore() above; either check alone
+    // is sufficient to suppress.
+    if (domainTopicRecentlyUnwelcome(feedbackHistory, opportunity.domain, opportunity.topic, pipelineContext.assembledAt)) return emptyResult();
 
     // step 7: candidate construction — statable rationale already validated at step 2
     // (D1-RP-02/D1-CDO-02 analog: no rationale, no Candidate).
@@ -272,10 +327,18 @@
         sourceCategory: opportunity.sourceCategory
       }),
       opportunitySource: opportunity.sourceCategory,
+      // RGEF WP5 (RGEF_SPEC_v1.0.md §16.1) — domain/topic added additively, reusing this exact
+      // object's own already-proven, byte-identical survival path through Stage 7 (Prioritization,
+      // rank() only reorders), Stage 8 (Winner Selection, returns the literal surviving Candidate),
+      // and Stage 9 (Decision Formation, copied onto terminalDecision.candidateProvenance) —
+      // verified directly, no new field is added anywhere else. Never fabricated: undefined if the
+      // originating Opportunity (WP2) never carried a domain/topic.
       opportunityProvenance: freezeShallow({
         opportunityId: opportunity.id,
         sourceCategory: opportunity.sourceCategory,
-        detectedAt: isFiniteNumber(opportunity.detectedAt) ? opportunity.detectedAt : null
+        detectedAt: isFiniteNumber(opportunity.detectedAt) ? opportunity.detectedAt : null,
+        domain: opportunity.domain,
+        topic: opportunity.topic
       }),
       validationResult: freezeShallow({ passed: true, reason: 'Section 19 contract validated' }),
       immutable: true
@@ -376,6 +439,12 @@
         sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
         detectingContributor: 'INITIATIVE_ENGINE',
         proposedAction: 'Request updated food-logging information from the user',
+        // RGEF WP2 (RGEF_SPEC_v1.0.md §15.1) — additive Domain/Topic propagation, copied
+        // unchanged from the same B5-derived observation this function already reads; never
+        // fabricated. A future observation lacking these fields degrades honestly to
+        // undefined — no classification is ever invented here.
+        domain: observation.domain,
+        topic: observation.topic,
         confidence: observation.confidence, // current, honestly decayed — never inflated (CSF Ch.26.4/27.2)
         explanation: freezeShallow({
           rationale: 'A previously established, reliable food-logging habit has entered the Habit Engine\'s WEAKENING lifecycle state within its current, uninterrupted episode.',

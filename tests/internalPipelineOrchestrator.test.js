@@ -70,21 +70,31 @@ test('3b. run() failure handling: if Memory Layer itself throws (e.g. a defect u
   }
 });
 
-test('4. runForOpportunity() invokes Stage 6 (Recommendation Engine) directly for a real EligibleOpportunity', async () => {
+test('4. runForOpportunity() invokes Stage 6 (Recommendation Engine) directly for a real EligibleOpportunity (Stage-6 Ownership Enforcement Correction: the source must be Recommendation-owned — DECISION_WINDOW — not SAFETY_HIGH_RISK, which recommendationEngine.js now correctly refuses per its own STAGE6_ACCEPTED_SOURCES gate)', async () => {
   configureHappyPath();
+  const pipelineContext = { feedbackHistory: [] };
+  const opportunity = {
+    id: 'opp-1', sourceCategory: 'DECISION_WINDOW', proposedAction: 'act now', confidence: 0.9,
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'low' }, detectedAt: Date.now()
+  };
+  const result = Orchestrator.runForOpportunity(pipelineContext, opportunity);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].category, 'PREPARATION');
+});
+
+test('5. runForOpportunity() withholds when the opportunity cannot be explained (Explainability Policy)', () => {
+  const pipelineContext = { feedbackHistory: [] };
+  const opportunity = { id: 'opp-1', sourceCategory: 'DECISION_WINDOW', proposedAction: 'act now', confidence: 0.9 }; // no explanation
+  const result = Orchestrator.runForOpportunity(pipelineContext, opportunity);
+  assert.deepEqual(result.candidates, []);
+});
+
+test('Stage-6 Ownership Enforcement Correction: runForOpportunity() (Recommendation Engine) refuses a SAFETY_HIGH_RISK-sourced Opportunity — Safety is not Recommendation-owned', () => {
   const pipelineContext = { feedbackHistory: [] };
   const opportunity = {
     id: 'opp-1', sourceCategory: 'SAFETY_HIGH_RISK', proposedAction: 'act now', confidence: 0.9,
     explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'low' }, detectedAt: Date.now()
   };
-  const result = Orchestrator.runForOpportunity(pipelineContext, opportunity);
-  assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0].category, 'IMMEDIATE_ACTION');
-});
-
-test('5. runForOpportunity() withholds when the opportunity cannot be explained (Explainability Policy)', () => {
-  const pipelineContext = { feedbackHistory: [] };
-  const opportunity = { id: 'opp-1', sourceCategory: 'SAFETY_HIGH_RISK', proposedAction: 'act now', confidence: 0.9 }; // no explanation
   const result = Orchestrator.runForOpportunity(pipelineContext, opportunity);
   assert.deepEqual(result.candidates, []);
 });
@@ -183,7 +193,7 @@ test('12. runDecisionPass() with a single eligible DECISION_WINDOW Opportunity d
   assert.equal(result.decision.decisionPassTrace.candidatePoolSize, 1);
 });
 
-test('13. runDecisionPass() jointly arbitrates Recommendation-kind and Initiative-kind Candidates from distinct Opportunities in the same pass, on equal footing (§16.2/16.9/§35.13). Stage 6 dispatch offers both producer engines every eligible Opportunity — each engine\'s own already-approved policy gates independently decide whether it contributes; a DISRUPTION_DETECTION Opportunity is accepted by both engines\' existing (unchanged) gates, so it contributes two Candidates', async () => {
+test('13. runDecisionPass() jointly arbitrates Recommendation-kind and Initiative-kind Candidates from distinct Opportunities in the same pass, on equal footing (§16.2/16.9/§35.13), each Opportunity\'s Source correctly routed to exactly its one owning engine (Stage-6 Ownership Enforcement Correction). Stage 6 dispatch still offers both producer engines every eligible Opportunity; each engine\'s own source-ownership gate now independently, correctly decides whether it contributes — a DISRUPTION_DETECTION Opportunity is Initiative-Engine-exclusive (D2 Unit 07, TASK_005_SPEC_v1.0.md §9.1) and now correctly contributes only one Candidate, not two — the prior "two Candidates" expectation was itself an instance of the since-fixed Stage-6 rule-leakage defect (recommendationEngine.js constructing an unowned Candidate for an Initiative-exclusive source)', async () => {
   const oppA = { eligibilityInput: eligibilityInput({ id: 'opp-a', sourceCategory: 'DECISION_WINDOW' }), eligibleOpportunity: eligibleOpportunity({ id: 'opp-a', sourceCategory: 'DECISION_WINDOW' }) };
   const oppB = {
     eligibilityInput: eligibilityInput({ id: 'opp-b', sourceCategory: 'DISRUPTION_DETECTION' }),
@@ -192,20 +202,21 @@ test('13. runDecisionPass() jointly arbitrates Recommendation-kind and Initiativ
   const pipelineContext = { feedbackHistory: [], relationshipMaturity: { stage: 'ASSISTANT' } };
   const result = await Orchestrator.runDecisionPass({ pipelineContext, opportunities: [oppA, oppB], safetyPort: makeSafetyIntegrationPortTestDouble() });
   assert.equal(result.status, 'FORMED');
-  // oppA (DECISION_WINDOW): Recommendation Engine only (Initiative Engine excludes this source).
-  // oppB (DISRUPTION_DETECTION): both engines' existing, unchanged gates accept it -> 2 Candidates.
-  assert.equal(result.decision.decisionPassTrace.candidatePoolSize, 3);
+  // oppA (DECISION_WINDOW): Recommendation Engine only (Initiative Engine excludes this source) -> 1.
+  // oppB (DISRUPTION_DETECTION): Initiative Engine only now (Recommendation correctly excludes this
+  // Initiative-exclusive source per the Stage-6 Ownership Enforcement Correction) -> 1.
+  assert.equal(result.decision.decisionPassTrace.candidatePoolSize, 2);
   assert.ok(['RECOMMENDATION', 'INITIATIVE'].includes(result.decision.kind));
 });
 
-test('14. runDecisionPass() honors safetyHighRiskBypass by skipping Stage 5 entirely for that Opportunity (§15.5/§21.1)', async () => {
+test('14. runDecisionPass() honors safetyHighRiskBypass by skipping Stage 5 entirely for that Opportunity (§15.5/§21.1). Stage-6 Ownership Enforcement Correction: SAFETY_HIGH_RISK is not Recommendation-owned (nor Initiative-owned, unchanged) — dispatchStage6() now correctly contributes zero ordinary Candidates for it; the pool size of 1 this test previously asserted was itself the Safety-adjacent instance of the since-fixed Stage-6 rule-leakage defect (an unowned Recommendation Candidate). This does not resolve or claim to resolve TASK-005\'s own separate, still-open G-3 Repository Gap (whether a Safety-triggered Opportunity should ever reach Initiative-kind Candidate Generation) — it only prevents Recommendation Engine from claiming a source it never owned.', async () => {
   const opp = {
     eligibilityInput: eligibilityInput({ safetyHighRiskBypass: true, trustTestSignal: { glad: false, basis: 'irrelevant under bypass' } }),
     eligibleOpportunity: eligibleOpportunity({ sourceCategory: 'SAFETY_HIGH_RISK' })
   };
   const result = await Orchestrator.runDecisionPass({ pipelineContext: { feedbackHistory: [] }, opportunities: [opp], safetyPort: makeSafetyIntegrationPortTestDouble() });
   assert.equal(result.decision.decisionPassTrace.opportunitiesConsidered[0].internalOutcome, 'SAFETY_BYPASS');
-  assert.equal(result.decision.decisionPassTrace.candidatePoolSize, 1);
+  assert.equal(result.decision.decisionPassTrace.candidatePoolSize, 0);
 });
 
 test('15. runDecisionPass() aborts rather than fabricating a decision when the Safety Layer is unavailable (§21.7, Graceful Degradation)', async () => {
@@ -683,7 +694,7 @@ test('G-2 §29: buildOpportunitiesForDecisionPass() includes a sufficient, estab
   assert.equal(opportunities[0].eligibilityInput.validReasonCategory, 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION');
 });
 
-test('G-2 §29: the fixture-level V1 path resolves INELIGIBLE/TRUST_TEST_UNCERTAIN at Stage 5, never MALFORMED', () => {
+test('G-2 §29 + RGEF §12: the fixture-level V1 path resolves ELIGIBLE/BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT at Stage 5, never MALFORMED (RGEF WP3: glad remains null, no Trust fabricated — the bounded path is the reason this is ELIGIBLE, not the ordinary Trust Test)', () => {
   const EligibilityEvaluator = require('../js/coachDecisionSystem/eligibilityEvaluator.js');
   const pipelineContext = {
     initiativeIntelligence: {
@@ -693,9 +704,11 @@ test('G-2 §29: the fixture-level V1 path resolves INELIGIBLE/TRUST_TEST_UNCERTA
     }
   };
   const opportunities = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext);
-  const elig = EligibilityEvaluator.evaluate(opportunities[0].eligibilityInput);
-  assert.equal(elig.outcome, 'INELIGIBLE');
-  assert.equal(elig.reason, 'TRUST_TEST_UNCERTAIN');
+  const eligibilityInput = opportunities[0].eligibilityInput;
+  assert.equal(eligibilityInput.trustTestSignal.glad, null, 'precondition: glad is honestly null, never fabricated');
+  const elig = EligibilityEvaluator.evaluate(eligibilityInput);
+  assert.equal(elig.outcome, 'ELIGIBLE');
+  assert.equal(elig.reason, 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT');
 });
 
 test('G-2 §18.2: a Safety-sourced DetectedOpportunity\'s safetyHighRiskBypass status is preserved unconditionally through aggregation and routes around Stage 4', () => {

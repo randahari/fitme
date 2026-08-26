@@ -46,6 +46,19 @@
 
   function emptyResult() { return freezeShallow({ candidates: freezeShallow([]) }); }
 
+  // Stage-6 Ownership Enforcement Correction (Stage-6 Ownership Enforcement Review) — the closed
+  // set of D1 Unit 05 Opportunity Sources this engine is canonically authorized to construct a
+  // Candidate for at Stage 6, per D2 Unit 07 / TASK_005_SPEC_v1.0.md §9.1/§22's "Prohibition on
+  // rule leakage": Recommendation Engine's own Stage-3 detection (below) is scoped exclusively to
+  // DECISION_WINDOW (RG-1); CONFIRMED_PATTERN_ANTICIPATION/DISRUPTION_DETECTION/MILESTONE_RECOVERY
+  // are Initiative-Engine-exclusive (TASK_005_SPEC_v1.0.md §9.1); SAFETY_HIGH_RISK is
+  // Safety-Layer-owned and never enters ordinary Candidate Generation for either engine. This
+  // mirrors js/coachDecisionSystem/initiativeEngine.js's own existing STAGE6_ACCEPTED_SOURCES
+  // pattern exactly — enforcing an already-closed canonical assignment, not a new one. Ownership
+  // is enforced here, at Candidate Generation, never repaired later at Stage 7/8 (no tie-break,
+  // no Candidate-kind preference) — an unauthorized Candidate must never exist in the first place.
+  var STAGE6_ACCEPTED_SOURCES = Object.freeze(['DECISION_WINDOW']);
+
   // CC-02: RecommendationRequest { opportunity: EligibleOpportunity, pipelineContext:
   // ImmutablePipelineContext }. EligibleOpportunity's field-level shape is not fixed by any
   // canonical source above the CC-02 contract itself — defined here as engineering detail
@@ -82,6 +95,11 @@
 
     var opportunity = request.opportunity;
     var pipelineContext = request.pipelineContext;
+
+    // Stage-6 ownership boundary — checked first, before any classification is used to construct
+    // a Candidate. A source this engine does not canonically own (Initiative-exclusive,
+    // Safety-owned, or otherwise unrecognized) yields empty, never a fabricated fallback.
+    if (STAGE6_ACCEPTED_SOURCES.indexOf(opportunity.sourceCategory) === -1) return emptyResult();
 
     var category = RecommendationCategories.categoryForSource(opportunity.sourceCategory);
     var hierarchyTier = RecommendationCategories.hierarchyTierForSource(opportunity.sourceCategory);
