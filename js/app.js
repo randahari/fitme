@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.42.0';
+const APP_VERSION = '2.43.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -2068,7 +2068,16 @@ StateAccess.configure({
       if (userProfile && pr && pr.status !== 'SUCCESS' && pr.status !== 'NO_OP') userProfile.coachEvents = snapshot;
       return pr;
     });
-  }
+  },
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8.4): thin closure reusing js/memory.js's own
+  // existing, unmodified, exported list() — no new Firestore query implementation, no direct
+  // Firestore access from StateAccess/Memory Layer. FitMeMemory is referenced here, inside the
+  // closure body (not captured in an outer variable), so this resolves correctly even though
+  // js/memory.js loads after js/app.js in index.html/sw.js — the closure is only ever invoked
+  // later, at Coach-prompt-composition time, well after js/memory.js has loaded (the same
+  // deferred-property-access style app.js already uses elsewhere, e.g. window.AuthorityContract
+  // below).
+  fetchUserStatedMemory: function () { return FitMeMemory.list(); }
 });
 
 // B5: מזריק תלויות ל-derivedIntelligenceConsumer.js — קורא Habit/Pattern Derived

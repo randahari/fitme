@@ -45,12 +45,12 @@ test('all four coach modules are in the sw.js SHELL cache list, and VERSION was 
     assert.notEqual(swJs.indexOf('/fitme/' + file), -1, file + ' must be in the SHELL cache list');
   });
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.42.0');
+  assert.equal(versionMatch[1], '2.43.0');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.42.0');
+  assert.equal(appVersionMatch[1], '2.43.0');
 });
 
 // ── coachProfile.js: pure module ────────────────────────────────────────────────────────
@@ -104,7 +104,12 @@ test('buildSystemPrompt reproduces the exact B5-integration request shape and fa
   assert.match(composerJs, /domain: 'GENERAL_COACHING'/);
   assert.match(composerJs, /purpose: 'IMMEDIATE'/);
   assert.match(composerJs, /result\.status === 'SUCCESS' \|\| result\.status === 'PARTIAL'/);
-  assert.match(composerJs, /return derived \? \(withMem \+ ' ' \+ derived\) : withMem;/);
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11.2): the final composition now additively
+  // threads a third, structurally distinct fragment (userStated) between the legacy mem
+  // fragment and the B5 derived fragment — mechanically updated from this test's original
+  // `return derived ? (withMem + ' ' + derived) : withMem;` assertion, preserving every other
+  // assertion in this test (the B5 request shape/fallback logic itself is byte-identical).
+  assert.match(composerJs, /return derived \? \(withUserStated \+ ' ' \+ derived\) : withUserStated;/);
   assert.match(composerJs, /try \{[\s\S]*DerivedIntelligenceConsumer\.build\([\s\S]*\}\s*catch/);
 });
 

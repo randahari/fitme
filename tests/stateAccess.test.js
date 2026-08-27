@@ -26,13 +26,20 @@ function makeEnv(overrides) {
       patterns: [{ id: 'p1' }], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'abc' }
     },
     coachEvents: [],
-    coachDay: { date: '2026-07-17', fired: [], count: 0 }
+    coachDay: { date: '2026-07-17', fired: [], count: 0 },
+    // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §7) — defaults to not-granted; tests that need
+    // consumption exercised explicitly override via overrides.profile.memoryConsent.
+    memoryConsent: { granted: false, at: 0 }
   }, overrides && overrides.profile);
 
   const todayData = Object.assign({ meals: [{ kcal: 300, protein: 20 }], burned: 100 }, overrides && overrides.todayData);
 
   let generation = 1;
-  const calls = { savedProfile: 0, patternWrites: [], coachEvents: [], firedTypes: [], adaptProposal: undefined, adaptHistoryCache: undefined, feedbackEvents: [] };
+  const calls = { savedProfile: 0, patternWrites: [], coachEvents: [], firedTypes: [], adaptProposal: undefined, adaptHistoryCache: undefined, feedbackEvents: [], userStatedMemoryFetchCount: 0 };
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8.4) — a mutable holder, not a plain array
+  // reassignment, so tests can swap the whole record set between assertions within one env
+  // (env.userStatedMemory.records = [...]) while the closure below always reads the current value.
+  const userStatedMemory = { records: (overrides && overrides.userStatedMemoryRecords) || [] };
 
   const deps = {
     getUserProfile: () => profile,
@@ -80,11 +87,18 @@ function makeEnv(overrides) {
       profile.coachEvents.push({ kind: 'feedback', surface, contextId, feedbackType, domain, topic, ts: Date.now() });
       calls.feedbackEvents.push({ surface, contextId, feedbackType, domain, topic });
       return { status: 'SUCCESS', changed: true, requestId: 'req-feedback', receipt: {} };
-    }
+    },
+    // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8.4) — thin async fetch dependency, mirroring
+    // js/app.js's real closure over FitMeMemory.list(). Tests mutate env.userStatedMemory.records
+    // to control what this "Firestore-backed" fetch returns; the consent gate itself is
+    // exercised entirely inside js/stateAccess.js, never here — this dependency is invoked (or
+    // not) exactly as the real read op decides, and calls.userStatedMemoryFetchCount proves
+    // whether it was actually invoked (§7 — must NOT be invoked when consent is not granted).
+    fetchUserStatedMemory: async () => { calls.userStatedMemoryFetchCount++; return userStatedMemory.records; }
   };
 
   return {
-    deps, profile, todayData, calls,
+    deps, profile, todayData, calls, userStatedMemory,
     setGeneration: (g) => { generation = g; },
     getGeneration: () => generation
   };
@@ -627,4 +641,170 @@ test('RGEF-5. recommendationFeedbackHistory passes domain/topic through additive
   assert.equal(history[0].topic, undefined);
   assert.equal(history[1].domain, 'NUTRITION');
   assert.equal(history[1].topic, 'FOOD_LOGGING');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8) — readUserStatedMemory / memoryLayer's new
+// USER_STATED_MEMORY_READ capability-holder identity. Consent-gated, filtered, deterministic,
+// frozen — never CRUD, never a direct Firestore/js/memory.js access from this test's own
+// perspective (the fetch is fully injected, per §8.4).
+// ══════════════════════════════════════════════════════════════════
+
+function memRecord(overrides) {
+  return Object.assign({
+    _id: 'm1', type: 'fact', payload: { text: 'אני שונא לרוץ' }, confidence: 1,
+    source: 'user_stated', status: 'active', created_at: 1000, updated_at: 1000, last_confirmed_at: null
+  }, overrides);
+}
+
+test('USM1-1. consent not granted -> [] and the fetch dependency is never invoked', async () => {
+  const env = makeEnv({ userStatedMemoryRecords: [memRecord()] }); configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  const result = await cap.read.userStatedMemory();
+  assert.deepEqual(result, []);
+  assert.equal(env.calls.userStatedMemoryFetchCount, 0, 'fail-closed must never attempt the fetch (§7)');
+});
+
+test('USM1-2. consent granted + an active user-stated fact -> included, correctly shaped', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true, at: 1 } }, userStatedMemoryRecords: [memRecord()] });
+  configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  const result = await cap.read.userStatedMemory();
+  assert.equal(env.calls.userStatedMemoryFetchCount, 1);
+  assert.deepEqual(result, [{ id: 'm1', type: 'fact', payload: { text: 'אני שונא לרוץ' }, confidence: 1, source: 'user_stated', updatedAt: 1000 }]);
+});
+
+test('USM1-3. consent granted + an active user-stated preference -> included', async () => {
+  const rec = memRecord({ _id: 'm2', type: 'preference', payload: { key: 'workoutTime', value: 'morning' } });
+  const env = makeEnv({ profile: { memoryConsent: { granted: true, at: 1 } }, userStatedMemoryRecords: [rec] });
+  configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  const result = await cap.read.userStatedMemory();
+  assert.deepEqual(result, [{ id: 'm2', type: 'preference', payload: { key: 'workoutTime', value: 'morning' }, confidence: 1, source: 'user_stated', updatedAt: 1000 }]);
+});
+
+test('USM1-4. status:candidate is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ status: 'candidate' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-5. status:rejected is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ status: 'rejected' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-6. status:superseded is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ status: 'superseded' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-7. status:archived is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ status: 'archived' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-8. source:coach_generated is excluded even if status is active', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ source: 'coach_generated', status: 'candidate' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-9. source:inferred_event is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ source: 'inferred_event' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-10. source:inferred_pattern is excluded', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ source: 'inferred_pattern' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-11. source:migrated is excluded (does not independently satisfy source===user_stated)', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord({ source: 'migrated' })] });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-12. type:habit/pattern/coach_note/conversation_memory/recurring_meal are excluded even with source:user_stated + status:active', async () => {
+  const env = makeEnv({
+    profile: { memoryConsent: { granted: true } },
+    userStatedMemoryRecords: ['habit', 'pattern', 'coach_note', 'conversation_memory', 'recurring_meal'].map((t, i) => memRecord({ _id: 'x' + i, type: t }))
+  });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result, []);
+});
+
+test('USM1-13. deterministic ordering: updated_at desc, id asc tie-break', async () => {
+  const records = [
+    memRecord({ _id: 'b', updated_at: 500 }),
+    memRecord({ _id: 'a', updated_at: 900 }),
+    memRecord({ _id: 'd', updated_at: 900 }),
+    memRecord({ _id: 'c', updated_at: 100 })
+  ];
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: records });
+  configure(env);
+  const result = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result.map((r) => r.id), ['a', 'd', 'b', 'c']);
+  // stable across repeated calls with unchanged data
+  const result2 = await access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.userStatedMemory();
+  assert.deepEqual(result2.map((r) => r.id), ['a', 'd', 'b', 'c']);
+});
+
+test('USM1-14. a stale session throws STALE_SESSION both before and after the async fetch (user-switch protection)', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord()] });
+  configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  env.setGeneration(2);
+  await assert.rejects(() => cap.read.userStatedMemory(), (e) => e.code === 'STALE_SESSION');
+});
+
+test('USM1-15. the returned view is frozen and no CRUD is exposed on this capability', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord()] });
+  configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  const result = await cap.read.userStatedMemory();
+  assert.equal(Object.isFrozen(result), true);
+  // memoryLayer/USER_STATED_MEMORY_READ has no approved writes — every write op name is always
+  // present as a callable (B3 SPEC §22 convention), but every single one is REJECTED here.
+  Object.keys(cap.write).forEach((opName) => {
+    const r = cap.write[opName]({});
+    assert.equal(r.status, 'REJECTED', opName + ' must be REJECTED for memoryLayer/USER_STATED_MEMORY_READ');
+    assert.equal(r.error.code, 'STATE_ACCESS_DENIED');
+  });
+});
+
+test('USM1-16. every other engine/action is denied userStatedMemory — the capability is not accidentally exposed elsewhere', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } }, userStatedMemoryRecords: [memRecord()] });
+  configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  assert.throws(() => decisionPass.read.userStatedMemory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const habit = access('habitEngine', 'RECOMPUTE', env);
+  assert.throws(() => habit.read.userStatedMemory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const diConsumer = access('derivedIntelligenceConsumer', 'BUILD', env);
+  assert.throws(() => diConsumer.read.userStatedMemory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+});
+
+test('USM1-17. memoryLayer/USER_STATED_MEMORY_READ is denied every other read/write on the closed surface (least-privilege, mirrors derivedIntelligenceConsumer\'s own convention)', async () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  const cap = access('memoryLayer', 'USER_STATED_MEMORY_READ', env);
+  assert.throws(() => cap.read.habitView(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => cap.read.recommendationFeedbackHistory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const deniedWrite = cap.write.replaceDerivedHabitView({ habits: [], habitsMeta: {} });
+  assert.equal(deniedWrite.status, 'REJECTED');
+  assert.equal(deniedWrite.error.code, 'STATE_ACCESS_DENIED');
 });

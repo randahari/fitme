@@ -12,6 +12,9 @@ const assert = require('node:assert/strict');
 const CoachPromptComposer = require('../js/coach/coachPromptComposer.js');
 const DerivedIntelligenceConsumer = require('../js/derivedIntelligenceConsumer.js');
 const DerivedIntelligencePrompt = require('../js/derivedIntelligencePrompt.js');
+// USM-001 (docs/specs/USM_001_SPEC_v1.0.md §9.3/§11) — the two new dependencies.
+const CoachDecisionSystemMemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
+const UserStatedMemoryPrompt = require('../js/userStatedMemoryPrompt.js');
 
 const GOAL_LABELS = { cut: 'חיטוב 🔥', bulk: 'מסה 💪', maintain: 'שימור ⚖️' };
 
@@ -209,4 +212,102 @@ test('buildSystemPrompt swallows a thrown B5 error entirely — the prompt still
     const s = await CoachPromptComposer.buildSystemPrompt(profile(), { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
     assert.equal(s, CoachPromptComposer.buildBasePrompt(profile()));
   } finally { DerivedIntelligenceConsumer.build = origBuild; }
+});
+
+// ── USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11) — the new, third, structurally distinct
+// user-stated-memory fragment step, placed between the legacy mem fragment and the B5
+// derived fragment ────────────────────────────────────────────────────────────────────────
+
+test('USM1-27. consent granted (fragment AVAILABLE with facts) -> the Typed Memory fragment is present in the composed prompt', async () => {
+  configure();
+  const origAssemble = CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment;
+  const origProject = UserStatedMemoryPrompt.project;
+  let capturedIdentity = null;
+  CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = async (identity) => {
+    capturedIdentity = identity;
+    return { schemaVersion: 'x', userId: identity.userId, assembledAt: Date.now(), facts: [{ id: 'm1', type: 'fact', payload: { text: 'אני שונא לרוץ' }, confidence: 1, source: 'user_stated', updatedAt: 1 }], availability: 'AVAILABLE' };
+  };
+  UserStatedMemoryPrompt.project = (fragment) => (fragment.availability === 'AVAILABLE' && fragment.facts.length) ? 'דברים שהמשתמש סיפר למאמן במפורש:\n- אני שונא לרוץ' : '';
+  try {
+    const s = await CoachPromptComposer.buildSystemPrompt(profile(), { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
+    assert.ok(s.indexOf('אני שונא לרוץ') !== -1);
+    assert.equal(capturedIdentity.userId, 'u1');
+    assert.equal(capturedIdentity.sessionGeneration, 1);
+  } finally {
+    CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = origAssemble;
+    UserStatedMemoryPrompt.project = origProject;
+  }
+});
+
+test('USM1-28. consent not granted (fragment UNAVAILABLE/empty) -> no Typed Memory content appears, and the rest of the prompt is unaffected', async () => {
+  configure();
+  const origAssemble = CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment;
+  CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = async () => ({ schemaVersion: 'x', userId: 'u1', assembledAt: Date.now(), facts: [], availability: 'UNAVAILABLE' });
+  try {
+    const s = await CoachPromptComposer.buildSystemPrompt(profile(), { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
+    assert.equal(s, CoachPromptComposer.buildBasePrompt(profile()));
+  } finally { CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = origAssemble; }
+});
+
+test('USM1-29. the legacy coachMemory fragment remains byte-identical when the new fragment is also present (no merge, no interference)', async () => {
+  configure();
+  const origAssemble = CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment;
+  CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = async () => ({ facts: [{ payload: { text: 'עובדה חדשה' } }], availability: 'AVAILABLE' });
+  const p = profile({ coachMemory: { observations: [{ text: 'אוהב חלבון גבוה' }], preferences: {} } });
+  try {
+    const s = await CoachPromptComposer.buildSystemPrompt(p, { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
+    assert.ok(s.indexOf('מה שלמדתי עליו עד כה: אוהב חלבון גבוה.') !== -1, 'legacy fragment text must still be present, unchanged');
+    assert.ok(s.indexOf('דברים שהמשתמש סיפר למאמן במפורש') !== -1, 'new fragment must also be present');
+  } finally { CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = origAssemble; }
+});
+
+test('USM1-30. the new fragment is structurally distinct and positioned between the legacy mem fragment and the B5 derived fragment (§11.2 ordering)', async () => {
+  configure();
+  const origAssemble = CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment;
+  const origBuild = DerivedIntelligenceConsumer.build;
+  const origProject = DerivedIntelligencePrompt.project;
+  CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = async () => ({ facts: [{ payload: { text: 'X' } }], availability: 'AVAILABLE' });
+  DerivedIntelligenceConsumer.build = async () => ({ status: 'SUCCESS', context: {} });
+  DerivedIntelligencePrompt.project = () => 'תובנה גזורה';
+  const p = profile({ coachMemory: { observations: [{ text: 'Y' }], preferences: {} } });
+  try {
+    const s = await CoachPromptComposer.buildSystemPrompt(p, { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
+    const iMem = s.indexOf('מה שלמדתי עליו עד כה');
+    const iUserStated = s.indexOf('דברים שהמשתמש סיפר למאמן במפורש');
+    const iDerived = s.indexOf('תובנה גזורה');
+    assert.ok(iMem !== -1 && iUserStated !== -1 && iDerived !== -1);
+    assert.ok(iMem < iUserStated, 'legacy mem fragment must precede the new user-stated fragment');
+    assert.ok(iUserStated < iDerived, 'the new user-stated fragment must precede the B5 derived fragment');
+  } finally {
+    CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = origAssemble;
+    DerivedIntelligenceConsumer.build = origBuild;
+    DerivedIntelligencePrompt.project = origProject;
+  }
+});
+
+test('USM1-31. a thrown error from the new step is swallowed entirely — the prompt still resolves with base+mem+derived (never blocks, mirrors the B5 step\'s own discipline)', async () => {
+  configure();
+  const origAssemble = CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment;
+  const origBuild = DerivedIntelligenceConsumer.build;
+  const origProject = DerivedIntelligencePrompt.project;
+  CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = async () => { throw new Error('boom'); };
+  DerivedIntelligenceConsumer.build = async () => ({ status: 'SUCCESS', context: {} });
+  DerivedIntelligencePrompt.project = () => 'תובנה גזורה';
+  try {
+    const s = await CoachPromptComposer.buildSystemPrompt(profile(), { meals: [], burned: 0, steps: 0 }, { uid: 'u1' });
+    assert.ok(s.endsWith('תובנה גזורה'));
+    assert.equal(s.indexOf('דברים שהמשתמש סיפר למאמן במפורש'), -1);
+  } finally {
+    CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment = origAssemble;
+    DerivedIntelligenceConsumer.build = origBuild;
+    DerivedIntelligencePrompt.project = origProject;
+  }
+});
+
+test('USM1-32. the new step performs no classification of any kind — no Domain/Topic/Opportunity/Trust/Goal/Target token appears anywhere in coachPromptComposer.js\'s own source', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(require.resolve('../js/coach/coachPromptComposer.js'), 'utf8');
+  ['contextualMeaningPolicy', 'evidenceEvaluator', 'eligibilityEvaluator', 'trustTestSignal', 'relationshipMaturity', 'DetectedOpportunity'].forEach((needle) => {
+    assert.equal(src.indexOf(needle), -1, needle + ' must not appear in coachPromptComposer.js');
+  });
 });

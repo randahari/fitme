@@ -1191,3 +1191,127 @@ Full repository regression at this closure: **1946/1946 passing** (1896 pre-RGEF
 `APP_VERSION`/service-worker `VERSION` advanced `2.41.0`/`v2.41.0` → `2.42.0`/`v2.42.0` — the first
 closure in this program where the G-2 Opportunity actually reaches Expression/presentation. See
 `docs/specs/RGEF_SPEC_v1.0.md` §32 (Closure Record) for complete evidence.
+
+---
+
+## 28. USM-001 — Authoritative User Understanding Foundation, First Vertical
+
+**Added by USM-001** (`docs/specs/USM_001_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). The first
+Work Item of the Authoritative User Understanding Foundation, proving **Model B** — several
+legitimate producer stores/derived engines feeding **one** authoritative semantic projection
+assembled exclusively by Memory Layer, never one physical database — with the smallest possible new
+surface area: an existing, manually user-stated Typed Memory fact/preference (§13.B above) becomes a
+real, currently-authoritative Coaching Decision Input, reaching the existing Coach Prompt Composition
+consumer (§6), observably personalizing its content, and remaining fully correctable and forgettable.
+No new Engine, collaborator, or Engine Registry entry. No change to the `coachDecisionSystem`
+Composite Engine's own Decision Pass, Stage 3-10 of the D2 Canonical Pipeline, Safety, Trust, or
+Relationship Maturity.
+
+**New file:** `js/userStatedMemoryPrompt.js` — a small, dedicated, pure, stateless projector,
+structurally parallel to B5's `js/derivedIntelligencePrompt.js` (§10 above) but with its own,
+independent, Engineering-bounded `MAX_FACTS`/`MAX_CHARS` parameters (deliberately not inherited from
+B5's differently-scoped bounds — raw user free text is materially less curated per item than a fixed
+sentence template) and its own, structurally distinct Hebrew header, so its output is never confused
+with either B5's derived-intelligence fragment or the legacy `coachMemoryFragment()`.
+
+**Modified files, additive only:**
+- `js/stateAccess.js` — one new read op, `userStatedMemory` (§8 of the SPEC), and one new,
+  dedicated, non-Engine StateAccess capability-holder identity, `memoryLayer`/`USER_STATED_MEMORY_READ`
+  — explicitly **not** an `EngineRegistry` engine, **not** an alias for and **not** a widening of the
+  existing `coachDecisionSystem`/`DECISION_PASS` grant (§17.1's own permission matrix entry remains
+  byte-identical), mirroring the exact capability-holder pattern `derivedIntelligenceConsumer` already
+  established (ADR-B5-008). The read: checks `userProfile.memoryConsent.granted === true` **before**
+  attempting any fetch — fails closed to `[]` with the injected fetch dependency never invoked when
+  consent is absent; filters to exactly `type ∈ {'fact','preference'}` AND `source === 'user_stated'`
+  AND `status === 'active'` — never widened merely because other Typed Memory fields exist; returns a
+  deterministically ordered (`updated_at` desc, `id` asc tie-break), frozen snapshot; exposes no CRUD.
+  The injected `fetchUserStatedMemory` dependency (configured in `js/app.js`) is a thin closure
+  reusing `js/memory.js`'s own existing, unmodified, exported `list()` — no new Firestore query
+  implementation, no new composite index (the existing fetch-all-then-filter-in-JS pattern is reused,
+  matching `getHistoryData()`'s/`fetchHistory()`'s own long-established convention).
+- `js/coachDecisionSystem/memoryLayer.js` — one new, independent, additively-versioned export,
+  `assembleUserStatedMemoryFragment(identity)`, deliberately **separate** from `assembleContext()`'s
+  existing `PipelineContext` shape (§13's own Decision-Input assembly), since it serves a different
+  consumer (Coach Prompt Composition, §6) with a different lifecycle, and merging the two shapes would
+  misrepresent one as the other's field. `assembleContext()` itself — including its `availability`
+  map and every existing field — is byte-identical before and after this Work Item. CD-02 (TASK-004)
+  remains honored exactly as before: this file still never reads `js/memory.js` or Firestore directly,
+  only through the new StateAccess-mediated capability above. Graceful degradation (D3 §12.3) is
+  preserved: a StateAccess failure (stale session, consent absent structurally returning `[]`, or any
+  other read failure) degrades honestly to `{facts: [], availability: 'UNAVAILABLE'}`, never thrown to
+  the caller.
+- `js/coach/coachPromptComposer.js` — `buildSystemPrompt()` gains one new, additive, third fragment
+  step, placed between the legacy `coachMemoryFragment()` (§6, §13.A) and B5's derived-intelligence
+  fragment (§10), reflecting the Product priority that explicit user statements carry immediate value
+  ahead of passively-inferred behavioral signal. The new step performs no classification of any kind
+  — it never tags, routes, or converts raw fact/preference text into a Domain, Topic, Opportunity,
+  Reason, Trust signal, Goal, or professional Target; it appends already-bounded, already-rendered
+  text to the system prompt string only. A failure anywhere in the new step (Memory Layer, StateAccess,
+  or the projector) is caught and never blocks the Coach Prompt, mirroring the pre-existing B5 step's
+  own "supplementary only, never a hard dependency" discipline verbatim.
+- `js/app.js` — `StateAccess.configure()` gains one new injected dependency,
+  `fetchUserStatedMemory: function () { return FitMeMemory.list(); }`, referencing `FitMeMemory`
+  inside the closure body (not cached in an outer variable) so it resolves correctly despite
+  `js/memory.js` loading after `js/app.js` in script order — the closure is only ever invoked later,
+  at Coach-prompt-composition time, well after `js/memory.js` has loaded. This is the same
+  deferred-property-access style `js/app.js` already uses elsewhere (e.g. `window.AuthorityContract`,
+  `window.NutritionOutputValidator`).
+
+**Script-load-order correction (Engineering Readiness Review finding, resolved before
+implementation, per Head of Product + AI Architect direction).** `index.html`'s existing script order
+placed `js/coach/coachPromptComposer.js` before `js/coachDecisionSystem/memoryLayer.js` (and its own
+existing dependency, `expressionRenderingContext.js`) — a genuine conflict for the new
+`coachPromptComposer.js` → `memoryLayer.js` dependency this Work Item introduces. Resolved by
+relocating `js/coachDecisionSystem/expressionRenderingContext.js` and
+`js/coachDecisionSystem/memoryLayer.js` **together**, preserving their own existing dependency order,
+to immediately after `js/derivedIntelligencePrompt.js` and before `js/coach/coachPromptComposer.js`
+— an ordinary, verified-safe script-tag reorder (a repository-wide reference search found no file
+loading between the old and new positions depends on either relocated file; their only other
+referencing files, `internalPipelineOrchestrator.js` and `expressionRenderer.js`, still load later,
+unaffected), never a new resolution-timing technique. `coachPromptComposer.js` retains the
+repository's ordinary top-of-module `require`/`window` dependency-resolution pattern for its two new
+dependencies, with no lazy or call-time deviation. `sw.js`'s `SHELL` list mirrors the same relocation
+and gains the one new file.
+
+During implementation, this relocation was found to violate `tests/coachDecisionSystemWiring.test.js`'s
+own broader-than-functionally-necessary invariant (that all seventeen `coachDecisionSystem` files load
+after `js/engines/registerEngines.js`) and to require mechanical updates to two further tests
+(`tests/c1Wp6Wiring.test.js`, `tests/b5Wiring.test.js`) that asserted the exact prior literal source
+line of `buildSystemPrompt()`'s own final return statement. All three were corrected to reflect the
+newly-approved architecture, preserving every other assertion in each test unchanged — the same
+mechanical-test-update discipline this program has applied at every prior closure whose approved
+change altered an existing literal assertion.
+
+**Production-backed verified** end-to-end using the real, unmodified-elsewhere `js/stateAccess.js`,
+`js/coachDecisionSystem/memoryLayer.js`, `js/userStatedMemoryPrompt.js`, and
+`js/coach/coachPromptComposer.js` — the one boundary simulated is the Firestore-backed `js/memory.js`
+CRUD itself (its own D6 UI functions are, by longstanding, pre-existing, unrelated-to-this-Work-Item
+design, tightly coupled to browser globals and were never designed for Node testing), simulated via
+`js/memory.js`'s own real, exported `makeMemory()`/`validateMemory()` helpers — the same functions
+`createMemory()` itself calls before writing to Firestore. Verified: consent not granted → the fact
+never reaches the composed prompt and the fetch dependency is never invoked; consent granted → the
+fact reaches the prompt verbatim under its own distinct header; editing the fact → the next fresh
+prompt contains only the corrected value; deleting the fact → the next fresh prompt contains neither;
+revoking consent → the next fresh prompt contains no Typed Memory content at all, with no page reload
+required; the legacy `coachMemoryFragment()` and the new fragment coexist without interference in
+either direction; a request whose session generation goes stale during the async fetch degrades
+honestly, never leaking the stale generation's data; two independently-configured users never see
+each other's facts.
+
+**Not resolved by this closure** (remain open/future, per `docs/specs/USM_001_SPEC_v1.0.md`'s Open
+Items): no live production writer creates a `type:'preference'`, `source:'user_stated'` record yet
+(RG-1); true historical retention/supersession (`status:'superseded'` remains unactivated); Chat/
+Conversation, Voice, and LLM-side memory extraction; wiring a caller to C4's existing, unwired server
+write capability (`functions/typedMemoryServerWrite.js`); explicit-request scope/duration
+representation; temporal/future-event memory; Goal+Why, multi-goal, Dynamic Plan; Relationship
+Maturity; Trust (the paused `docs/specs/AFFIRMATIVE_TRUST_V1_SPEC_v1.0.md` is unmodified by this
+Work Item and remains paused, to be reviewed — not decided — after this foundation); Habit/Pattern
+mirroring into Typed Memory; medical/safety semantic classification (the Coach Prompt path remains,
+as it already was, outside the Composite Engine's Safety Layer jurisdiction — a disclosed, inherited,
+non-blocking limitation, not solved or worsened by this Work Item).
+
+Full repository regression at this closure: **1997/1997 passing** (1946 pre-USM-001 baseline, net
++51). `APP_VERSION`/service-worker `VERSION` advanced `2.42.0`/`v2.42.0` → `2.43.0`/`v2.43.0` — the
+first closure in this program where a user-stated fact demonstrably personalizes real Coach Prompt
+content, a genuinely new user-visible behavior. See `docs/specs/USM_001_SPEC_v1.0.md`'s Closure
+Record for complete evidence.

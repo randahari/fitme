@@ -423,3 +423,80 @@ test('28. Pipeline Context (including the two new fields) is frozen exactly as e
   assert.equal(Object.isFrozen(ctx), true);
   assert.equal(Object.isFrozen(ctx.availability), true);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// USM-001 (docs/specs/USM_001_SPEC_v1.0.md §9) — assembleUserStatedMemoryFragment(): a second,
+// independent, additively-versioned assembly entry point, entirely separate from
+// assembleContext()/PipelineContext above. Uses StateAccess's own new
+// memoryLayer/USER_STATED_MEMORY_READ capability-holder identity — never coachDecisionSystem.
+// ══════════════════════════════════════════════════════════════════
+
+function configureUserStatedHappyPath(records) {
+  StateAccess.configure({
+    getUserProfile: () => ({ memoryConsent: { granted: true, at: 1 } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => records || [
+      { _id: 'm1', type: 'fact', payload: { text: 'אני שונא לרוץ' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 500 }
+    ]
+  });
+}
+
+test('USM1-A. assembleUserStatedMemoryFragment returns a frozen, well-formed fragment, AVAILABLE on the happy path', async () => {
+  configureUserStatedHappyPath();
+  const fragment = await MemoryLayer.assembleUserStatedMemoryFragment({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(Object.isFrozen(fragment), true);
+  assert.equal(fragment.userId, 'user-1');
+  assert.equal(typeof fragment.assembledAt, 'number');
+  assert.equal(fragment.availability, 'AVAILABLE');
+  assert.equal(fragment.schemaVersion, 'coach-decision-system-user-stated-fragment/1.0');
+  assert.equal(fragment.facts.length, 1);
+  assert.equal(fragment.facts[0].id, 'm1');
+});
+
+test('USM1-B. a StateAccess failure (e.g. stale session) degrades honestly to UNAVAILABLE/[] — never throws to the caller (D3 §12.3)', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => { throw new Error('boom'); }
+  });
+  const fragment = await MemoryLayer.assembleUserStatedMemoryFragment({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(fragment.availability, 'UNAVAILABLE');
+  assert.deepEqual(fragment.facts, []);
+});
+
+test('USM1-C. a stale session degrades honestly to UNAVAILABLE/[] — never throws to the caller', async () => {
+  configureUserStatedHappyPath();
+  const fragment = await MemoryLayer.assembleUserStatedMemoryFragment({ userId: 'user-1', sessionGeneration: 99, runId: 'run-1' });
+  assert.equal(fragment.availability, 'UNAVAILABLE');
+  assert.deepEqual(fragment.facts, []);
+});
+
+test('USM1-D. consent not granted resolves an AVAILABLE, empty fragment (StateAccess itself fails closed to [], not an error — §7)', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => { throw new Error('must never be called when consent is false'); }
+  });
+  const fragment = await MemoryLayer.assembleUserStatedMemoryFragment({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(fragment.availability, 'AVAILABLE');
+  assert.deepEqual(fragment.facts, []);
+});
+
+test('USM1-E. assembleUserStatedMemoryFragment does not affect assembleContext()/PipelineContext in any way (no shared/competing assembler)', async () => {
+  configureGoalObjectiveHappyPath();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal('facts' in ctx, false);
+  assert.equal('userStatedMemory' in ctx, false);
+  assert.ok(!('USER_STATED_MEMORY_READ' in ctx));
+});
+
+test('USM1-F. this file does not read js/memory.js or Firestore directly — CD-02 remains honored exactly as before', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(require.resolve('../js/coachDecisionSystem/memoryLayer.js'), 'utf8');
+  assert.equal(src.indexOf("require('../memory.js"), -1);
+  assert.equal(src.indexOf('firestore'), -1);
+  assert.equal(src.indexOf('FitMeMemory'), -1);
+});

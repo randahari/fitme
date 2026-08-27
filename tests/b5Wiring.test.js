@@ -56,7 +56,11 @@ test('80. total B5 failure does not block the existing Coach fallback (base/mem 
   const body = wrapperBody();
   assert.match(body, /var base = buildBasePrompt\(userProfile\);/);
   assert.match(body, /var mem = coachMemoryFragment\(userProfile\);/);
-  assert.match(body, /return derived \? \(withMem \+ ' ' \+ derived\) : withMem;/);
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11.2) — mechanically updated: a third,
+  // structurally distinct fragment (userStated) is now threaded additively between mem and
+  // derived; the B5-failure-does-not-block-the-fallback guarantee this test verifies is
+  // otherwise unchanged (base/mem/userStated are all still returned even if B5 fails).
+  assert.match(body, /return derived \? \(withUserStated \+ ' ' \+ derived\) : withUserStated;/);
 });
 
 test('81. no B5 writes reach the Persistence Gateway (consumer is read-only)', () => {

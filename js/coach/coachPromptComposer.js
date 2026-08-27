@@ -29,6 +29,19 @@
   var DerivedIntelligencePrompt = (typeof module !== 'undefined' && module.exports)
     ? require('../derivedIntelligencePrompt.js')
     : window.DerivedIntelligencePrompt;
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §9.3/§11) — narrow, disclosed cross-module
+  // dependency, mirroring the RGEF A-2 precedent (initiativeEngine.js's own narrow,
+  // non-blanket dependency on feedbackDomain.js). Resolved via the repository's normal
+  // top-of-module require/window pattern — index.html/sw.js relocate
+  // coachDecisionSystem/memoryLayer.js (and its own expressionRenderingContext.js
+  // dependency) to load before this file, specifically so no lazy/call-time resolution is
+  // needed here (§11.4/§17).
+  var CoachDecisionSystemMemoryLayer = (typeof module !== 'undefined' && module.exports)
+    ? require('../coachDecisionSystem/memoryLayer.js')
+    : window.CoachDecisionSystemMemoryLayer;
+  var UserStatedMemoryPrompt = (typeof module !== 'undefined' && module.exports)
+    ? require('../userStatedMemoryPrompt.js')
+    : window.UserStatedMemoryPrompt;
 
   var deps = null;
   function configure(injected) { deps = injected || {}; }
@@ -143,6 +156,24 @@
   async function buildSystemPrompt(userProfile, todayData, currentUser) {
     var base = buildBasePrompt(userProfile);
     var mem = coachMemoryFragment(userProfile);
+    // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11.2): explicit, authoritative user-stated
+    // Typed Memory — placed immediately after the legacy fragment and before B5's passively-
+    // inferred signals, reflecting the Product priority that explicit statements have
+    // immediate value ahead of inferred behavior. Structurally distinct from both the legacy
+    // fragment above and the B5 fragment below (§12) — never merged. A failure here (Memory
+    // Layer/StateAccess/projector) never blocks the Coach Prompt (§11.5), same discipline as
+    // the B5 step below. Performs no classification of any kind — §11.3.
+    var userStated = '';
+    try {
+      if (currentUser && currentUser.uid) {
+        var fragment = await CoachDecisionSystemMemoryLayer.assembleUserStatedMemoryFragment({
+          userId: currentUser.uid,
+          sessionGeneration: deps.sessionLifecycle.getGeneration(),
+          runId: 'coach-prompt-user-stated-' + Date.now()
+        });
+        userStated = UserStatedMemoryPrompt.project(fragment);
+      }
+    } catch (e) { /* USM-001 תוספתי בלבד — לעולם לא חוסם את הפרומפט */ }
     var derived = '';
     try {
       if (currentUser && currentUser.uid) {
@@ -166,7 +197,8 @@
       }
     } catch (e) { /* B5 תוספתי בלבד — לעולם לא חוסם את הפרומפט */ }
     var withMem = mem ? (base + ' ' + mem) : base;
-    return derived ? (withMem + ' ' + derived) : withMem;
+    var withUserStated = userStated ? (withMem + ' ' + userStated) : withMem;
+    return derived ? (withUserStated + ' ' + derived) : withUserStated;
   }
 
   var API = {

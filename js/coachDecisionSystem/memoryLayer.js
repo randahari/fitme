@@ -35,6 +35,16 @@
 // Life Event Context ו-Capacity State: אין כיום שום מקור נתונים ברפוזיטורי
 // לאף אחד מהשניים — מדווחים UNAVAILABLE ביושר, לעולם לא מומצאים
 // (D1-DI-02/D2-EF-08).
+//
+// USM-001 (docs/specs/USM_001_SPEC_v1.0.md) — additive extension: this file gains
+// assembleUserStatedMemoryFragment(), a second, independent, distinctly-versioned assembly
+// entry point serving Coach Prompt Composition — the legacy, one-way Coach message pipeline
+// (a Coach-facing consumer entirely outside this Composite Engine) — not the
+// Composite Engine's Decision Pass. It does not touch, read, or extend assembleContext()'s
+// own PipelineContext shape above. Model B (several producer stores → one Memory Layer
+// assembly authority) is preserved: Memory Layer remains the sole originator of this read,
+// via StateAccess's own new memoryLayer/USER_STATED_MEMORY_READ capability-holder identity —
+// CD-02 remains honored exactly as before (js/memory.js is still never read directly here).
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -255,11 +265,52 @@
     return (typeof ts === 'number') ? ts : null;
   }
 
+  // ── USM-001 (docs/specs/USM_001_SPEC_v1.0.md §9) — additive, independent capability.
+  // Assembles a small, honestly-degraded fragment of user-stated Typed Memory for Coach
+  // Prompt Composition. Deliberately NOT part of PipelineContext/assembleContext() above —
+  // a separate, distinctly-versioned artifact feeding a different consumer (the legacy Coach
+  // Prompt, not the coachDecisionSystem Composite Engine's Decision Pass) with a different
+  // lifecycle; never touches Stage 3-10, trustTestSignal, or relationshipMaturity. Uses
+  // StateAccess's own new memoryLayer/USER_STATED_MEMORY_READ capability-holder identity
+  // (§8.2) — CD-02 remains honored exactly as before: this file still does not read
+  // js/memory.js or Firestore directly. Graceful degradation (D3 §12.3): a StateAccess
+  // failure here never throws to the caller — it degrades to an honest UNAVAILABLE/[],
+  // exactly like every other read in assembleContext() above.
+  async function assembleUserStatedMemoryFragment(identity) {
+    identity = identity || {};
+
+    var access = StateAccess.createEngineAccess({
+      engineId: 'memoryLayer',
+      action: 'USER_STATED_MEMORY_READ',
+      userId: identity.userId,
+      sessionGeneration: identity.sessionGeneration,
+      runId: identity.runId
+    });
+
+    var facts = [];
+    var available = true;
+    try {
+      var read = await access.read.userStatedMemory();
+      facts = Array.isArray(read) ? read : [];
+    } catch (e) {
+      available = false; // graceful degradation, D3 §12.3 — never blocks the Coach Prompt
+    }
+
+    return freezeShallow({
+      schemaVersion: 'coach-decision-system-user-stated-fragment/1.0',
+      userId: identity.userId,
+      assembledAt: Date.now(),
+      facts: freezeShallow(facts.slice()),
+      availability: available ? 'AVAILABLE' : 'UNAVAILABLE'
+    });
+  }
+
   var API = {
     assembleContext: assembleContext,
     buildExpressionRenderingContext: buildExpressionRenderingContext,
     recordExplicitUserStatementArrival: recordExplicitUserStatementArrival,
-    getExplicitUserStatementArrivalTimestamp: getExplicitUserStatementArrivalTimestamp
+    getExplicitUserStatementArrivalTimestamp: getExplicitUserStatementArrivalTimestamp,
+    assembleUserStatedMemoryFragment: assembleUserStatedMemoryFragment
   };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemMemoryLayer = API; }

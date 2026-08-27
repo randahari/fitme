@@ -147,10 +147,10 @@ test('11. js/app.js wires coachDecisionSystem into the APP_READY actions map, al
   assert.match(body, /coachDecisionSystem:\s*'DECISION_PASS'/);
 });
 
-test('12. index.html loads all seventeen modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five + Expression WP1 deliveryIntentContract.js + Expression WP3 expressionInputGate.js + Expression WP4 expressionRenderingContext.js + expressionRenderer.js + G-2 evidenceEvaluator.js + contextualMeaningPolicy.js) before js/app.js, after registerEngines.js, in dependency order', () => {
+test('12. index.html loads fifteen of the seventeen coachDecisionSystem modules (TASK-004 five + TASK-005 initiativeEngine.js + TASK-006 five + Expression WP1 deliveryIntentContract.js + Expression WP3 expressionInputGate.js + expressionRenderer.js + G-2 evidenceEvaluator.js + contextualMeaningPolicy.js) before js/app.js, after registerEngines.js, in dependency order — expressionRenderingContext.js and memoryLayer.js are checked separately below (USM-001 relocation, docs/specs/USM_001_SPEC_v1.0.md §11.4/§17)', () => {
   const iReg = indexHtml.indexOf('js/engines/registerEngines.js');
   const iApp = indexHtml.indexOf('src="js/app.js"');
-  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'evidenceEvaluator.js', 'recommendationEngine.js', 'contextualMeaningPolicy.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'expressionRenderingContext.js', 'memoryLayer.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
+  const files = ['recommendationCategories.js', 'safetyIntegrationPort.js', 'prioritization.js', 'eligibilityEvaluator.js', 'evidenceEvaluator.js', 'recommendationEngine.js', 'contextualMeaningPolicy.js', 'initiativeEngine.js', 'winnerSelection.js', 'decisionFormation.js', 'deliveryIntentContract.js', 'expressionInputGate.js', 'expressionRenderer.js', 'internalPipelineOrchestrator.js', 'registerCoachDecisionSystem.js'];
   var last = iReg;
   files.forEach((f) => {
     const i = indexHtml.indexOf('js/coachDecisionSystem/' + f);
@@ -159,6 +159,25 @@ test('12. index.html loads all seventeen modules (TASK-004 five + TASK-005 initi
     assert.ok(i < iApp, f + ' must load before app.js');
     last = i;
   });
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11.4/§17, Engineering Readiness Review finding):
+  // expressionRenderingContext.js and memoryLayer.js are deliberately relocated OUT of the
+  // registerEngines.js-to-app.js coachDecisionSystem block, together, preserving their own
+  // dependency order, to immediately after js/derivedIntelligencePrompt.js and before
+  // js/coach/coachPromptComposer.js — verified safe because neither file has ever depended on
+  // registerEngines.js/EngineRegistry, and their only other referencing files
+  // (internalPipelineOrchestrator.js, expressionRenderer.js) still load later, in the
+  // unchanged coachDecisionSystem block above. They must still be present and still load
+  // before js/app.js.
+  const iDIPrompt = indexHtml.indexOf('js/derivedIntelligencePrompt.js');
+  const iComposer = indexHtml.indexOf('js/coach/coachPromptComposer.js');
+  const iExprCtx = indexHtml.indexOf('js/coachDecisionSystem/expressionRenderingContext.js');
+  const iMemLayer = indexHtml.indexOf('js/coachDecisionSystem/memoryLayer.js');
+  assert.notEqual(iExprCtx, -1, 'expressionRenderingContext.js must be present in index.html');
+  assert.notEqual(iMemLayer, -1, 'memoryLayer.js must be present in index.html');
+  assert.ok(iDIPrompt < iExprCtx, 'expressionRenderingContext.js must load after derivedIntelligencePrompt.js');
+  assert.ok(iExprCtx < iMemLayer, 'expressionRenderingContext.js must load before memoryLayer.js (its own existing dependency)');
+  assert.ok(iMemLayer < iComposer, 'memoryLayer.js must load before coachPromptComposer.js (USM-001\'s new consumer)');
+  assert.ok(iExprCtx < iApp && iMemLayer < iApp, 'both relocated modules must still load before app.js');
   // prioritization.js (defines NO_SIGNAL, read at module-evaluation time via window.Prioritization
   // in the browser) must load before recommendationEngine.js/initiativeEngine.js consume it.
   assert.ok(indexHtml.indexOf('js/coachDecisionSystem/prioritization.js') < indexHtml.indexOf('js/coachDecisionSystem/recommendationEngine.js'));

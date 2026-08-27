@@ -593,6 +593,17 @@
   <script src="js/domain/domainTopicVocabulary.js"></script>
   <script src="js/derivedIntelligenceConsumer.js"></script>
   <script src="js/derivedIntelligencePrompt.js"></script>
+  <!-- USM-001 (docs/specs/USM_001_SPEC_v1.0.md §11.4/§17) — new projector, and the Expression
+       Rendering Context contract + Memory Layer (coachDecisionSystem) relocated here together
+       (preserving their existing dependency order) so the Coach Prompt Composer module below
+       can depend on Memory Layer's new fragment-assembly export via the repository's normal
+       top-of-module require/window resolution — no lazy call-time resolution. Verified safe:
+       every dependency both relocated files need (StateAccess, DerivedIntelligenceConsumer)
+       is already loaded above; their only other referencing files (the internal pipeline
+       orchestrator, the expression renderer) still load later. -->
+  <script src="js/userStatedMemoryPrompt.js"></script>
+  <script src="js/coachDecisionSystem/expressionRenderingContext.js"></script>
+  <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>
   <script src="js/core/jsonUtils.js"></script>
@@ -647,8 +658,8 @@
   <script src="js/coachDecisionSystem/winnerSelection.js"></script>
   <script src="js/coachDecisionSystem/decisionFormation.js"></script>
   <script src="js/coachDecisionSystem/safetyLayer.js"></script>
-  <script src="js/coachDecisionSystem/expressionRenderingContext.js"></script>
-  <script src="js/coachDecisionSystem/memoryLayer.js"></script>
+  <!-- expressionRenderingContext.js / memoryLayer.js relocated above (USM-001, see note near
+       js/derivedIntelligencePrompt.js) — not removed, only moved earlier in load order. -->
   <script src="js/coachDecisionSystem/deliveryIntentContract.js"></script>
   <script src="js/coachDecisionSystem/expressionInputGate.js"></script>
   <script src="js/coachDecisionSystem/expressionRenderer.js"></script>

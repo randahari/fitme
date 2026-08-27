@@ -220,6 +220,39 @@
     return freezeShallow({ burn: (payload && payload.burn) || 0 });
   }
 
+  // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8): bounded, consent-gated, filtered read of
+  // user-stated Typed Memory (js/memory.js), exposed only to Memory Layer's own new
+  // capability-holder identity (memoryLayer/USER_STATED_MEMORY_READ, §8.2) — never
+  // coachDecisionSystem/DECISION_PASS, never widened. Consent
+  // (userProfile.memoryConsent.granted) is checked BEFORE any fetch is attempted — missing
+  // or false fails closed to [] with the fetch dependency never invoked (§7). Filters to
+  // exactly the V1-approved subset (type ∈ {'fact','preference'} AND source==='user_stated'
+  // AND status==='active') — never widened merely because other fields exist on a record.
+  // Deterministic order: updated_at desc, id asc tie-break (§10.2) — owned here explicitly,
+  // never relying on js/memory.js's own internal sort as an implicit contract. No CRUD is
+  // exposed — read-only, single operation, same discipline as every other read op above.
+  async function readUserStatedMemory(identity) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var profile = deps.getUserProfile() || {};
+    var consentGranted = !!(profile.memoryConsent && profile.memoryConsent.granted === true);
+    if (!consentGranted) return freezeShallow([]); // §7 — fail closed, fetch never attempted
+    var raw = await deps.fetchUserStatedMemory();
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError(); // B3 §9 כלל 8
+    var list = Array.isArray(raw) ? raw : [];
+    var filtered = list.filter(function (m) {
+      return m && (m.type === 'fact' || m.type === 'preference') && m.source === 'user_stated' && m.status === 'active';
+    }).map(function (m) {
+      return { id: m._id || m.id || null, type: m.type, payload: m.payload, confidence: m.confidence, source: 'user_stated', updatedAt: m.updated_at };
+    });
+    filtered.sort(function (a, b) {
+      var au = a.updatedAt || 0, bu = b.updatedAt || 0;
+      if (bu !== au) return bu - au;
+      var aid = a.id || '', bid = b.id || '';
+      return aid < bid ? -1 : (aid > bid ? 1 : 0);
+    });
+    return copyArrayOfObjects(filtered);
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Write operations (owner commands, B3 SPEC §10/§11) ──
   // ══════════════════════════════════════════════════════════════════
@@ -355,7 +388,8 @@
     triggerBudget: readTriggerBudget,
     canFire: readCanFire,
     workoutPayload: readWorkoutPayload,
-    recommendationFeedbackHistory: readRecommendationFeedbackHistory
+    recommendationFeedbackHistory: readRecommendationFeedbackHistory,
+    userStatedMemory: readUserStatedMemory
   };
 
   var WRITE_OPS = {
@@ -430,6 +464,20 @@
       DECISION_PASS: {
         reads: ['recommendationFeedbackHistory', 'goalObjectiveContext', 'todayNutrition'],
         writes: ['recordRecommendationFeedback']
+      }
+    },
+    // USM-001 (docs/specs/USM_001_SPEC_v1.0.md §8.2): a StateAccess capability-holder
+    // identity — NOT an EngineRegistry engine, NOT a new Engine, NOT an alias for
+    // coachDecisionSystem, NOT a widening of coachDecisionSystem.DECISION_PASS above (its
+    // reads/writes are byte-identical before and after this Work Item). Mirrors the exact
+    // capability-holder pattern derivedIntelligenceConsumer already uses (ADR-B5-008) — the
+    // caller is js/coachDecisionSystem/memoryLayer.js's own new
+    // assembleUserStatedMemoryFragment(), serving Coach Prompt Composition, never Stage 3-10
+    // of the Decision Pass.
+    memoryLayer: {
+      USER_STATED_MEMORY_READ: {
+        reads: ['userStatedMemory'],
+        writes: []
       }
     }
   };
