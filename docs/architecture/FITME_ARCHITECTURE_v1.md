@@ -1315,3 +1315,63 @@ Full repository regression at this closure: **1997/1997 passing** (1946 pre-USM-
 first closure in this program where a user-stated fact demonstrably personalizes real Coach Prompt
 content, a genuinely new user-visible behavior. See `docs/specs/USM_001_SPEC_v1.0.md`'s Closure
 Record for complete evidence.
+
+## 29. ESAF-001 — Explicit User Statement Arrival Freshness
+
+**Added by ESAF-001** (`docs/specs/ESAF_001_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). Proves
+one narrow correctness guarantee: new authoritative user information can invalidate a Decision that
+was assembled before that information arrived — by connecting two already-existing, already-tested
+pieces of production machinery that had never been wired together: USM-001's manual Typed Memory
+write path (§28 above) and the Internal Pipeline Orchestrator's own pre-existing D2-EF-07
+pre-dispatch supersession check (`internalPipelineOrchestrator.js`), which — per its own header —
+had always, correctly, evaluated "not superseded" in production, since nothing had ever called its
+write side. This Work Item performs **no semantic interpretation**: it reacts only to the fact that
+a qualifying authoritative write occurred, never to what it said.
+
+`js/memory.js` gains a `MemoryLayer` reference (the identical dual-environment require pattern
+already used for `PersistenceGateway`), a pure `esafQualifies(m)` filter reusing USM-001's own
+read-path-visibility rule exactly (`type ∈ {fact,preference}` × `source:'user_stated'` ×
+`status:'active'`, neither widened nor narrowed), and a content-blind `esafSignalArrival()` helper
+that calls the existing, unmodified `MemoryLayer.recordExplicitUserStatementArrival({userId})`.
+Five existing D6 write-action handlers (create, edit, "לא נכון" reject, delete, and the
+memory-consent checkbox) each call this signal immediately after their own already-existing write
+is verifiably successful — never before, never on failure. `memoryLayer.js`,
+`internalPipelineOrchestrator.js`, `index.html` script order, and every Decision-System module from
+Contextual Meaning through Safety are unmodified.
+
+A SPEC Review, performed against the real repository before implementation, found and corrected two
+genuine defects: `saveProfile()` (`app.js`) never throws on failure — it returns `{status:'FAILED'}`
+— so the consent call site gates on that returned status, not on absence-of-throw; and consent
+*grant* (`false→true`) requires the identical treatment as Create (both change the same
+read-path-visible set in the same direction), so both consent transitions signal, not revoke alone.
+A full traced production dispatch-lifecycle review confirmed the Composite Engine's only live
+trigger (`APP_READY`, `registerCoachDecisionSystem.js`) is background and non-blocking
+(`app.js`'s `runAppReadyEngines()`), with no synchronous user-awaited consumer anywhere in the
+current call graph — so a superseded pass is silently withheld with no risk of silent
+non-response to an actively-awaiting user, and no reassembly/retry was added; a later, independent
+`APP_READY` pass naturally reassembles fresh context. Two pre-existing, unrelated limitations of the
+already-approved arrival mechanism (per-tab-only in-memory arrival state; a harmless stale
+dictionary key surviving a same-tab user switch) were verified, reported, and left unfixed, per
+instruction not to add cross-tab synchronization.
+
+**Production-backed verified** using the real, unmodified `memoryLayer.js`/
+`internalPipelineOrchestrator.js`: a Pipeline Context assembled at T1, followed by a qualifying
+arrival recorded at T2>T1 (via the real `assembleContext()`/`recordExplicitUserStatementArrival()`
+pair, no comparison logic stubbed), produces a real `expression:{status:'SUPERSEDED'}` result with
+`buildExpressionRenderingContext()` never invoked and the Decision Pass itself still validly
+`FORMED` — proving Decision-Pass-completion and Expression-dispatch are distinct boundaries, and
+that "superseded" means Expression withheld, never a new Terminal Decision.
+
+**Not resolved by this closure:** `js/memory.js`'s D6 UI click handlers remain outside this
+repository's established Node-testing boundary (pre-existing, unchanged by this Work Item);
+Semantic User Understanding (classification, Domain/Topic, semantic projection); the recorded Explicit
+Request immediate-suppression Product rule (not implemented); Conversation/Voice producers
+(architecturally compatible via the same content-blind hook, not built); Decision Evidence, Trust,
+and Relationship Maturity (all untouched).
+
+Full repository regression at this closure: **2013/2013 passing** (1997 pre-ESAF-001 baseline, net
++16). `APP_VERSION`/service-worker `VERSION` inspected and left unchanged (`2.43.0`/`v2.43.0`),
+matching G-2's own precedent (§26): this closure makes a previously-dormant correctness mechanism
+reachable for the first time but ships no new user-visible Coach behavior on its own, since the
+Composite Engine's only live trigger remains background/autonomous with no live Opportunity source.
+See `docs/specs/ESAF_001_SPEC_v1.0.md` for complete evidence.

@@ -15,6 +15,16 @@
     ? require('./persistenceGateway.js')
     : window.PersistenceGateway;
 
+  // ESAF-001 (docs/specs/ESAF_001_SPEC_v1.0.md §4) — same dual-environment pattern, reused
+  // only for its already-existing, additive recordExplicitUserStatementArrival()/
+  // getExplicitUserStatementArrivalTimestamp() pair (D2-EF-07). This module does not gain any
+  // new persistence path, Decision-Input read, or dependency on the Composite Engine's own
+  // Pipeline Context — it only signals, after its own already-existing writes succeed, that an
+  // authoritative user-stated write happened. Content-blind: only {userId} is ever passed.
+  var MemoryLayer = (typeof module !== 'undefined' && module.exports)
+    ? require('./coachDecisionSystem/memoryLayer.js')
+    : window.CoachDecisionSystemMemoryLayer;
+
   // ── סכמה מטויפסת (v3 §4) ─────────────────────────────────────────
   var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal'];
   var MEMORY_SOURCES = ['user_stated', 'inferred_event', 'inferred_pattern', 'coach_generated', 'migrated'];
@@ -38,6 +48,30 @@
     return retryable
       ? baseMsg + ' עקב בעיית תקשורת זמנית. נסה שוב.'
       : baseMsg + ' ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
+  }
+
+  // ESAF-001 (§4/§6/§7) — the exact USM-001 read-path-visibility filter, reused unchanged
+  // (not widened, not narrowed): a record only ever mattered to the authoritative Coach-facing
+  // read path (StateAccess.userStatedMemory / assembleUserStatedMemoryFragment()) if it is
+  // type∈{fact,preference} ∧ source==='user_stated' ∧ status==='active'. Editing/rejecting/
+  // deleting a record outside this set cannot change what that read path could see, so must
+  // not produce freshness churn (SPEC §6/§7 "Why the tightened gate").
+  var ESAF_QUALIFYING_TYPES = ['fact', 'preference'];
+  function esafQualifies(m) {
+    return !!m && ESAF_QUALIFYING_TYPES.indexOf(m.type) >= 0 && m.source === 'user_stated' && m.status === 'active';
+  }
+
+  // ESAF-001 (§4/§9) — the single, content-blind signal call site every producer below uses.
+  // Passes only {userId}: never payload/type/source/status/reason. Defensive against
+  // MemoryLayer being unavailable (mirrors this file's own memoryFailureMessage() defensiveness
+  // toward PersistenceGateway) — a missing MemoryLayer must never break the write path it rides
+  // on top of.
+  function esafSignalArrival() {
+    try {
+      if (MemoryLayer && typeof MemoryLayer.recordExplicitUserStatementArrival === 'function' && currentUser) {
+        MemoryLayer.recordExplicitUserStatementArrival({ userId: currentUser.uid });
+      }
+    } catch (e) {}
   }
 
   // רשומת זיכרון: id · type · payload · confidence · source ·
@@ -283,11 +317,22 @@
     consent.className = 'fitme-mem-consent';
     var cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = !!(userProfile && userProfile.memoryConsent && userProfile.memoryConsent.granted);
+    var consentWasGranted = !!(userProfile && userProfile.memoryConsent && userProfile.memoryConsent.granted);
+    cb.checked = consentWasGranted;
     cb.addEventListener('change', async function () {
       if (!userProfile) return;
-      userProfile.memoryConsent = { granted: cb.checked, at: nowTs() };
-      try { await saveProfile(); } catch (e) {}
+      var wasGranted = consentWasGranted;
+      var nowGranted = cb.checked;
+      userProfile.memoryConsent = { granted: nowGranted, at: nowTs() };
+      // ESAF-001 (§8) — saveProfile() never throws; it catches internally and returns a status
+      // object even on failure. Signal only on a verified {status:'SUCCESS'} AND only when the
+      // grant/revoke value actually changed (a no-op toggle-back-to-same-value must not signal).
+      var result;
+      try { result = await saveProfile(); } catch (e) { result = null; }
+      if (result && result.status === 'SUCCESS') {
+        consentWasGranted = nowGranted;
+        if (nowGranted !== wasGranted) { esafSignalArrival(); }
+      }
     });
     var cspan = document.createElement('span');
     cspan.textContent = 'אני מאשר שהמאמן ילמד ויזכור עליי כדי לשפר את הליווי';
@@ -339,6 +384,10 @@
       if (!txt || !txt.trim()) return;
       try {
         await createMemory({ type: 'fact', payload: { text: txt.trim() }, confidence: 1, source: 'user_stated', status: 'active' });
+        // ESAF-001 (§5) — this creation path is unconditionally type:'fact', source:'user_stated',
+        // status:'active'; reaching here means the write already succeeded (the line above would
+        // have thrown otherwise, skipping straight to catch).
+        esafSignalArrival();
         openSheet();
       } catch (e) { alert(memoryFailureMessage(e, 'לא הצלחתי לשמור')); }
     });
@@ -383,7 +432,15 @@
       var no = document.createElement('button');
       no.textContent = 'לא נכון';
       no.addEventListener('click', async function () {
-        try { await updateMemory(m._id, { status: 'rejected' }); openSheet(); }
+        // ESAF-001 (§6) — evaluate the read-path-visibility gate against the pre-write record
+        // (m), before the status:'rejected' transition below; this update does not touch
+        // type/source, so m's pre-write values are exactly what changes (or doesn't).
+        var qualified = esafQualifies(m);
+        try {
+          await updateMemory(m._id, { status: 'rejected' });
+          if (qualified) { esafSignalArrival(); }
+          openSheet();
+        }
         catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
       });
       actions.appendChild(no);
@@ -400,7 +457,14 @@
       var patch;
       if (m.payload && m.payload.key !== undefined) patch = { payload: { key: m.payload.key, value: nv } };
       else patch = { payload: { text: nv } };
-      try { await updateMemory(m._id, patch); openSheet(); }
+      // ESAF-001 (§6) — this patch only ever touches payload, never type/source/status, so the
+      // pre-write record m already reflects the read-path-visibility gate correctly.
+      var qualified = esafQualifies(m);
+      try {
+        await updateMemory(m._id, patch);
+        if (qualified) { esafSignalArrival(); }
+        openSheet();
+      }
       catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
     });
     actions.appendChild(ed);
@@ -411,7 +475,14 @@
     del.textContent = 'מחק';
     del.addEventListener('click', async function () {
       if (!confirm('למחוק את הפריט הזה מהזיכרון של המאמן?')) return;
-      try { await deleteMemory(m._id); openSheet(); }
+      // ESAF-001 (§7) — evaluate the read-path-visibility gate against the record as it exists
+      // immediately before deletion (m); once deleted it cannot be re-read to check.
+      var qualified = esafQualifies(m);
+      try {
+        await deleteMemory(m._id);
+        if (qualified) { esafSignalArrival(); }
+        openSheet();
+      }
       catch (e) { alert(memoryFailureMessage(e, 'הפעולה נכשלה')); }
     });
     actions.appendChild(del);
@@ -480,6 +551,6 @@
     boot();
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Object.assign({}, API, { _internal: { makeMemory: makeMemory, validateMemory: validateMemory, safeKey: safeKey, memoryFailureMessage: memoryFailureMessage } });
+    module.exports = Object.assign({}, API, { _internal: { makeMemory: makeMemory, validateMemory: validateMemory, safeKey: safeKey, memoryFailureMessage: memoryFailureMessage, esafQualifies: esafQualifies, esafSignalArrival: esafSignalArrival } });
   }
 })();
