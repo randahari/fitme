@@ -70,6 +70,30 @@ test('buildBasePrompt falls back to the raw goal string when not in goalLabels, 
   assert.match(s, /עד 2 משפטים\. נעים וקולע/); // balanced guide
 });
 
+// ── LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §5/§9, Change B) — bounded Safety-scope prompt
+// boundary. Tests the PROMPT CONTRACT ITSELF only — never a claim that the model will comply.
+// One assertion per PD-LSC-04 concept, unconditional (present regardless of profile content).
+
+test('buildBasePrompt includes the bounded Safety-scope instruction unconditionally, covering every required concept', () => {
+  configure();
+  const s = CoachPromptComposer.buildBasePrompt(profile());
+  assert.match(s, /לעולם אל תאבחן מצב רפואי/, 'no diagnosis');
+  assert.match(s, /לעולם אל תסיק מסקנה רפואית מתסמינים/, 'no unsupported medical inference');
+  assert.match(s, /לעולם אל תיתן הוראת טיפול רפואי/, 'no medical treatment instructions');
+  assert.match(s, /אל תמציא ציר זמן החלמה/, 'no invented recovery timeline');
+  assert.match(s, /אם המשתמש דיווח במפורש על הנחיה רפואית פעילה.*כבד אותה כמגבלה/, 'respects an explicit user-reported medical restriction within its literal scope');
+  assert.match(s, /כשמידע בטיחותי מהותי.*אינו ודאי, היה שמרן/, 'conservative uncertainty when Safety-relevant context is materially uncertain');
+  assert.match(s, /אל תהפוך פציעה, כאב, מחלה, או אי-ודאות בטיחותית להמלצת אימון שאינה נתמכת במפורש/, 'no unsupported workout prescription from Safety-sensitive context');
+  assert.match(s, /ואל תהפוך אותם להמלצת תזונה או החלמה שאינה נתמכת במפורש/, 'no unsupported nutrition/recovery prescription from Safety-sensitive context');
+});
+
+test('the Safety-scope instruction is explicit that it is a bounded defense-in-depth boundary, not canonical Safety validation (source-level check)', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(require.resolve('../js/coach/coachPromptComposer.js'), 'utf8');
+  assert.match(src, /NOT canonical Safety validation/);
+  assert.match(src, /NOT a deterministic guarantee/);
+});
+
 // ── coachMemoryFragment ─────────────────────────────────────────────────────────────────
 
 test('coachMemoryFragment returns empty string when there is no coachMemory', () => {
@@ -100,8 +124,13 @@ test('coachLine produces the professional/warm/default variant per kind, matchin
   assert.equal(CoachPromptComposer.coachLine(warm, 'morning', { goal: 2000 }), 'בוקר טוב רן ☀️ יום חדש, הזדמנות חדשה. היעד שלך היום: 2000 קל׳.');
   assert.equal(CoachPromptComposer.coachLine(neutral, 'morning', { goal: 2000 }), 'בוקר טוב רן! היעד שלך היום: 2000 קל׳.');
 
+  // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §6/§10, Change C) — no arm names a specific food.
   assert.equal(CoachPromptComposer.coachLine(proPro, 'protein', { have: 50, target: 140 }), 'חלבון: 50g מתוך 140g.');
-  assert.equal(CoachPromptComposer.coachLine(warm, 'protein', { have: 50, target: 140 }), 'רן, שים לב לחלבון — 50g מתוך 140g. ביצה, עוף או קוטג׳ יסגרו את הפער יפה.');
+  assert.equal(CoachPromptComposer.coachLine(warm, 'protein', { have: 50, target: 140 }), 'רן, שים לב לחלבון — 50g מתוך 140g. תוספת קטנה של מקור חלבון תסגור את הפער יפה.');
+  assert.equal(CoachPromptComposer.coachLine(neutral, 'protein', { have: 50, target: 140 }), 'חסר קצת חלבון: 50g מתוך 140g. תוספת קטנה של מקור חלבון תעזור.');
+  [proPro, warm, neutral].forEach((p) => {
+    assert.doesNotMatch(CoachPromptComposer.coachLine(p, 'protein', { have: 50, target: 140 }), /ביצ|עוף|קוטג/, 'no protein variant may name a specific food');
+  });
 
   assert.equal(CoachPromptComposer.coachLine(proPro, 'evening', { remain: 300 }), 'נותרו 300 קל׳ להיום.');
   assert.equal(CoachPromptComposer.coachLine(proPro, 'streak', { streak: 5 }), 'סטריק 5 ימים — טרם נרשמה ארוחה היום.');

@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.44.0';
+const APP_VERSION = '2.45.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.

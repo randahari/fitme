@@ -1,4 +1,4 @@
-const VERSION = 'v2.44.0';
+const VERSION = 'v2.45.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)

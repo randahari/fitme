@@ -676,6 +676,77 @@ No reassembly or retry is added: a superseded background pass is silently withhe
 
 ---
 
+## LCSC-001 — Legacy Coach Safety Containment
+
+**Status:** ✅ DONE (Implementation complete, approved, closed)
+
+`docs/specs/LCSC_001_SPEC_v1.0.md` completed implementation — a narrow, interim containment Work
+Item, explicitly **not** Safety Foundation design, not a Health/Safety Profile, not an Action Model,
+not a new Safety Layer, and not a reopening of `docs/specs/SL-001_SPEC_v1.0.md`, which remains
+closed and untouched throughout. A dedicated investigation this session found that SL-001's own
+Safety Rule matcher correctly yields zero matches at this repository baseline (no Health/Safety
+Profile data source exists), meaning no Candidate reaching the canonical Decision System is
+currently Safety-reviewed in any meaningful way — and, independently, that the legacy,
+pre-Decision-System Coach message pipeline has **zero** Safety guardrail of any kind and, in one
+concrete, real, data-driven case (the Adaptive-TDEE red-flag trigger), already directs a live
+generative model call to communicate a specific nutrition-behavior instruction. Head of Product +
+AI Architect directed this exposure be contained before broader Safety Foundation design proceeds.
+
+**Change A — Adaptive-TDEE red-flag deterministic containment.** `js/trigger/triggerDomain.js`'s
+`evalRedFlag()` now returns `live: false` (was `true`); `triggerLocalText()` gains a new,
+deterministic `'redflag'` case — none existed before, confirmed by direct inspection (the prior
+fallback silently returned `''` for this type). `js/trigger/triggerController.js`'s
+`triggerLiveText()` gains an unconditional early return for `type: 'redflag'`, independent of the
+`live` flag, so the legacy generative Coach path (`coachMessageFn`) is unreachable for this trigger
+from either entry point — proven by a dedicated test asserting a call count of exactly zero. Per
+Head of Product direction, the deterministic replacement message prescribes no calorie, nutrition,
+or workout adjustment of any kind — it states only that the observed pace and the accompanying
+measurement change together warrant a pause and review.
+
+**Change B — legacy Coach prompt Safety boundary.** `js/coach/coachPromptComposer.js`'s
+`buildBasePrompt()` — confirmed the single function every remaining legacy generative caller's
+system prompt passes through (Home coach card, Settings test message, Adaptive-TDEE weekly summary,
+every non-redflag Trigger live-text case) — gains one new, unconditional, eight-concept bounded
+Safety-scope instruction: no diagnosis; no unsupported medical inference from described symptoms; no
+medical treatment instructions; no invented recovery timeline; respecting an explicit user-reported
+active medical instruction within its literal scope; conservative behavior under materially
+uncertain Safety-relevant context; no unsupported workout prescription from Safety-sensitive
+context; no unsupported nutrition/recovery prescription from Safety-sensitive context.
+**Defense-in-depth prompt containment only** — never Safety classification, medical reasoning
+authority, deterministic validation, or a Stage-8/Stage-9 replacement; no downstream code reads or
+enforces it. USM-001's `userStated` fragment, the legacy `coachMemoryFragment()`, and B5's derived
+fragment remain fully intact and unaffected — the Coach continues to know the user's own
+authoritative stated information.
+
+**Change C — protein-attention template generalization.** Two independent existing deterministic
+surfaces (`coachPromptComposer.js:coachLine()`'s `protein` case; `triggerDomain.js:proteinFoodHint()`,
+also consumed by `triggerLocalText()`'s `'low-protein'` case) previously named a specific food (egg,
+chicken, or cottage cheese) with no authoritative dietary/allergy/restriction context anywhere in
+this repository to justify the choice. Both now preserve protein-gap awareness and encouragement
+while naming no food; `proteinFoodHint()`'s own export key and its `js/app.js:1756` facade are
+unchanged, satisfying an unrelated, pre-existing wiring-test assertion — only its internal behavior
+changed.
+
+**Legacy Coach path status, established by this closure (Product direction, not a committed
+timeline):** the legacy, pre-Decision-System, LLM-generative Coach message pipeline is now
+explicitly **transitional architecture** — it may continue operating, receives containment and
+maintenance only, gains no new Product capability, and its responsibility is not expanded. The
+long-term direction is that the canonical Coach Decision System becomes the authority for coaching
+decisions, with this legacy path expected to be retired as canonical replacements become available.
+This closure does **not** establish canonical Safety architecture, a Stage-8/Stage-9 substitute, or
+evidence that further legacy-path Safety work is unnecessary — SL-001's own Health/Safety Profile
+gap remains exactly as open as SL-001's own closure left it.
+
+New test coverage extending `tests/triggerController.test.js`, `tests/triggerDomain.test.js`, and
+`tests/coachPromptComposer.test.js` (targeted zero-call proofs, deterministic-text assertions,
+prompt-contract assertions, food-name-absence assertions); no new test file; **full repository
+regression: 2146/2146 passing, 0 failing** (2142 pre-LCSC-001 baseline, net +4). `APP_VERSION`/
+service-worker `VERSION` advanced from `2.44.0`/`v2.44.0` to `2.45.0`/`v2.45.0`: existing,
+already-live user-facing message content genuinely changed. See `docs/specs/LCSC_001_SPEC_v1.0.md`'s
+full text for complete evidence.
+
+---
+
 # Next Step
 
 Phase A of the Architecture Remediation Program is complete (REM-001, REM-002, REM-003).
@@ -701,6 +772,7 @@ RGEF — Relationship-Guided Engagement Foundation is approved, implemented (WP1
 ESAF-001 — Explicit User Statement Arrival Freshness is approved, implemented (WP1–WP5) and closed, per `docs/specs/ESAF_001_SPEC_v1.0.md` — USM-001's manual Typed Memory write path now signals the Internal Pipeline Orchestrator's own pre-existing D2-EF-07 pre-dispatch supersession check for the first time, proving new authoritative user information can invalidate a Decision assembled before it arrived, with no semantic interpretation and no `APP_VERSION` change.
 CSSC-001 — Current State / Situational Context V1 is approved, implemented (WP1–WP8) and closed, per `docs/specs/CSSC_001_SPEC_v1.0.md` — the first real, end-to-end Semantic User Understanding vertical, reaching the existing, live `FOOD_LOGGING`/`WEAKENING` Contextual Meaning consumer as non-causal background only, with no Domain/Topic invention, no causal inference, and no `APP_VERSION` change.
 EUR-001 — Explicit User Request V1 is approved, implemented and closed, per `docs/specs/EUR_001_SPEC_v1.0.md` — the second real, end-to-end Semantic User Understanding vertical, and this foundation's first real, behavior-changing consumer: a resolved, actionable `NUTRITION`/`FOOD_LOGGING` suppression request now deterministically withholds Initiative Engine Stage 6's matching Candidate, proven end to end against the same real Habit/RGEF fixture, with `APP_VERSION`/`VERSION` advanced to `2.44.0`/`v2.44.0`.
+LCSC-001 — Legacy Coach Safety Containment is approved, implemented and closed, per `docs/specs/LCSC_001_SPEC_v1.0.md` — a narrow, interim containment Work Item (not Safety Foundation design, not a reopening of SL-001) closing two confirmed-live current exposure paths in the legacy, pre-Decision-System Coach message pipeline and generalizing an adjacent deterministic food-naming surface; the legacy Coach path is now explicitly recorded as transitional architecture; `APP_VERSION`/`VERSION` advanced to `2.45.0`/`v2.45.0`.
 
-Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), TASK-006 (Decision Engine), SL-001 (Safety Layer), TASK-007 (UX System), TASK-008 (Design System), Expression (D3 §17's sixth and final Coach Decision System collaborator), G-2 (Live Stage 3/4 Opportunity Recognition), RGEF (Relationship-Guided Engagement Foundation), ESAF-001 (Explicit User Statement Arrival Freshness), CSSC-001 (Current State / Situational Context V1), and EUR-001 (Explicit User Request V1) are complete and closed. (Note: this list pre-existingly omits USM-001 — Authoritative User Understanding Foundation, First Vertical, which has its own full section above; that omission predates this closure and is left uncorrected here, as it is unrelated to this Work Item's own scope.)
-Next Work Item: Not yet designated. The next Product/Architecture activity after EUR-001's closure will be determined separately through Canonical Work Item Selection — this Roadmap does not name or assume a successor task.
+Current Work Item: None. Phase C (C1–C4), the D-series (D1–D3), TASK-004 (Recommendation Engine), TASK-005 (Initiative Engine), TASK-006 (Decision Engine), SL-001 (Safety Layer), TASK-007 (UX System), TASK-008 (Design System), Expression (D3 §17's sixth and final Coach Decision System collaborator), G-2 (Live Stage 3/4 Opportunity Recognition), RGEF (Relationship-Guided Engagement Foundation), ESAF-001 (Explicit User Statement Arrival Freshness), CSSC-001 (Current State / Situational Context V1), EUR-001 (Explicit User Request V1), and LCSC-001 (Legacy Coach Safety Containment) are complete and closed. (Note: this list pre-existingly omits USM-001 — Authoritative User Understanding Foundation, First Vertical, which has its own full section above; that omission predates this closure and is left uncorrected here, as it is unrelated to this Work Item's own scope.)
+Next Work Item: Not yet designated. The next Product/Architecture activity after LCSC-001's closure will be determined separately through Canonical Work Item Selection — this Roadmap does not name or assume a successor task.

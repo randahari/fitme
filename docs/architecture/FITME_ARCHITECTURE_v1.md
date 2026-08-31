@@ -1568,3 +1568,77 @@ net +82). `APP_VERSION`/service-worker `VERSION` advanced from `2.43.0`/`v2.43.0
 genuinely and deterministically changes an existing, live Terminal Decision's outcome — proven,
 not assumed, above — the moment a user explicitly, literally requests it: new, real, user-visible
 Coach behavior. See `docs/specs/EUR_001_SPEC_v1.0.md` for complete evidence.
+
+## 32. LCSC-001 — Legacy Coach Safety Containment
+
+**Added by LCSC-001** (`docs/specs/LCSC_001_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). A
+narrow, interim containment Work Item — explicitly **not** Safety Foundation design, not a
+Health/Safety Profile, not an Action Model, not a new Safety Layer, and not a replacement for or
+reopening of `docs/specs/SL-001_SPEC_v1.0.md`, which remains closed and untouched. Closes two
+confirmed-live current exposure paths a dedicated investigation this session identified in the
+legacy, pre-Decision-System Coach message pipeline (`js/coach/coachClient.js`/`coachPromptComposer.js`,
+`js/trigger/triggerController.js`), plus one adjacent deterministic food-naming surface generalized
+for the same underlying reason: no authoritative dietary/allergy/restriction context exists
+anywhere in this repository.
+
+**Change A — Adaptive-TDEE red-flag deterministic containment.** The real, data-driven red-flag
+condition (`slopePctWeek < -1.2 && armDown` — rapid weight-loss rate combined with a shrinking arm
+measurement) previously triggered a live, unreviewed generative Coach message instructing the model
+to communicate a specific nutrition-behavior directive. `js/trigger/triggerDomain.js`'s
+`evalRedFlag()` now returns `live: false`; `triggerLocalText()` gains a new, deterministic
+`'redflag'` case (none existed before — the prior fallback silently returned an empty string for
+this type). `js/trigger/triggerController.js`'s `triggerLiveText()` gains an unconditional early
+return for `type: 'redflag'`, independent of the `live` flag, so a direct call to this
+independently-testable function can never reach the legacy generative path either. Per Head of
+Product direction, the deterministic replacement text names no calorie, nutrition, or workout
+adjustment of any kind — it only states that the observed pace and the accompanying measurement
+change together warrant a pause and review.
+
+**Change B — legacy Coach prompt Safety boundary.** `js/coach/coachPromptComposer.js`'s
+`buildBasePrompt()` — confirmed the single function every remaining legacy generative Coach caller's
+system prompt passes through (Home coach card, Settings test message, Adaptive-TDEE weekly summary,
+every non-redflag Trigger live-text case) — gains one new, unconditional, bounded instruction
+covering eight concepts: no diagnosis; no unsupported medical inference from described symptoms; no
+medical treatment instructions; no invented recovery timeline; respecting an explicit user-reported
+active medical instruction within its literal scope; conservative behavior (never inventing
+professional certainty) when Safety-relevant context is materially uncertain; no unsupported
+workout prescription from Safety-sensitive context; no unsupported nutrition/recovery prescription
+from Safety-sensitive context. **This is defense-in-depth prompt containment only** — explicitly,
+canonically, never represented as Safety classification, medical reasoning authority, deterministic
+Safety validation, a Stage-8/Stage-9 replacement, or a Health/Safety Profile interpretation. No
+downstream code reads or enforces it; the model may still deviate from it, the same honest
+limitation CSSC-001's own prompt-level abstention instruction already discloses for a structurally
+identical reason. USM-001's `assembleUserStatedMemoryFragment()`/`userStatedMemoryPrompt.js`
+projection, the legacy `coachMemoryFragment()`, and B5's derived-intelligence fragment are all
+unmodified, unremoved, and unaffected — the Coach continues to know the user's own authoritative
+stated information; only the model's behavior boundary changes.
+
+**Change C — protein-attention template generalization.** Two independent existing deterministic
+surfaces both named a specific food (egg, chicken, or cottage cheese) with no authoritative
+dietary/allergy/restriction context to justify the choice: `coachPromptComposer.js:coachLine()`'s
+`protein` case (two of its three tone arms) and `triggerDomain.js:proteinFoodHint()` (consumed by
+`triggerLocalText()`'s `'low-protein'` case, and separately exposed as a facade at `js/app.js:1756`).
+Both now preserve protein-gap awareness and encouragement while naming no food.
+`proteinFoodHint()`'s own export key and the `js/app.js` facade are unchanged — only its internal
+behavior changed, from food-selection to a fixed generic phrase — preserving an unrelated existing
+wiring-test assertion.
+
+**Legacy Coach path status, established by this closure (Product direction, not yet a committed
+timeline):** the legacy, pre-Decision-System, LLM-generative Coach message pipeline
+(`coachClient.js`/`coachPromptComposer.js`, consumed by `CoachPresenter`/`AdaptiveTdeeController`/
+`TriggerController`) is now explicitly recorded as **transitional architecture**. It may continue
+operating while canonical replacements are built; it receives containment and maintenance only — no
+new Product capability, no expansion of responsibility, no redesign. The long-term direction is that
+the canonical Coach Decision System becomes the authority for coaching decisions, and this legacy
+path is expected to be retired as canonical replacements become available. **This closure explicitly
+does not establish:** canonical Safety architecture of any kind; a substitute for Stage 8/Stage 9;
+or evidence that further legacy-path Safety work is unnecessary — SL-001's own Health/Safety Profile
+gap (`matchCanonicalSafetyRules()` correctly yields zero matches at this repository baseline,
+confirmed unchanged) remains exactly as open as SL-001's own closure left it.
+
+Full repository regression at this closure: **2146/2146 passing** (2142 pre-LCSC-001 baseline, net
++4). `APP_VERSION`/service-worker `VERSION` advanced from `2.44.0`/`v2.44.0` to `2.45.0`/`v2.45.0`:
+existing, already-live user-facing message content genuinely changed (the red-flag trigger's
+wording, and the removal of named food examples from two deterministic surfaces), matching the same
+"genuinely new/changed observable user-facing behavior" precedent RGEF/USM-001/EUR-001 each already
+established. See `docs/specs/LCSC_001_SPEC_v1.0.md` for complete evidence.

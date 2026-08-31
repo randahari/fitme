@@ -60,7 +60,13 @@
       if (!calc.enoughData) return null;
       var meas = AdaptiveTdeeDomain.analyzeMeasurements(profile);
       var sig = AdaptiveTdeeDomain.buildWeeklySignals(calc, meas, profile);
-      if (sig.redFlag) return { type: 'redflag', priority: PRIO.health, live: true, data: { sig: sig, calc: calc } };
+      // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4, Change A): live:false — this trigger no
+      // longer attempts a generative upgrade. The legacy generative Coach path is not Safety-
+      // reviewed (SL-001's matchCanonicalSafetyRules() has no live input; see LCSC-001's own
+      // investigation chain), so a real, data-driven Safety-adjacent trigger (rapid weight-loss
+      // rate + shrinking arm measurement) must not reach it. The deterministic text below
+      // (triggerLocalText()'s new 'redflag' case) is shown unconditionally instead.
+      if (sig.redFlag) return { type: 'redflag', priority: PRIO.health, live: false, data: { sig: sig, calc: calc } };
     } catch (e) {}
     return null;
   }
@@ -135,13 +141,15 @@
     return filtered[0];
   }
 
-  // מאכל חלבוני מהרשימה של המשתמש (אחרת ברירת מחדל) — זהה לחלוטין ל-proteinFoodHint()
-  // המקורי; profile מתקבל כפרמטר במקום userProfile הגלובלי.
+  // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §6, Change C) — no longer selects a specific food
+  // from the user's own list or a fixed default. Until FITME has authoritative dietary/allergy/
+  // restriction context, no deterministic surface may choose a food for the user (a generic,
+  // user-selected food from onboarding tags could still legitimately conflict with an allergy/
+  // restriction FITME has no record of). The function signature/export/facade
+  // (js/app.js:1756, tests/c1Wp8Wiring.test.js:127) are preserved unchanged — only this internal
+  // behavior changes, from food-selection to a fixed, generic, non-food-specific phrase.
   function proteinFoodHint(profile) {
-    var foods = (profile && profile.foods) || [];
-    var rich = ['עוף', 'ביצים', 'דג', 'קוטג\'', 'יוגורט', 'בשר', 'טונה', 'גבינה', 'חלבון', 'שניצל'];
-    var hit = foods.find(function (f) { return rich.some(function (r) { return f.includes(r); }); });
-    return hit || 'ביצה, קוטג׳ או עוף';
+    return 'מקור חלבון';
   }
 
   // ── טקסט מקומי לכל טריגר (חינם) — זהה לחלוטין ל-triggerLocalText() המקורי; profile
@@ -150,10 +158,24 @@
     var n = CoachProfile.coachName(profile);
     var warm = CoachProfile.coachChatter(profile) === 'gentle';
     switch (t.type) {
+      // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4, Change A) — deterministic replacement for
+      // the prior generative red-flag message. Per Head of Product Final Clarification 1: this
+      // text names no calorie/nutrition/workout adjustment of any kind — it only flags that the
+      // observed pace and the measurement change together warrant a pause and review, never a
+      // specific behavior-changing instruction.
+      case 'redflag':
+        return warm
+          ? (n + ', שמתי לב שהקצב כרגע מהיר מהמתוכנן, וגם יש שינוי בהיקף הזרוע. בלי לחץ — כדאי ' +
+             'לעצור רגע ולבחון יחד התאמה לפני שממשיכים באותו הקצב.')
+          : ('הקצב הנוכחי מהיר מהמתוכנן, וגם ההיקף בזרוע השתנה. כדאי לעצור רגע ולבחון התאמה ' +
+             'לפני שממשיכים באותו הקצב.');
       case 'forgot-eat':
         return warm ? (n + ', עוד לא ראיתי הרבה רישום היום — מה אכלת עד עכשיו? בוא נעדכן.') : ('לא שכחת לרשום? עד עכשיו רק ' + t.data.have + ' קל׳. מה אכלת היום?');
+      // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §6, Change C) — no longer calls
+      // proteinFoodHint()/names a specific food; a fixed, generic closing clause preserves
+      // protein-gap awareness and encouragement without selecting a food.
       case 'low-protein':
-        return n + ', יומיים שהחלבון נמוך (' + t.data.have + 'g מתוך ' + t.data.target + 'g). ' + proteinFoodHint(profile) + ' יסגור את הפער יפה.';
+        return n + ', יומיים שהחלבון נמוך (' + t.data.have + 'g מתוך ' + t.data.target + 'g). תוספת קטנה של מקור חלבון יסגור את הפער יפה.';
       case 'no-workout':
         return warm ? (n + ', כבר ' + t.data.since + ' ימים בלי אימון — הגוף שלך מוכן, גם 20 דקות זה ניצחון.') : (t.data.since + ' ימים בלי אימון. מה דעתך על אימון קצר היום?');
       case 'close-goal':

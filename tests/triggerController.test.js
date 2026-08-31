@@ -183,7 +183,10 @@ test('presentTriggerCard upgrades to the live coach message for a live trigger, 
   deps.documentRef._elements['trigger-card'] = card;
   deps.documentRef._elements['trigger-card-text'] = textEl;
   TriggerController.configure(deps);
-  await TriggerController.presentTriggerCard({ type: 'redflag', live: true, data: {} }, 1);
+  // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4, Change A) — redflag is no longer live:true;
+  // this test's own purpose (proving the live-upgrade mechanism itself) is preserved using a
+  // still-live type instead (streak milestones remain live: s >= 30).
+  await TriggerController.presentTriggerCard({ type: 'streak-30', live: true, data: { streak: 30 } }, 1);
   assert.equal(textEl.textContent, 'הודעת מאמן');
 });
 
@@ -195,7 +198,9 @@ test('presentTriggerCard suppresses the live-text upgrade when the session goes 
   deps.documentRef._elements['trigger-card'] = card;
   deps.documentRef._elements['trigger-card-text'] = textEl;
   TriggerController.configure(deps);
-  await TriggerController.presentTriggerCard({ type: 'redflag', live: true, data: {} }, 1);
+  // LCSC-001 — same fixture-type update as above; this test's own purpose (session-staleness
+  // suppression) is unrelated to and unaffected by the redflag containment change.
+  await TriggerController.presentTriggerCard({ type: 'streak-30', live: true, data: { streak: 30 } }, 1);
   assert.notEqual(textEl.textContent, 'הודעה חדשה');
 });
 
@@ -213,15 +218,49 @@ test('triggerLiveText requests an AI message and falls back to the local text on
   assert.match(rFail, /30 ימים ברצף/);
 });
 
-test('triggerLiveText composes a specific context for redflag vs. streak vs. any other type', async () => {
+test('triggerLiveText composes a specific context for streak vs. any other type (redflag no longer requests one — see dedicated test below)', async () => {
   const { deps, calls } = fakeDeps();
   TriggerController.configure(deps);
-  await TriggerController.triggerLiveText({ type: 'redflag', data: {} });
-  assert.match(calls.find((c) => c[0] === 'coachMessage')[1], /דגל אדום מהמנוע המסתגל/);
   await TriggerController.triggerLiveText({ type: 'streak-60', data: { streak: 60 } });
   assert.match(calls[calls.length - 1][1], /הגיע ל-60 ימים ברצף/);
   await TriggerController.triggerLiveText({ type: 'workout-logged', data: {} });
   assert.match(calls[calls.length - 1][1], /אירוע: workout-logged/);
+});
+
+// ── LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4/§8, Change A) — redflag containment ──────
+
+test('redflag never invokes coachMessageFn, from either entry point — presentTriggerCard\'s own t.live gate (now false) or a direct triggerLiveText() call — and the trigger remains visible with deterministic text', async () => {
+  const card = fakeElement();
+  const textEl = fakeElement();
+  let revealed = false;
+  card.classList.remove = (c) => { if (c === 'hidden') revealed = true; };
+  const { deps, calls } = fakeDeps();
+  deps.documentRef._elements['trigger-card'] = card;
+  deps.documentRef._elements['trigger-card-text'] = textEl;
+  TriggerController.configure(deps);
+
+  // Entry point 1: presentTriggerCard(), using the real post-change live:false value.
+  await TriggerController.presentTriggerCard({ type: 'redflag', live: false, data: {} }, 1);
+  assert.equal(revealed, true, 'the trigger card must still be shown for a redflag trigger');
+  assert.match(textEl.textContent, /קצב/, 'deterministic redflag text must be present');
+  assert.ok(!calls.some((c) => c[0] === 'coachMessage'), 'presentTriggerCard must never request an AI message for redflag');
+
+  // Entry point 2: a direct call to triggerLiveText(), bypassing presentTriggerCard()'s own gate.
+  const directResult = await TriggerController.triggerLiveText({ type: 'redflag', data: {} });
+  assert.match(directResult, /קצב/);
+  assert.equal(calls.filter((c) => c[0] === 'coachMessage').length, 0, 'coachMessageFn call count must be exactly 0 for redflag, from any entry point');
+});
+
+test('redflag deterministic text differs by coachChatter tone, matching triggerLocalText()\'s own warm/neutral variants', async () => {
+  const { deps: warmDeps } = fakeDeps({ userProfile: profile({ name: 'רן', coachChatter: 'gentle' }) });
+  TriggerController.configure(warmDeps);
+  const warmResult = await TriggerController.triggerLiveText({ type: 'redflag', data: {} });
+  assert.match(warmResult, /רן/);
+
+  const { deps: neutralDeps } = fakeDeps({ userProfile: profile({ coachChatter: 'balanced' }) });
+  TriggerController.configure(neutralDeps);
+  const neutralResult = await TriggerController.triggerLiveText({ type: 'redflag', data: {} });
+  assert.doesNotMatch(neutralResult, /^רן,/);
 });
 
 // ── fireWorkoutTrigger ──────────────────────────────────────────────────────────────────

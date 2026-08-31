@@ -59,6 +59,23 @@
     gentle: '2–3 משפטים חמים ומלווים, עם מילת עידוד אמיתית.'
   };
 
+  // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §5, Change B) — the eight-concept, bounded,
+  // defense-in-depth Safety-scope instruction (Head of Product Final Clarification 2). Applies
+  // unconditionally, to every buildBasePrompt() call, reaching every remaining legacy generative
+  // Coach caller via buildSystemPrompt(). Not Safety classification, not medical reasoning
+  // authority, not a deterministic guarantee, not a Stage-8/Stage-9 replacement, not a
+  // Health/Safety Profile interpretation — see buildBasePrompt()'s own citation below.
+  var SAFETY_BOUNDARY_LINE =
+    'זהו גבול בטיחות מחייב, נוסף על ההנחיות למעלה: לעולם אל תאבחן מצב רפואי. ' +
+    'לעולם אל תסיק מסקנה רפואית מתסמינים שתוארו. ' +
+    'לעולם אל תיתן הוראת טיפול רפואי. ' +
+    'אל תמציא ציר זמן החלמה. ' +
+    'אם המשתמש דיווח במפורש על הנחיה רפואית פעילה שנמסרה לו (למשל, הנחיית רופא), כבד אותה כמגבלה ' +
+    'במסגרת הליווי, בלי לפרש, לאמת, או להטיל ספק בסיבה הרפואית שמאחוריה. ' +
+    'כשמידע בטיחותי מהותי — כגון פציעה, כאב, מחלה, או הנחיה רפואית — אינו ודאי, היה שמרן ואל ' +
+    'תמציא ודאות מקצועית: אל תהפוך פציעה, כאב, מחלה, או אי-ודאות בטיחותית להמלצת אימון שאינה ' +
+    'נתמכת במפורש, ואל תהפוך אותם להמלצת תזונה או החלמה שאינה נתמכת במפורש.';
+
   // הוראת מערכת קצרה שמרכיבה את הדמות מההעדפות — זהה לחלוטין ל-buildCoachSystemPrompt()
   // המקורי (השכבה הבסיסית, לפני הזרקת B5). goalLabels מוזרק (קבוע משותף עם domains אחרים).
   function buildBasePrompt(userProfile) {
@@ -82,7 +99,14 @@
       'אופי: ' + (COACH_STYLE_GUIDE[CoachProfile.coachStyle(userProfile)] || COACH_STYLE_GUIDE.mixed),
       'אורך: ' + (COACH_CHATTER_GUIDE[CoachProfile.coachChatter(userProfile)] || COACH_CHATTER_GUIDE.balanced),
       'לעולם אל תמציא נתונים שלא נמסרו לך. אל תשתמש בכותרות, רשימות או Markdown — טקסט רץ בלבד.',
-      'אל תפתח ב"שלום" חוזר בכל הודעה. היה טבעי.'
+      'אל תפתח ב"שלום" חוזר בכל הודעה. היה טבעי.',
+      // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §5, Change B) — bounded, defense-in-depth
+      // Safety-scope instruction only. NOT canonical Safety validation, NOT medical reasoning
+      // authority, NOT a deterministic guarantee, NOT a Stage-8/Stage-9 replacement, NOT a
+      // Health/Safety Profile interpretation — this module never reads or enforces this
+      // instruction downstream; it is text the model may still deviate from (same honest
+      // limitation CSSC-001's own prompt-level abstention instruction already discloses).
+      SAFETY_BOUNDARY_LINE
     ].filter(Boolean).join(' ');
   }
 
@@ -109,7 +133,10 @@
     var pro = CoachProfile.coachStyle(userProfile) === 'professional' || CoachProfile.coachChatter(userProfile) === 'minimal';
     var T = {
       morning:   pro ? ('בוקר טוב. יעד היום: ' + d.goal + ' קל׳.') : warm ? ('בוקר טוב ' + n + ' ☀️ יום חדש, הזדמנות חדשה. היעד שלך היום: ' + d.goal + ' קל׳.') : ('בוקר טוב ' + n + '! היעד שלך היום: ' + d.goal + ' קל׳.'),
-      protein:   pro ? ('חלבון: ' + d.have + 'g מתוך ' + d.target + 'g.') : warm ? (n + ', שים לב לחלבון — ' + d.have + 'g מתוך ' + d.target + 'g. ביצה, עוף או קוטג׳ יסגרו את הפער יפה.') : ('חסר קצת חלבון: ' + d.have + 'g מתוך ' + d.target + 'g. אולי ביצים או קוטג׳?'),
+      // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §6, Change C) — no longer names a specific
+      // food; until FITME has authoritative dietary/allergy/restriction context, no deterministic
+      // surface may choose one. Protein-gap awareness and encouragement preserved.
+      protein:   pro ? ('חלבון: ' + d.have + 'g מתוך ' + d.target + 'g.') : warm ? (n + ', שים לב לחלבון — ' + d.have + 'g מתוך ' + d.target + 'g. תוספת קטנה של מקור חלבון תסגור את הפער יפה.') : ('חסר קצת חלבון: ' + d.have + 'g מתוך ' + d.target + 'g. תוספת קטנה של מקור חלבון תעזור.'),
       evening:   pro ? ('נותרו ' + d.remain + ' קל׳ להיום.') : warm ? (n + ', יש לך עוד זמן — נותרו ' + d.remain + ' קל׳ להיום, אתה בכיוון טוב.') : (n + ', נותרו ' + d.remain + ' קל׳ להיום. תספיק!'),
       streak:    pro ? ('סטריק ' + d.streak + ' ימים — טרם נרשמה ארוחה היום.') : warm ? (n + ', הסטריק היפה שלך (' + d.streak + ' ימים) מחכה — רישום קטן אחד וזה נשמר 🔥') : ('אל תשבור את הסטריק! ' + d.streak + ' ימים בסכנה — רשום משהו 🔥'),
       achieve:   pro ? ('הישג חדש: ' + d.title + '.') : warm ? (n + ', כל הכבוד! פתחת הישג: ' + d.title + ' ' + d.icon) : ('הישג חדש ' + d.icon + ' — ' + d.title + '!'),

@@ -137,13 +137,20 @@
   }
 
   // ── בקשת טקסט חי מהמאמן לטריגר (רגעים גדולים) — זהה לחלוטין ל-triggerLiveText()
-  // המקורי. ──
+  // המקורי, למעט LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4, Change A) — ראה redflag למטה. ──
   async function triggerLiveText(t) {
+    // LCSC-001 — redflag never reaches the legacy generative Coach path (coachMessageFn), from
+    // this entry point or via presentTriggerCard()'s own t.live gate (triggerDomain.js's
+    // evalRedFlag() now sets live:false) — this is the second, independent, unconditional
+    // containment: even a direct call to triggerLiveText({type:'redflag'}) never invokes
+    // coachMessageFn. The deterministic 'redflag' case in TriggerDomain.triggerLocalText() is
+    // returned directly instead.
+    if (t.type === 'redflag') {
+      return TriggerDomain.triggerLocalText(deps.getUserProfile(), t);
+    }
     var ctx = '';
     var name = deps.coachNameFn();
-    if (t.type === 'redflag') {
-      ctx = 'דגל אדום מהמנוע המסתגל: ' + name + ' יורד במשקל מהר מדי והזרוע מצטמקת — סימן לאובדן שריר. הרגע אותו, הסבר בקצרה שנאט את הקצב ונוסיף קצת קלוריות כדי לשמור על השריר. טון תומך.';
-    } else if (t.type.indexOf('streak-') === 0) {
+    if (t.type.indexOf('streak-') === 0) {
       ctx = name + ' הגיע ל-' + t.data.streak + ' ימים ברצף באפליקציה. חגוג את זה איתו בחום, משפט קצר.';
     } else {
       ctx = 'אירוע: ' + t.type + '. תגיב בקצרה בהתאם לאופי.';

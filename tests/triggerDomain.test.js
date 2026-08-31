@@ -158,7 +158,9 @@ test('evalRedFlag fires when the adaptive engine detects a losing-muscle scenari
   assert.notEqual(t, null);
   assert.equal(t.type, 'redflag');
   assert.equal(t.priority, D.PRIO.health);
-  assert.equal(t.live, true);
+  // LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §4, Change A) — redflag no longer attempts a
+  // generative upgrade; the legacy generative Coach path is not Safety-reviewed.
+  assert.equal(t.live, false);
   assert.equal(t.data.sig.redFlag, true);
 });
 
@@ -182,15 +184,21 @@ test('selectTrigger returns the single highest-priority candidate', () => {
 });
 
 // ── proteinFoodHint ──────────────────────────────────────────────────────────────────────
+// LCSC-001 (docs/specs/LCSC_001_SPEC_v1.0.md §6, Change C): proteinFoodHint() no longer selects
+// a specific food from the user's own list or a fixed default — until FITME has authoritative
+// dietary/allergy/restriction context, no deterministic surface may choose a food. The function
+// signature/export/facade (js/app.js:1756, tests/c1Wp8Wiring.test.js:127) are unchanged; only
+// its return value's content changes, from a specific food name to a fixed generic phrase,
+// regardless of profile.foods content.
 
-test('proteinFoodHint returns a food from the user\'s own list when it matches a protein-rich keyword', () => {
-  assert.equal(D.proteinFoodHint({ foods: ['תפוח', 'עוף בגריל'] }), 'עוף בגריל');
+test('proteinFoodHint no longer selects a food from the user\'s own list, even when one matches a protein-rich keyword', () => {
+  assert.equal(D.proteinFoodHint({ foods: ['תפוח', 'עוף בגריל'] }), 'מקור חלבון');
 });
 
-test('proteinFoodHint falls back to the default hint when no profile food matches', () => {
-  assert.equal(D.proteinFoodHint({ foods: ['תפוח', 'בננה'] }), 'ביצה, קוטג׳ או עוף');
-  assert.equal(D.proteinFoodHint({}), 'ביצה, קוטג׳ או עוף');
-  assert.equal(D.proteinFoodHint(null), 'ביצה, קוטג׳ או עוף');
+test('proteinFoodHint returns the same fixed generic phrase regardless of profile content', () => {
+  assert.equal(D.proteinFoodHint({ foods: ['תפוח', 'בננה'] }), 'מקור חלבון');
+  assert.equal(D.proteinFoodHint({}), 'מקור חלבון');
+  assert.equal(D.proteinFoodHint(null), 'מקור חלבון');
 });
 
 // ── triggerLocalText ─────────────────────────────────────────────────────────────────────
@@ -205,6 +213,8 @@ test('triggerLocalText produces the warm vs. neutral variant per coachChatter, f
   assert.equal(D.triggerLocalText(neutral, { type: 'forgot-eat', data: { have: 200 } }), 'לא שכחת לרשום? עד עכשיו רק 200 קל׳. מה אכלת היום?');
 
   assert.match(D.triggerLocalText(neutral, { type: 'low-protein', data: { have: 40, target: 130 } }), /רן, יומיים שהחלבון נמוך \(40g מתוך 130g\)\./);
+  // LCSC-001 §6/§10 — the full low-protein message no longer names a specific food.
+  assert.doesNotMatch(D.triggerLocalText(neutral, { type: 'low-protein', data: { have: 40, target: 130 } }), /ביצ|עוף|קוטג/);
 
   assert.equal(D.triggerLocalText(warm, { type: 'no-workout', data: { since: 5 } }), 'רן, כבר 5 ימים בלי אימון — הגוף שלך מוכן, גם 20 דקות זה ניצחון.');
   assert.equal(D.triggerLocalText(neutral, { type: 'no-workout', data: { since: 5 } }), '5 ימים בלי אימון. מה דעתך על אימון קצר היום?');
@@ -212,6 +222,16 @@ test('triggerLocalText produces the warm vs. neutral variant per coachChatter, f
   assert.equal(D.triggerLocalText(neutral, { type: 'close-goal', data: { remain: 150 } }), 'רן, נותרו רק 150 קל׳ ליעד — עוד ארוחה קטנה וסגרת יום מושלם.');
 
   assert.equal(D.triggerLocalText(neutral, { type: 'streak-30', data: { streak: 30 } }), 'רן, 30 ימים ברצף! 🔥 אתה במומנטום מעולה.');
+
+  // LCSC-001 §4/§8/§9 — the deterministic redflag message: exists, both tone variants, and
+  // per Head of Product Final Clarification 1, prescribes no calorie/nutrition/workout change.
+  const warmRedflag = D.triggerLocalText(warm, { type: 'redflag', data: {} });
+  const neutralRedflag = D.triggerLocalText(neutral, { type: 'redflag', data: {} });
+  assert.match(warmRedflag, /רן/);
+  assert.match(warmRedflag, /קצב/);
+  assert.match(neutralRedflag, /קצב/);
+  assert.doesNotMatch(warmRedflag, /קלור|קלוריות|תוסיף קלוריות/);
+  assert.doesNotMatch(neutralRedflag, /קלור|קלוריות|תוסיף קלוריות/);
 });
 
 test('triggerLocalText returns empty string for an unrecognized trigger type', () => {
