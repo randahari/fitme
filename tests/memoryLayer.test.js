@@ -11,6 +11,7 @@ const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const SituationalContextInterpreter = require('../js/coachDecisionSystem/situationalContextInterpreter.js');
 const ExplicitRequestInterpreter = require('../js/coachDecisionSystem/explicitRequestInterpreter.js');
+const SafetyContextInterpreter = require('../js/coachDecisionSystem/safetyContextInterpreter.js');
 
 function configureHappyPath() {
   StateAccess.configure({
@@ -976,4 +977,232 @@ test('EUR1-P. this new step does not affect situationalContext or any other exis
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
   assert.deepEqual(ctx.feedbackHistory, []);
   assert.equal(ctx.relationshipMaturity.stage, 'UNKNOWN');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// USC-001 (docs/specs/USC_001_SPEC_v1.0.md §13) — User Safety Context assembly: no mechanical
+// pre-check gate (same design as explicitRequestControls above), the reused
+// memoryLayer/USER_STATED_MEMORY_READ identity, and graceful degradation. The interpreter's own
+// classification/literal-substring-validation logic is covered separately and exhaustively in
+// tests/safetyContextInterpreter.test.js — here we stub SafetyContextInterpreter's own callClaude
+// (same monkey-patching convention as the CSSC1/EUR1 blocks above) to isolate Memory Layer's own
+// integration logic. Foundation A only — no Candidate.actionIdentity, no activity vocabulary, no
+// Safety Rule/matcher behavior anywhere in this block (USC-001 §19).
+// ══════════════════════════════════════════════════════════════════
+
+test.afterEach(() => { SafetyContextInterpreter.configure({ callClaude: null }); });
+
+test('USC1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
+  configureConsentGranted(async () => []);
+  let called = false;
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyContext, null);
+  assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('USC1-B. like explicitRequestControls, this step attempts a read/classification with NO live Habit/Pattern signal required — no pre-check gate', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now, my knee is hurt.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  let called = false;
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(called, true, 'USC-001 must attempt classification even with zero live Habit/Pattern signals — it has no equivalent pre-check gate');
+});
+
+test('USC1-C. an accepted RESTRICTION_STATED record populates userSafetyContext.items with DERIVED_INTERPRETATION, never USER_STATED', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now, my knee is hurt.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
+  assert.equal(ctx.userSafetyContext.items.length, 1);
+  const item = ctx.userSafetyContext.items[0];
+  assert.equal(item.sourceMemoryId, 'mem-1');
+  assert.equal(item.restrictedActivityText, 'run');
+  assert.equal(item.interpretationAuthority, 'DERIVED_INTERPRETATION');
+  assert.notEqual(item.interpretationAuthority, 'USER_STATED');
+  assert.equal('statedDurationText' in item, false, 'absent — never a null placeholder — when the source statement carried no temporal qualifier');
+});
+
+test('USC1-D. PD-USC-01: an accepted restriction with a literal temporal qualifier carries statedDurationText verbatim', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run for a month.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: 'for a month' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const item = ctx.userSafetyContext.items[0];
+  assert.equal(item.restrictedActivityText, 'run');
+  assert.equal(item.statedDurationText, 'for a month');
+});
+
+test('USC1-E. a symptom-only mention (no literal restriction) never enters items[] — attempted, AVAILABLE, empty', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My knee hurts a little today.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.userSafetyContext.items, []);
+  assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
+});
+
+test('USC1-F. a plain, non-restriction fact never enters items[]', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.userSafetyContext.items, []);
+});
+
+test('USC1-G. more than one batch\'s worth of eligible records all receive legitimate consideration — none dropped by recency or a fixed total count', async () => {
+  const records = Array.from({ length: 14 }, (_, i) => ({
+    _id: 'mem-' + String(i).padStart(2, '0'), type: 'fact', payload: { text: 'I cannot run today, item ' + i },
+    confidence: 1, source: 'user_stated', status: 'active', updated_at: 1000 - i
+  }));
+  configureConsentGranted(async () => records);
+  const seenIds = new Set();
+  SafetyContextInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      ids.forEach((id) => seenIds.add(id));
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
+    }
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(seenIds.size, 14, 'every eligible record must be submitted for classification, none dropped for exceeding a fixed batch-size-derived total');
+  assert.equal(ctx.userSafetyContext.items.length, 14);
+  assert.ok(ctx.userSafetyContext.items.some((it) => it.sourceMemoryId === 'mem-13'), 'the least-recently-updated eligible record must not be silently dropped');
+});
+
+test('USC1-H. multiple distinct active restrictions all appear, no deduplication logic, no error', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 },
+    { _id: 'mem-2', type: 'fact', payload: { text: 'I can\'t swim for a month.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+      { id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null },
+      { id: 'mem-2', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'swim', statedDurationText: 'for a month' }
+    ] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyContext.items.length, 2);
+  const activities = ctx.userSafetyContext.items.map((i) => i.restrictedActivityText).sort();
+  assert.deepEqual(activities, ['run', 'swim']);
+});
+
+test('USC1-I. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_READ StateAccess identity — never widens coachDecisionSystem/DECISION_PASS\'s own permission grant', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal('facts' in ctx, false);
+  assert.equal('userStatedMemory' in ctx, false);
+});
+
+test('USC1-J. consent not granted resolves userSafetyContext UNAVAILABLE with zero classifier calls', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => [{ _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  let called = false;
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyContext, null);
+  assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('USC1-K. graceful degradation: a thrown StateAccess/interpreter error never blocks Context Assembly', async () => {
+  configureConsentGranted(async () => { throw new Error('simulated StateAccess outage'); });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyContext, null);
+  assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
+  assert.equal(typeof ctx.assembledAt, 'number', 'the rest of Pipeline Context assembly must complete normally despite this one field\'s failure');
+});
+
+test('USC1-L. edit/reject/delete/consent-grant are naturally reflected on the next assembly — no derived restriction is cached anywhere in this file (§16 recompute-from-source)', async () => {
+  var version = 1;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => (version === 1
+      ? [{ _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+      : []) // simulates the record being edited to no longer be a restriction, reversed, or deleted
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  SafetyContextInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
+    }
+  });
+  const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(before.userSafetyContext.items.length, 1);
+  version = 2;
+  const after = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-2' });
+  assert.equal(after.userSafetyContext, null, 'the next assembly must reflect the edited/reversed/deleted source — nothing derived is cached');
+});
+
+test('USC1-M. Pipeline Context (including userSafetyContext) is frozen exactly as every existing field already is', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.ok(Object.isFrozen(ctx));
+  assert.ok(Object.isFrozen(ctx.userSafetyContext));
+  assert.ok(Object.isFrozen(ctx.userSafetyContext.items));
+  assert.ok(Object.isFrozen(ctx.userSafetyContext.items[0]));
+});
+
+test('USC1-N. this new step does not affect situationalContext, explicitRequestControls, or any other existing Pipeline Context field (regression)', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+  });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.deepEqual(ctx.explicitRequestControls.items, [], 'explicitRequestControls is attempted (no pre-check gate) and correctly resolves empty, untouched by the new step');
+  assert.deepEqual(ctx.feedbackHistory, []);
+  assert.equal(ctx.relationshipMaturity.stage, 'UNKNOWN');
+  // Foundation B/C boundary (USC-001 §19): no Candidate.actionIdentity, no activity vocabulary,
+  // no Safety Rule/matcher field anywhere on Pipeline Context.
+  assert.equal('actionIdentity' in ctx, false);
+  assert.equal('safetyDisposition' in ctx, false);
 });

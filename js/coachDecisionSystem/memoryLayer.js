@@ -81,6 +81,16 @@
   var ExplicitRequestInterpreter = (typeof module !== 'undefined' && module.exports)
     ? require('./explicitRequestInterpreter.js')
     : window.ExplicitRequestInterpreter;
+  // USC-001 (docs/specs/USC_001_SPEC_v1.0.md §13) — a third, separate, injected collaborator,
+  // exactly like SituationalContextInterpreter/ExplicitRequestInterpreter above; owns the entire
+  // semantic interpretation act (prompt, model, batching, closed two-field literal output
+  // validation). This file never performs free-text classification or literal-field extraction
+  // itself — it only decides whether/how to batch and where to place the already-validated
+  // result. Foundation A only — no Candidate.actionIdentity, no activity vocabulary, no Safety
+  // Rule/matcher logic (SFCD §05, USC-001 §19).
+  var SafetyContextInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./safetyContextInterpreter.js')
+    : window.SafetyContextInterpreter;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
@@ -331,6 +341,65 @@
       explicitRequestControlsAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── USC-001 (docs/specs/USC_001_SPEC_v1.0.md §13) — User Safety Context: a bounded,
+    // recompute-from-source, non-persisted, non-authoritative projection of the user's own
+    // explicit/literal Safety restrictions, derived from the same manually-stated Typed Memory
+    // (source==='user_stated') the two collaborators above already read. Foundation A only — this
+    // Work Item has no live consumer yet (Foundation C, not yet built, is the first reader —
+    // SFCD §07); the field is populated and available but currently unread by every existing
+    // Stage. Like explicitRequestControls above, this step has NO mechanical pre-check gate — a
+    // Safety restriction must never be silently skipped behind a cost-optimization pre-check.
+    //
+    // This file performs NO classification, no literal-field extraction, and no date/duration
+    // computation itself — SafetyContextInterpreter (a separate, injected collaborator) owns the
+    // entire semantic interpretation act, including the deterministic literal-substring
+    // enforcement that keeps restrictedActivityText/statedDurationText verbatim (§7-§9); this step
+    // only decides whether/how to batch and places the already-validated result (§16).
+    //
+    // Reuses StateAccess's existing, unmodified memoryLayer/USER_STATED_MEMORY_READ
+    // capability-holder identity (USM-001) — the SAME identity situationalContext/
+    // explicitRequestControls above use — rather than widening coachDecisionSystem/DECISION_PASS's
+    // own permission grant. This file still does not read js/memory.js or Firestore directly
+    // (CD-02).
+    var userSafetyContext = null;
+    var userSafetyContextAvailable = false;
+    try {
+      var usAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer',
+        action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId,
+        sessionGeneration: identity.sessionGeneration,
+        runId: identity.runId
+      });
+      var usRaw = await usAccess.read.userStatedMemory();
+      var usRecords = (Array.isArray(usRaw) ? usRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (usRecords.length) {
+        var restrictions = await SafetyContextInterpreter.classify(usRecords);
+        userSafetyContext = freezeShallow({
+          items: freezeShallow(restrictions.map(function (r) {
+            var item = {
+              sourceMemoryId: r.sourceMemoryId,
+              restrictedActivityText: r.restrictedActivityText,
+              interpretationAuthority: 'DERIVED_INTERPRETATION'
+            };
+            // §7/§8 — statedDurationText is present ONLY when PD-USC-01's condition is met
+            // (the source statement itself literally included a temporal qualifier); otherwise
+            // the key is omitted from the item entirely — never a null/empty-string placeholder.
+            if (r.statedDurationText != null) { item.statedDurationText = r.statedDurationText; }
+            return freezeShallow(item);
+          }))
+        });
+        userSafetyContextAvailable = true;
+      }
+      // else: no eligible source records exist — userSafetyContext stays null/UNAVAILABLE (no
+      // attempt to classify was needed — mirrors explicitRequestControls's own contract above).
+    } catch (e) {
+      userSafetyContext = null;
+      userSafetyContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -346,6 +415,7 @@
       currentStateContext: currentStateContext,
       situationalContext: situationalContext,
       explicitRequestControls: explicitRequestControls,
+      userSafetyContext: userSafetyContext,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -360,7 +430,8 @@
         goalObjectiveContext: goalObjectiveContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        userSafetyContext: userSafetyContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }

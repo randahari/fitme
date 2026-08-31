@@ -611,6 +611,10 @@
        resolves it at top-of-module require/window time (same pattern as
        situationalContextInterpreter.js immediately above). -->
   <script src="js/coachDecisionSystem/explicitRequestInterpreter.js"></script>
+  <!-- USC-001: safetyContextInterpreter.js loads before the Memory Layer module below, which
+       resolves it at top-of-module require/window time (same pattern as
+       explicitRequestInterpreter.js immediately above). -->
+  <script src="js/coachDecisionSystem/safetyContextInterpreter.js"></script>
   <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>
