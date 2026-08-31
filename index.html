@@ -607,6 +607,10 @@
        which resolves it at top-of-module require/window time (same pattern as the two files
        above it). -->
   <script src="js/coachDecisionSystem/situationalContextInterpreter.js"></script>
+  <!-- EUR-001: explicitRequestInterpreter.js loads before the Memory Layer module below, which
+       resolves it at top-of-module require/window time (same pattern as
+       situationalContextInterpreter.js immediately above). -->
+  <script src="js/coachDecisionSystem/explicitRequestInterpreter.js"></script>
   <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>

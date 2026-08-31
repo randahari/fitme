@@ -1442,3 +1442,129 @@ net +45). `APP_VERSION`/service-worker `VERSION` inspected and left unchanged (`
 `v2.43.0`): this Work Item adds no new occurrence, timing, or content to any dispatch — proven,
 not assumed, that the live path it happens to touch is unaffected by Situational Context's
 presence. See `docs/specs/CSSC_001_SPEC_v1.0.md` for complete evidence.
+
+## 31. EUR-001 — Explicit User Request V1
+
+**Added by EUR-001** (`docs/specs/EUR_001_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). The
+second real, end-to-end Semantic User Understanding vertical, and the first of the two to reach a
+real, behavior-changing consumer: AUTHORITATIVE USER STATEMENT → EXPLICIT-REQUEST CLASSIFICATION
+→ CONTROL-INTENT INTERPRETATION → LITERAL-SCOPE RESOLUTION → DIRECT-USER AUTHORITY → Initiative
+Engine Stage 6. CSSC-001 (§30) explicitly named "Explicit-Request suppression" out of its own
+scope; this Work Item closes that named gap.
+
+**Binding discipline, carried through every layer of this Work Item: EXPLICIT REQUEST ≠
+SUPPRESSION REQUEST.** A statement can be unambiguously an Explicit Request ("Please remind me to
+log my food.") without authorizing any control action at all. Three independent, never-collapsed
+semantic dimensions — `requestClassification` (`CLASSIFIED_EXPLICIT_REQUEST`/
+`INELIGIBLE_OR_NOT_CLASSIFIED`), `controlIntent` (`SUPPRESS_ORDINARY_INITIATIVE`/
+`NO_V1_ACTIONABLE_INTENT`, evaluated only when classified), and `scopeStatus`+`domain`+`topic`
+(`RESOLVED`/`UNRESOLVED`, evaluated only when the intent is the one V1-actionable token) — feed
+exactly one conjunctive gate: a V1 control is created only when all four conditions hold
+(classified ∧ suppressive ∧ resolved ∧ a valid closed Domain/Topic pair). Every other outcome —
+not a request; a request with no V1-actionable intent; a suppressive request with unresolved
+scope — produces no control, behaviorally, not merely by omission from a log. Statement authority
+never becomes interpretation authority at any of the three derived layers (D1 Unit 11/D1-ER-07,
+the identical non-inheritance discipline CSSC-001 established for Current State, extended here to
+a second class without merging the two).
+
+New `js/coachDecisionSystem/explicitRequestInterpreter.js` owns the entire semantic interpretation
+act — a separate, class-specific interpreter; `situationalContextInterpreter.js` is not modified,
+not widened, and not merged with it (CSSC-001 remains Current-State-specific). It reuses CSSC-001's
+proven architectural skeleton by pattern only: deterministic id-keyed batching over the *complete*
+eligible set (transport bounds never a semantic-completeness cap), per-batch timeout, no retry,
+strict `sourceMemoryId`-keyed output validation — extended here to also reject any
+gating-dimension inconsistency (e.g. a populated `domain` alongside a non-suppressive
+`controlIntent`) and any Domain/Topic pair outside its own closed table — per-id prompt-injection
+containment, and no numeric confidence anywhere. Its own closed `EUR_VALID_DOMAIN_TOPIC_PAIRS`
+table is independently authored for this Work Item — informed by, but never calling into,
+`derivedIntelligenceConsumer.js`'s separate, unmodified B5 Habit/Pattern-derivation mapping, per
+`js/domain/domainTopicVocabulary.js`'s own explicit "a future non-B5 producer MUST derive its own
+value... using its own, locally-owned mapping logic" precedent — not a second universal
+Domain/Topic ontology, not a relocation of B5's own mapping ownership. Auth reuses the existing
+`callClaude` closure (`js/app.js`), exactly as `situationalContextInterpreter.js` already does —
+an Engineering Readiness Review found and closed a real inaccuracy before implementation began: a
+draft `configure({getAuthToken})` seam matched no convention shipped anywhere in this repository
+(the actual, real pattern, verified directly against `situationalContextInterpreter.js` and its
+composition-root call site, is `configure({callClaude})`).
+
+`js/coachDecisionSystem/memoryLayer.js`'s `assembleContext()` gains one new, additive step —
+deliberately with *no* pre-check gate, unlike `situationalContext`'s own `WEAKENING`-signal gate:
+Explicit Request's real consumer (Initiative Engine Stage 6) is broader than Contextual Meaning's
+single V1 rule, and gating this step behind any live-signal pre-check risked silently skipping a
+real suppression the user is entitled to. This is an accepted, explicitly-documented V1 cost, not
+a defect: CSSC-001 and EUR-001 remain two separate, non-merged semantic interpreters — semantic
+authority separation takes precedence over model-call optimization for V1 — so a Decision Pass in
+which both are triggered issues independent batches/model calls, and may read Typed Memory twice,
+over potentially the same source set. Neither a shared classifier, a shared semantic cache, nor
+any relevance-based prefilter is introduced to eliminate this. The read reuses USM-001's existing
+`memoryLayer`/`USER_STATED_MEMORY_READ` StateAccess identity unchanged. The new
+`explicitRequestControls.items[]` Pipeline Context field contains *only* already-actionable
+controls — every item has already satisfied the full four-condition gate; a recognized-but-
+non-actionable Explicit Request never enters Pipeline Context in any form, even for provenance.
+
+`js/coachDecisionSystem/initiativeEngine.js`'s `generate()` gains one new, additive, independent
+OR-branch — `explicitlyRequestedAgainst()` — inserted immediately beside the existing RGEF WP7
+`domainTopicRecentlyUnwelcome()` check, at the identical insertion point and pattern RGEF §19.1
+itself used for that check. Unlike RGEF's own inferred-reluctance mechanism (unmodified, untouched,
+never read by this new function), this one carries direct-user authority: it requires no
+repeated-dismissal threshold, no corroborating evidence, no Trust, and no Relationship Maturity —
+matching the Approved Product Rule verbatim ("a clear explicit user request has immediate
+authority within its stated/literal scope"). This is a new, first-ever dependency of
+`initiativeEngine.js` on `pipelineContext.explicitRequestControls` — no dependency on
+`feedbackDomain.js` is added or touched by this function, preserving RGEF's separation structurally,
+not merely by convention. Stage 6 performs no natural-language interpretation and no
+positive/negative direction inference of its own — it consumes only the already-resolved,
+already-gated `controlIntent` value the Memory Layer has already established upstream.
+
+**Two SPEC corrections resolved real defects before implementation began.** The first (Product/
+Architecture): the initial draft's two-dimension output contract (classification + literal scope)
+implicitly defined the semantic class "Explicit User Request" around suppression — corrected by
+adding Control Intent as a fully independent third dimension, closed to exactly one
+V1-actionable token (`SUPPRESS_ORDINARY_INITIATIVE`), so that a clearly-recognized, clearly
+non-suppressive request (e.g. "Help me stay consistent with food logging.") is never force-mapped
+into a control it never asked for. The production-backed fixture wording was also corrected, from
+"Don't remind me to log my food." (a narrower, reminder-specific reading that might not honestly
+authorize the full Domain/Topic-level Stage-6 control this Work Item actually enforces) to "Don't
+suggest food logging anymore." The second (Engineering Readiness): the `getAuthToken` auth-seam
+inaccuracy described above, caught and closed before any production code was written against it.
+
+**Production-backed verified** using the real, unmodified `memoryLayer.js`,
+`contextualMeaningPolicy.js`, `initiativeEngine.js`, `eligibilityEvaluator.js`, and
+`internalPipelineOrchestrator.js`, with only `ExplicitRequestInterpreter`'s `callClaude` seam
+stubbed (no live LLM, no live Firestore, no Chat): using the identical real
+`HABIT`/`FOOD_LOGGING`/`WEAKENING` fixture G-2/RGEF/CSSC-001 already proved end to end, the same
+upstream state produces the Terminal Decision `kind: 'INITIATIVE'` without an Explicit Request
+present (byte-identical to the pre-existing baseline) and `kind: 'SILENCE'` with an active,
+resolved `NUTRITION`/`FOOD_LOGGING` suppression control present — with the underlying Opportunity,
+Contextual Meaning, Evidence Tier, Eligibility, RGEF feedback history, Trust
+(`trustTestSignal.glad` still `null`), and Relationship Maturity (`'UNKNOWN'`) all proven
+byte-identical across both runs; the first divergence occurs exactly at Stage 6 Candidate
+formation, never earlier. A positive request and a supportive request both correctly produce zero
+controls against the identical real fixture; a suppressive-but-unresolved-scope request ("Don't
+suggest running.") likewise produces zero controls, never a fabricated `WORKOUT`/
+`WORKOUT_FREQUENCY` mapping; suppression persists unchanged at a Decision Pass 40 days in the
+future — well beyond RGEF's own 14-day window/7-day recovery duration — proving elapsed time alone
+never revokes an active request; deleting the source record restores the exact baseline
+`INITIATIVE` Terminal Decision on the very next Decision Pass, with nothing derived cached
+anywhere.
+
+**Not resolved by this closure:** any activity-level (Running, Swimming, etc.) or time-of-day
+vocabulary (no `RUNNING`/`MORNING_WORKOUT` or equivalent value exists in the closed pairing table
+— V1 is Domain/Topic-scoped only, by explicit Product direction); any control intent other than
+`SUPPRESS_ORDINARY_INITIATIVE` (`FORCE_INITIATIVE`/`PREFER_INITIATIVE`/`REMIND_MORE`/
+`CHANGE_FREQUENCY`/`CREATE_GOAL`/`CHANGE_PLAN` are explicitly out of vocabulary, prompt, and
+consumer); a historical request/reversal ledger (a later, separate positive statement never
+silently revokes an older, still-active negative one — a documented, production-backed-tested V1
+limitation, not a defect); Recommendation Engine, Eligibility, Contextual Meaning, and Safety as
+consumers (none reached by this Work Item — Safety is structurally unreachable from the Stage-6
+boundary this Work Item uses, since `SAFETY_HIGH_RISK` is permanently excluded from
+`STAGE6_ACCEPTED_SOURCES` before this check is ever consulted); Conversation/Voice producers
+(the raw-statement contract is producer-neutral by construction, not built); Trust (paused,
+unmodified, unread by this Work Item's own logic) and Relationship Maturity (untouched).
+
+Full repository regression at this closure: **2140/2140 passing** (2058 pre-EUR-001 baseline,
+net +82). `APP_VERSION`/service-worker `VERSION` advanced from `2.43.0`/`v2.43.0` to `2.44.0`/
+`v2.44.0`: unlike CSSC-001 (proven to change no Terminal Decision, no bump), this Work Item
+genuinely and deterministically changes an existing, live Terminal Decision's outcome — proven,
+not assumed, above — the moment a user explicitly, literally requests it: new, real, user-visible
+Coach behavior. See `docs/specs/EUR_001_SPEC_v1.0.md` for complete evidence.

@@ -1,4 +1,4 @@
-const VERSION = 'v2.43.0';
+const VERSION = 'v2.44.0';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -19,6 +19,7 @@ const SHELL = [
   '/fitme/js/userStatedMemoryPrompt.js',
   '/fitme/js/coachDecisionSystem/expressionRenderingContext.js',
   '/fitme/js/coachDecisionSystem/situationalContextInterpreter.js',
+  '/fitme/js/coachDecisionSystem/explicitRequestInterpreter.js',
   '/fitme/js/coachDecisionSystem/memoryLayer.js',
   '/fitme/js/core/dateUtils.js',
   '/fitme/js/core/numberUtils.js',

@@ -230,6 +230,25 @@
     return result.suppressed === true;
   }
 
+  // EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §15) — Explicit Request direct-user control.
+  // Additive to, independent of, and never a replacement for wasIgnoredBefore()/
+  // domainTopicRecentlyUnwelcome() above; any one of the three checks alone is sufficient to
+  // suppress. Unlike the other two (inferred reluctance), this one carries direct-user authority
+  // (§5) — it is not threshold-gated and requires no repeated evidence. This function performs no
+  // semantic interpretation of its own — every item it reads has already passed the full §10
+  // conjunctive gate upstream, in the Memory Layer (js/coachDecisionSystem/memoryLayer.js); it
+  // only matches already-resolved identifiers. This is a new, first-ever dependency of this
+  // module on pipelineContext.explicitRequestControls — no dependency on feedbackDomain.js is
+  // added or touched by this function, preserving RGEF's own separation (§17: inferred reluctance
+  // vs. direct user control share only this enforcement boundary, never evidence/authority).
+  function explicitlyRequestedAgainst(explicitRequestControls, domain, topic) {
+    if (!domain || !topic || !explicitRequestControls) return false;
+    var items = explicitRequestControls.items || [];
+    return items.some(function (c) {
+      return c.controlIntent === 'SUPPRESS_ORDINARY_INITIATIVE' && c.domain === domain && c.topic === topic;
+    });
+  }
+
   // Section 19 contract shape check — mirrors recommendationEngine.js's internal-construction
   // discipline; also exported for contract tests (§33.2).
   function validateCandidateShape(c) {
@@ -299,6 +318,12 @@
     // independent of, and never a replacement for wasIgnoredBefore() above; either check alone
     // is sufficient to suppress.
     if (domainTopicRecentlyUnwelcome(feedbackHistory, opportunity.domain, opportunity.topic, pipelineContext.assembledAt)) return emptyResult();
+
+    // EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §15) — Explicit Request direct-user control.
+    // Additive to, independent of, and never a replacement for either check above; any one of the
+    // three is sufficient to suppress. Unlike the other two (inferred reluctance), this one
+    // carries direct-user authority — it is not threshold-gated and requires no repeated evidence.
+    if (explicitlyRequestedAgainst(pipelineContext.explicitRequestControls, opportunity.domain, opportunity.topic)) return emptyResult();
 
     // step 7: candidate construction — statable rationale already validated at step 2
     // (D1-RP-02/D1-CDO-02 analog: no rationale, no Candidate).

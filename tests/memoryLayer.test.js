@@ -10,6 +10,7 @@ const StateAccess = require('../js/stateAccess.js');
 const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const SituationalContextInterpreter = require('../js/coachDecisionSystem/situationalContextInterpreter.js');
+const ExplicitRequestInterpreter = require('../js/coachDecisionSystem/explicitRequestInterpreter.js');
 
 function configureHappyPath() {
   StateAccess.configure({
@@ -702,4 +703,277 @@ test('CSSC1-J. edit/reject/delete/consent-grant are naturally reflected on the n
   version = 2; // simulates an edit to the underlying Typed Memory record
   const after = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-2' });
   assert.equal(after.situationalContext.items[0].statementText, 'אני כבר לא עובד בלילות', 'the next assembly must reflect the edited statement — nothing derived is cached');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §12) — Explicit Request Controls assembly: no
+// mechanical pre-check gate (unlike CSSC-001's own WEAKENING-signal gate), the reused
+// memoryLayer/USER_STATED_MEMORY_READ identity, the §10 conjunctive actionable-control gate
+// applied mechanically, and graceful degradation. The interpreter's own classification/gating
+// logic is covered separately and exhaustively in tests/explicitRequestInterpreter.test.js — here
+// we stub ExplicitRequestInterpreter.classify directly (same monkey-patching convention as the
+// CSSC1 block above) to isolate Memory Layer's own integration logic.
+// ══════════════════════════════════════════════════════════════════
+
+function configureConsentGranted(fetchUserStatedMemoryFn) {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: fetchUserStatedMemoryFn || (async () => [])
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+}
+
+function eurRecord(id, requestClassification, controlIntent, scopeStatus, domain, topic) {
+  return { id: id, requestClassification: requestClassification, controlIntent: controlIntent || null, scopeStatus: scopeStatus || null, domain: domain || null, topic: topic || null };
+}
+
+test.afterEach(() => { ExplicitRequestInterpreter.configure({ callClaude: null }); });
+
+test('EUR1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
+  configureConsentGranted(async () => []);
+  let called = false;
+  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.explicitRequestControls, null);
+  assert.equal(ctx.availability.explicitRequestControls, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('EUR1-B. unlike situationalContext, this step attempts a read/classification with NO live Habit/Pattern signal required — no pre-check gate', async () => {
+  // Deliberately no WEAKENING signal / no Habit at all (readHabitSnapshot returns []) — proving
+  // this step is not gated behind initiativeIntelligence.signals the way situationalContext is.
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  let called = false;
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; },
+    // classify() itself is stubbed at the module level below for determinism; this callClaude
+    // stub only proves invocation occurred despite the total absence of a Habit/Pattern signal.
+  });
+  await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(called, true, 'EUR-001 must attempt classification even with zero live Habit/Pattern signals — it has no equivalent pre-check gate');
+});
+
+test('EUR1-C. an actionable resolved FOOD_LOGGING request populates explicitRequestControls.items with DERIVED_INTERPRETATION, never USER_STATED', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.explicitRequestControls, 'AVAILABLE');
+  assert.equal(ctx.explicitRequestControls.items.length, 1);
+  const item = ctx.explicitRequestControls.items[0];
+  assert.equal(item.sourceMemoryId, 'mem-1');
+  assert.equal(item.controlIntent, 'SUPPRESS_ORDINARY_INITIATIVE');
+  assert.equal(item.domain, 'NUTRITION');
+  assert.equal(item.topic, 'FOOD_LOGGING');
+  assert.equal(item.interpretationAuthority, 'DERIVED_INTERPRETATION');
+  assert.notEqual(item.interpretationAuthority, 'USER_STATED');
+});
+
+test('EUR1-D. a positive/non-suppressive request (NO_V1_ACTIONABLE_INTENT) never enters items[] — attempted, AVAILABLE, empty', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Please remind me to log my food.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.explicitRequestControls.items, []);
+  assert.equal(ctx.availability.explicitRequestControls, 'AVAILABLE');
+});
+
+test('EUR1-E. a supportive request (NO_V1_ACTIONABLE_INTENT) never enters items[]', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Help me stay consistent with food logging.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.explicitRequestControls.items, []);
+});
+
+test('EUR1-F. a suppressive request with unresolved scope never enters items[]', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest running.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'UNRESOLVED', domain: null, topic: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.explicitRequestControls.items, []);
+  assert.equal(ctx.availability.explicitRequestControls, 'AVAILABLE');
+});
+
+test('EUR1-G. a plain, non-request fact never enters items[]', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'INELIGIBLE_OR_NOT_CLASSIFIED', controlIntent: null, scopeStatus: null, domain: null, topic: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.explicitRequestControls.items, []);
+});
+
+test('EUR1-H. more than one batch\'s worth of eligible records all receive legitimate consideration — none dropped by recency or a fixed total count', async () => {
+  const records = Array.from({ length: 14 }, (_, i) => ({
+    _id: 'mem-' + String(i).padStart(2, '0'), type: 'fact', payload: { text: 'statement ' + i },
+    confidence: 1, source: 'user_stated', status: 'active', updated_at: 1000 - i
+  }));
+  configureConsentGranted(async () => records);
+  const seenIds = new Set();
+  ExplicitRequestInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      ids.forEach((id) => seenIds.add(id));
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
+    }
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(seenIds.size, 14, 'every eligible record must be submitted for classification, none dropped for exceeding a fixed batch-size-derived total');
+  assert.equal(ctx.explicitRequestControls.items.length, 14);
+  assert.ok(ctx.explicitRequestControls.items.some((it) => it.sourceMemoryId === 'mem-13'), 'the least-recently-updated eligible record must not be silently dropped');
+});
+
+test('EUR1-I. multiple distinct active controls (different Domain/Topic pairs) all appear', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 },
+    { _id: 'mem-2', type: 'fact', payload: { text: 'Don\'t suggest protein reminders anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+      { id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' },
+      { id: 'mem-2', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'PROTEIN_INTAKE' }
+    ] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.explicitRequestControls.items.length, 2);
+  const topics = ctx.explicitRequestControls.items.map((i) => i.topic).sort();
+  assert.deepEqual(topics, ['FOOD_LOGGING', 'PROTEIN_INTAKE']);
+});
+
+test('EUR1-J. duplicate active controls for the same Domain/Topic both appear — no deduplication logic, no error', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 },
+    { _id: 'mem-2', type: 'fact', payload: { text: 'Seriously, stop suggesting food logging.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+      { id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' },
+      { id: 'mem-2', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }
+    ] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.explicitRequestControls.items.length, 2, 'both duplicate controls are represented independently — collapsing happens mechanically at the Stage-6 consumer, not here');
+});
+
+test('EUR1-K. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_READ StateAccess identity — never widens coachDecisionSystem/DECISION_PASS\'s own permission grant', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal('facts' in ctx, false);
+  assert.equal('userStatedMemory' in ctx, false);
+});
+
+test('EUR1-L. consent not granted resolves explicitRequestControls UNAVAILABLE with zero classifier calls', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => [{ _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  let called = false;
+  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.explicitRequestControls, null);
+  assert.equal(ctx.availability.explicitRequestControls, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('EUR1-M. graceful degradation: a thrown StateAccess/interpreter error never blocks Context Assembly', async () => {
+  configureConsentGranted(async () => { throw new Error('simulated StateAccess outage'); });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.explicitRequestControls, null);
+  assert.equal(ctx.availability.explicitRequestControls, 'UNAVAILABLE');
+  assert.equal(typeof ctx.assembledAt, 'number', 'the rest of Pipeline Context assembly must complete normally despite this one field\'s failure');
+});
+
+test('EUR1-N. edit/reject/delete/consent-grant are naturally reflected on the next assembly — no derived control is cached anywhere in this file', async () => {
+  var version = 1;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => (version === 1
+      ? [{ _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+      : []) // simulates the record being edited to no longer be a request, rejected, or deleted
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  ExplicitRequestInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
+    }
+  });
+  const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(before.explicitRequestControls.items.length, 1);
+  version = 2;
+  const after = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-2' });
+  assert.equal(after.explicitRequestControls, null, 'the next assembly must reflect the edited/rejected/deleted source — nothing derived is cached');
+});
+
+test('EUR1-O. Pipeline Context (including explicitRequestControls) is frozen exactly as every existing field already is', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.ok(Object.isFrozen(ctx));
+  assert.ok(Object.isFrozen(ctx.explicitRequestControls));
+  assert.ok(Object.isFrozen(ctx.explicitRequestControls.items));
+  assert.ok(Object.isFrozen(ctx.explicitRequestControls.items[0]));
+});
+
+test('EUR1-P. this new step does not affect situationalContext or any other existing Pipeline Context field (regression)', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ExplicitRequestInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.deepEqual(ctx.feedbackHistory, []);
+  assert.equal(ctx.relationshipMaturity.stage, 'UNKNOWN');
 });

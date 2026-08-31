@@ -68,6 +68,19 @@
   var SituationalContextInterpreter = (typeof module !== 'undefined' && module.exports)
     ? require('./situationalContextInterpreter.js')
     : window.SituationalContextInterpreter;
+  // EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §12) — a second, separate, injected collaborator,
+  // exactly like SituationalContextInterpreter above; owns the entire semantic interpretation act
+  // (prompt, model, batching, closed three-dimension output validation). This file never performs
+  // free-text classification, control-intent interpretation, or scope resolution itself — it only
+  // decides whether/how to batch, applies the already-defined §10 conjunctive gate mechanically
+  // (via ExplicitRequestInterpreter.isActionableControl(), the single shared gate definition —
+  // never a second, locally-reimplemented copy), and decides where to place results. Separate
+  // from SituationalContextInterpreter — never merged into one universal classifier (§12's own
+  // accepted V1 efficiency-limitation note: independent calls, independent batches, no shared
+  // cache).
+  var ExplicitRequestInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./explicitRequestInterpreter.js')
+    : window.ExplicitRequestInterpreter;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
@@ -257,6 +270,67 @@
       situationalContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §12) — Explicit Request Controls: a bounded,
+    // recompute-from-source, non-persisted set of already-actionable direct-user controls, derived
+    // from the user's own manually-stated Typed Memory (source==='user_stated'). Unlike
+    // situationalContext above, this step has NO mechanical pre-check gate (§12 step 1) — Explicit
+    // Request's real consumer (Initiative Engine Stage 6, §15) is broader than Contextual
+    // Meaning's single V1 rule, and gating this step behind any live-signal pre-check would risk
+    // silently skipping a real suppression the user is entitled to. This is an accepted V1 cost
+    // (§12's own documented efficiency-limitation note): this step and the situationalContext step
+    // above may both read Typed Memory and both call their own separate interpreter in the same
+    // assembleContext() call.
+    //
+    // This file performs NO classification, control-intent interpretation, or scope resolution
+    // itself — ExplicitRequestInterpreter (a separate, injected collaborator) owns the entire
+    // semantic interpretation act; this step only decides whether/how to batch, applies the
+    // already-defined §10 conjunctive gate mechanically (via
+    // ExplicitRequestInterpreter.isActionableControl(), the single shared gate definition), and
+    // places only already-actionable results — never a raw/intermediate classifier result — into
+    // Pipeline Context (§13).
+    //
+    // Reuses StateAccess's existing, unmodified memoryLayer/USER_STATED_MEMORY_READ
+    // capability-holder identity (USM-001) — the SAME identity situationalContext/
+    // assembleUserStatedMemoryFragment() use above/below — rather than widening
+    // coachDecisionSystem/DECISION_PASS's own permission grant. This file still does not read
+    // js/memory.js or Firestore directly (CD-02).
+    var explicitRequestControls = null;
+    var explicitRequestControlsAvailable = false;
+    try {
+      var erAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer',
+        action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId,
+        sessionGeneration: identity.sessionGeneration,
+        runId: identity.runId
+      });
+      var erRaw = await erAccess.read.userStatedMemory();
+      var erRecords = (Array.isArray(erRaw) ? erRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (erRecords.length) {
+        var classifiedRecords = await ExplicitRequestInterpreter.classify(erRecords);
+        var actionable = classifiedRecords.filter(function (r) { return ExplicitRequestInterpreter.isActionableControl(r); });
+        explicitRequestControls = freezeShallow({
+          items: freezeShallow(actionable.map(function (r) {
+            return freezeShallow({
+              controlIntent: r.controlIntent,
+              domain: r.domain,
+              topic: r.topic,
+              sourceMemoryId: r.sourceMemoryId,
+              interpretationAuthority: 'DERIVED_INTERPRETATION'
+            });
+          }))
+        });
+        explicitRequestControlsAvailable = true;
+      }
+      // else: no qualifying source records exist — explicitRequestControls stays null/UNAVAILABLE
+      // (no attempt was made at all — §13/§14's own "null only when no attempt was made" contract).
+    } catch (e) {
+      explicitRequestControls = null;
+      explicitRequestControlsAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -271,6 +345,7 @@
       goalObjectiveContext: goalObjectiveContext,
       currentStateContext: currentStateContext,
       situationalContext: situationalContext,
+      explicitRequestControls: explicitRequestControls,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -284,7 +359,8 @@
         capacityState: 'UNAVAILABLE',
         goalObjectiveContext: goalObjectiveContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }

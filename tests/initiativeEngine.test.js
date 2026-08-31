@@ -678,3 +678,128 @@ test('RGEF §13.1 — every other Source×Reason combination preserves pre-RGEF 
     assert.deepEqual(result.candidates, [], 'stage ' + stage + ' must still not permit confirmed-pattern anticipation absent the approved Reason');
   });
 });
+
+// ══════════════════════════════════════════════════════════════════
+// EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §15) — Explicit Request direct-user control at
+// Stage 6. Mirrors the RGEF WP7 test block's own fixture style exactly. explicitRequestControls
+// fixtures are constructed directly (already-actionable shape) — the interpreter's own
+// classification/gating logic is covered separately and exhaustively in
+// tests/explicitRequestInterpreter.test.js, and Memory Layer's own gate-application logic in
+// tests/memoryLayer.test.js's EUR1 block. Here we test only Stage 6's own mechanical consumption.
+// ══════════════════════════════════════════════════════════════════
+
+function eurControls(items) { return { items: items }; }
+function eurItem(domain, topic, sourceMemoryId) {
+  return { controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', domain: domain, topic: topic, sourceMemoryId: sourceMemoryId || 'mem-1', interpretationAuthority: 'DERIVED_INTERPRETATION' };
+}
+
+test('EUR1-Stage6-A. an exact Domain/Topic actionable control suppresses the matching ordinary Candidate on the very first Decision Pass — no threshold, no prior feedback', () => {
+  const opp = validOpportunity({ id: 'eur-1', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ feedbackHistory: [], explicitRequestControls: eurControls([eurItem('NUTRITION', 'FOOD_LOGGING')]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, [], 'a single actionable control, with zero prior feedback events, must suppress immediately — direct-user authority requires no repeated evidence');
+});
+
+test('EUR1-Stage6-B. an unrelated Topic under the same Domain does not suppress', () => {
+  const opp = validOpportunity({ id: 'eur-2', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([eurItem('NUTRITION', 'PROTEIN_INTAKE')]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1, 'a control for a different Topic must not suppress an unrelated Topic\'s Opportunity');
+});
+
+test('EUR1-Stage6-C. an unrelated Domain does not suppress', () => {
+  const opp = validOpportunity({ id: 'eur-3', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([eurItem('WORKOUT', 'WORKOUT_FREQUENCY')]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('EUR1-Stage6-D. an absent explicitRequestControls field (undefined) preserves baseline behavior — no throw, no suppression', () => {
+  const opp = validOpportunity({ id: 'eur-4', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({}); // no explicitRequestControls key at all
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('EUR1-Stage6-E. an explicit null explicitRequestControls preserves baseline behavior', () => {
+  const opp = validOpportunity({ id: 'eur-5', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ explicitRequestControls: null });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('EUR1-Stage6-F. an empty items[] projection preserves baseline behavior', () => {
+  const opp = validOpportunity({ id: 'eur-6', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('EUR1-Stage6-G. duplicate controls for the same Domain/Topic remain deterministic — suppression occurs exactly once, no error', () => {
+  const opp = validOpportunity({ id: 'eur-7', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([eurItem('NUTRITION', 'FOOD_LOGGING', 'mem-1'), eurItem('NUTRITION', 'FOOD_LOGGING', 'mem-2')]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, []);
+});
+
+test('EUR1-Stage6-H. Stage 6 performs no semantic inference of its own — only the exact-match controlIntent/domain/topic comparison governs the outcome, regardless of any other field on the control item', () => {
+  const opp = validOpportunity({ id: 'eur-8', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  // A control item carrying extra/unexpected fields must not change the outcome — Stage 6 reads
+  // only controlIntent/domain/topic, never inspects sourceMemoryId/interpretationAuthority for
+  // its own decision, never re-derives anything from raw text (there is none here to read).
+  const item = Object.assign(eurItem('NUTRITION', 'FOOD_LOGGING'), { unexpectedField: 'some raw text that must never be interpreted' });
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([item]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, []);
+});
+
+test('EUR1-Stage6-I. a control item whose controlIntent is anything other than SUPPRESS_ORDINARY_INITIATIVE never suppresses (defensive — §10/§13 guarantee no other token can appear here in production, but Stage 6 does not trust that blindly)', () => {
+  const opp = validOpportunity({ id: 'eur-9', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const item = { controlIntent: 'NO_V1_ACTIONABLE_INTENT', domain: 'NUTRITION', topic: 'FOOD_LOGGING', sourceMemoryId: 'mem-1', interpretationAuthority: 'DERIVED_INTERPRETATION' };
+  const ctx = pipelineContext({ explicitRequestControls: eurControls([item]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('EUR1-Stage6-J. RGEF-inferred-alone still suppresses, unaffected by EUR-001 (no explicitRequestControls present)', () => {
+  const opp = validOpportunity({ id: 'eur-10', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const NOW = 1700000000000, DAY = 24 * 60 * 60 * 1000;
+  const feedbackHistory = [
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - DAY },
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - 2 * DAY },
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - 3 * DAY }
+  ];
+  const ctx = pipelineContext({ assembledAt: NOW, feedbackHistory: feedbackHistory });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, [], 'RGEF\'s own inferred-reluctance mechanism must remain fully functional, untouched by EUR-001');
+});
+
+test('EUR1-Stage6-K. both an actionable Explicit Request control and RGEF-inferred reluctance present together still suppress exactly once — emptyResult() either way, evidence never merged', () => {
+  const opp = validOpportunity({ id: 'eur-11', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const NOW = 1700000000000, DAY = 24 * 60 * 60 * 1000;
+  const feedbackHistory = [
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - DAY },
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - 2 * DAY },
+    { surface: 'initiative', contextId: 'unrelated-opp-id', domain: 'NUTRITION', topic: 'FOOD_LOGGING', feedbackType: 'Dismissed', occurredAt: NOW - 3 * DAY }
+  ];
+  const ctx = pipelineContext({ assembledAt: NOW, feedbackHistory: feedbackHistory, explicitRequestControls: eurControls([eurItem('NUTRITION', 'FOOD_LOGGING')]) });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.deepEqual(result.candidates, []);
+});
+
+test('EUR1-Stage6-L. wasIgnoredBefore()/domainTopicRecentlyUnwelcome()/MATURITY_GATING paths remain byte-identical to pre-EUR-001 behavior when no control is present (full regression of every prior Stage-6 check)', () => {
+  const opp1 = validOpportunity({ id: 'ignored-opp', domain: 'NUTRITION', topic: 'FOOD_LOGGING' });
+  const ctx1 = pipelineContext({ feedbackHistory: [{ surface: 'initiative', contextId: 'ignored-opp', feedbackType: 'Dismissed', occurredAt: Date.now() }] });
+  assert.deepEqual(InitiativeEngine.generate({ opportunity: opp1, pipelineContext: ctx1 }).candidates, []);
+
+  const opp2 = validOpportunity({ sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION' });
+  assert.deepEqual(InitiativeEngine.generate({ opportunity: opp2, pipelineContext: pipelineContext({ relationshipMaturity: { stage: 'OBSERVER' } }) }).candidates, []);
+});
+
+test('EUR1-Stage6-M. this new dependency does not touch feedbackDomain.js — no new require/window reference to it is introduced by the EUR-001 function itself', () => {
+  const src = initiativeEngineJs;
+  const eurFnStart = src.indexOf('function explicitlyRequestedAgainst');
+  const eurFnEnd = src.indexOf('\n  }', eurFnStart);
+  const eurFnBody = src.slice(eurFnStart, eurFnEnd);
+  assert.equal(eurFnBody.indexOf('FeedbackDomain'), -1, 'explicitlyRequestedAgainst() must never reference FeedbackDomain — RGEF separation (§17)');
+});

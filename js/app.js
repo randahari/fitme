@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.43.0';
+const APP_VERSION = '2.44.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -274,6 +274,16 @@ ExpressionRenderer.configure({
 // interpreter itself still owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude
 // remain transport-only, unmodified).
 SituationalContextInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// EUR-001 (docs/specs/EUR_001_SPEC_v1.0.md §12, Auth seam corrected — Engineering Readiness
+// Review blocker closed): injects the SAME existing callClaude closure used above — never a live
+// Firebase Auth user object, never a token, never a change to Decision identity/ctx. The
+// interpreter itself still owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude
+// remain transport-only, unmodified). A separate, non-merged interpreter from
+// SituationalContextInterpreter above (§12's own accepted V1 efficiency-limitation note).
+ExplicitRequestInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 
