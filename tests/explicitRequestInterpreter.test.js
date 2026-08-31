@@ -355,3 +355,39 @@ test('44. no ENGAGEMENT or GENERAL_COACHING pairing exists in the closed table',
   assert.ok(!domains.includes('ENGAGEMENT'));
   assert.ok(!domains.includes('GENERAL_COACHING'));
 });
+
+// ── Anaphora fixture (§27/§30 item 22 — isolated statement, no conversational history) ─────
+// EUR-001's SPEC blocker-closure/Engineering-Readiness/implementation-authorization rounds each
+// explicitly required this exact fixture as its own named test — the Running/Swimming
+// out-of-vocabulary tests above (42) are a structurally different failure mode (a named-but-
+// unrepresentable scope) and do not substitute for this one (a statement with NO named scope at
+// all, "that" having no referent in its own text). Both resolve UNRESOLVED for the same
+// underlying reason (§10's gate requires a RESOLVED, valid pair), but this test proves it for the
+// no-referent case specifically, end to end through the real classify() function, with no
+// conversational history/session/prior-turn context constructed anywhere in this test — matching
+// the required "isolated statement" architecture exactly.
+
+test('45. "Don\'t suggest that anymore." — an isolated statement with no referent in its own text, no prior conversational turn supplied anywhere in this test — classifies at most as a recognized suppressive request with UNRESOLVED scope, domain/topic null, and produces NO actionable control', async () => {
+  configureStub(async () => fakeResponse([
+    { id: 'mem-anaphora', requestClassification: CER, controlIntent: SUPPRESS, scopeStatus: UNRESOLVED, domain: null, topic: null }
+  ]));
+  // The ONLY input: one isolated record, its own text, nothing else — no session, no history,
+  // no second record standing in for "prior context."
+  const results = await Interpreter.classify([{ id: 'mem-anaphora', text: "Don't suggest that anymore." }]);
+  assert.equal(results.length, 1);
+  const result = results[0];
+  assert.deepEqual(result, {
+    sourceMemoryId: 'mem-anaphora',
+    requestClassification: CER,
+    controlIntent: SUPPRESS,
+    scopeStatus: UNRESOLVED,
+    domain: null,
+    topic: null
+  }, 'no referent is fabricated — domain/topic must be exactly null, never a guessed nearest pair');
+  assert.equal(Interpreter.isActionableControl(result), false, 'NO ACTIONABLE V1 CONTROL — the required outcome for this fixture');
+});
+
+test('46. the anaphora fixture\'s raw model response is itself rejected as fail-closed if it ever attempted to smuggle a Domain/Topic guess alongside UNRESOLVED (defensive proof that "no referent" cannot be worked around at the output-validation layer either)', () => {
+  const raw = fakeResponse([{ id: 'mem-anaphora', requestClassification: CER, controlIntent: SUPPRESS, scopeStatus: UNRESOLVED, domain: 'NUTRITION', topic: 'FOOD_LOGGING' }]);
+  assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-anaphora']), {}, 'a domain/topic populated alongside UNRESOLVED is a gating-dimension inconsistency — fails closed, never silently accepted as a guessed scope');
+});
