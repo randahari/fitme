@@ -61,8 +61,25 @@
   var ExpressionRenderingContext = (typeof module !== 'undefined' && module.exports)
     ? require('./expressionRenderingContext.js')
     : window.ExpressionRenderingContext;
+  // CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §9) — a separate, injected collaborator this
+  // file calls out to, exactly like DerivedIntelligenceConsumer above; owns the entire
+  // classification act (prompt, model, batching, output validation). This file never performs
+  // free-text classification itself — see assembleContext()'s own new step below.
+  var SituationalContextInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./situationalContextInterpreter.js')
+    : window.SituationalContextInterpreter;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
+
+  // CSSC-001 §4 — pure text extraction from an already-authoritative Typed Memory payload
+  // shape, mirroring js/memory.js's own memText() convention without reading that file
+  // directly (CD-02: "this engine does not read js/memory.js directly").
+  function extractStatementText(payload) {
+    payload = payload || {};
+    if (typeof payload.text === 'string') return payload.text;
+    if (payload.key !== undefined) return String(payload.key) + ': ' + String(payload.value);
+    try { return JSON.stringify(payload); } catch (e) { return ''; }
+  }
 
   async function assembleContext(identity) {
     identity = identity || {};
@@ -173,6 +190,73 @@
       currentStateContextAvailable = false; // graceful degradation, D3 §12.3
     }
 
+    // ── CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §9) — Situational Context: a bounded,
+    // recompute-from-source, non-persisted semantic interpretation of the user's own manually-
+    // stated Typed Memory (source==='user_stated'). Gated behind a cheap, purely mechanical,
+    // already-available pre-check — a live HABIT/FOOD_LOGGING/WEAKENING signal must be present
+    // in initiativeIntelligence.signals (the exact condition contextualMeaningPolicy.js's own
+    // sole V1 rule requires) — so the LLM is never invoked when the sole real consumer
+    // (Contextual Meaning) could not use the result this cycle anyway. This is a cost
+    // optimization only, never a correctness gate: Contextual Meaning's own real check
+    // independently governs the actual outcome regardless of this pre-check's accuracy.
+    //
+    // Reuses StateAccess's existing, unmodified memoryLayer/USER_STATED_MEMORY_READ
+    // capability-holder identity (USM-001) — the SAME identity assembleUserStatedMemoryFragment()
+    // uses below — rather than widening coachDecisionSystem/DECISION_PASS's own permission grant
+    // (which does not include userStatedMemory and must not be extended to include it, per
+    // USM-001's own explicit "not a widening" constraint). This file still does not read
+    // js/memory.js or Firestore directly (CD-02).
+    //
+    // This file performs NO classification itself — SituationalContextInterpreter (a separate,
+    // injected collaborator) owns the entire classification act; this step only decides
+    // whether/for which records to call it and where to place the result, exactly as it already
+    // does for every other collaborator (D3 §11.1, Model B).
+    var situationalContext = null;
+    var situationalContextAvailable = false;
+    try {
+      var weakeningSignals = (initiativeIntelligence && Array.isArray(initiativeIntelligence.signals))
+        ? initiativeIntelligence.signals : [];
+      var hasLiveWeakeningSignal = weakeningSignals.some(function (s) {
+        return s && s.sourceType === 'HABIT' && s.topic === 'FOOD_LOGGING' && s.lifecycle === 'WEAKENING';
+      });
+      if (hasLiveWeakeningSignal) {
+        var scAccess = StateAccess.createEngineAccess({
+          engineId: 'memoryLayer',
+          action: 'USER_STATED_MEMORY_READ',
+          userId: identity.userId,
+          sessionGeneration: identity.sessionGeneration,
+          runId: identity.runId
+        });
+        var scRaw = await scAccess.read.userStatedMemory();
+        var scRecords = (Array.isArray(scRaw) ? scRaw : [])
+          .filter(function (m) { return m && m.id; })
+          .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+        if (scRecords.length) {
+          var eligibleItems = await SituationalContextInterpreter.classify(scRecords);
+          situationalContext = freezeShallow({
+            items: freezeShallow(eligibleItems.map(function (e) {
+              return freezeShallow({
+                semanticClass: 'CURRENT_STATE_CONSTRAINT',
+                inputCategory: 'SITUATIONAL_CONTEXT',
+                interpretationAuthority: 'DERIVED_INTERPRETATION',
+                classificationConfidence: 'SUFFICIENTLY_CONFIDENT',
+                sourceMemoryId: e.sourceMemoryId,
+                statementText: e.statementText
+              });
+            }))
+          });
+          situationalContextAvailable = true;
+        }
+        // else: no eligible source records exist despite the live signal — situationalContext
+        // stays null/UNAVAILABLE, matching "no live signal" (§9 step 2: an empty read is the
+        // same outcome as never attempting the read at all, not a distinct "attempted, empty"
+        // state — that distinct state is reserved for "attempted, none classified", below).
+      }
+    } catch (e) {
+      situationalContext = null;
+      situationalContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -186,6 +270,7 @@
       capacityState: capacityState,
       goalObjectiveContext: goalObjectiveContext,
       currentStateContext: currentStateContext,
+      situationalContext: situationalContext,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -198,7 +283,8 @@
         lifeEventContext: 'UNAVAILABLE',
         capacityState: 'UNAVAILABLE',
         goalObjectiveContext: goalObjectiveContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }

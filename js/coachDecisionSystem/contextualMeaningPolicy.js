@@ -82,6 +82,16 @@
       // example: a Trajectory-only finding is real Meaning even absent a Goal comparison,
       // resolving UNKNOWN, not an assessed-and-found-neutral NEUTRAL).
       var established = !!(observation.provenance && observation.provenance.currentEpisodeEstablished === true);
+      // CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §11-§13) — the one approved, narrow Product
+      // Reason Policy extension: this V1 rule ONLY may additively consult Situational Context as
+      // NON-CAUSAL BACKGROUND. situationalContextBackground is a categorically separate field
+      // from priorEstablishmentBasis (the actual Reason-basis field, above) — it is never merged
+      // into it and never read by deriveValidReasonCategory() below, so it cannot alter
+      // Alignment/Trajectory/validReasonCategory/Evidence Tier by construction, not merely by
+      // convention. No causal claim is ever made or implied by this field's presence.
+      var situationalItems = (pipelineContext.situationalContext && Array.isArray(pipelineContext.situationalContext.items))
+        ? pipelineContext.situationalContext.items : [];
+      var situationalConsulted = situationalItems.length > 0;
       return freezeShallow({
         alignment: 'UNKNOWN',
         trajectory: 'WORSENING',
@@ -90,10 +100,19 @@
           // Only populated when the real, persisted establishment fact is actually present —
           // never fabricated for a signal that merely matches sourceType/topic/lifecycle without it.
           priorEstablishmentBasis: established ? PRIOR_ESTABLISHMENT_BASIS_V1 : null,
-          contextConsulted: freezeShallow({ goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED' }),
-          // Both categories are NOT_CONSULTED for this rule (never read at all), never UNAVAILABLE/
-          // UNCERTAIN for this specific rule regardless of Pipeline Context's own availability map
-          // (§16/§19-20 — NOT_CONSULTED never populates unavailableOrUncertain).
+          contextConsulted: freezeShallow({
+            goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED',
+            situationalContext: situationalConsulted ? 'CONSULTED' : 'NOT_CONSULTED'
+          }),
+          // Non-causal only — never a Reason/cause signal, never read by deriveValidReasonCategory.
+          situationalContextBackground: situationalConsulted
+            ? freezeShallow({ items: freezeShallow(situationalItems.map(function (it) {
+                return freezeShallow({ statementText: it.statementText, sourceMemoryId: it.sourceMemoryId });
+              })) })
+            : null,
+          // Both G-2 categories remain NOT_CONSULTED for this rule (never read at all), never
+          // UNAVAILABLE/UNCERTAIN for this specific rule regardless of Pipeline Context's own
+          // availability map (§16/§19-20 — NOT_CONSULTED never populates unavailableOrUncertain).
           unavailableOrUncertain: freezeShallow([])
         })
       });

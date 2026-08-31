@@ -46,9 +46,51 @@ test('3. basis.priorEstablishmentBasis is null when the real establishment fact 
   assert.equal(cm.basis.priorEstablishmentBasis, null);
 });
 
-test('4. basis.contextConsulted is NOT_CONSULTED for both categories for the V1 rule (no Goal comparison performed)', () => {
+test('4. basis.contextConsulted is NOT_CONSULTED for all three categories for the V1 rule when no Situational Context is available (no Goal comparison performed; CSSC-001 §12 additive extension)', () => {
   const cm = ContextualMeaningPolicy.computeContextualMeaning(makeObservation(), {});
+  assert.deepEqual(cm.basis.contextConsulted, { goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED', situationalContext: 'NOT_CONSULTED' });
+  assert.equal(cm.basis.situationalContextBackground, null);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §12) — non-causal Situational Context consultation
+// ══════════════════════════════════════════════════════════════════
+
+test('4a. basis.contextConsulted.situationalContext is CONSULTED and basis.situationalContextBackground carries the exact classified items when Pipeline Context provides them', () => {
+  const pipelineContext = {
+    situationalContext: { items: [
+      { semanticClass: 'CURRENT_STATE_CONSTRAINT', inputCategory: 'SITUATIONAL_CONTEXT', interpretationAuthority: 'DERIVED_INTERPRETATION', classificationConfidence: 'SUFFICIENTLY_CONFIDENT', sourceMemoryId: 'mem-1', statementText: 'אני עובד בלילות עכשיו' }
+    ] }
+  };
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(makeObservation(), pipelineContext);
+  assert.equal(cm.basis.contextConsulted.situationalContext, 'CONSULTED');
+  assert.deepEqual(cm.basis.situationalContextBackground, { items: [{ statementText: 'אני עובד בלילות עכשיו', sourceMemoryId: 'mem-1' }] });
+});
+
+test('4b. Situational Context consultation never changes Alignment/Trajectory/priorEstablishmentBasis — identical with or without it (CSSC-001 §13, non-causal guarantee)', () => {
+  const withoutContext = ContextualMeaningPolicy.computeContextualMeaning(makeObservation(), {});
+  const withContext = ContextualMeaningPolicy.computeContextualMeaning(makeObservation(), {
+    situationalContext: { items: [{ sourceMemoryId: 'mem-1', statementText: 'אני עובד בלילות עכשיו' }] }
+  });
+  assert.equal(withContext.alignment, withoutContext.alignment);
+  assert.equal(withContext.trajectory, withoutContext.trajectory);
+  assert.equal(withContext.basis.priorEstablishmentBasis, withoutContext.basis.priorEstablishmentBasis);
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(makeObservation(), withContext), ContextualMeaningPolicy.deriveValidReasonCategory(makeObservation(), withoutContext));
+});
+
+test('4c. an empty situationalContext.items array resolves NOT_CONSULTED, not CONSULTED (an attempted-but-empty classification is not the same as a truthful background note)', () => {
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(makeObservation(), { situationalContext: { items: [] } });
+  assert.equal(cm.basis.contextConsulted.situationalContext, 'NOT_CONSULTED');
+  assert.equal(cm.basis.situationalContextBackground, null);
+});
+
+test('4d. the non-V1-rule branch (every other Observation) is completely unaffected by situationalContext — contextConsulted stays two-key, no situationalContextBackground field at all', () => {
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(
+    makeObservation({ topic: 'WORKOUT_FREQUENCY' }),
+    { situationalContext: { items: [{ sourceMemoryId: 'mem-1', statementText: 'אני עובד בלילות עכשיו' }] } }
+  );
   assert.deepEqual(cm.basis.contextConsulted, { goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED' });
+  assert.ok(!Object.prototype.hasOwnProperty.call(cm.basis, 'situationalContextBackground'));
 });
 
 test('5. basis.unavailableOrUncertain is empty — NOT_CONSULTED never populates it, regardless of Pipeline Context availability', () => {

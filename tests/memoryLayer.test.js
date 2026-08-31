@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const StateAccess = require('../js/stateAccess.js');
 const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
+const SituationalContextInterpreter = require('../js/coachDecisionSystem/situationalContextInterpreter.js');
 
 function configureHappyPath() {
   StateAccess.configure({
@@ -499,4 +500,206 @@ test('USM1-F. this file does not read js/memory.js or Firestore directly — CD-
   assert.equal(src.indexOf("require('../memory.js"), -1);
   assert.equal(src.indexOf('firestore'), -1);
   assert.equal(src.indexOf('FitMeMemory'), -1);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §9) — Situational Context assembly: the
+// mechanical WEAKENING-signal invocation gate, the reused memoryLayer/USER_STATED_MEMORY_READ
+// identity, and graceful degradation. The interpreter's own classification logic is covered
+// separately and exhaustively in tests/situationalContextInterpreter.test.js — here we stub
+// SituationalContextInterpreter.classify directly (matching this repository's existing
+// convention of monkey-patching a real singleton's method, e.g.
+// tests/internalPipelineOrchestrator.test.js's MemoryLayer.assembleContext override) to isolate
+// Memory Layer's own integration logic from the interpreter's own internals.
+// ══════════════════════════════════════════════════════════════════
+
+var WEAKENING_HABIT_RECORD = {
+  id: 'nutrition:log-consistency', type: 'nutrition', key: 'log-consistency', status: 'weakening',
+  confidence: 0.7, sourceEvents: { count: 5 }, lastObserved: '2026-07-29'
+};
+
+function configureNoWeakeningSignal() {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => []
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+}
+
+function configureWeakeningSignal(fetchUserStatedMemoryFn) {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: fetchUserStatedMemoryFn || (async () => [])
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [WEAKENING_HABIT_RECORD], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+}
+
+test.afterEach(() => { SituationalContextInterpreter.configure({ callClaude: null }); });
+
+test('CSSC1-A. the mechanical pre-check confirms a live HABIT/FOOD_LOGGING/WEAKENING signal reaches initiativeIntelligence.signals via the real Consumer pipeline (fixture precondition)', async () => {
+  configureWeakeningSignal();
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const signal = ctx.initiativeIntelligence && ctx.initiativeIntelligence.signals && ctx.initiativeIntelligence.signals.find((s) => s.sourceType === 'HABIT' && s.topic === 'FOOD_LOGGING' && s.lifecycle === 'WEAKENING');
+  assert.ok(signal, 'the WEAKENING_HABIT_RECORD fixture must actually normalize into a HABIT/FOOD_LOGGING/WEAKENING signal — precondition for every other CSSC1 test below');
+});
+
+test('CSSC1-B. with no live WEAKENING signal, zero interpreter/LLM calls occur and situationalContext is UNAVAILABLE (the invocation gate)', async () => {
+  configureNoWeakeningSignal();
+  let called = false;
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null);
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.equal(called, false, 'no live WEAKENING signal must mean zero classifier calls, even though this fixture has zero eligible records anyway');
+});
+
+test('CSSC1-C. a live WEAKENING signal but zero eligible user-stated records still yields zero interpreter calls and UNAVAILABLE (an empty read is not a distinct "attempted, empty" state)', async () => {
+  configureWeakeningSignal(async () => []);
+  let called = false;
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null);
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('CSSC1-D. a live WEAKENING signal with an eligible user-stated fact classifies it and populates situationalContext.items — DERIVED_INTERPRETATION, never USER_STATED', async () => {
+  configureWeakeningSignal(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות עכשיו' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SituationalContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: '{"results":[{"id":"mem-1","verdict":"CLASSIFIED_CURRENT_STATE"}]}' }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.situationalContext, 'AVAILABLE');
+  assert.equal(ctx.situationalContext.items.length, 1);
+  const item = ctx.situationalContext.items[0];
+  assert.equal(item.sourceMemoryId, 'mem-1');
+  assert.equal(item.statementText, 'אני עובד בלילות עכשיו');
+  assert.equal(item.semanticClass, 'CURRENT_STATE_CONSTRAINT');
+  assert.equal(item.inputCategory, 'SITUATIONAL_CONTEXT');
+  assert.equal(item.interpretationAuthority, 'DERIVED_INTERPRETATION');
+  assert.notEqual(item.interpretationAuthority, 'USER_STATED');
+});
+
+test('CSSC1-E. an attempted classification that qualifies no record resolves items:[] with AVAILABLE — distinct from the never-attempted UNAVAILABLE case', async () => {
+  configureWeakeningSignal(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'אני לא אוהב טונה' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SituationalContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: '{"results":[{"id":"mem-1","verdict":"INELIGIBLE_OR_NOT_CLASSIFIED"}]}' }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.situationalContext.items, []);
+  assert.equal(ctx.availability.situationalContext, 'AVAILABLE');
+});
+
+test('CSSC1-F. more than one batch\'s worth of eligible records all get classified — none dropped by recency or a fixed total count', async () => {
+  const records = Array.from({ length: 14 }, (_, i) => ({
+    _id: 'mem-' + String(i).padStart(2, '0'), type: 'fact', payload: { text: 'statement ' + i },
+    confidence: 1, source: 'user_stated', status: 'active', updated_at: 1000 - i // oldest last, per updated_at desc
+  }));
+  configureWeakeningSignal(async () => records);
+  const seenIds = new Set();
+  SituationalContextInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      ids.forEach((id) => seenIds.add(id));
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+    }
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext.items.length, 14, 'every eligible record — including ones older than the batch size and beyond a fixed 6-total cap — must be classified');
+  assert.equal(seenIds.size, 14);
+  const oldestId = 'mem-13'; // the least-recently-updated record (updated_at: 1000-13, smallest)
+  assert.ok(ctx.situationalContext.items.some((it) => it.sourceMemoryId === oldestId), 'the oldest eligible record must not be silently dropped for being least recent');
+});
+
+test('CSSC1-G. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_READ StateAccess identity — never widens coachDecisionSystem/DECISION_PASS\'s own permission grant', async () => {
+  configureWeakeningSignal(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  SituationalContextInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  // If this file ever mistakenly tried to read userStatedMemory via the coachDecisionSystem/
+  // DECISION_PASS identity instead of memoryLayer/USER_STATED_MEMORY_READ, StateAccess would
+  // throw STATE_ACCESS_DENIED — assembleContext()'s own try/catch would then degrade this field
+  // to UNAVAILABLE instead of AVAILABLE, exposing the mistake here.
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.situationalContext, 'AVAILABLE', 'the read succeeded, confirming the correct, already-existing, unwidened StateAccess identity was used');
+});
+
+test('CSSC1-H. consent not granted resolves situationalContext UNAVAILABLE with zero classifier calls (the existing USM-001 fail-closed gate, reused unchanged)', async () => {
+  let called = false;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => { called = true; return [{ _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]; }
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [WEAKENING_HABIT_RECORD], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null);
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.equal(called, false, 'consent-gated fail-closed to [] before any fetch (USM-001 §7) means the interpreter is never even reached');
+});
+
+test('CSSC1-I. graceful degradation: a thrown StateAccess/interpreter error never blocks Context Assembly (D3 §12.3) — the Decision Pass still proceeds with every other field intact', async () => {
+  configureWeakeningSignal(async () => { throw new Error('simulated StateAccess outage'); });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null);
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.equal(typeof ctx.assembledAt, 'number', 'the rest of Pipeline Context assembly must complete normally despite this one field\'s failure');
+});
+
+test('CSSC1-J. edit/reject/delete/consent-grant are naturally reflected on the next assembly — no derived interpretation is cached anywhere in this file', async () => {
+  var version = 1;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => (version === 1
+      ? [{ _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות עכשיו' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+      : [{ _id: 'mem-1', type: 'fact', payload: { text: 'אני כבר לא עובד בלילות' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 200 }])
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [WEAKENING_HABIT_RECORD], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  SituationalContextInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+    }
+  });
+  const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(before.situationalContext.items[0].statementText, 'אני עובד בלילות עכשיו');
+  version = 2; // simulates an edit to the underlying Typed Memory record
+  const after = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-2' });
+  assert.equal(after.situationalContext.items[0].statementText, 'אני כבר לא עובד בלילות', 'the next assembly must reflect the edited statement — nothing derived is cached');
 });

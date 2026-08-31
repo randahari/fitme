@@ -1375,3 +1375,70 @@ matching G-2's own precedent (§26): this closure makes a previously-dormant cor
 reachable for the first time but ships no new user-visible Coach behavior on its own, since the
 Composite Engine's only live trigger remains background/autonomous with no live Opportunity source.
 See `docs/specs/ESAF_001_SPEC_v1.0.md` for complete evidence.
+
+## 30. CSSC-001 — Current State / Situational Context V1
+
+**Added by CSSC-001** (`docs/specs/CSSC_001_SPEC_v1.0.md`, IMPLEMENTED / VERIFIED / CLOSED). The
+first real, end-to-end Semantic User Understanding vertical: AUTHORITATIVE USER STATEMENT →
+DERIVED SEMANTIC INTERPRETATION → CURRENT STATE / SITUATIONAL CONTEXT → Memory Layer → the
+existing, live `FOOD_LOGGING`/`WEAKENING` Contextual Meaning V1 rule, as truthful non-causal
+background only. Statement authority never becomes interpretation authority (D1 Unit 11,
+D1-ER-07): the classification is Tier-5/derived, never persisted to Typed Memory, never
+promoted to `user_stated`/authoritative status.
+
+New `js/coachDecisionSystem/situationalContextInterpreter.js` owns the entire classification
+act — prompt, model choice, batching, output parsing, timeout, fail-closed behavior — nothing
+Memory Layer, Contextual Meaning, or EvidenceEvaluator does. Its output vocabulary is exactly
+two closed tokens, `CLASSIFIED_CURRENT_STATE`/`INELIGIBLE_OR_NOT_CLASSIFIED`, with no numeric
+confidence read or stored anywhere. A Final SPEC Correction (before implementation) established
+that Engineering transport bounds must never silently define semantic completeness: the module
+classifies the *complete* eligible set of currently-active, consented, `user_stated`
+`fact`/`preference` records via deterministic (id-sorted, reproducibility-only, never
+relevance-implying) batches, issuing every batch required rather than truncating at a fixed
+total. Batch responses validate strictly by `sourceMemoryId` — never array position — with an
+explicit fail-closed rule for missing/duplicate/unknown/malformed ids, and per-id prompt
+delimiting that structurally prevents one record's injected text from altering a sibling's
+outcome (proven, not merely asserted, by production-backed testing). Health/safety-adjacent
+content is instructed to abstain unconditionally; the Safety contract is an explicit
+closed-vocabulary eligibility boundary — only positively-classified output may ever enter
+`situationalContext` — honestly documented as a bounded, instruction-level property, not a
+Safety Layer or medical classifier, since no LLM-based judgment can be given a mathematical
+guarantee. Auth reuses the existing `callClaude` closure (`js/app.js`, already used by
+`coachClient.js`/`expressionRenderer.js`) — no Firebase Auth object is threaded through Decision
+identity, Pipeline Context, or provenance.
+
+`js/coachDecisionSystem/memoryLayer.js`'s `assembleContext()` gains one new, additive step: a
+cost-only mechanical pre-check (a live `HABIT`/`FOOD_LOGGING`/`WEAKENING` signal must be present
+in the already-assembled `initiativeIntelligence.signals`) gates classification entirely — zero
+LLM calls whenever Contextual Meaning's own closed V1 rule could never consult the result
+anyway. The read reuses USM-001's existing `memoryLayer`/`USER_STATED_MEMORY_READ` StateAccess
+identity unchanged, never widening `coachDecisionSystem`/`DECISION_PASS`'s own permission grant.
+`js/coachDecisionSystem/contextualMeaningPolicy.js`'s one live V1 rule gains
+`contextConsulted.situationalContext`/`basis.situationalContextBackground` — confirmed by direct
+inspection to be physically unreachable from `deriveValidReasonCategory()` and
+`evidenceEvaluator.js`, making "no Reason substitution, no Evidence Tier change" a structural
+guarantee, not a convention.
+
+**Engineering discovery during implementation, corrected honestly (not an architecture change):**
+prior documentation in this program described the `FOOD_LOGGING`/`WEAKENING` V1 path as
+resolving to Silence — accurate for G-2 alone, but RGEF (§29's predecessor closure, entirely
+independent of and pre-dating CSSC-001) already admits this fixture to a live `INITIATIVE`
+Terminal Decision via its own Bounded Early-Relationship Engagement path. This does not weaken
+CSSC-001's non-causal guarantee; it is proven more directly: the Terminal Decision's `kind`,
+`rationale`, and `decisionPassTrace` are byte-identical with and without Situational Context, and
+`buildExpressionRenderingContext()` — an existing, unmodified, already-tested strict
+`relationshipMaturity.stage`-only pass-through — makes it structurally impossible for Situational
+Context to reach Expression's rendering payload at all, regardless of Terminal Decision kind.
+
+**Not resolved by this closure:** Domain/Topic assignment of any kind; Preference, Life Event,
+Explicit Request, or Intervention Feedback as semantic classes; Conversation/Voice producers
+(the raw-statement contract is producer-neutral by construction, not built); a non-authoritative,
+cost-only classification cache (judged unnecessary at pilot scale); Trust (paused, unmodified,
+unread by this Work Item's own logic); Relationship Maturity; Goal architecture; historical
+supersession of the underlying statement.
+
+Full repository regression at this closure: **2058/2058 passing** (2013 pre-CSSC-001 baseline,
+net +45). `APP_VERSION`/service-worker `VERSION` inspected and left unchanged (`2.43.0`/
+`v2.43.0`): this Work Item adds no new occurrence, timing, or content to any dispatch — proven,
+not assumed, that the live path it happens to touch is unaffected by Situational Context's
+presence. See `docs/specs/CSSC_001_SPEC_v1.0.md` for complete evidence.

@@ -603,6 +603,10 @@
        orchestrator, the expression renderer) still load later. -->
   <script src="js/userStatedMemoryPrompt.js"></script>
   <script src="js/coachDecisionSystem/expressionRenderingContext.js"></script>
+  <!-- CSSC-001: situationalContextInterpreter.js loads before the Memory Layer module below,
+       which resolves it at top-of-module require/window time (same pattern as the two files
+       above it). -->
+  <script src="js/coachDecisionSystem/situationalContextInterpreter.js"></script>
   <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>

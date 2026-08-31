@@ -268,6 +268,15 @@ ExpressionRenderer.configure({
   }
 });
 
+// CSSC-001 (docs/specs/CSSC_001_SPEC_v1.0.md §19, Auth Boundary correction): injects the SAME
+// existing callClaude closure used above — never a live Firebase Auth user object, never a
+// change to Decision identity/ctx. This is the interpreter's entire auth/transport seam; the
+// interpreter itself still owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude
+// remain transport-only, unmodified).
+SituationalContextInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
 // C1-WP6: מזריק DOM/state/callbacks. coachMessageFn עוטף כ-closure את coachMessage
 // (פסאדה ב-app.js המאצילה ל-CoachClient.sendMessage) — אין שכפול לוגיקה. coachCardShown
 // נשאר משתנה משותף ב-app.js (מאופס גם ב-_resetAppCoreState) — מוזרק כ-getter/setter.

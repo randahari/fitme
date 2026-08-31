@@ -18,6 +18,7 @@ const SHELL = [
   '/fitme/js/derivedIntelligencePrompt.js',
   '/fitme/js/userStatedMemoryPrompt.js',
   '/fitme/js/coachDecisionSystem/expressionRenderingContext.js',
+  '/fitme/js/coachDecisionSystem/situationalContextInterpreter.js',
   '/fitme/js/coachDecisionSystem/memoryLayer.js',
   '/fitme/js/core/dateUtils.js',
   '/fitme/js/core/numberUtils.js',
