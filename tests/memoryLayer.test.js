@@ -12,6 +12,7 @@ const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const SituationalContextInterpreter = require('../js/coachDecisionSystem/situationalContextInterpreter.js');
 const ExplicitRequestInterpreter = require('../js/coachDecisionSystem/explicitRequestInterpreter.js');
 const SafetyContextInterpreter = require('../js/coachDecisionSystem/safetyContextInterpreter.js');
+const UserSafetyProvenanceInterpreter = require('../js/coachDecisionSystem/userSafetyProvenanceInterpreter.js');
 
 function configureHappyPath() {
   StateAccess.configure({
@@ -1205,4 +1206,268 @@ test('USC1-N. this new step does not affect situationalContext, explicitRequestC
   // no Safety Rule/matcher field anywhere on Pipeline Context.
   assert.equal('actionIdentity' in ctx, false);
   assert.equal('safetyDisposition' in ctx, false);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// USP-001 (docs/specs/USP_001_SPEC_v1.0.md §13) — User Safety Provenance assembly: a fourth,
+// independent sibling step, no mechanical pre-check gate, the reused
+// memoryLayer/USER_STATED_MEMORY_READ identity, and graceful degradation. The interpreter's own
+// extraction/literal-substring-validation/PD-USP-02 role-vs-proper-name logic is covered
+// separately and exhaustively in tests/userSafetyProvenanceInterpreter.test.js — here we stub
+// UserSafetyProvenanceInterpreter's own callClaude (same monkey-patching convention as the
+// CSSC1/EUR1/USC1 blocks above) to isolate Memory Layer's own integration logic. USC-001 is
+// CLOSED and untouched by this Work Item — this step performs its own independent read; it does
+// not read or depend on the userSafetyContext step above.
+// ══════════════════════════════════════════════════════════════════
+
+test.afterEach(() => { UserSafetyProvenanceInterpreter.configure({ callClaude: null }); });
+
+test('USP1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
+  configureConsentGranted(async () => []);
+  let called = false;
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyProvenance, null);
+  assert.equal(ctx.availability.userSafetyProvenance, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('USP1-B. like userSafetyContext, this step attempts a read/classification with NO live Habit/Pattern signal required — no pre-check gate', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  let called = false;
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(called, true, 'USP-001 must attempt classification even with zero live Habit/Pattern signals — it has no equivalent pre-check gate');
+});
+
+test('USP1-C. an accepted NAMED_SOURCE_STATED record populates userSafetyProvenance.items with exactly {sourceMemoryId, statedSourceText}', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.userSafetyProvenance, 'AVAILABLE');
+  assert.equal(ctx.userSafetyProvenance.items.length, 1);
+  const item = ctx.userSafetyProvenance.items[0];
+  assert.deepEqual(Object.keys(item).sort(), ['sourceMemoryId', 'statedSourceText'], 'no additional public field — no confidence, category, MEDICAL flag, or trust score');
+  assert.equal(item.sourceMemoryId, 'mem-1');
+  assert.equal(item.statedSourceText, 'my doctor');
+});
+
+test('USP1-D. a passive attribution never enters items[] — attempted, AVAILABLE, empty', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I was told not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.userSafetyProvenance.items, []);
+  assert.equal(ctx.availability.userSafetyProvenance, 'AVAILABLE');
+});
+
+test('USP1-E. PD-USP-02: a bare proper name never enters items[]', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'Yossi told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.userSafetyProvenance.items, []);
+});
+
+test('USP1-F. more than one batch\'s worth of eligible records all receive legitimate consideration — none dropped by recency or a fixed total count', async () => {
+  const records = Array.from({ length: 14 }, (_, i) => ({
+    _id: 'mem-' + String(i).padStart(2, '0'), type: 'fact', payload: { text: 'My doctor said no running, item ' + i },
+    confidence: 1, source: 'user_stated', status: 'active', updated_at: 1000 - i
+  }));
+  configureConsentGranted(async () => records);
+  const seenIds = new Set();
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      ids.forEach((id) => seenIds.add(id));
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
+    }
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(seenIds.size, 14, 'every eligible record must be submitted for classification, none dropped for exceeding a fixed batch-size-derived total');
+  assert.equal(ctx.userSafetyProvenance.items.length, 14);
+  assert.ok(ctx.userSafetyProvenance.items.some((it) => it.sourceMemoryId === 'mem-13'), 'the least-recently-updated eligible record must not be silently dropped');
+});
+
+test('USP1-G. multiple distinct named-source records all appear, no deduplication logic, no error', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 },
+    { _id: 'mem-2', type: 'fact', payload: { text: 'My coach told me not to swim.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+      { id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' },
+      { id: 'mem-2', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my coach' }
+    ] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyProvenance.items.length, 2);
+  const sources = ctx.userSafetyProvenance.items.map((i) => i.statedSourceText).sort();
+  assert.deepEqual(sources, ['my coach', 'my doctor']);
+});
+
+test('USP1-H. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_READ StateAccess identity — never widens coachDecisionSystem/DECISION_PASS\'s own permission grant', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal('facts' in ctx, false);
+  assert.equal('userStatedMemory' in ctx, false);
+});
+
+test('USP1-I. consent not granted resolves userSafetyProvenance UNAVAILABLE with zero classifier calls', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => [{ _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  let called = false;
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyProvenance, null);
+  assert.equal(ctx.availability.userSafetyProvenance, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('USP1-J. graceful degradation: a thrown StateAccess/interpreter error never blocks Context Assembly, and does not corrupt sibling fields', async () => {
+  configureConsentGranted(async () => { throw new Error('simulated StateAccess outage'); });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyProvenance, null);
+  assert.equal(ctx.availability.userSafetyProvenance, 'UNAVAILABLE');
+  assert.equal(typeof ctx.assembledAt, 'number', 'the rest of Pipeline Context assembly must complete normally despite this one field\'s failure');
+});
+
+test('USP1-K. a USP-001 failure does not corrupt situationalContext, explicitRequestControls, or userSafetyContext (bidirectional isolation)', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  // USP-001's own interpreter throws synchronously; the three sibling interpreters succeed normally.
+  UserSafetyProvenanceInterpreter.configure({ callClaude: () => { throw new Error('simulated USP-001 failure'); } });
+  SafetyContextInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+  });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  // The interpreter's own classifyBatch() absorbs a synchronous callClaude throw internally
+  // (never throws to its caller, per its own "never throws" discipline) — so this step still
+  // reports AVAILABLE with zero classified items, exactly like a call that legitimately
+  // classified nothing. The point of this test is the sibling isolation below, not this value.
+  assert.deepEqual(ctx.userSafetyProvenance, { items: [] });
+  assert.equal(ctx.availability.userSafetyProvenance, 'AVAILABLE');
+  // Siblings entirely unaffected by USP-001's own failure.
+  assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
+  assert.equal(ctx.userSafetyContext.items.length, 1);
+  assert.deepEqual(ctx.explicitRequestControls.items, []);
+});
+
+test('USP1-L. a sibling interpreter failure does not corrupt userSafetyProvenance', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  // The sibling USC-001 interpreter throws synchronously; USP-001 succeeds normally.
+  SafetyContextInterpreter.configure({ callClaude: () => { throw new Error('simulated USC-001 failure'); } });
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  // Same absorbed-throw behavior as USP1-K, on the sibling side this time — the point of this
+  // test is that USP-001's own field (asserted below) is unaffected by USC-001's own failure.
+  assert.deepEqual(ctx.userSafetyContext, { items: [] });
+  assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
+  // USP-001 entirely unaffected by USC-001's own failure.
+  assert.equal(ctx.availability.userSafetyProvenance, 'AVAILABLE');
+  assert.equal(ctx.userSafetyProvenance.items.length, 1);
+  assert.equal(ctx.userSafetyProvenance.items[0].statedSourceText, 'my doctor');
+});
+
+test('USP1-M. edit/reject/delete/consent-grant are naturally reflected on the next assembly — no derived provenance is cached anywhere in this file (§18 recompute-from-source)', async () => {
+  var version = 1;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => (version === 1
+      ? [{ _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }]
+      : []) // simulates the record being edited to no longer name a source, reversed, or deleted
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async (body) => {
+      const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
+      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
+    }
+  });
+  const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(before.userSafetyProvenance.items.length, 1);
+  version = 2;
+  const after = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-2' });
+  assert.equal(after.userSafetyProvenance, null, 'the next assembly must reflect the edited/reversed/deleted source — nothing derived is cached');
+});
+
+test('USP1-N. Pipeline Context (including userSafetyProvenance) is frozen exactly as every existing field already is', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.ok(Object.isFrozen(ctx));
+  assert.ok(Object.isFrozen(ctx.userSafetyProvenance));
+  assert.ok(Object.isFrozen(ctx.userSafetyProvenance.items));
+  assert.ok(Object.isFrozen(ctx.userSafetyProvenance.items[0]));
+});
+
+test('USP1-O. this new step does not affect situationalContext, explicitRequestControls, or userSafetyContext (regression), and introduces no Foundation C field', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  UserSafetyProvenanceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+  });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
+  assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
+  assert.deepEqual(ctx.explicitRequestControls.items, [], 'explicitRequestControls is attempted (no pre-check gate) and correctly resolves empty, untouched by the new step');
+  // userSafetyContext (USC-001) is untouched by this Work Item's own code — it independently
+  // attempts classification against the same eligible record (no pre-check gate, mirroring
+  // USP-001's own design) and, with no callClaude configured for it in this test, classifies
+  // nothing — AVAILABLE with empty items, not corrupted or altered by USP-001's own presence.
+  assert.deepEqual(ctx.userSafetyContext, { items: [] });
+  assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
+  assert.deepEqual(ctx.feedbackHistory, []);
+  assert.equal(ctx.relationshipMaturity.stage, 'UNKNOWN');
+  // Foundation C boundary (USP-001 §19): no medical-source classification field, no RUNNING
+  // classification field, no Safety Rule/matcher field anywhere on Pipeline Context.
+  assert.equal('actionIdentity' in ctx, false);
+  assert.equal('safetyDisposition' in ctx, false);
+  assert.equal('medicalSource' in (ctx.userSafetyProvenance.items[0] || {}), false);
 });

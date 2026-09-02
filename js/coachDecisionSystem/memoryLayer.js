@@ -91,6 +91,17 @@
   var SafetyContextInterpreter = (typeof module !== 'undefined' && module.exports)
     ? require('./safetyContextInterpreter.js')
     : window.SafetyContextInterpreter;
+  // USP-001 (docs/specs/USP_001_SPEC_v1.0.md §13) — a fourth, separate, injected collaborator,
+  // exactly like SafetyContextInterpreter above; owns the entire semantic interpretation act
+  // (prompt, model, batching, closed single-field literal output validation). This file never
+  // performs free-text classification or literal-field extraction itself. USC-001 is CLOSED and
+  // untouched — this collaborator performs its OWN independent read of the same eligible raw Typed
+  // Memory record set, never reading or depending on SafetyContextInterpreter's own already-
+  // narrowed output. No medical-source classification, no RUNNING classification, no Safety Rule
+  // logic (USP-001 §19/§20 — Foundation C, not yet built, owns all of that).
+  var UserSafetyProvenanceInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./userSafetyProvenanceInterpreter.js')
+    : window.UserSafetyProvenanceInterpreter;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
@@ -400,6 +411,59 @@
       userSafetyContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── USP-001 (docs/specs/USP_001_SPEC_v1.0.md §13) — User Safety Provenance: a bounded,
+    // recompute-from-source, non-persisted, non-authoritative projection of who the user
+    // explicitly reported as the source of a restriction, derived from the same manually-stated
+    // Typed Memory (source==='user_stated') the three collaborators above already read
+    // independently. Foundation A (USC-001) is CLOSED and untouched — this step performs its own
+    // independent read; it does not read or depend on userSafetyContext above. No medical-source
+    // classification, no RUNNING classification (Foundation C, not yet built, owns all of that —
+    // USP-001 §19/§20). Like userSafetyContext above, this step has NO mechanical pre-check gate.
+    //
+    // This file performs NO classification and no literal-field extraction itself —
+    // UserSafetyProvenanceInterpreter (a separate, injected collaborator) owns the entire semantic
+    // interpretation act, including the deterministic literal-substring enforcement and the
+    // PD-USP-02 role-vs-proper-name distinction (§7-§9); this step only decides whether/how to
+    // batch and places the already-validated result (§18).
+    //
+    // Reuses StateAccess's existing, unmodified memoryLayer/USER_STATED_MEMORY_READ
+    // capability-holder identity (USM-001) — the SAME identity situationalContext/
+    // explicitRequestControls/userSafetyContext above use — rather than widening
+    // coachDecisionSystem/DECISION_PASS's own permission grant. This file still does not read
+    // js/memory.js or Firestore directly (CD-02).
+    var userSafetyProvenance = null;
+    var userSafetyProvenanceAvailable = false;
+    try {
+      var uspAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer',
+        action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId,
+        sessionGeneration: identity.sessionGeneration,
+        runId: identity.runId
+      });
+      var uspRaw = await uspAccess.read.userStatedMemory();
+      var uspRecords = (Array.isArray(uspRaw) ? uspRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (uspRecords.length) {
+        var provenanceItems = await UserSafetyProvenanceInterpreter.classify(uspRecords);
+        userSafetyProvenance = freezeShallow({
+          items: freezeShallow(provenanceItems.map(function (p) {
+            return freezeShallow({
+              sourceMemoryId: p.sourceMemoryId,
+              statedSourceText: p.statedSourceText
+            });
+          }))
+        });
+        userSafetyProvenanceAvailable = true;
+      }
+      // else: no eligible source records exist — userSafetyProvenance stays null/UNAVAILABLE (no
+      // attempt to classify was needed — mirrors userSafetyContext's own contract above).
+    } catch (e) {
+      userSafetyProvenance = null;
+      userSafetyProvenanceAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -416,6 +480,7 @@
       situationalContext: situationalContext,
       explicitRequestControls: explicitRequestControls,
       userSafetyContext: userSafetyContext,
+      userSafetyProvenance: userSafetyProvenance,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -431,7 +496,8 @@
         currentStateContext: currentStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        userSafetyContext: userSafetyContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        userSafetyContext: userSafetyContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        userSafetyProvenance: userSafetyProvenanceAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }

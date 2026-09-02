@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.46.0';
+const APP_VERSION = '2.47.0';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -291,6 +291,14 @@ ExplicitRequestInterpreter.configure({
 // itself still owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude remain
 // transport-only, unmodified). A separate, non-merged interpreter from the two above.
 SafetyContextInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// USP-001 (docs/specs/USP_001_SPEC_v1.0.md §6) — same auth seam, fourth instance. The interpreter
+// itself still owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude remain
+// transport-only, unmodified). A separate, non-merged interpreter from the three above; USC-001
+// remains closed and untouched.
+UserSafetyProvenanceInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 

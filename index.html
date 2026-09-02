@@ -615,6 +615,10 @@
        resolves it at top-of-module require/window time (same pattern as
        explicitRequestInterpreter.js immediately above). -->
   <script src="js/coachDecisionSystem/safetyContextInterpreter.js"></script>
+  <!-- USP-001: userSafetyProvenanceInterpreter.js loads before the Memory Layer module below,
+       which resolves it at top-of-module require/window time (same pattern as
+       safetyContextInterpreter.js immediately above). USC-001 remains closed and untouched. -->
+  <script src="js/coachDecisionSystem/userSafetyProvenanceInterpreter.js"></script>
   <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>
