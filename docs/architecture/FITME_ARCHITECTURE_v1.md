@@ -953,6 +953,13 @@ Closure Record (§36) for the current, non-architectural repository gaps this le
 decision, not an oversight — D3 §17's six-collaborator design was already fixed before TASK-004;
 SL-001 realizes five of the six, per its own approved scope.
 
+**`matchCanonicalSafetyRules()` — SL-001's own honest, disclosed empty stub (`return [];`) at this
+section's original closure — has since been given a real first implementation by CSR-001, the Safety
+Foundation's integration Work Item; see §36 below.** This does not reopen, redesign, or amend
+anything recorded above: SL-001's own `RiskType`/`EvidenceConfidence`/`Correctability`/`Urgency`
+enums, its ordered Safety Decision Matrix, and the `disqualify()`/`finalReview()` signatures are all
+unchanged and remain exactly as this section already describes them.
+
 ---
 
 ## 25. Expression — Coach Decision System, D3 §17's Sixth and Final Collaborator
@@ -1642,3 +1649,133 @@ existing, already-live user-facing message content genuinely changed (the red-fl
 wording, and the removal of named food examples from two deterministic surfaces), matching the same
 "genuinely new/changed observable user-facing behavior" precedent RGEF/USM-001/EUR-001 each already
 established. See `docs/specs/LCSC_001_SPEC_v1.0.md` for complete evidence.
+
+---
+
+## 33. USC-001 — User Safety Context V1
+
+**Added by USC-001** (`docs/specs/USC_001_SPEC_v1.0.md`; Safety Foundation Work Item A, per
+`docs/governance/FITME_Safety_Foundation_Canonical_Design_v1.0.md`, SF-DECOMP-01). A new,
+class-specific interpreter, `js/coachDecisionSystem/safetyContextInterpreter.js`, architecturally
+identical in pattern to `situationalContextInterpreter.js` (CSSC-001) and
+`explicitRequestInterpreter.js` (EUR-001): deterministic id-keyed batching over the eligible
+`user_stated`/`fact`/`preference` record set, per-batch timeout, no retry, strict fail-closed output
+validation, per-id prompt-injection containment, auth reused via the existing `callClaude` closure
+(`js/app.js`). Its responsibility is narrow and frozen by SFCD §05: hold and expose the durable
+record of what the user has explicitly, literally stated about their own restrictions — no
+diagnosis, clinical inference, treatment, prognosis, or invented recovery timeline; no knowledge of
+Candidate/Action Identity shape (no dependency on Foundation B); no Safety disposition decision
+(remains Foundation C's and the existing Safety Decision Matrix's responsibility). Statement
+authority ≠ Interpretation authority: the record is a derived, Tier-5 projection of authoritative
+`userStated` Typed Memory, never persisted as new memory, always recomputed fresh each Decision Pass.
+`js/coachDecisionSystem/memoryLayer.js`'s `assembleContext()` gains one new, additive step populating
+`pipelineContext.userSafetyContext` (data) and `pipelineContext.availability.userSafetyContext`
+(diagnostic), reusing the same shared `availability` sub-object convention already established by
+prior Pipeline Context extensions. PD-USC-01 (approved) preserves an explicitly user-stated temporal
+qualifier as a literal-only `statedDurationText` field — no computed expiry, recovery, prognosis, or
+unsupported precision. `index.html`/`sw.js`/the seventeen wiring-test files were updated for this new
+file, per the standard convention. No new Engine, pipeline Stage, Candidate family, or Terminal
+Decision type is introduced (SFCD §08). Zero dependency on Foundation B (MAI-001, §34) or Foundation
+C (CSR-001, §36) existing.
+
+---
+
+## 34. MAI-001 — Minimum Action Identity V1
+
+**Added by MAI-001** (`docs/specs/MAI_001_SPEC_v1.0.md`; Safety Foundation Work Item B, SFCD §06). A
+new, standalone module, `js/domain/activityIdentityVocabulary.js`, holding a closed, six-value
+activity vocabulary — `RUNNING`, `WALKING`, `CYCLING`, `SWIMMING`, `STRENGTH_TRAINING`, `PADEL` — per
+AD-SF-03 (independent of `safetyLayer.js`/any Safety Context Interpreter/individual Safety rules —
+the vocabulary represents what an action *is*, not whether it is safe) and AD-SF-04 (independent of,
+and never merged into, `js/domain/domainTopicVocabulary.js` — Domain/Topic identifies the
+decision/coaching subject; activity identity identifies the concrete action modality). Per AD-SF-01
+(action identity is Candidate-attached; Safety is a consumer of Action semantics, never its owner)
+and AD-SF-02 (a structured, extensible identity object, conceptually `actionIdentity: {activity:
+RUNNING}`, chosen specifically to allow later canonical extension into a full Action Model without
+replacing the representation), `Candidate` gains one new, optional, additive top-level field,
+`actionIdentity` — absent/`null` for every Candidate that reports no activity, including the existing,
+live `FOOD_LOGGING` Candidate, which is confirmed unaffected by direct test against the real,
+unmodified `validateCandidateForPool()`/`assemblePool()`/`winnerSelection.select()` code path.
+AD-MAI-01 (recorded during Implementation Review) fixes the Stage 9 propagation boundary: Stage 9's
+`SINGLE_WINNER` path does not propagate `actionIdentity` into the Terminal Decision; the Safety
+Layer's Stage-9 `finalReview()` candidate-null call path continues to return `[]` unconditionally,
+never attempting to recover `actionIdentity` from a Terminal Decision or any `TIED_SET` `options[]`
+exposure — Stage 8 (`disqualify()`, which receives the Candidate pool directly) is the only
+guaranteed consumption point for `actionIdentity` at this baseline. Duration, intensity, quantity,
+food identity, body-area/load, recovery demand, and every other full Action Model semantic remain
+explicitly out of scope (SFCD §06). **No live Candidate producer exists in this repository:**
+`recommendationEngine.js` and `initiativeEngine.js` — the only two Stage-6 Candidate producers — do
+not set `actionIdentity` on any Candidate they construct, a fact confirmed by direct source
+inspection and disclosed by the SPEC's own §15 ("Live-Producer Boundary") as an explicit, accepted
+V1 scope boundary, not a defect. Consequently, no `index.html`/`sw.js`/wiring-test change was
+required or made — the zero-live-consumer exception, contrasted explicitly by USP-001's own SPEC
+(§35 below) with its own, different (wired) treatment.
+
+---
+
+## 35. USP-001 — User Safety Provenance V1
+
+**Added by USP-001** (`docs/specs/USP_001_SPEC_v1.0.md`; Safety Foundation prerequisite Work Item,
+downstream of USC-001/§33, upstream of CSR-001/§36). A new, class-specific interpreter,
+`js/coachDecisionSystem/userSafetyProvenanceInterpreter.js`, architecturally parallel to §33's
+`safetyContextInterpreter.js` (deterministic id-keyed batching, per-batch timeout, no retry, strict
+fail-closed validation, per-id injection containment, the same `callClaude` auth reuse). Its
+responsibility is narrower still: classify the literal source a user attributes to a stated
+restriction (e.g. a medical source) from Typed Memory only — no title-recognition (`Dr.`/`Dr`/`ד"ר`
+or otherwise) and no proper-name-to-role conversion of any kind, per PD-USP-02 (approved,
+confirmed by code review at commit time, not merely by test coverage). `memoryLayer.js`'s
+`assembleContext()` gains one further additive step, independent of §33's own, populating
+`pipelineContext.userSafetyProvenance` (`statedSourceText`, keyed by `sourceMemoryId` — never
+positional, never merged across records). Unlike MAI-001 (§34), this interpreter *is* wired into the
+real, executing `assembleContext()` — `index.html`/`sw.js`/the seventeen wiring-test files were
+updated, the same convention USC-001 (§33) itself followed — because USP-001 has a real, live
+Foundation-C consumer waiting on it (CSR-001, §36), unlike MAI-001's `actionIdentity`, which has none.
+The `AVAILABLE`/`UNAVAILABLE` distinction is precisely scoped: model/timeout/malformed-response
+failures resolve to `{items: []}`/`AVAILABLE`; only "no eligible records" or an upstream StateAccess
+read failure resolves to `null`/`UNAVAILABLE`. Explicit proof of non-interference with §33's own
+existing step is part of this Work Item's own closure evidence. Zero dependency on Foundation C
+(CSR-001) existing.
+
+---
+
+## 36. CSR-001 — Canonical Safety Rule V1 + Real Matcher
+
+**Added by CSR-001** (`docs/specs/CSR_001_SPEC_v1.0.md`; Safety Foundation C, SFCD §07 — the
+integration Work Item, dependent on both USC-001/§33 and MAI-001/§34 being closed, since it is the
+first point in the system reading both together). Extends `js/coachDecisionSystem/safetyLayer.js`'s
+`matchCanonicalSafetyRules()` — previously §24's own honest, disclosed empty stub (`return [];`,
+SL-001's own approved gap) — with the repository's first real Canonical Safety Rule,
+`matchRunningMedicalRestrictionRule`: given a Candidate whose `actionIdentity.activity === 'RUNNING'`
+(§34), the rule looks for a `pipelineContext.userSafetyContext` restriction (§33) whose literal text
+denotes RUNNING, joins it — by `sourceMemoryId`, never positionally, never merged across records — to
+a `pipelineContext.userSafetyProvenance` item (§35) whose literal text denotes a medical source, and
+selects one of two fixed Safety dimension profiles (confirmed-active vs. temporally-unresolved) based
+solely on whether the restriction carries a `statedDurationText` — no date arithmetic. Text matching
+uses a closed, deterministic tokenizer (PD-FC-07 + PD-FC-08): split-based (never `\b`-based)
+tokenization on `[^\p{L}\p{N}]+` (letters and numbers are both token constituents; a digit adjacent
+to a letter never creates a boundary), with a closed, precomputed Hebrew accepted-form set per
+approved token (`token`, `ה+token`, `ו+token`, `וה+token` — nothing else, never derived dynamically).
+`CANONICAL_SAFETY_RULES` is an internal, explicit array containing exactly this one entry; a future
+rule is added by appending a second entry, not by a registry or external rule-content file. Stage 8
+`disqualify()` and Stage 9 `finalReview()` (§24) are unchanged in signature; the Stage-9 candidate-null
+call path continues to return `[]` unconditionally (AD-MAI-01, §34) — Stage 8 remains the only
+guaranteed consumption point for `actionIdentity`. `evaluateRulePredicate`, `evaluateCanonicalSafetyRules`,
+`selectPrimaryAndSecondary`, `safetyIntegrationPort.js`, and `decisionFormation.js` are confirmed
+byte-unchanged; USC-001's, USP-001's, and MAI-001's own files are confirmed byte-unchanged. SL-001
+(§24) remains closed and untouched — CSR-001 supplies real matched-rule data into an already-correct,
+already-closed mechanism; it does not reopen, redesign, or amend SL-001's own closed enums or ordered
+Safety Decision Matrix.
+
+**Production reachability, stated precisely:** the rule is implemented, executable, and fully
+integrated into the existing Stage 8/9 Safety evaluation path — proven end-to-end with synthetic
+`Candidate`/`pipelineContext` fixtures exercising the full §14 applicability matrix and both Safety
+dimension profiles. `pipelineContext.userSafetyContext` and `pipelineContext.userSafetyProvenance`
+(§33/§35) are genuinely, live-assembled from real Typed Memory in production today. What is
+**not** yet real in production is the other half of the match: neither `recommendationEngine.js` nor
+`initiativeEngine.js` — the only two Stage-6 Candidate producers in this repository — ever sets
+`actionIdentity` on a Candidate (§34's own disclosed zero-live-producer scope). The rule therefore
+cannot currently act on any live, production-generated Candidate. This is a matter of **upstream
+production reachability** — the absence of a live RUNNING-activity Candidate producer — and not an
+incomplete or infrastructure-only CSR-001 implementation; CSR-001's own approved scope (SFCD §07) was
+always to supply real matching logic against A's and B's already-closed contracts, not to build a
+Candidate producer, which remains separate, future, unscoped work.

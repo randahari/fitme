@@ -1,6 +1,6 @@
 # USC-001 — User Safety Context V1
 ### Safety Foundation — Work Item A
-### SPEC v1.0 (updated — PD-USC-01 + availability-shape correction incorporated) — IMPLEMENTED, PENDING FINAL REVIEW
+### SPEC v1.0 (updated — PD-USC-01 + availability-shape correction incorporated) — IMPLEMENTED / VERIFIED / CLOSED
 
 Continues directly from `docs/governance/FITME_Safety_Foundation_Canonical_Design_v1.0.md` (SFCD,
 CANONICAL, commit `ca1f0e0be05ad2e2ab0cfb315024d906c0519147`) — the sole canonical authority for

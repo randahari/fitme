@@ -1,6 +1,6 @@
 # MAI-001 — Minimum Action Identity V1
 ### Safety Foundation — Work Item B
-### SPEC v1.0 (updated — AD-MAI-01 Stage 9 boundary recorded) — IMPLEMENTED, PENDING FINAL REVIEW
+### SPEC v1.0 (updated — AD-MAI-01 Stage 9 boundary recorded) — IMPLEMENTED / VERIFIED / CLOSED
 
 Continues directly from `docs/governance/FITME_Safety_Foundation_Canonical_Design_v1.0.md` (SFCD,
 CANONICAL, commit `ca1f0e0be05ad2e2ab0cfb315024d906c0519147`) — the sole canonical authority for

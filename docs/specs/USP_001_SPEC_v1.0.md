@@ -1,6 +1,6 @@
 # USP-001 — User Safety Provenance V1
 ### Safety Foundation — Prerequisite Work Item (downstream of A, upstream of C)
-### SPEC v1.0 (updated — PD-USP-02 + availability-semantics clarification) — IMPLEMENTED, PENDING CLOSURE
+### SPEC v1.0 (updated — PD-USP-02 + availability-semantics clarification) — IMPLEMENTED / VERIFIED / CLOSED
 
 Continues directly from `docs/governance/FITME_Safety_Foundation_Canonical_Design_v1.0.md` (SFCD,
 CANONICAL, commit `ca1f0e0be05ad2e2ab0cfb315024d906c0519147`), `docs/specs/USC_001_SPEC_v1.0.md`

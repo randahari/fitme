@@ -1,6 +1,6 @@
 # CSR-001 — Canonical Safety Rule V1 + Real Matcher
 ### Safety Foundation — Foundation C
-### SPEC v1.0 (updated — PD-FC-07 + PD-FC-08 tokenization resolved) — AUTHORED, NOT YET IMPLEMENTED
+### SPEC v1.0 (updated — PD-FC-07 + PD-FC-08 tokenization resolved) — IMPLEMENTED / VERIFIED / CLOSED
 
 Continues directly from `docs/governance/FITME_Safety_Foundation_Canonical_Design_v1.0.md` (SFCD,
 CANONICAL, commit `ca1f0e0be05ad2e2ab0cfb315024d906c0519147`), `docs/specs/USC_001_SPEC_v1.0.md`
