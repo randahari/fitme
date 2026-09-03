@@ -22,21 +22,19 @@
 // selects the Primary Rule Result; every other matched Rule supporting the
 // winning disposition populates secondaryReasonCodes (RCD-14.D).
 //
-// Repository Gap (non-blocking, honestly documented, not invented around):
-// no Health/Safety Profile (or equivalent safety-signal) data source exists
-// anywhere in this repository's actual Pipeline Context at this baseline —
-// js/coachDecisionSystem/memoryLayer.js's assembleContext() produces no such
-// field, the same "no repository data source... never fabricated" status
-// this repository already documents for lifeEventContext/capacityState
-// (memoryLayer.js) and for calendar/milestone data (initiativeEngine.js's
-// detectDisruptionOpportunities/detectMilestoneRecoveryOpportunities).
-// matchCanonicalSafetyRules() below is a real, correctly-typed matching
-// function — not a stub — that correctly yields zero matched Rules given
-// this absence, per SPEC Ch.28's own Failure Mode guidance ("Proceed using
-// available categories... reasons over what is available") and RCD-12.A's
-// own "no repository-supported safety conflict exists -> NONE" default. It
-// begins matching real Rules the moment a Health/Safety Profile source is
-// added to Pipeline Context, with no change to the evaluation engine below.
+// CSR-001 (docs/specs/CSR_001_SPEC_v1.0.md) — matchCanonicalSafetyRules() below now implements
+// the first real Canonical Safety Rule: an explicit, user-reported medical restriction (USC-001's
+// userSafetyContext + USP-001's userSafetyProvenance, joined by sourceMemoryId — never positional,
+// never cross-record) conflicting with a RUNNING Candidate (MAI-001's actionIdentity). This is the
+// ONLY rule this function can ever match — every other Candidate/context combination still yields
+// zero matched Rules, exactly as before. No general Health/Safety Profile data source exists
+// anywhere in this repository's actual Pipeline Context (the broader Repository Gap
+// memoryLayer.js/initiativeEngine.js already document elsewhere — lifeEventContext, capacityState,
+// disruption/milestone detection — remains open and is NOT resolved by this Work Item); CSR-001
+// consumes only USC-001/USP-001/MAI-001's own already-published, narrow contracts, none of which
+// is a general Health/Safety Profile. The rule is reachable only via Stage 8's own candidate-
+// carrying call path (§16/§18 of the SPEC — AD-MAI-01 bars any attempt to recover actionIdentity
+// from a Terminal Decision at Stage 9, so the Stage-9 call path below still always returns []).
 //
 // A second, narrower, currently-unreachable gap: RCD-13.D requires a
 // MODIFIED SafetyReviewResult's modifiedContent to be non-null, but no
@@ -104,14 +102,152 @@
   ]);
 
   // ══════════════════════════════════════════════════════════════════
+  // CSR-001 (docs/specs/CSR_001_SPEC_v1.0.md §10, PD-FC-07/PD-FC-08) — deterministic text
+  // matching: a private, closed-vocabulary tokenizer + exact accepted-form membership check, used
+  // only by this rule. Never exported, never a reusable general Hebrew/NLP utility.
+  //
+  // §10 Step 1 — split-based tokenization (never a `\b`-style boundary assertion, which is
+  // non-functional for Hebrew — `\b` is defined over `\w` = [A-Za-z0-9_], excluding Hebrew
+  // letters entirely). PD-FC-08: Unicode letters AND Unicode numbers are token constituents;
+  // every other character (whitespace, punctuation, symbols) is a delimiter — a digit directly
+  // attached to a letter never creates a boundary, closing the `doctor123`/`run2026`-style
+  // false-positive risk the letters-only draft carried.
+  // ══════════════════════════════════════════════════════════════════
+  function tokenize(text) {
+    text = (typeof text === 'string') ? text : '';
+    return text.split(/[^\p{L}\p{N}]+/u).filter(function (t) { return t.length > 0; });
+  }
+
+  // §10 Step 2 — PD-FC-07: the closed Hebrew accepted-form rule. For each approved Hebrew
+  // vocabulary token, the accepted-form set is EXACTLY these four fixed strings, precomputed once
+  // — never derived dynamically from observed input, never a general prefix-stripping rule, no
+  // suffix handling, no stemming, no morphology inference.
+  function hebrewAcceptedForms(token) {
+    return [token, 'ה' + token, 'ו' + token, 'וה' + token];
+  }
+
+  // §8/PD-FC-04 — closed V1 medical-source vocabulary, exact, no other term authorized.
+  var MEDICAL_SOURCE_ACCEPTED_FORMS = ['doctor', 'physician']
+    .concat(hebrewAcceptedForms('רופא'))
+    .concat(hebrewAcceptedForms('רופאה'));
+
+  // §9/PD-FC-05 — closed V1 RUNNING-text vocabulary, exact, no other term authorized. רצה is
+  // deliberately never given an accepted-form set (unvocalized homograph risk with "wanted") —
+  // it and every prefixed form of it therefore can never match anything below.
+  var RUNNING_TEXT_ACCEPTED_FORMS = ['run', 'running', 'jog', 'jogging']
+    .concat(hebrewAcceptedForms('לרוץ'))
+    .concat(hebrewAcceptedForms('ריצה'))
+    .concat(hebrewAcceptedForms('ריצות'))
+    .concat(hebrewAcceptedForms('רץ'));
+
+  // §10 Step 3 — exact membership only; never "contains," never a regex, never partial/substring
+  // matching. A source string matches iff at least one token produced by tokenize() is exactly
+  // string-equal to a member of the given closed accepted-form set.
+  function matchesAcceptedForm(text, acceptedForms) {
+    var tokens = tokenize(text);
+    for (var i = 0; i < tokens.length; i++) {
+      if (acceptedForms.indexOf(tokens[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function isQualifyingRunningRestrictionText(restrictedActivityText) {
+    return typeof restrictedActivityText === 'string'
+      && matchesAcceptedForm(restrictedActivityText, RUNNING_TEXT_ACCEPTED_FORMS);
+  }
+  function isQualifyingMedicalSourceText(statedSourceText) {
+    return typeof statedSourceText === 'string'
+      && matchesAcceptedForm(statedSourceText, MEDICAL_SOURCE_ACCEPTED_FORMS);
+  }
+
+  // §12 — confirmed-active dimension profile (no statedDurationText on the qualifying restriction).
+  function confirmedActiveMedicalRestrictionDims() {
+    return {
+      riskType: 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT',
+      evidenceConfidence: 'EXPLICIT_USER_STATEMENT',
+      correctability: 'REQUIRES_INTENT_CHANGE',
+      urgency: 'ROUTINE_PROTECTIVE'
+    };
+  }
+  // §13 — temporally-unresolved dimension profile (a statedDurationText is present, any form; no
+  // date arithmetic is ever performed to interpret it — presence alone is the only signal used).
+  function temporallyUnresolvedMedicalRestrictionDims() {
+    return {
+      riskType: 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT',
+      evidenceConfidence: 'INSUFFICIENT',
+      correctability: 'REQUIRES_INTENT_CHANGE',
+      urgency: 'ROUTINE_PROTECTIVE'
+    };
+  }
+
+  // §7/§14/§16 — CSR-001's one V1 Canonical Safety Rule: explicit user-reported medical RUNNING
+  // restriction × a RUNNING Candidate. Runs only against a real `candidate` (the Stage-8 call
+  // path) — the caller (matchCanonicalSafetyRules below) never invokes this with a null candidate.
+  function matchRunningMedicalRestrictionRule(candidate, pipelineContext) {
+    // §14 NO-MATCH — precondition: a RUNNING Candidate, structurally, never textually.
+    if (!candidate || !candidate.actionIdentity || candidate.actionIdentity.activity !== 'RUNNING') {
+      return [];
+    }
+    var userSafetyContext = pipelineContext && pipelineContext.userSafetyContext;
+    var userSafetyProvenance = pipelineContext && pipelineContext.userSafetyProvenance;
+    // §14 NO-MATCH — precondition: both canonical inputs must exist with real items to consider.
+    if (!userSafetyContext || !Array.isArray(userSafetyContext.items) || userSafetyContext.items.length === 0) {
+      return [];
+    }
+    if (!userSafetyProvenance || !Array.isArray(userSafetyProvenance.items) || userSafetyProvenance.items.length === 0) {
+      return [];
+    }
+
+    // §7 — sourceMemoryId-keyed lookup, built once per call; never positional.
+    var provenanceBySourceMemoryId = {};
+    userSafetyProvenance.items.forEach(function (item) {
+      if (item && typeof item.sourceMemoryId === 'string') {
+        provenanceBySourceMemoryId[item.sourceMemoryId] = item;
+      }
+    });
+
+    var matchedDims = [];
+    userSafetyContext.items.forEach(function (restriction) {
+      if (!restriction || typeof restriction.sourceMemoryId !== 'string') return;
+      // §9 — the restriction's own literal text must denote RUNNING.
+      if (!isQualifyingRunningRestrictionText(restriction.restrictedActivityText)) return;
+      // §7/§14 — the SAME sourceMemoryId's provenance item must exist; never merged across records.
+      var provenance = provenanceBySourceMemoryId[restriction.sourceMemoryId];
+      if (!provenance) return;
+      // §8 — the joined provenance's own literal text must denote a medical source.
+      if (!isQualifyingMedicalSourceText(provenance.statedSourceText)) return;
+      // §11 — temporal state: presence of statedDurationText alone selects the profile; no parsing.
+      var hasStatedDuration = restriction.statedDurationText != null;
+      matchedDims.push(hasStatedDuration
+        ? temporallyUnresolvedMedicalRestrictionDims()
+        : confirmedActiveMedicalRestrictionDims());
+    });
+    return matchedDims;
+  }
+
+  // §16 — the internal, explicit list of Canonical Safety Rules. V1 contains exactly one entry.
+  // A future rule is added by appending a second entry here — no dynamic loading, no external
+  // rule-content file, no registry (matching the Work-Item Decomposition Report's own guidance).
+  var CANONICAL_SAFETY_RULES = [
+    matchRunningMedicalRestrictionRule
+  ];
+
+  // ══════════════════════════════════════════════════════════════════
   // Canonical Safety Rule matching (RCD-12.A derivation input; RCD-14 runtime unit) — see file
-  // header. Always yields zero matches at this repository baseline (documented Repository Gap,
-  // non-blocking). `candidate`/`terminalDecision` are accepted for structural correctness (Stage
-  // 8 supplies a Candidate, Stage 9 supplies the pre-review Terminal Decision, Stage 3 supplies
-  // neither) even though neither is read by this baseline implementation.
+  // header and CSR-001 SPEC §16. `candidate`/`terminalDecision` are accepted for structural
+  // correctness (Stage 8 supplies a Candidate, Stage 9 supplies the pre-review Terminal Decision,
+  // Stage 3 supplies neither).
   // ══════════════════════════════════════════════════════════════════
   function matchCanonicalSafetyRules(candidate, terminalDecision, pipelineContext) {
-    return [];
+    // §16/§18 — Stage 9 call path (candidate === null): returns [] unconditionally, per AD-MAI-01.
+    // Never attempts to recover actionIdentity from terminalDecision (including any TIED_SET
+    // options[] exposure) — Stage 8 is the only guaranteed consumption point for actionIdentity.
+    if (!candidate) return [];
+    var results = [];
+    CANONICAL_SAFETY_RULES.forEach(function (rule) {
+      results = results.concat(rule(candidate, pipelineContext));
+    });
+    return results;
   }
 
   // ── SPEC Ch.9/10, Ch.14 Stage 3 — safety-triggered Opportunity detection contribution.
@@ -354,7 +490,7 @@
     buildReasonDetail: buildReasonDetail,
     evaluateCanonicalSafetyRules: evaluateCanonicalSafetyRules,
 
-    // Repository-evidence-bound matching (currently always empty — see file header)
+    // Repository-evidence-bound matching — CSR-001's one V1 Canonical Safety Rule (see file header)
     matchCanonicalSafetyRules: matchCanonicalSafetyRules,
 
     // SafetyIntegrationPort implementation (Stage 8 / Stage 9)

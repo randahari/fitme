@@ -346,3 +346,114 @@ test('safetyLayer.js is never imported by production code outside the two Safety
   assert.equal(winnerSelectionJs.indexOf('safetyLayer.js'), -1);
   assert.equal(decisionFormationJs.indexOf('safetyLayer.js'), -1);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CSR-001 (docs/specs/CSR_001_SPEC_v1.0.md) — matchCanonicalSafetyRules()/disqualify()/
+// finalReview() integration for the one V1 Canonical Safety Rule. Matcher-internal behavior
+// (tokenizer, vocabulary, sourceMemoryId join, temporal profiles) is covered exhaustively and
+// separately in tests/canonicalSafetyRule.test.js — this block proves the real, unmodified
+// SafetyIntegrationPort call paths (Stage 8 disqualify, Stage 9 finalReview) become behaviorally
+// effective, and that the existing, unmodified Safety Decision Matrix produces the expected
+// dispositions from CSR-001's own two dimension profiles.
+// ══════════════════════════════════════════════════════════════════
+
+function csrCandidate(activity, overrides) {
+  return Object.assign({
+    actionIdentity: activity ? { activity: activity } : undefined,
+    opportunityProvenance: { opportunityId: 'opp-1' }
+  }, overrides);
+}
+function csrPipelineContext(restrictedActivityText, statedSourceText, statedDurationText) {
+  var restriction = { sourceMemoryId: 'mem-1', restrictedActivityText: restrictedActivityText };
+  if (statedDurationText !== undefined) { restriction.statedDurationText = statedDurationText; }
+  return {
+    userSafetyContext: { items: [restriction] },
+    userSafetyProvenance: { items: [{ sourceMemoryId: 'mem-1', statedSourceText: statedSourceText }] }
+  };
+}
+
+// ── matchCanonicalSafetyRules() integration — N ─────────────────────────────────────────────
+
+test('CSR1-A. matchCanonicalSafetyRules() Stage-8 call path returns a real match for a qualifying RUNNING Candidate', () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  const result = SafetyLayer.matchCanonicalSafetyRules(csrCandidate('RUNNING'), null, pc);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].riskType, 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT');
+});
+
+test('CSR1-B. matchCanonicalSafetyRules() returns [] for a non-RUNNING Candidate against the same restriction', () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  assert.deepEqual(SafetyLayer.matchCanonicalSafetyRules(csrCandidate('WALKING'), null, pc), []);
+});
+
+test('CSR1-C. matchCanonicalSafetyRules() Stage-9 call path (candidate null) always returns [] for this rule', () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  assert.deepEqual(SafetyLayer.matchCanonicalSafetyRules(null, { kind: 'RECOMMENDATION' }, pc), []);
+});
+
+// ── evaluateCanonicalSafetyRules() re-verification against CSR-001's own two profiles — N ──
+// Dims come from the real matchCanonicalSafetyRules() output (a synthetic fixture, no duration vs.
+// a stated duration) — never from a private builder — then fed into the real, unmodified Matrix
+// evaluator: fixture -> matchCanonicalSafetyRules() -> real dims -> evaluateCanonicalSafetyRules().
+// This proves both the matcher's own dims construction AND the existing Matrix interpretation.
+
+test('CSR1-D. the confirmed-active dims profile (no statedDurationText) evaluates to BLOCKED under the real, unmodified Matrix evaluator', () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  const matched = SafetyLayer.matchCanonicalSafetyRules(csrCandidate('RUNNING'), null, pc);
+  assert.equal(matched.length, 1);
+  assert.equal(matched[0].evidenceConfidence, 'EXPLICIT_USER_STATEMENT');
+  const evaluation = SafetyLayer.evaluateCanonicalSafetyRules(matched);
+  assert.equal(evaluation.disposition, 'BLOCKED');
+  assert.equal(evaluation.reasonCode, 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT');
+});
+
+test('CSR1-E. the temporally-unresolved dims profile (statedDurationText present) evaluates to DEFERRED under the real, unmodified Matrix evaluator', () => {
+  const pc = csrPipelineContext('run', 'my doctor', 'for a month');
+  const matched = SafetyLayer.matchCanonicalSafetyRules(csrCandidate('RUNNING'), null, pc);
+  assert.equal(matched.length, 1);
+  assert.equal(matched[0].evidenceConfidence, 'INSUFFICIENT');
+  const evaluation = SafetyLayer.evaluateCanonicalSafetyRules(matched);
+  assert.equal(evaluation.disposition, 'DEFERRED');
+  assert.equal(evaluation.reasonCode, 'INSUFFICIENT_SAFETY_CONTEXT');
+});
+
+// ── disqualify() end-to-end — O ─────────────────────────────────────────────────────────────
+
+test('CSR1-F. disqualify() genuinely disqualifies a RUNNING Candidate against a confirmed-active medical restriction', async () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  const results = await SafetyLayer.disqualify([csrCandidate('RUNNING')], pc);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].disqualified, true);
+  assert.equal(results[0].reasonCode, 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT');
+});
+
+test('CSR1-G. disqualify() genuinely disqualifies a RUNNING Candidate against a temporally-unresolved medical restriction — Stage 8 does not distinguish the two profiles (PD-FC-06)', async () => {
+  const pc = csrPipelineContext('run', 'my doctor', 'for a month');
+  const results = await SafetyLayer.disqualify([csrCandidate('RUNNING')], pc);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].disqualified, true);
+  assert.equal(results[0].reasonCode, 'ACTIVE_MEDICAL_INSTRUCTION_CONFLICT');
+});
+
+test('CSR1-H. disqualify() leaves a non-RUNNING Candidate in the same pool unaffected', async () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  const results = await SafetyLayer.disqualify([csrCandidate('RUNNING'), csrCandidate('WALKING', { opportunityProvenance: { opportunityId: 'opp-2' } })], pc);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].disqualified, true);
+  assert.equal(results[1].disqualified, false);
+  assert.equal(results[1].reasonCode, 'NO_SAFETY_CONFLICT');
+});
+
+test('CSR1-I. disqualify() does not disqualify when no qualifying restriction/provenance exists', async () => {
+  const results = await SafetyLayer.disqualify([csrCandidate('RUNNING')], {});
+  assert.equal(results[0].disqualified, false);
+});
+
+// ── Stage-9 boundary via finalReview() — P ──────────────────────────────────────────────────
+
+test('CSR1-J. finalReview() never re-derives this rule regardless of Terminal Decision content — Stage 9 remains contract-compatible and unaffected', async () => {
+  const pc = csrPipelineContext('run', 'my doctor');
+  const result = await SafetyLayer.finalReview({ kind: 'RECOMMENDATION', options: [csrCandidate('RUNNING')] }, pc);
+  assert.equal(result.disposition, 'UNMODIFIED');
+  assert.equal(result.reasonCode, 'NO_SAFETY_CONFLICT');
+});
