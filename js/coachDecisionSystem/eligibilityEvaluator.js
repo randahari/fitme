@@ -38,7 +38,11 @@
 (function () {
   'use strict';
 
-  // D1-IE-01's exact seven enumerated valid reasons (Canonical Decision CD-T006-01, §15.11).
+  // D1-IE-01's enumerated valid reasons (Canonical Decision CD-T006-01, §15.11), extended by
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §10; TDP Ch.05/Ch.13 item 17) with the eighth,
+  // additive member ADAPT_TO_CURRENT_STATE. This is this file's own, independently-declared copy
+  // of the same closed enum contextualMeaningPolicy.js declares (not imported from it — the two
+  // copies have always been independently maintained); extended identically, for the same reason.
   var VALID_REASON_CATEGORIES = Object.freeze([
     'PREVENT_PREDICTABLE_MISTAKE',
     'HELP_BEFORE_DIFFICULT_DECISION',
@@ -46,8 +50,25 @@
     'SUPPORT_RECOVERY',
     'PREPARE_FOR_FORESEEABLE_CHALLENGE',
     'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION',
-    'PROTECT_STATED_LONG_TERM_GOALS'
+    'PROTECT_STATED_LONG_TERM_GOALS',
+    'ADAPT_TO_CURRENT_STATE'
   ]);
+
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §14; TDP Ch.05) — the generalized Bounded
+  // Early-Relationship Engagement admission table, structurally mirroring
+  // initiativeEngine.js's own already-proven SOURCE_REASON_MATURITY_OVERRIDES shape. RGEF's
+  // existing, first-authorized entry is preserved byte-identical; TRR-001 adds exactly one new,
+  // second entry (Reason fixed by TDP Ch.05, not an Engineering choice).
+  var BOUNDED_ENGAGEMENT_POLICY = Object.freeze({
+    CONFIRMED_PATTERN_ANTICIPATION: Object.freeze({
+      REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: true, // RGEF's existing entry — untouched
+      ADAPT_TO_CURRENT_STATE: true                         // TRR-001's one new, fixed entry
+    })
+  });
+
+  function isBoundedEarlyEngagementAuthorized(sourceCategory, validReasonCategory) {
+    return !!(BOUNDED_ENGAGEMENT_POLICY[sourceCategory] && BOUNDED_ENGAGEMENT_POLICY[sourceCategory][validReasonCategory] === true);
+  }
 
   var OPPORTUNITY_SOURCES = Object.freeze([
     'DECISION_WINDOW',
@@ -104,16 +125,18 @@
     // path (RGEF_SPEC_v1.0.md §12) applies, below.
     var viaBoundedEarlyEngagement = false;
     if (input.trustTestSignal.glad !== true) {
-      // RGEF §12.2 — exhaustive compound precondition. All three conditions are mandatory;
-      // validReasonCategory alone is explicitly insufficient and prohibited (RGEF §12.5, A3/A11)
-      // — this is what structurally excludes every Recommendation-kind Opportunity, since
+      // RGEF §12.2 — exhaustive compound precondition, now generalized (TRR-001,
+      // docs/specs/TRR_001_SPEC_v1.0.md §14) from a single hardcoded pair into a closed,
+      // Product-approved table lookup — behavior for RGEF's own existing pair is byte-identical:
+      // glad === null strictly, plus a table-authorized (sourceCategory, validReasonCategory)
+      // pair. validReasonCategory alone is explicitly insufficient and prohibited (RGEF §12.5,
+      // A3/A11) — this is what structurally excludes every Recommendation-kind Opportunity, since
       // sourceCategory 'CONFIRMED_PATTERN_ANTICIPATION' is Initiative-Engine-exclusive
       // (TASK_005_SPEC_v1.0.md §9.1, D2 Unit 07) and can never legitimately be produced by
       // recommendationEngine.js. glad itself is read here, never written — no Trust is claimed
       // or fabricated (RGEF A2).
       if (input.trustTestSignal.glad === null &&
-          input.sourceCategory === 'CONFIRMED_PATTERN_ANTICIPATION' &&
-          input.validReasonCategory === 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION') {
+          isBoundedEarlyEngagementAuthorized(input.sourceCategory, input.validReasonCategory)) {
         viaBoundedEarlyEngagement = true;
       } else {
         return freezeShallow({
@@ -145,6 +168,7 @@
 
   var API = {
     VALID_REASON_CATEGORIES: VALID_REASON_CATEGORIES,
+    BOUNDED_ENGAGEMENT_POLICY: BOUNDED_ENGAGEMENT_POLICY,
     evaluate: evaluate
   };
 

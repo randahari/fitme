@@ -191,3 +191,68 @@ test('RGEF §12.3 — a malformed bounded-shaped input still resolves MALFORMED 
   const r = EligibilityEvaluator.evaluate(i);
   assert.equal(r.outcome, 'MALFORMED');
 });
+
+// ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §14) — BOUNDED_ENGAGEMENT_POLICY generalization ──
+
+test('TRR-1. VALID_REASON_CATEGORIES is eight members, including the new ADAPT_TO_CURRENT_STATE', () => {
+  assert.equal(EligibilityEvaluator.VALID_REASON_CATEGORIES.length, 8);
+  assert.ok(EligibilityEvaluator.VALID_REASON_CATEGORIES.indexOf('ADAPT_TO_CURRENT_STATE') !== -1);
+});
+
+test('TRR-2. BOUNDED_ENGAGEMENT_POLICY contains exactly two entries — RGEF\'s existing one plus TRR-001\'s one new entry', () => {
+  const table = EligibilityEvaluator.BOUNDED_ENGAGEMENT_POLICY;
+  assert.deepEqual(Object.keys(table), ['CONFIRMED_PATTERN_ANTICIPATION']);
+  assert.deepEqual(Object.keys(table.CONFIRMED_PATTERN_ANTICIPATION).sort(), ['ADAPT_TO_CURRENT_STATE', 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION']);
+});
+
+test('TRR-3. Stage-5 new TR&R pair authorized: CONFIRMED_PATTERN_ANTICIPATION x ADAPT_TO_CURRENT_STATE, glad:null -> ELIGIBLE/BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT', () => {
+  const r = EligibilityEvaluator.evaluate(input({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: null, basis: 'no affirmative trust source' }
+  }));
+  assert.equal(r.outcome, 'ELIGIBLE');
+  assert.equal(r.reason, 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT');
+});
+
+test('TRR-4. unrelated pair still denied: DECISION_WINDOW x ADAPT_TO_CURRENT_STATE, glad:null -> INELIGIBLE/TRUST_TEST_UNCERTAIN', () => {
+  const r = EligibilityEvaluator.evaluate(input({
+    sourceCategory: 'DECISION_WINDOW', validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: null, basis: 'no affirmative trust source' }
+  }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'TRUST_TEST_UNCERTAIN');
+});
+
+test('TRR-5. RGEF\'s own existing entry remains byte-identical behaviorally after the table generalization', () => {
+  const r = EligibilityEvaluator.evaluate(boundedInput());
+  assert.equal(r.outcome, 'ELIGIBLE');
+  assert.equal(r.reason, 'BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT');
+});
+
+test('TRR-6. glad is never fabricated on the new TR&R bounded path — input object untouched', () => {
+  const i = input({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: null, basis: 'no affirmative trust source' }
+  });
+  const before = JSON.parse(JSON.stringify(i.trustTestSignal));
+  EligibilityEvaluator.evaluate(i);
+  assert.deepEqual(i.trustTestSignal, before);
+});
+
+test('TRR-7. ADAPT_TO_CURRENT_STATE + glad:false is NEVER admitted by the bounded path (Invariant 2 preserved for the new entry)', () => {
+  const r = EligibilityEvaluator.evaluate(input({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: false, basis: 'explicit negative signal' }
+  }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'TRUST_TEST_NOT_GLAD');
+});
+
+test('TRR-8. lowCoachingValuePeriodActive still blocks the new bounded path (D1-IE-04 not weakened for the new entry)', () => {
+  const r = EligibilityEvaluator.evaluate(input({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: null, basis: 'no affirmative trust source' }, lowCoachingValuePeriodActive: true
+  }));
+  assert.equal(r.outcome, 'INELIGIBLE');
+  assert.equal(r.reason, 'LOW_COACHING_VALUE_PERIOD');
+});

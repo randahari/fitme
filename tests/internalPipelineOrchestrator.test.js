@@ -125,10 +125,10 @@ test('7. runForInitiativeOpportunity() withholds when Relationship-Maturity gati
   assert.deepEqual(result.candidates, []);
 });
 
-test('8. detectInitiativeOpportunities() exposes the Stage-3 detection contribution (confirmed-pattern anticipation, disruption, milestone/recovery, and — G-2 §32 — semanticOpportunities)', () => {
+test('8. detectInitiativeOpportunities() exposes the Stage-3 detection contribution (confirmed-pattern anticipation, disruption, milestone/recovery, G-2 §32 semanticOpportunities, and — TRR-001, docs/specs/TRR_001_SPEC_v1.0.md §12 — trainingReadinessOpportunities)', () => {
   const pipelineContext = { initiativeIntelligence: { signals: [] } };
   const result = Orchestrator.detectInitiativeOpportunities(pipelineContext);
-  assert.deepEqual(Object.keys(result).sort(), ['confirmedPatternAnticipation', 'disruption', 'milestoneRecovery', 'semanticOpportunities']);
+  assert.deepEqual(Object.keys(result).sort(), ['confirmedPatternAnticipation', 'disruption', 'milestoneRecovery', 'semanticOpportunities', 'trainingReadinessOpportunities']);
 });
 
 test('9. run()\'s overall contract is preserved unchanged by the TASK-005 extension (still candidates: [] at this baseline)', async () => {
@@ -746,4 +746,159 @@ test('G-2: run() end-to-end still produces an empty-signal Silence byte-for-byte
   assert.equal(result.status, 'SUCCESS');
   assert.deepEqual(result.output.candidates, []);
   assert.equal(result.output.terminalDecision.kind, 'SILENCE');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21, §30-§32) — the new reasoning-invocation step
+// inside runDecisionPass(), active only for validReasonCategory === 'ADAPT_TO_CURRENT_STATE'.
+// TrainingReadinessReasoningComponent.propose() is monkey-patched directly (same convention this
+// file already uses for MemoryLayer.assembleContext, test 3b above) to isolate the orchestration
+// wiring from the reasoning component's own internals (covered exhaustively in
+// tests/trainingReadinessReasoningComponent.test.js).
+// ══════════════════════════════════════════════════════════════════
+
+const TrainingReadinessReasoningComponent = require('../js/coachDecisionSystem/trainingReadinessReasoningComponent.js');
+
+function trrEligibilityInput(overrides) {
+  return eligibilityInput(Object.assign({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    trustTestSignal: { glad: null, basis: 'no affirmative trust source' }
+  }, overrides));
+}
+function trrEligibleOpportunity(overrides) {
+  // Mirrors the real DetectedOpportunity shape detectTrainingReadinessOpportunities() constructs
+  // (initiativeEngine.js) — validReasonCategory travels with the eligibleOpportunity itself in
+  // production (buildEligibilityAndCandidateInputs() copies the whole DetectedOpportunity), not
+  // only on the separate eligibilityInput.
+  return eligibleOpportunity(Object.assign({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    proposedAction: '__TRR_PENDING_REASONING__',
+    valueDimensions: ['DECISION_QUALITY']
+  }, overrides));
+}
+function trrPipelineContext(overrides) {
+  return Object.assign({ feedbackHistory: [], relationshipMaturity: { stage: 'OBSERVER' } }, overrides);
+}
+
+test.afterEach(() => {
+  // restore the real implementation after each test that monkey-patches it
+  delete TrainingReadinessReasoningComponent.propose;
+});
+
+test('TRR-ORCH-1. ACTION_PROPOSED reaches a real Terminal Decision carrying the reasoning component\'s own real content — never the placeholder sentinel', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => ({
+    outcome: 'ACTION_PROPOSED', action: 'Take a rest day today given your reported fatigue.',
+    actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,
+    rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
+  });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(result.status, 'FORMED');
+  assert.equal(result.decision.kind, 'INITIATIVE');
+  assert.notEqual(result.decision.rationale.rationale, undefined);
+});
+
+test('TRR-ORCH-2. the placeholder sentinel never reaches Stage 6 intact — a NO_VIABLE_PROPOSAL outcome means the Opportunity contributes nothing, never the raw placeholder as a delivered action', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => ({ outcome: 'NO_VIABLE_PROPOSAL' });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(result.decision.kind, 'SILENCE');
+});
+
+test('TRR-ORCH-3. a reasoning-component failure (propose() throws) means the Opportunity contributes nothing this pass — fail-closed, never the placeholder', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => { throw new Error('boom'); };
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(result.decision.kind, 'SILENCE');
+});
+
+test('TRR-ORCH-4. CLARIFICATION_NEEDED produces a real, governed Candidate carrying neither actionCategory nor activityReference', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => ({
+    outcome: 'CLARIFICATION_NEEDED', action: 'Which activity did you have planned for today?',
+    actionCategory: null, activityReference: null,
+    rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
+  });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(result.decision.kind, 'INITIATIVE');
+  assert.equal('actionCategory' in result.decision, false);
+});
+
+test('TRR-ORCH-5. a Safety DEFERRED disposition on the winning candidate resolves to the existing, unmodified SILENCE path — Option A lifecycle preserved', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => ({
+    outcome: 'ACTION_PROPOSED', action: 'go for a light swim',
+    actionCategory: 'PHYSICAL_ACTIVITY', activityReference: 'a light swim',
+    rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
+  });
+  const deferredSafetyPort = makeSafetyIntegrationPortTestDouble({
+    reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reasonCode: 'INSUFFICIENT_SAFETY_CONTEXT', reasonDetail: null, reason: 'INSUFFICIENT_SAFETY_CONTEXT' })
+  });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: deferredSafetyPort
+  });
+  assert.equal(result.status, 'FORMED');
+  assert.equal(result.decision.kind, 'SILENCE');
+  assert.equal(deferredSafetyPort.calls.finalReview, 1, 'exactly one Terminal Decision is formed — no same-cycle retry');
+});
+
+test('TRR-ORCH-6. no same-cycle replacement Candidate / no second Terminal Decision — runDecisionPass() forms exactly one decision even after a DEFERRED disposition', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => ({
+    outcome: 'ACTION_PROPOSED', action: 'go for a light swim',
+    actionCategory: 'PHYSICAL_ACTIVITY', activityReference: 'a light swim',
+    rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
+  });
+  const deferredSafetyPort = makeSafetyIntegrationPortTestDouble({
+    reviewRule: () => ({ disposition: 'DEFERRED', modifiedContent: null, reasonCode: 'INSUFFICIENT_SAFETY_CONTEXT', reasonDetail: null, reason: 'INSUFFICIENT_SAFETY_CONTEXT' })
+  });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: deferredSafetyPort
+  });
+  assert.equal(Array.isArray(result.decision.candidateProvenance) || typeof result.decision.candidateProvenance === 'object', true);
+  // A second, independent call proves a later, ordinary pass is a genuinely separate invocation —
+  // never an automatic retry triggered by the first.
+  const secondResult = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: deferredSafetyPort
+  });
+  assert.equal(secondResult.decision.kind, 'SILENCE');
+});
+
+test('TRR-ORCH-7. every other Reason category\'s own dispatch is untouched — the reasoning step never fires for a non-ADAPT_TO_CURRENT_STATE Opportunity', async () => {
+  let called = false;
+  TrainingReadinessReasoningComponent.propose = async () => { called = true; return { outcome: 'NO_VIABLE_PROPOSAL' }; };
+  await Orchestrator.runDecisionPass({
+    pipelineContext: { feedbackHistory: [] },
+    opportunities: [{ eligibilityInput: eligibilityInput(), eligibleOpportunity: eligibleOpportunity() }], // ordinary DECISION_WINDOW Opportunity
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(called, false);
+});
+
+test('TRR-ORCH-8. malformed reasoning output (isValidReasoningOutput fails) means the Opportunity contributes nothing — fail-closed', async () => {
+  TrainingReadinessReasoningComponent.propose = async () => null; // the real propose() itself already returns null for any invalid output
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.equal(result.decision.kind, 'SILENCE');
 });

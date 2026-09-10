@@ -1701,7 +1701,17 @@ AD-MAI-01 (recorded during Implementation Review) fixes the Stage 9 propagation 
 Layer's Stage-9 `finalReview()` candidate-null call path continues to return `[]` unconditionally,
 never attempting to recover `actionIdentity` from a Terminal Decision or any `TIED_SET` `options[]`
 exposure — Stage 8 (`disqualify()`, which receives the Candidate pool directly) is the only
-guaranteed consumption point for `actionIdentity` at this baseline. Duration, intensity, quantity,
+guaranteed consumption point for `actionIdentity` at this baseline.
+
+**Corrective annotation (§37/§38, original text above preserved):** the "Stage 8 is the only
+guaranteed consumption point" characterization above was AD-MAI-01's own accurate statement of the
+repository state at MAI-001's closure. It no longer describes the SINGLE_WINNER path as of the
+Stage-9 Winning-Candidate Safety Input Canonical Decision (§38) — Stage 9's `finalReview()` now also
+receives the real winning Candidate for a `SINGLE_WINNER` Terminal Decision specifically (never
+`TIED_SET`, which this paragraph's description continues to describe accurately and unchanged). See
+§38 for the exact, narrow correction and its own supersession scope.
+
+Duration, intensity, quantity,
 food identity, body-area/load, recovery demand, and every other full Action Model semantic remain
 explicitly out of scope (SFCD §06). **No live Candidate producer exists in this repository:**
 `recommendationEngine.js` and `initiativeEngine.js` — the only two Stage-6 Candidate producers — do
@@ -1759,7 +1769,17 @@ approved token (`token`, `ה+token`, `ו+token`, `וה+token` — nothing else, 
 rule is added by appending a second entry, not by a registry or external rule-content file. Stage 8
 `disqualify()` and Stage 9 `finalReview()` (§24) are unchanged in signature; the Stage-9 candidate-null
 call path continues to return `[]` unconditionally (AD-MAI-01, §34) — Stage 8 remains the only
-guaranteed consumption point for `actionIdentity`. `evaluateRulePredicate`, `evaluateCanonicalSafetyRules`,
+guaranteed consumption point for `actionIdentity`.
+
+**Corrective annotation (§37/§38, original text above preserved):** this was accurate at CSR-001's
+own closure and remains accurate for `TIED_SET`. It no longer describes Stage 9's `SINGLE_WINNER`
+path, which — per the Stage-9 Winning-Candidate Safety Input Canonical Decision (§38), discovered
+and resolved during TRR-001's own pre-commit verification (§37) — now also receives the real winning
+Candidate, restoring live reachability of Stage 9's own already-canonical five-disposition Matrix for
+every Canonical Safety Rule, including this one; RUNNING's own disqualification outcome is confirmed
+unchanged (Stage 8's absolute-override check still governs it, exactly as before).
+
+`evaluateRulePredicate`, `evaluateCanonicalSafetyRules`,
 `selectPrimaryAndSecondary`, `safetyIntegrationPort.js`, and `decisionFormation.js` are confirmed
 byte-unchanged; USC-001's, USP-001's, and MAI-001's own files are confirmed byte-unchanged. SL-001
 (§24) remains closed and untouched — CSR-001 supplies real matched-rule data into an already-correct,
@@ -1779,3 +1799,105 @@ production reachability** — the absence of a live RUNNING-activity Candidate p
 incomplete or infrastructure-only CSR-001 implementation; CSR-001's own approved scope (SFCD §07) was
 always to supply real matching logic against A's and B's already-closed contracts, not to build a
 Candidate producer, which remains separate, future, unscoped work.
+
+---
+
+## 37. TRR-001 — Training Readiness & Recovery V1
+
+**Added by TRR-001** (`docs/specs/TRR_001_SPEC_v1.0.md`; instantiates the Training Readiness &
+Recovery V1 Canonical Decision Package and the Context-Aware AI Reasoning Foundation for the first
+live vertical driven by the 8th Product Reason, `ADAPT_TO_CURRENT_STATE`). Extends
+`contextualMeaningPolicy.js` and `eligibilityEvaluator.js` (independently-maintained
+`VALID_REASON_CATEGORIES` copies, each gaining this one new entry), generalizes
+`eligibilityEvaluator.js`'s Stage-5 admission logic into `BOUNDED_ENGAGEMENT_POLICY` (RGEF's own
+entry preserved byte-identical), and adds one new `SOURCE_REASON_MATURITY_OVERRIDES` entry to
+`initiativeEngine.js` (Stage 6). Three new bounded interpreters — `readinessStateInterpreter.js`,
+`activityPreferenceInterpreter.js`, `activityOppositionInterpreter.js` — and a new CARF Ch.08/09
+reasoning component, `trainingReadinessReasoningComponent.js`, are wired into
+`internalPipelineOrchestrator.js`'s existing per-Opportunity loop via one new, narrowly-scoped branch
+gated on `eligibilityInput.validReasonCategory === 'ADAPT_TO_CURRENT_STATE'`. `Candidate` gains
+`actionCategory`/`activityReference` (open literal text) alongside MAI-001's own closed
+`actionIdentity` (§34) — `actionIdentity` is computed exclusively, downstream, by a new deterministic
+mapper, `js/domain/activityReferenceNormalizer.js`, from the model's own free-text
+`activityReference`, never supplied by the model itself (the reasoning component's own output schema
+has no `actionIdentity` field at all). `opportunityProvenance.sameNeedId` (CARF Ch.10's same-Need
+identity placeholder) is now populated for every Candidate, not only TRR's own.
+
+**Safety extension (§27/§28):** `safetyLayer.js` gains a second per-activity Canonical Safety Rule,
+`matchWalkingMedicalRestrictionRule` (mirrors CSR-001's RUNNING rule exactly, reusing its own
+dimension profiles verbatim, with its own closed, deterministic WALKING Hebrew/English accepted-form
+vocabulary — the Hebrew present-participle forms הולך/הולכת are deliberately excluded, homograph risk
+with the general verb "to go," mirroring CSR-001's own רצה exclusion), and a third, generic
+Unresolved Activity Safety Coverage Rule, `matchUnresolvedActivitySafetyCoverageRule` (§28,
+Product/Architecture-approved "Option D / refined Option A" mechanism): a `PHYSICAL_ACTIVITY`
+Candidate outside RUNNING/WALKING's own dedicated coverage, against a restriction neither Rule can
+resolve non-relevant by either mechanism (known-different MAI-001 identity, or the candidate's own
+`activityReference` failing to match the same accepted-form vocabulary the restriction matched),
+resolves the closed `riskType: 'INSUFFICIENT'`/`INSUFFICIENT` dimension tuple — mapping, via the
+pre-existing, unmodified `evaluateRulePredicate()`, to `DEFERRED`.
+
+**Stage-9 production-reachability finding and resolution:** a Product/Architecture-requested
+pre-commit verification found, and empirically proved via direct execution of the real,
+unmodified-elsewhere production pipeline, that §28's `DEFERRED` disposition — though correctly
+implemented and unit-provable in isolation — had no live enforcement in the real Stage 8→9 dispatch,
+because Stage 9's `finalReview()` had never, since TASK-006 (§23), received Candidate identity (§34's
+own AD-MAI-01 boundary). This was classified a genuine implementation/canonical blocker and resolved
+by a dedicated, narrow Product/Architecture correction — see §38. Following that correction,
+production-backed verification (real `WinnerSelection.select()` → `DecisionFormation.form()` → real
+`SafetyLayer`, no test double, no synthetic Rule) confirms a CYCLING Candidate against an unresolved
+restriction now resolves `Stage 9: DEFERRED` → Terminal Decision `kind: SILENCE`, not delivered.
+
+**WALKING Hebrew vocabulary — deterministic verification only:** the closed WALKING accepted-form
+list's deterministic code behavior (tokenization, accepted/rejected forms, no cross-vocabulary
+collision with RUNNING/medical-source vocabulary) is proven by a persistent, repository-resident test
+suite (`tests/trrSafetyCoverage.test.js`). **Native-speaker linguistic review of the vocabulary
+list's own completeness/correctness has not been performed** and is not substituted or claimed by
+these tests — recorded as an explicit, disclosed, non-blocking-at-implementation item, per
+`docs/specs/TRR_001_SPEC_v1.0.md` §46.
+
+**Explicitly unchanged/not introduced by TRR-001:** Preference V1 (paused, unimplemented); Legacy
+Coach integration (none); provider-session memory (none); MAI-001's six-token activity vocabulary
+(unchanged); Capability #10 (§19's ten-item V1 Action Envelope remains a non-exhaustive, illustrative
+list — the model's authority to propose a further bounded, professionally appropriate action beyond
+items 1–9 is preserved, not narrowed to a closed seven- or ten-item enumeration).
+
+---
+
+## 38. Stage-9 Winning-Candidate Safety Input Canonical Decision
+
+**Added by the Stage-9 Winning-Candidate Safety Input Canonical Decision**
+(`docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md`) — a narrow
+correction discovered during TRR-001's own pre-commit verification (§37), not a TRR-001-specific
+fix: Stage 9's `finalReview()` (§23/§24) had never, for any Canonical Safety Rule, been able to
+produce any disposition but `UNMODIFIED` in live production, because it was always called with
+`candidate: null` (AD-MAI-01, §34). This was inherited, unmodified, pre-existing architecture — not
+introduced by CSR-001 (§36) or TRR-001 (§37) — whose consequence differed only because RUNNING's own
+disposition (`ACTIVE_MEDICAL_INSTRUCTION_CONFLICT`) is independently, incidentally caught by Stage
+8's absolute-override check, while TRR-001's new `DEFERRED`-intended `INSUFFICIENT` disposition is
+not, and deliberately so (`DEFERRED` ≠ `BLOCKED`).
+
+**The correction, exactly:** for a `SINGLE_WINNER` Terminal Decision only, `decisionFormation.js`
+now forwards the actual winning Candidate to `safetyPort.finalReview()` as an additive, optional
+third argument; `safetyLayer.js`'s `finalReview()` forwards it, in turn, to the same, unmodified
+`matchCanonicalSafetyRules(candidate, terminalDecision, pipelineContext)` Stage 8 already calls.
+`TIED_SET` is explicitly out of scope and unchanged — no tied member is forwarded as a stand-in
+winner. Stage 8's `disqualify()` and `ABSOLUTE_OVERRIDE_RISK_TYPES` (§24) are untouched; Stage 9
+remains the sole owner of the full five-disposition Safety Matrix (§24) — this correction restores
+its live reachability, it does not relocate that authority to Decision Formation or Winner Selection.
+Decision Formation itself gains no Safety judgment of its own: it forwards a Candidate it already
+holds in scope, and consumes, unchanged, whatever disposition the Safety Layer returns.
+
+**Production-backed verified:** the real, unmodified `WinnerSelection.select()` →
+`DecisionFormation.form()` → real `SafetyLayer` chain (no test double, except for a `MODIFIED`-
+reachability proof, for which none of today's Canonical Safety Rules can produce that disposition)
+confirms, against the six scenarios the canonical decision itself froze: RUNNING + confirmed medical
+restriction → Stage 8 disqualification → `SILENCE`, unchanged; CYCLING + unresolved restriction →
+survives Stage 8 → Stage 9 `DEFERRED` → `SILENCE` (previously `INITIATIVE` — the exact defect this
+correction resolves); an open Pilates candidate against a deterministically RUNNING-identified
+restriction → Stage 9 `UNMODIFIED` → ordinary deliverable decision; zero restrictions → `UNMODIFIED`;
+a `MODIFIED`-disposition test-double proof confirming Decision Formation's existing `MODIFIED`
+consumption remains live/compatible; and `TIED_SET` → unchanged (no candidate forwarded, confirmed
+`UNMODIFIED` even against a restriction that would `DEFER` a real `SINGLE_WINNER` candidate). New
+tests in `tests/decisionFormation.test.js` and `tests/trrSafetyCoverage.test.js`; full repository
+regression: **2478/2478 passing, 0 failing** (2465 pre-correction baseline including TRR-001's own
+implementation, net +13). No Rule function, enum, disposition-mapping, or Stage-8 logic changed.

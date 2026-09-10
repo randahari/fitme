@@ -102,6 +102,25 @@
   var UserSafetyProvenanceInterpreter = (typeof module !== 'undefined' && module.exports)
     ? require('./userSafetyProvenanceInterpreter.js')
     : window.UserSafetyProvenanceInterpreter;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §16) — a fifth, separate, injected collaborator,
+  // exactly like the four above; owns the entire semantic interpretation act (prompt, model,
+  // batching, closed two-value output validation). No mechanical pre-check gate — see the new
+  // assembly step below (Decision 2's own "invoked whenever a Training Readiness Need may be
+  // evaluated" instruction, never CSSC-001's cost-optimized FOOD_LOGGING-specific gate).
+  var ReadinessStateInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./readinessStateInterpreter.js')
+    : window.ReadinessStateInterpreter;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §17) — a sixth, separate, injected collaborator.
+  // Advisory-only Reasoning-Context input (TDP Ch.11.J-A) — never a deterministic gate.
+  var ActivityPreferenceInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./activityPreferenceInterpreter.js')
+    : window.ActivityPreferenceInterpreter;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18) — a seventh, separate, injected collaborator.
+  // Classification only (TDP Ch.11.J-B) — the deterministic suppression gate itself
+  // (activityOpposedAgainst()) lives in initiativeEngine.js, applied by that caller.
+  var ActivityOppositionInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./activityOppositionInterpreter.js')
+    : window.ActivityOppositionInterpreter;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
@@ -464,6 +483,114 @@
       userSafetyProvenanceAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §15/§16) — Readiness State Context: a bounded,
+    // recompute-from-source, non-persisted set of the user's own manually-stated ordinary
+    // current-state statements (fatigue/energy/sleep/time/prior-activity only — health/symptom
+    // content is out of scope, per the interpreter's own closed boundary). NO mechanical pre-check
+    // gate (Decision 2's own "invoked whenever a Training Readiness Need may be evaluated"
+    // instruction) — mirrors explicitRequestControls's own no-pre-check-gate discipline, never
+    // CSSC-001's cost-optimized FOOD_LOGGING-specific one.
+    //
+    // This file performs NO classification itself — ReadinessStateInterpreter (a separate,
+    // injected collaborator) owns the entire classification act; this step only decides
+    // whether/for which records to call it and where to place the result.
+    var readinessStateContext = null;
+    var readinessStateContextAvailable = false;
+    try {
+      var rsAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer', action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+      });
+      var rsRaw = await rsAccess.read.userStatedMemory();
+      var rsRecords = (Array.isArray(rsRaw) ? rsRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (rsRecords.length) {
+        var readinessItems = await ReadinessStateInterpreter.classify(rsRecords);
+        readinessStateContext = freezeShallow({
+          items: freezeShallow(readinessItems.map(function (r) {
+            return freezeShallow({
+              statementText: r.statementText, sourceMemoryId: r.sourceMemoryId,
+              interpretationAuthority: 'DERIVED_INTERPRETATION',
+              // TDP Ch.06(c) — closed three-value provenance tag. Every V1 item is USER_STATED —
+              // ReadinessStateInterpreter classifies only user-reported statements; MEASURED and
+              // DERIVED_INTERPRETATION are real, reserved values of the same tag with no V1
+              // producer, never fabricated.
+              provenance: 'USER_STATED'
+            });
+          }))
+        });
+        readinessStateContextAvailable = true;
+      }
+    } catch (e) {
+      readinessStateContext = null;
+      readinessStateContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
+    // ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §17) — Activity Preference: a bounded,
+    // recompute-from-source, non-persisted, advisory-only (TDP Ch.11.J-A) set of the user's own
+    // stated activity-sentiment statements. Never a deterministic gate — no code path anywhere in
+    // this repository reads this field to suppress a Candidate.
+    var activityPreference = null;
+    var activityPreferenceAvailable = false;
+    try {
+      var apAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer', action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+      });
+      var apRaw = await apAccess.read.userStatedMemory();
+      var apRecords = (Array.isArray(apRaw) ? apRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (apRecords.length) {
+        var preferenceItems = await ActivityPreferenceInterpreter.classify(apRecords);
+        activityPreference = freezeShallow({
+          items: freezeShallow(preferenceItems.map(function (p) {
+            return freezeShallow({
+              sentimentClassification: p.sentimentClassification, activityText: p.activityText,
+              sourceMemoryId: p.sourceMemoryId, interpretationAuthority: 'DERIVED_INTERPRETATION'
+            });
+          }))
+        });
+        activityPreferenceAvailable = true;
+      }
+    } catch (e) {
+      activityPreference = null;
+      activityPreferenceAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
+    // ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18) — Activity Opposition Controls: a bounded,
+    // recompute-from-source, non-persisted set of the user's own explicit activity-specific
+    // opposition statements (TDP Ch.11.J-B) — classification only; the deterministic suppression
+    // gate itself (activityOpposedAgainst()) lives in initiativeEngine.js.
+    var activityOppositionControls = null;
+    var activityOppositionControlsAvailable = false;
+    try {
+      var aoAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer', action: 'USER_STATED_MEMORY_READ',
+        userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+      });
+      var aoRaw = await aoAccess.read.userStatedMemory();
+      var aoRecords = (Array.isArray(aoRaw) ? aoRaw : [])
+        .filter(function (m) { return m && m.id; })
+        .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      if (aoRecords.length) {
+        var oppositionItems = await ActivityOppositionInterpreter.classify(aoRecords);
+        activityOppositionControls = freezeShallow({
+          items: freezeShallow(oppositionItems.map(function (o) {
+            return freezeShallow({
+              opposedActivityText: o.opposedActivityText, sourceMemoryId: o.sourceMemoryId,
+              interpretationAuthority: 'DERIVED_INTERPRETATION'
+            });
+          }))
+        });
+        activityOppositionControlsAvailable = true;
+      }
+    } catch (e) {
+      activityOppositionControls = null;
+      activityOppositionControlsAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -481,6 +608,9 @@
       explicitRequestControls: explicitRequestControls,
       userSafetyContext: userSafetyContext,
       userSafetyProvenance: userSafetyProvenance,
+      readinessStateContext: readinessStateContext,
+      activityPreference: activityPreference,
+      activityOppositionControls: activityOppositionControls,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -497,7 +627,10 @@
         situationalContext: situationalContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         userSafetyContext: userSafetyContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        userSafetyProvenance: userSafetyProvenanceAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        userSafetyProvenance: userSafetyProvenanceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        readinessStateContext: readinessStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        activityPreference: activityPreferenceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        activityOppositionControls: activityOppositionControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }
@@ -516,6 +649,36 @@
   function buildExpressionRenderingContext(pipelineContext) {
     var stage = (pipelineContext && pipelineContext.relationshipMaturity && pipelineContext.relationshipMaturity.stage) || 'UNKNOWN';
     return ExpressionRenderingContext.buildExpressionRenderingContext({ relationshipMaturityStage: stage });
+  }
+
+  // ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §15) — the CARF Ch.07 bounded Reasoning Context
+  // projection for this vertical. A narrow, purpose-specific, closed projection from the
+  // already-assembled pipelineContext (mirroring buildExpressionRenderingContext()'s own
+  // narrow-projection precedent immediately above) — never the raw pipelineContext object itself,
+  // never a full userProfile dump. Called by internalPipelineOrchestrator.js's own
+  // reasoning-invocation step (§19), immediately before invoking
+  // TrainingReadinessReasoningComponent.propose().
+  function buildTrainingReadinessReasoningContext(pipelineContext, detectedOpportunity) {
+    pipelineContext = pipelineContext || {};
+    return freezeShallow({
+      need: freezeShallow({
+        observation: detectedOpportunity && detectedOpportunity.contextualMeaning
+          && detectedOpportunity.contextualMeaning.basis && detectedOpportunity.contextualMeaning.basis.observation,
+        validReasonCategory: detectedOpportunity && detectedOpportunity.validReasonCategory
+      }),
+      readinessStateContext: pipelineContext.readinessStateContext,
+      userSafetyContext: pipelineContext.userSafetyContext,       // domain-relevant — TDP Ch.07/Ch.10
+      userSafetyProvenance: pipelineContext.userSafetyProvenance,
+      explicitRequestControls: pipelineContext.explicitRequestControls, // always, per CARF Ch.07
+      activityPreference: pipelineContext.activityPreference,
+      goalObjectiveContext: null, // not domain-relevant for TR&R V1 (CARF Ch.07's own conditional-inclusion rule)
+      availability: freezeShallow({
+        readinessStateContext: pipelineContext.availability && pipelineContext.availability.readinessStateContext,
+        userSafetyContext: pipelineContext.availability && pipelineContext.availability.userSafetyContext,
+        explicitRequestControls: pipelineContext.availability && pipelineContext.availability.explicitRequestControls,
+        activityPreference: pipelineContext.availability && pipelineContext.availability.activityPreference
+      })
+    });
   }
 
   // ── Expression WP9 / D2-EF-07 (Pre-Expression User Correction) — the accepted Architecture
@@ -607,6 +770,7 @@
   var API = {
     assembleContext: assembleContext,
     buildExpressionRenderingContext: buildExpressionRenderingContext,
+    buildTrainingReadinessReasoningContext: buildTrainingReadinessReasoningContext,
     recordExplicitUserStatementArrival: recordExplicitUserStatementArrival,
     getExplicitUserStatementArrivalTimestamp: getExplicitUserStatementArrivalTimestamp,
     assembleUserStatedMemoryFragment: assembleUserStatedMemoryFragment

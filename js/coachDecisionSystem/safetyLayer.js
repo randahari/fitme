@@ -32,9 +32,14 @@
 // memoryLayer.js/initiativeEngine.js already document elsewhere — lifeEventContext, capacityState,
 // disruption/milestone detection — remains open and is NOT resolved by this Work Item); CSR-001
 // consumes only USC-001/USP-001/MAI-001's own already-published, narrow contracts, none of which
-// is a general Health/Safety Profile. The rule is reachable only via Stage 8's own candidate-
-// carrying call path (§16/§18 of the SPEC — AD-MAI-01 bars any attempt to recover actionIdentity
-// from a Terminal Decision at Stage 9, so the Stage-9 call path below still always returns []).
+// is a general Health/Safety Profile. The rule is reachable via Stage 8's own candidate-carrying
+// call path (§16/§18 of the SPEC), and — per the Stage-9 Winning-Candidate Safety Input Canonical
+// Decision (docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md,
+// superseding AD-MAI-01's decisionFormation.js-untouched constraint for this one narrow purpose) —
+// also via Stage 9's finalReview() call path for a SINGLE_WINNER Terminal Decision, which now
+// receives the real winning Candidate as its third argument. The Stage-9 call path still returns []
+// whenever no candidate is supplied (the TIED_SET case, explicitly out of scope for that Canonical
+// Decision, and any direct call omitting the argument) — see matchCanonicalSafetyRules() below.
 //
 // A second, narrower, currently-unreachable gap: RCD-13.D requires a
 // MODIFIED SafetyReviewResult's modifiedContent to be non-null, but no
@@ -225,23 +230,196 @@
     return matchedDims;
   }
 
-  // §16 — the internal, explicit list of Canonical Safety Rules. V1 contains exactly one entry.
-  // A future rule is added by appending a second entry here — no dynamic loading, no external
-  // rule-content file, no registry (matching the Work-Item Decomposition Report's own guidance).
+  // ══════════════════════════════════════════════════════════════════
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §27, TDP Ch.10(b)) — WALKING Canonical Safety Rule.
+  // Reuses RUNNING's own dimension profile verbatim (ratified in principle, TDP Ch.10(b)) —
+  // ACTIVE_MEDICAL_INSTRUCTION_CONFLICT is a closed, activity-agnostic RiskType member, not
+  // RUNNING-specific; confirmedActiveMedicalRestrictionDims()/temporallyUnresolvedMedicalRestrictionDims()
+  // are reused unchanged, no new dimension function.
+  //
+  // Foundation boundary (TRR_001_SPEC_v1.0.md §27) — inherited CSR-001 limitation, not repaired
+  // here: this Rule, like matchRunningMedicalRestrictionRule() above, recognizes a restriction for
+  // its own activity only through its own narrow, literal accepted-form predicate. A restriction
+  // genuinely about WALKING but phrased outside that predicate produces no match and resolves
+  // UNMODIFIED — not because non-relevance was proven, but because the predicate did not match.
+  // This is CSR-001's own accepted, disclosed, intentional design tradeoff (no fuzzy matching, no
+  // synonym inference), explicitly cited by TDP Ch.10(c) as the model to mirror, not a defect this
+  // Work Item repairs.
+  // ══════════════════════════════════════════════════════════════════
+
+  // §27 — closed V1 WALKING-text vocabulary, exact, no other term authorized. The Hebrew
+  // present-participle forms (הולך/הולכת, "going/walking") are deliberately excluded — homograph
+  // risk with the general verb "to go," mirroring RUNNING's own deliberate exclusion of רצה
+  // (homograph risk with "wanted"). LINGUISTIC VERIFICATION REQUIRED before merge — flagged, non-
+  // blocking (TRR_001_SPEC_v1.0.md §46).
+  var WALKING_TEXT_ACCEPTED_FORMS = ['walk', 'walking']
+    .concat(hebrewAcceptedForms('ללכת'))
+    .concat(hebrewAcceptedForms('הליכה'))
+    .concat(hebrewAcceptedForms('הליכות'));
+
+  function isQualifyingWalkingRestrictionText(restrictedActivityText) {
+    return typeof restrictedActivityText === 'string'
+      && matchesAcceptedForm(restrictedActivityText, WALKING_TEXT_ACCEPTED_FORMS);
+  }
+
+  function matchWalkingMedicalRestrictionRule(candidate, pipelineContext) {
+    if (!candidate || !candidate.actionIdentity || candidate.actionIdentity.activity !== 'WALKING') {
+      return [];
+    }
+    var userSafetyContext = pipelineContext && pipelineContext.userSafetyContext;
+    var userSafetyProvenance = pipelineContext && pipelineContext.userSafetyProvenance;
+    if (!userSafetyContext || !Array.isArray(userSafetyContext.items) || userSafetyContext.items.length === 0) {
+      return [];
+    }
+    if (!userSafetyProvenance || !Array.isArray(userSafetyProvenance.items) || userSafetyProvenance.items.length === 0) {
+      return [];
+    }
+
+    var provenanceBySourceMemoryId = {};
+    userSafetyProvenance.items.forEach(function (item) {
+      if (item && typeof item.sourceMemoryId === 'string') {
+        provenanceBySourceMemoryId[item.sourceMemoryId] = item;
+      }
+    });
+
+    var matchedDims = [];
+    userSafetyContext.items.forEach(function (restriction) {
+      if (!restriction || typeof restriction.sourceMemoryId !== 'string') return;
+      if (!isQualifyingWalkingRestrictionText(restriction.restrictedActivityText)) return;
+      var provenance = provenanceBySourceMemoryId[restriction.sourceMemoryId];
+      if (!provenance) return;
+      if (!isQualifyingMedicalSourceText(provenance.statedSourceText)) return;
+      var hasStatedDuration = restriction.statedDurationText != null;
+      matchedDims.push(hasStatedDuration
+        ? temporallyUnresolvedMedicalRestrictionDims()
+        : confirmedActiveMedicalRestrictionDims());
+    });
+    return matchedDims;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §28, TDP Ch.10(c)) — the Unresolved Activity Safety
+  // Coverage Rule. Approved Product/Architecture mechanism (Option D / refined Option A): applies
+  // to every PHYSICAL_ACTIVITY proposal outside RUNNING/WALKING's own dedicated coverage.
+  //
+  // Two-part mechanism, reusing only RUNNING_TEXT_ACCEPTED_FORMS/WALKING_TEXT_ACCEPTED_FORMS — no
+  // new table, no new per-sport Rule, no restriction-scope classification, no AI-owned judgment:
+  // (1) known, different, closed-vocabulary MAI-001 identity — MAI-001's own mutual exclusivity is
+  // itself the deterministic proof of difference; (2) open/unnormalized identity — failed
+  // deterministic normalization is NOT treated as proof of difference; the candidate's own
+  // activityReference is additionally checked against the same accepted-form vocabulary the
+  // restriction matched, so a candidate whose own words also match remains conservative
+  // (unresolved) rather than clearing on an unproven assumption of difference. TDP's own named
+  // Pilates-clears-against-RUNNING-restriction example remains authoritative for TRR V1.
+  //
+  // Documented canonical limitation (TRR_001_SPEC_v1.0.md §28) — TRR V1 does not possess, and does
+  // not claim to possess, a general deterministic Candidate<->restriction semantic-relevance
+  // engine. Failed normalization is not, in general, proof of semantic difference; accepted-form
+  // non-match is not, in general, proof of semantic difference; this mechanism is never a
+  // universal Safety-compatibility solution. The residual epistemic gap (an activity described in
+  // words outside the closed accepted-form lists, on either side, cannot be proven identical or
+  // different to another such activity) is inherited and accepted for V1, by explicit
+  // Product/Architecture ruling, not silently assumed away.
+  // ══════════════════════════════════════════════════════════════════
+
+  // The "Rule-covered" activities: every MAI-001 token with its own dedicated Canonical Safety
+  // Rule above. This Rule explicitly SKIPS them — their own dedicated Rule is the sole authority
+  // for their own activity, including that Rule's own accepted no-match behavior (Foundation
+  // Boundary above — not repaired, not reinterpreted, here).
+  var RULE_COVERED_ACTIVITIES = Object.freeze(['RUNNING', 'WALKING']);
+
+  // A restriction's own literal text is "elsewhere-identified" when it is already Rule-qualified,
+  // via the SAME accepted-form vocabularies above (no new vocabulary, no new per-sport table) —
+  // never a generalized synonym/non-overlap inference, and never applied to any activity outside
+  // those two closed lists.
+  function restrictionIsElsewhereIdentified(restrictedActivityText) {
+    return isQualifyingRunningRestrictionText(restrictedActivityText)
+      || isQualifyingWalkingRestrictionText(restrictedActivityText);
+  }
+
+  // Refined Option A (Product/Architecture ruling) — applied ONLY when the candidate carries no
+  // known actionIdentity. Checks the candidate's OWN activityReference against the SAME
+  // already-authorized vocabulary a restriction was elsewhere-identified against, reusing
+  // matchesAcceptedForm() — the identical function, applied to one more already-existing field, no
+  // new vocabulary. This does not prove semantic difference in the general case (documented
+  // limitation above); it closes the one concrete literal failure mode where the model's own words
+  // for the proposed activity happen to literally match the same closed vocabulary the restriction
+  // matched, preventing failed normalization from masquerading as proof of non-relevance.
+  function candidateOwnReferenceMatchesElsewhereVocabulary(activityReference) {
+    return typeof activityReference === 'string'
+      && (matchesAcceptedForm(activityReference, RUNNING_TEXT_ACCEPTED_FORMS)
+        || matchesAcceptedForm(activityReference, WALKING_TEXT_ACCEPTED_FORMS));
+  }
+
+  function matchUnresolvedActivitySafetyCoverageRule(candidate, pipelineContext) {
+    // Applies only to PHYSICAL_ACTIVITY proposals — never NON_ACTIVITY_COACHING_ACTION or any
+    // Candidate kind this vertical does not itself produce (both undefined for every other kind).
+    if (!candidate || candidate.actionCategory !== 'PHYSICAL_ACTIVITY') return [];
+    var activity = candidate.actionIdentity && candidate.actionIdentity.activity;
+    if (activity && RULE_COVERED_ACTIVITIES.indexOf(activity) !== -1) return []; // own dedicated Rule governs
+
+    var userSafetyContext = pipelineContext && pipelineContext.userSafetyContext;
+    var items = (userSafetyContext && Array.isArray(userSafetyContext.items)) ? userSafetyContext.items : [];
+
+    // Outcome 2 — clear deterministic no-relevant-restriction: EITHER no restriction is on record
+    // at all (TDP's own "at minimum" case), OR every restriction on record resolves non-relevant
+    // to THIS SPECIFIC candidate, per the two-part mechanism above.
+    var everyRestrictionIsNonRelevantToThisCandidate = items.length === 0 || items.every(function (r) {
+      if (!r || !restrictionIsElsewhereIdentified(r.restrictedActivityText)) return false; // not identified at all -> unresolved (outcome 3)
+
+      if (activity) {
+        // Mechanism (1) — known, different, closed-vocabulary MAI-001 identity. MAI-001's own
+        // mutual exclusivity is itself the deterministic proof of difference.
+        return true;
+      }
+
+      // Mechanism (2) — open/unnormalized candidate. Failed normalization is NOT proof of
+      // difference; check the candidate's own text against the same vocabulary before concluding
+      // non-relevance. If it too matches, remain conservative (unresolved) rather than clear.
+      return !candidateOwnReferenceMatchesElsewhereVocabulary(candidate.activityReference);
+    });
+
+    if (everyRestrictionIsNonRelevantToThisCandidate) return [];
+
+    // Outcome 3 — at least one restriction on record could not be resolved non-relevant to this
+    // candidate by either mechanism above. The honest default (TDP Ch.10(c)). Never outcome 1:
+    // this generic Rule owns no per-activity literal vocabulary of its own, so it can never itself
+    // assert a clear conflict — only the two per-activity Rules above can.
+    // riskType/evidenceConfidence/correctability/urgency all INSUFFICIENT — the closed, existing
+    // combination evaluateRulePredicate() already maps unconditionally to DEFERRED, with
+    // reasonCodeForRule() already mapping it to the existing 'INSUFFICIENT_SAFETY_CONTEXT'
+    // reasonCode — no new enum value, no new reasonCode, reusing SL-001's own closed DEFERRED
+    // semantics verbatim.
+    return [{
+      riskType: 'INSUFFICIENT', evidenceConfidence: 'INSUFFICIENT',
+      correctability: 'INSUFFICIENT', urgency: 'INSUFFICIENT'
+    }];
+  }
+
+  // §16 — the internal, explicit list of Canonical Safety Rules. TRR-001 adds two additive
+  // entries, ordered specific-to-general (no behavioral effect from ordering, since each Rule's
+  // own precondition is disjoint, but kept readable) — no dynamic loading, no external
+  // rule-content file, no registry.
   var CANONICAL_SAFETY_RULES = [
-    matchRunningMedicalRestrictionRule
+    matchRunningMedicalRestrictionRule,
+    matchWalkingMedicalRestrictionRule,
+    matchUnresolvedActivitySafetyCoverageRule
   ];
 
   // ══════════════════════════════════════════════════════════════════
   // Canonical Safety Rule matching (RCD-12.A derivation input; RCD-14 runtime unit) — see file
   // header and CSR-001 SPEC §16. `candidate`/`terminalDecision` are accepted for structural
-  // correctness (Stage 8 supplies a Candidate, Stage 9 supplies the pre-review Terminal Decision,
-  // Stage 3 supplies neither).
+  // correctness (Stage 8 supplies a Candidate; Stage 9 supplies the pre-review Terminal Decision
+  // plus, per the Stage-9 Winning-Candidate Safety Input Canonical Decision, the real winning
+  // Candidate for a SINGLE_WINNER Terminal Decision only; Stage 3 supplies neither).
   // ══════════════════════════════════════════════════════════════════
   function matchCanonicalSafetyRules(candidate, terminalDecision, pipelineContext) {
-    // §16/§18 — Stage 9 call path (candidate === null): returns [] unconditionally, per AD-MAI-01.
-    // Never attempts to recover actionIdentity from terminalDecision (including any TIED_SET
-    // options[] exposure) — Stage 8 is the only guaranteed consumption point for actionIdentity.
+    // §16/§18 — returns [] unconditionally whenever no candidate is supplied: the TIED_SET Stage-9
+    // call path (explicitly out of scope for the Stage-9 Winning-Candidate Safety Input Canonical
+    // Decision — no tied-member is treated as a stand-in winner for Safety purposes) and any direct
+    // call omitting the argument. Never attempts to recover actionIdentity from terminalDecision
+    // (including any TIED_SET options[] exposure) — Stage 8, and now Stage 9's SINGLE_WINNER path,
+    // are the only guaranteed consumption points for actionIdentity.
     if (!candidate) return [];
     var results = [];
     CANONICAL_SAFETY_RULES.forEach(function (rule) {
@@ -453,9 +631,16 @@
   }
 
   // Stage 9 — the full Safety Decision Matrix (RCD-12/13/14), reviewing the pre-review Terminal
-  // Decision assembled by Decision Formation (SPEC Ch.13, Ch.15).
-  async function finalReview(preReviewTerminalDecision, pipelineContext) {
-    var matchedRules = matchCanonicalSafetyRules(null, preReviewTerminalDecision, pipelineContext);
+  // Decision assembled by Decision Formation (SPEC Ch.13, Ch.15). `candidate` (third, optional
+  // argument) — per the Stage-9 Winning-Candidate Safety Input Canonical Decision
+  // (docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md) —
+  // is the real winning Candidate for a SINGLE_WINNER Terminal Decision, supplied by
+  // decisionFormation.js; it is omitted (undefined) for TIED_SET, exactly as before that Canonical
+  // Decision, and for any caller (e.g. a direct/unit-level call) that does not supply one. This
+  // additive parameter changes no Rule function, no enum, and no disposition-mapping logic below —
+  // it only lets matchCanonicalSafetyRules() do, at Stage 9, what it has always done at Stage 8.
+  async function finalReview(preReviewTerminalDecision, pipelineContext, candidate) {
+    var matchedRules = matchCanonicalSafetyRules(candidate, preReviewTerminalDecision, pipelineContext);
     var evaluation = evaluateCanonicalSafetyRules(matchedRules);
 
     // RCD-13.D requires non-null modifiedContent for MODIFIED; see file header — no canonical
@@ -490,8 +675,18 @@
     buildReasonDetail: buildReasonDetail,
     evaluateCanonicalSafetyRules: evaluateCanonicalSafetyRules,
 
-    // Repository-evidence-bound matching — CSR-001's one V1 Canonical Safety Rule (see file header)
+    // Repository-evidence-bound matching — CSR-001's RUNNING Rule plus TRR-001's WALKING Rule and
+    // Unresolved Activity Safety Coverage Rule (see file header)
     matchCanonicalSafetyRules: matchCanonicalSafetyRules,
+
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §27/§28) — exposed for direct unit testing,
+    // structurally parallel to the CSR-001 internals above.
+    WALKING_TEXT_ACCEPTED_FORMS: WALKING_TEXT_ACCEPTED_FORMS,
+    RULE_COVERED_ACTIVITIES: RULE_COVERED_ACTIVITIES,
+    matchWalkingMedicalRestrictionRule: matchWalkingMedicalRestrictionRule,
+    matchUnresolvedActivitySafetyCoverageRule: matchUnresolvedActivitySafetyCoverageRule,
+    restrictionIsElsewhereIdentified: restrictionIsElsewhereIdentified,
+    candidateOwnReferenceMatchesElsewhereVocabulary: candidateOwnReferenceMatchesElsewhereVocabulary,
 
     // SafetyIntegrationPort implementation (Stage 8 / Stage 9)
     disqualify: disqualify,

@@ -619,6 +619,12 @@
        which resolves it at top-of-module require/window time (same pattern as
        safetyContextInterpreter.js immediately above). USC-001 remains closed and untouched. -->
   <script src="js/coachDecisionSystem/userSafetyProvenanceInterpreter.js"></script>
+  <!-- TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §16-§18) — three new sibling interpreters, loaded
+       before the Memory Layer module below, which resolves each at top-of-module require/window
+       time (same pattern as userSafetyProvenanceInterpreter.js immediately above). -->
+  <script src="js/coachDecisionSystem/readinessStateInterpreter.js"></script>
+  <script src="js/coachDecisionSystem/activityPreferenceInterpreter.js"></script>
+  <script src="js/coachDecisionSystem/activityOppositionInterpreter.js"></script>
   <script src="js/coachDecisionSystem/memoryLayer.js"></script>
   <script src="js/core/dateUtils.js"></script>
   <script src="js/core/numberUtils.js"></script>
@@ -670,6 +676,15 @@
   <script src="js/coachDecisionSystem/recommendationEngine.js"></script>
   <!-- G-2 (docs/specs/G2_SPEC_v1.0.md §19-21, CSF-08) — loaded before initiativeEngine.js, its sole consumer -->
   <script src="js/coachDecisionSystem/contextualMeaningPolicy.js"></script>
+  <!-- MAI-001 (docs/specs/MAI_001_SPEC_v1.0.md) — previously had zero live consumers/wiring
+       (disclosed, not a defect, per its own SPEC §15). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
+       §25) is its first real production consumer — loaded before initiativeEngine.js and
+       activityReferenceNormalizer.js immediately below, both of which now require it. -->
+  <script src="js/domain/activityIdentityVocabulary.js"></script>
+  <!-- TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §24) — loaded before initiativeEngine.js
+       (activityOpposedAgainst()) and internalPipelineOrchestrator.js
+       (resolveTrainingReadinessProposal()), both of which require it. -->
+  <script src="js/domain/activityReferenceNormalizer.js"></script>
   <script src="js/coachDecisionSystem/initiativeEngine.js"></script>
   <script src="js/coachDecisionSystem/winnerSelection.js"></script>
   <script src="js/coachDecisionSystem/decisionFormation.js"></script>
@@ -679,6 +694,9 @@
   <script src="js/coachDecisionSystem/deliveryIntentContract.js"></script>
   <script src="js/coachDecisionSystem/expressionInputGate.js"></script>
   <script src="js/coachDecisionSystem/expressionRenderer.js"></script>
+  <!-- TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19) — loaded before internalPipelineOrchestrator.js,
+       its sole consumer. -->
+  <script src="js/coachDecisionSystem/trainingReadinessReasoningComponent.js"></script>
   <script src="js/coachDecisionSystem/internalPipelineOrchestrator.js"></script>
   <script src="js/coachDecisionSystem/registerCoachDecisionSystem.js"></script>
   <script src="js/ui/navigationController.js"></script>

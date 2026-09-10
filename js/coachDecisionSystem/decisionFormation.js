@@ -144,9 +144,22 @@
       return freezeShallow({ status: 'ABORTED', reason: 'SAFETY_LAYER_UNAVAILABLE' });
     }
 
+    // Stage-9 Winning-Candidate Safety Input Canonical Decision
+    // (docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md,
+    // narrowly superseding AD-MAI-01's decisionFormation.js-untouched constraint) — for a
+    // SINGLE_WINNER Terminal Decision only, the actual winning Candidate (already held in scope as
+    // `primary`) is supplied to the Safety Layer as finalReview()'s third argument, strictly as
+    // Safety-evaluation input. This module does not interpret actionIdentity, does not inspect
+    // Safety restrictions, does not recreate any Canonical Safety Rule, and does not derive or
+    // alter any Safety disposition/reasonCode itself — it only forwards what Winner Selection
+    // already produced and consumes, unchanged, whatever the Safety Layer returns below. TIED_SET
+    // remains explicitly out of scope for that Canonical Decision: no tied member is forwarded as a
+    // stand-in winner, exactly as before.
+    var winningCandidateForSafetyReview = isTied ? undefined : primary;
+
     var reviewResult;
     try {
-      reviewResult = await safetyPort.finalReview(preReviewDecision, pipelineContext);
+      reviewResult = await safetyPort.finalReview(preReviewDecision, pipelineContext, winningCandidateForSafetyReview);
     } catch (e) {
       return freezeShallow({ status: 'ABORTED', reason: 'SAFETY_FINAL_REVIEW_THREW' });
     }

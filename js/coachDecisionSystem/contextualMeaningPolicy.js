@@ -18,11 +18,14 @@
 (function () {
   'use strict';
 
-  // ── §21.1 — Product Reason Policy: הכלל האחד המאושר ל-v1 (CSF Ch.26), ממצה — אין ענף אחר.
+  // ── §21.1 — Product Reason Policy. Seven-member CSF Ch.26 vocabulary, plus TRR-001's own
+  // eighth, additive member (TDP Ch.05/Ch.13 item 17; docs/specs/TRR_001_SPEC_v1.0.md §10) —
+  // `ADAPT_TO_CURRENT_STATE`, a new, permanent member of the closed D1-IE-01 Product Reason
+  // enumeration. No existing member is removed, renamed, or reinterpreted.
   var VALID_REASON_CATEGORIES = [
     'PREVENT_PREDICTABLE_MISTAKE', 'HELP_BEFORE_DIFFICULT_DECISION', 'CELEBRATE_MEANINGFUL_PROGRESS',
     'SUPPORT_RECOVERY', 'PREPARE_FOR_FORESEEABLE_CHALLENGE', 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION',
-    'PROTECT_STATED_LONG_TERM_GOALS'
+    'PROTECT_STATED_LONG_TERM_GOALS', 'ADAPT_TO_CURRENT_STATE'
   ];
 
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
@@ -46,6 +49,22 @@
     'Authority, CSF Ch.29 AD-HL-02) — the current, uninterrupted lifecycle episode has itself ' +
     'earned confirmed-tier authority (occ>=OCC_CONFIRMED(5) and conf>=CONF_CONFIRMED(0.55) held ' +
     'within this episode), independent of statusOf()\'s branch ordering alone.';
+
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §11) — the exact, narrow Training Readiness
+  // Reason-Policy condition, traced to the real, existing, generic Habit-Engine workout-
+  // consistency detector (js/engines/habitEngine.js:167-193, surfaced with domain:'WORKOUT',
+  // topic:'WORKOUT_FREQUENCY' via js/derivedIntelligenceConsumer.js:142). An established
+  // (ACTIVE/CONFIRMED) WORKOUT_FREQUENCY Habit signal alone answers only "does a training pattern
+  // exist" — it is deliberately NOT sufficient on its own (this would make
+  // CONFIRMED_PATTERN_ANTICIPATION blanket permission to invoke TR&R reasoning for every generic
+  // workout observation, TDP's own explicit prohibition). The narrowing device is
+  // deriveValidReasonCategory()'s own additional requirement, below, that a real, available
+  // readinessStateContext signal also exist for this same Decision Pass.
+  function isTrainingReadinessObservation(observation) {
+    return !!observation && observation.sourceType === 'HABIT'
+      && observation.domain === 'WORKOUT' && observation.topic === 'WORKOUT_FREQUENCY'
+      && (observation.lifecycle === 'ACTIVE' || observation.lifecycle === 'CONFIRMED');
+  }
 
   // ══════════════════════════════════════════════════════════════════
   // ── §19-20 — Contextual Meaning construction ──
@@ -75,6 +94,35 @@
         expectedIntervalDays: observation.temporal && observation.temporal.expectedIntervalDays
       })
     });
+
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §11) — the Training Readiness Observation branch,
+    // evaluated before the existing FOOD_LOGGING branch below. The two conditions are mutually
+    // exclusive by `topic` (WORKOUT_FREQUENCY vs FOOD_LOGGING), so ordering has no behavioral
+    // effect — placed first only so the existing, unmodified FOOD_LOGGING branch's own diff
+    // surface remains untouched.
+    if (isTrainingReadinessObservation(observation)) {
+      var readinessAvailable = !!(pipelineContext.readinessStateContext
+        && Array.isArray(pipelineContext.readinessStateContext.items)
+        && pipelineContext.readinessStateContext.items.length > 0);
+      return freezeShallow({
+        alignment: 'UNKNOWN',   // no Goal comparison performed for this rule
+        trajectory: 'UNKNOWN',  // an established habit alone is not itself a deviation finding
+        basis: freezeShallow({
+          observation: basisObservation,
+          priorEstablishmentBasis: readinessAvailable
+            ? 'pipelineContext.readinessStateContext contains at least one real, available ' +
+              'user-reported current-state signal for this Decision Pass, alongside an established ' +
+              '(ACTIVE/CONFIRMED) WORKOUT_FREQUENCY Habit signal (js/engines/habitEngine.js ' +
+              'detectWorkout()).'
+            : null,
+          contextConsulted: freezeShallow({
+            goalObjectiveContext: 'NOT_CONSULTED', currentStateContext: 'NOT_CONSULTED',
+            readinessStateContext: readinessAvailable ? 'CONSULTED' : 'NOT_CONSULTED'
+          }),
+          unavailableOrUncertain: freezeShallow([])
+        })
+      });
+    }
 
     if (isV1FoodLoggingWeakening(observation)) {
       // §20: Trajectory WORSENING (direct from the real Habit lifecycle degradation, CSF Ch.26.4);
@@ -149,6 +197,15 @@
   // constructed with the established basis (priorEstablishmentBasis === null) resolves
   // NO_VALID_REASON, never REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION.
   function deriveValidReasonCategory(observation, contextualMeaning) {
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §11) — evaluated before the existing FOOD_LOGGING
+    // check below; the two conditions are mutually exclusive by `topic`.
+    if (isTrainingReadinessObservation(observation)) {
+      if (isPlainObject(contextualMeaning) && isPlainObject(contextualMeaning.basis)
+        && contextualMeaning.basis.priorEstablishmentBasis != null) {
+        return 'ADAPT_TO_CURRENT_STATE';
+      }
+      return 'NO_VALID_REASON';
+    }
     if (!isV1FoodLoggingWeakening(observation)) return 'NO_VALID_REASON';
     if (!isPlainObject(contextualMeaning) || !isPlainObject(contextualMeaning.basis)
       || contextualMeaning.basis.priorEstablishmentBasis == null) {

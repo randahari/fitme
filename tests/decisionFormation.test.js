@@ -290,3 +290,32 @@ test('identical selection/input produces an identical Terminal Decision on repea
   const r2 = await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.deepEqual(r1.decision, r2.decision);
 });
+
+// ── Stage-9 Winning-Candidate Safety Input Canonical Decision
+// (docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md) —
+// SINGLE_WINNER forwards the actual winning Candidate to finalReview() as its third argument;
+// TIED_SET remains explicitly out of scope and unchanged. ──
+
+test('SINGLE_WINNER: finalReview() receives the actual winning Candidate as its third argument', async () => {
+  const c = candidate('a');
+  const port = makeSafetyIntegrationPortTestDouble();
+  await DecisionFormation.form({ selection: singleWinnerSelection(c), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
+  assert.equal(port.calls.lastFinalReviewCandidate, c);
+});
+
+test('TIED_SET: finalReview() receives no candidate (third argument undefined) — unchanged by the Stage-9 Winning-Candidate Safety Input Canonical Decision, which is explicitly scoped to SINGLE_WINNER only', async () => {
+  const a = candidate('a'); const b = candidate('b');
+  const selection = { status: 'TIED_SET', tiedSet: [a, b], disqualifiedCandidates: [] };
+  const port = makeSafetyIntegrationPortTestDouble();
+  await DecisionFormation.form({ selection: selection, pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 2 });
+  assert.equal(port.calls.lastFinalReviewCandidate, undefined);
+});
+
+test('SINGLE_WINNER: a distinct Candidate per call is forwarded correctly (no stale/cross-call leakage)', async () => {
+  const c1 = candidate('a'); const c2 = candidate('b');
+  const port = makeSafetyIntegrationPortTestDouble();
+  await DecisionFormation.form({ selection: singleWinnerSelection(c1), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
+  assert.equal(port.calls.lastFinalReviewCandidate, c1);
+  await DecisionFormation.form({ selection: singleWinnerSelection(c2), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
+  assert.equal(port.calls.lastFinalReviewCandidate, c2);
+});

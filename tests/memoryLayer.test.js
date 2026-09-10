@@ -1471,3 +1471,133 @@ test('USP1-O. this new step does not affect situationalContext, explicitRequestC
   assert.equal('safetyDisposition' in ctx, false);
   assert.equal('medicalSource' in (ctx.userSafetyProvenance.items[0] || {}), false);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §15) — readinessStateContext / activityPreference /
+// activityOppositionControls assembly, and buildTrainingReadinessReasoningContext(). The three new
+// interpreters' own classification logic is covered separately and exhaustively in their own test
+// files; here we stub each interpreter's own callClaude (same monkey-patching convention as the
+// CSSC1/EUR1/USC1/USP1 blocks above) to isolate Memory Layer's own integration logic.
+// ══════════════════════════════════════════════════════════════════
+
+const ReadinessStateInterpreter = require('../js/coachDecisionSystem/readinessStateInterpreter.js');
+const ActivityPreferenceInterpreter = require('../js/coachDecisionSystem/activityPreferenceInterpreter.js');
+const ActivityOppositionInterpreter = require('../js/coachDecisionSystem/activityOppositionInterpreter.js');
+
+test.afterEach(() => {
+  ReadinessStateInterpreter.configure({ callClaude: null });
+  ActivityPreferenceInterpreter.configure({ callClaude: null });
+  ActivityOppositionInterpreter.configure({ callClaude: null });
+});
+
+test('TRR-MEM-1. no eligible Typed Memory records yields zero interpreter calls and UNAVAILABLE for all three new fields — no attempt was made', async () => {
+  configureConsentGranted(async () => []);
+  let called = false;
+  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.readinessStateContext, null);
+  assert.equal(ctx.availability.readinessStateContext, 'UNAVAILABLE');
+  assert.equal(ctx.activityPreference, null);
+  assert.equal(ctx.availability.activityPreference, 'UNAVAILABLE');
+  assert.equal(ctx.activityOppositionControls, null);
+  assert.equal(ctx.availability.activityOppositionControls, 'UNAVAILABLE');
+  assert.equal(called, false);
+});
+
+test('TRR-MEM-2. readinessStateContext has NO mechanical pre-check gate — attempted even with zero live Habit/Pattern signals', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I barely slept' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  let called = false;
+  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(called, true, 'readinessStateContext must be attempted regardless of any Habit/Pattern signal');
+});
+
+test('TRR-MEM-3. an accepted readiness statement populates readinessStateContext.items with USER_STATED provenance and DERIVED_INTERPRETATION authority', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'I barely slept' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ReadinessStateInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', verdict: 'CLASSIFIED_CURRENT_STATE' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.readinessStateContext, 'AVAILABLE');
+  assert.equal(ctx.readinessStateContext.items.length, 1);
+  const item = ctx.readinessStateContext.items[0];
+  assert.equal(item.sourceMemoryId, 'mem-1');
+  assert.equal(item.provenance, 'USER_STATED');
+  assert.equal(item.interpretationAuthority, 'DERIVED_INTERPRETATION');
+});
+
+test('TRR-MEM-4. an accepted preference statement populates activityPreference.items', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'no preference for running' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ActivityPreferenceInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', sentimentClassification: 'NEGATIVE_SENTIMENT', activityText: 'running' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.activityPreference.items.length, 1);
+  assert.equal(ctx.activityPreference.items[0].sentimentClassification, 'NEGATIVE_SENTIMENT');
+  assert.equal(ctx.activityPreference.items[0].activityText, 'running');
+});
+
+test('TRR-MEM-5. an accepted opposition statement populates activityOppositionControls.items', async () => {
+  configureConsentGranted(async () => [
+    { _id: 'mem-1', type: 'fact', payload: { text: 'please never suggest cycling to me' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
+  ]);
+  ActivityOppositionInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', oppositionClassification: 'ACTIVITY_OPPOSITION_STATED', opposedActivityText: 'cycling' }] }) }] })
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.activityOppositionControls.items.length, 1);
+  assert.equal(ctx.activityOppositionControls.items[0].opposedActivityText, 'cycling');
+});
+
+test('TRR-MEM-6. graceful degradation: a thrown Typed Memory read never corrupts sibling fields', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => { throw new Error('read failed'); }
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [], habitsMeta: { lastRun: '2026-07-01', version: 1 } }),
+    readPatternSnapshot: async () => ({ patterns: [], patternsMeta: { lastRun: '2026-07-01', version: 1, sourceFingerprint: 'x' } }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.availability.readinessStateContext, 'UNAVAILABLE');
+  assert.equal(ctx.availability.activityPreference, 'UNAVAILABLE');
+  assert.equal(ctx.availability.activityOppositionControls, 'UNAVAILABLE');
+  assert.equal(ctx.availability.feedbackHistory, 'AVAILABLE');
+});
+
+test('TRR-MEM-7. buildTrainingReadinessReasoningContext() projects only the CARF Ch.07 bounded minimum — never a full pipelineContext/userProfile dump', () => {
+  var pipelineContext = {
+    readinessStateContext: { items: [{ statementText: 'tired' }] },
+    userSafetyContext: { items: [] },
+    userSafetyProvenance: { items: [] },
+    explicitRequestControls: { items: [] },
+    activityPreference: { items: [] },
+    goalObjectiveContext: { goal: 'lose_weight', goalKcal: 1800 },
+    currentStateContext: { consumed: 1000 },
+    derivedIntelligence: { huge: 'profile-shaped data' },
+    availability: { readinessStateContext: 'AVAILABLE', userSafetyContext: 'UNAVAILABLE', explicitRequestControls: 'UNAVAILABLE', activityPreference: 'UNAVAILABLE' }
+  };
+  var detectedOpportunity = { id: 'trr-1', validReasonCategory: 'ADAPT_TO_CURRENT_STATE', contextualMeaning: { basis: { observation: { id: 'obs-1' } } } };
+  var reasoningContext = MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext, detectedOpportunity);
+  assert.equal(reasoningContext.need.validReasonCategory, 'ADAPT_TO_CURRENT_STATE');
+  assert.deepEqual(reasoningContext.readinessStateContext, pipelineContext.readinessStateContext);
+  assert.equal(reasoningContext.goalObjectiveContext, null);
+  assert.equal('currentStateContext' in reasoningContext, false);
+  assert.equal('derivedIntelligence' in reasoningContext, false);
+});
+
+test('TRR-MEM-8. buildTrainingReadinessReasoningContext() never throws on a malformed/empty pipelineContext', () => {
+  assert.doesNotThrow(() => MemoryLayer.buildTrainingReadinessReasoningContext(null, null));
+  assert.doesNotThrow(() => MemoryLayer.buildTrainingReadinessReasoningContext(undefined, undefined));
+});

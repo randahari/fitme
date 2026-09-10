@@ -803,3 +803,156 @@ test('EUR1-Stage6-M. this new dependency does not touch feedbackDomain.js — no
   const eurFnBody = src.slice(eurFnStart, eurFnEnd);
   assert.equal(eurFnBody.indexOf('FeedbackDomain'), -1, 'explicitlyRequestedAgainst() must never reference FeedbackDomain — RGEF separation (§17)');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18, §22-§26, §32) — Training Readiness extensions
+// ══════════════════════════════════════════════════════════════════
+
+function trrOpportunity(overrides) {
+  return validOpportunity(Object.assign({
+    sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+    validReasonCategory: 'ADAPT_TO_CURRENT_STATE',
+    actionCategory: 'PHYSICAL_ACTIVITY',
+    activityReference: 'a light swim',
+    actionIdentity: { activity: 'SWIMMING' }
+  }, overrides));
+}
+function trrPipelineContext(overrides) {
+  return pipelineContext(Object.assign({ relationshipMaturity: { stage: 'OBSERVER' } }, overrides));
+}
+
+test('TRR-1. Stage-6 Source×Reason governance: OBSERVER stage + CONFIRMED_PATTERN_ANTICIPATION x ADAPT_TO_CURRENT_STATE is permitted via the new override entry', () => {
+  const result = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: trrPipelineContext() });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('TRR-2. SOURCE_REASON_MATURITY_OVERRIDES exposes exactly two entries under CONFIRMED_PATTERN_ANTICIPATION', () => {
+  const table = InitiativeEngine.SOURCE_REASON_MATURITY_OVERRIDES;
+  assert.deepEqual(Object.keys(table.CONFIRMED_PATTERN_ANTICIPATION).sort(), ['ADAPT_TO_CURRENT_STATE', 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION']);
+});
+
+test('TRR-3. existing REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION entry still permitted at OBSERVER (unaffected)', () => {
+  const opp = validOpportunity({ sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', validReasonCategory: 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION' });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: trrPipelineContext() });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('TRR-4. actionCategory/activityReference/actionIdentity flow through onto the Candidate unchanged', () => {
+  const c = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: trrPipelineContext() }).candidates[0];
+  assert.equal(c.actionCategory, 'PHYSICAL_ACTIVITY');
+  assert.equal(c.activityReference, 'a light swim');
+  assert.deepEqual(c.actionIdentity, { activity: 'SWIMMING' });
+});
+
+test('TRR-5. open activity reference required for PHYSICAL_ACTIVITY — validateCandidateShape rejects a Candidate missing activityReference', () => {
+  const c = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: trrPipelineContext() }).candidates[0];
+  const broken = Object.assign({}, c, { activityReference: undefined });
+  assert.equal(InitiativeEngine.validateCandidateShape(broken), false);
+});
+
+test('TRR-6. NON_ACTIVITY_COACHING_ACTION carries no activityReference/actionIdentity — validateCandidateShape rejects either field present', () => {
+  const c = InitiativeEngine.generate({ opportunity: trrOpportunity({ actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: undefined, actionIdentity: undefined }), pipelineContext: trrPipelineContext() }).candidates[0];
+  assert.equal(c.actionCategory, 'NON_ACTIVITY_COACHING_ACTION');
+  assert.equal('activityReference' in c, false);
+  assert.equal('actionIdentity' in c, false);
+  assert.equal(InitiativeEngine.validateCandidateShape(Object.assign({}, c, { activityReference: 'running' })), false);
+});
+
+test('TRR-7. absent actionIdentity on an open-ended PHYSICAL_ACTIVITY proposal is legitimate — Candidate still validates', () => {
+  const c = InitiativeEngine.generate({ opportunity: trrOpportunity({ actionIdentity: undefined, activityReference: 'Pilates' }), pipelineContext: trrPipelineContext() }).candidates[0];
+  assert.equal('actionIdentity' in c, false);
+  assert.equal(InitiativeEngine.validateCandidateShape(c), true);
+});
+
+test('TRR-8. every existing, non-TR&R Candidate carries no actionCategory/activityReference/actionIdentity field (undefined-safe, zero behavioral change)', () => {
+  const c = InitiativeEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() }).candidates[0];
+  assert.equal('actionCategory' in c, false);
+  assert.equal('activityReference' in c, false);
+  assert.equal('actionIdentity' in c, false);
+});
+
+test('TRR-9. sameNeedId is present on opportunityProvenance for every Candidate, defaulting to the Opportunity\'s own id when not itself supplied (CARF Ch.10 placeholder)', () => {
+  const c = InitiativeEngine.generate({ opportunity: validOpportunity(), pipelineContext: pipelineContext() }).candidates[0];
+  assert.equal(c.opportunityProvenance.sameNeedId, 'opp-1');
+});
+
+test('TRR-10. sameNeedId is preserved when the Opportunity itself already carries one', () => {
+  const c = InitiativeEngine.generate({ opportunity: trrOpportunity({ sameNeedId: 'trr-adapt-to-current-state:HABIT:x' }), pipelineContext: trrPipelineContext() }).candidates[0];
+  assert.equal(c.opportunityProvenance.sameNeedId, 'trr-adapt-to-current-state:HABIT:x');
+});
+
+// ── Explicit activity-specific opposition (TDP Ch.11.J-B) ───────────────────────────────────
+
+test('TRR-11. activityOpposedAgainst() matches via shared normalized identity (both sides normalize to the same MAI-001 token)', () => {
+  const controls = { items: [{ opposedActivityText: 'cycling' }] };
+  assert.equal(InitiativeEngine.activityOpposedAgainst(controls, 'a bike ride'), true); // both normalize to CYCLING
+});
+
+test('TRR-12. activityOpposedAgainst() matches via exact literal equality for open-ended activities neither side normalizes', () => {
+  const controls = { items: [{ opposedActivityText: 'Pilates' }] };
+  assert.equal(InitiativeEngine.activityOpposedAgainst(controls, 'Pilates'), true);
+});
+
+test('TRR-13. activityOpposedAgainst() does not match an unrelated activity', () => {
+  const controls = { items: [{ opposedActivityText: 'cycling' }] };
+  assert.equal(InitiativeEngine.activityOpposedAgainst(controls, 'swimming'), false);
+});
+
+test('TRR-14. explicit activity opposition suppresses a matching PHYSICAL_ACTIVITY Candidate at generate()', () => {
+  const ctx = trrPipelineContext({ activityOppositionControls: { items: [{ opposedActivityText: 'swimming' }] } });
+  const result = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: ctx }); // activityReference: 'a light swim', actionIdentity SWIMMING
+  assert.deepEqual(result.candidates, []);
+});
+
+test('TRR-15. activity opposition does not suppress an unrelated activity', () => {
+  const ctx = trrPipelineContext({ activityOppositionControls: { items: [{ opposedActivityText: 'cycling' }] } });
+  const result = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('TRR-16. opposition suppression is scoped to PHYSICAL_ACTIVITY only — a NON_ACTIVITY_COACHING_ACTION proposal is never checked against it', () => {
+  const ctx = trrPipelineContext({ activityOppositionControls: { items: [{ opposedActivityText: 'anything' }] } });
+  const opp = trrOpportunity({ actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: undefined, actionIdentity: undefined });
+  const result = InitiativeEngine.generate({ opportunity: opp, pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1);
+});
+
+test('TRR-17. activity preference (advisory-only) never suppresses anything — no code path reads pipelineContext.activityPreference for suppression', () => {
+  const ctx = trrPipelineContext({ activityPreference: { items: [{ sentimentClassification: 'NEGATIVE_SENTIMENT', activityText: 'swimming' }] } });
+  const result = InitiativeEngine.generate({ opportunity: trrOpportunity(), pipelineContext: ctx });
+  assert.equal(result.candidates.length, 1, 'a negative preference item must not, by itself, suppress or alter the Candidate');
+});
+
+// ── Stage-3 detection (§12) ───────────────────────────────────────────────────────────────────
+
+function workoutSignal(overrides) {
+  return Object.assign({
+    id: 'HABIT:workout:weekday:1', signalId: 'HABIT:workout:weekday:1', sourceType: 'HABIT',
+    domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY', lifecycle: 'ACTIVE', confidence: 0.7,
+    evidence: { count: 5 }, temporal: {}
+  }, overrides);
+}
+
+test('TRR-18. detectTrainingReadinessOpportunities() (via detectOpportunities()) constructs a DetectedOpportunity only when both the habit signal and a readiness signal are present', () => {
+  const ctxWithReadiness = { initiativeIntelligence: { signals: [workoutSignal()] }, readinessStateContext: { items: [{ statementText: 'tired', sourceMemoryId: 'm1' }] } };
+  const withReadiness = InitiativeEngine.detectOpportunities(ctxWithReadiness).trainingReadinessOpportunities;
+  assert.equal(withReadiness.length, 1);
+  assert.equal(withReadiness[0].validReasonCategory, 'ADAPT_TO_CURRENT_STATE');
+  assert.equal(withReadiness[0].sourceCategory, 'CONFIRMED_PATTERN_ANTICIPATION');
+
+  const ctxWithoutReadiness = { initiativeIntelligence: { signals: [workoutSignal()] }, readinessStateContext: null };
+  assert.deepEqual(InitiativeEngine.detectOpportunities(ctxWithoutReadiness).trainingReadinessOpportunities, []);
+});
+
+test('TRR-19. the placeholder proposedAction sentinel is present at detection time (never handed to Stage 6 as-is — proven by the orchestrator\'s own interception, tested separately)', () => {
+  const ctx = { initiativeIntelligence: { signals: [workoutSignal()] }, readinessStateContext: { items: [{ statementText: 'tired', sourceMemoryId: 'm1' }] } };
+  const detected = InitiativeEngine.detectOpportunities(ctx).trainingReadinessOpportunities;
+  assert.equal(detected[0].proposedAction, '__TRR_PENDING_REASONING__');
+});
+
+test('TRR-20. the existing semanticOpportunities bucket (G-2 food-logging) remains byte-identical and independent of the new bucket', () => {
+  const ctx = { initiativeIntelligence: { signals: [workoutSignal()] } };
+  const result = InitiativeEngine.detectOpportunities(ctx);
+  assert.deepEqual(result.semanticOpportunities, []); // no FOOD_LOGGING signal present
+  assert.equal(result.trainingReadinessOpportunities.length, 0); // no readiness signal present
+});

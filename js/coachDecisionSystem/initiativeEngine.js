@@ -74,6 +74,22 @@
   var FeedbackDomain = (typeof module !== 'undefined' && module.exports)
     ? require('../feedback/feedbackDomain.js')
     : window.FeedbackDomain;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18) — the shared, deterministic activity-identity
+  // normalization module (js/domain, sibling in kind to activityIdentityVocabulary.js), reused
+  // here ONLY by activityOpposedAgainst() below to resolve the shared semantic activity reference
+  // (TDP Ch.11.I) between an explicit-opposition record and a proposed Candidate's own
+  // activityReference — never to construct actionIdentity itself, which remains
+  // internalPipelineOrchestrator.js's/resolveTrainingReadinessProposal()'s own responsibility.
+  var ActivityReferenceNormalizer = (typeof module !== 'undefined' && module.exports)
+    ? require('../domain/activityReferenceNormalizer.js')
+    : window.ActivityReferenceNormalizer;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §25) — MAI-001's own closed, unmodified vocabulary
+  // module, reused here only for validateCandidateShape()'s own defensive actionIdentity shape
+  // check (isValidActionIdentity()) — never to construct or normalize actionIdentity, which
+  // remains resolveTrainingReadinessProposal()'s own exclusive responsibility.
+  var ActivityIdentityVocabulary = (typeof module !== 'undefined' && module.exports)
+    ? require('../domain/activityIdentityVocabulary.js')
+    : window.ActivityIdentityVocabulary;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -134,17 +150,25 @@
   });
 
   // RGEF WP4 (RGEF_SPEC_v1.0.md §13) — closed Source×Reason maturity-gating override, evolving
-  // the one-dimensional table above without changing it. Contains EXACTLY one entry at authoring
-  // time (RGEF §13.2, mandatory scope discipline): CONFIRMED_PATTERN_ANTICIPATION ×
+  // the one-dimensional table above without changing it. Contained EXACTLY one entry at RGEF's own
+  // authoring time (RGEF §13.2, mandatory scope discipline): CONFIRMED_PATTERN_ANTICIPATION ×
   // REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION, permitted at every Relationship Maturity Stage
   // including Observer/Assistant — resolving TASK-005 §36 item E-2 for this one specific
-  // combination only. Every other (sourceCategory, validReasonCategory) pair — including every
-  // OTHER validReasonCategory under CONFIRMED_PATTERN_ANTICIPATION — falls through to
-  // MATURITY_GATING[sourceCategory] above, unmodified. A second entry SHALL NOT be added without
-  // a new, explicit Product/Architecture decision (RGEF §13.2).
+  // combination. TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §26; TDP Ch.05 Concept E) adds exactly
+  // one new, second entry: CONFIRMED_PATTERN_ANTICIPATION × ADAPT_TO_CURRENT_STATE, permitted at
+  // every stage for the identical reason — the default MATURITY_GATING table would otherwise
+  // silently block this bounded, Stage-5-gated Reason at Observer/Assistant even after Stage 5's
+  // own Bounded Early-Relationship admission (RGEF's eligibilityEvaluator.js path) already permits
+  // it, directly contradicting Decision 1's "early relationship does not mean silence" principle
+  // (TDP Ch.05) — the exact same
+  // resolution RGEF WP4 already applied to its own first bounded case, not a new precedent, a
+  // second proof of the identical one. Every other (sourceCategory, validReasonCategory) pair
+  // falls through to MATURITY_GATING[sourceCategory] above, unmodified. A third entry SHALL NOT be
+  // added without a new, explicit Product/Architecture decision (RGEF §13.2).
   var SOURCE_REASON_MATURITY_OVERRIDES = Object.freeze({
     CONFIRMED_PATTERN_ANTICIPATION: Object.freeze({
-      REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'])
+      REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH']),
+      ADAPT_TO_CURRENT_STATE: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'])
     })
   });
 
@@ -249,8 +273,34 @@
     });
   }
 
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18; TDP Ch.11.J-B) — the deterministic
+  // activity-specific explicit-opposition gate, structurally parallel to
+  // explicitlyRequestedAgainst() above but resolving its own "scope" dimension against the shared
+  // semantic activity reference (TDP Ch.11.I) instead of Domain/Topic. Additive to, independent
+  // of, and never a replacement for any of the three suppression checks above — any one of the
+  // four is sufficient to suppress. Applied only to PHYSICAL_ACTIVITY proposals (checked by the
+  // caller, below) — activityReference is undefined for every other Candidate kind.
+  function activityOpposedAgainst(activityOppositionControls, activityReference) {
+    if (!activityReference || !activityOppositionControls) return false;
+    var items = activityOppositionControls.items || [];
+    var normalizedRef = ActivityReferenceNormalizer.normalize(activityReference);
+    return items.some(function (c) {
+      var normalizedOpposed = ActivityReferenceNormalizer.normalize(c.opposedActivityText);
+      // Match A — both sides normalize to the same known MAI-001 token (the shared semantic
+      // activity reference, TDP Ch.11.I).
+      if (normalizedRef && normalizedOpposed && normalizedRef === normalizedOpposed) return true;
+      // Match B — exact literal (case/whitespace-insensitive) equality, covering open-ended
+      // activities neither side normalizes (e.g. "Pilates" opposed against a "Pilates" proposal).
+      return activityReference.trim().toLowerCase() === (c.opposedActivityText || '').trim().toLowerCase();
+    });
+  }
+
   // Section 19 contract shape check — mirrors recommendationEngine.js's internal-construction
-  // discipline; also exported for contract tests (§33.2).
+  // discipline; also exported for contract tests (§33.2). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
+  // §22, §25) additively extends this check with the corrected actionCategory/activityReference/
+  // actionIdentity invariant (TDP Ch.09) — gated entirely behind c.actionCategory !== undefined, a
+  // no-op for every existing, non-TR&R Candidate kind (undefined for all of them, exactly as
+  // actionIdentity already is today).
   function validateCandidateShape(c) {
     if (!isPlainObject(c)) return false;
     if (c.kind !== 'INITIATIVE') return false;
@@ -268,6 +318,15 @@
     if (!isPlainObject(c.opportunityProvenance)) return false;
     if (!isPlainObject(c.validationResult) || c.validationResult.passed !== true) return false;
     if (c.immutable !== true) return false;
+    if (c.actionCategory !== undefined) {
+      if (c.actionCategory !== 'PHYSICAL_ACTIVITY' && c.actionCategory !== 'NON_ACTIVITY_COACHING_ACTION') return false;
+      if (c.actionCategory === 'PHYSICAL_ACTIVITY') {
+        if (!isNonEmptyString(c.activityReference)) return false;
+        if (c.actionIdentity !== undefined && !ActivityIdentityVocabulary.isValidActionIdentity(c.actionIdentity)) return false;
+      } else {
+        if (c.activityReference !== undefined || c.actionIdentity !== undefined) return false; // NON_ACTIVITY carries neither
+      }
+    }
     return true;
   }
 
@@ -325,9 +384,19 @@
     // carries direct-user authority — it is not threshold-gated and requires no repeated evidence.
     if (explicitlyRequestedAgainst(pipelineContext.explicitRequestControls, opportunity.domain, opportunity.topic)) return emptyResult();
 
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18, §25; TDP Ch.11.J-B) — deterministic
+    // activity-specific explicit-opposition suppression, additive to, independent of, and never a
+    // replacement for the three checks above; any one of the four is sufficient to suppress.
+    // Applied only to PHYSICAL_ACTIVITY proposals — opportunity.actionCategory is undefined for
+    // every non-TR&R Opportunity, so this branch never fires for them.
+    if (opportunity.actionCategory === 'PHYSICAL_ACTIVITY'
+      && activityOpposedAgainst(pipelineContext.activityOppositionControls, opportunity.activityReference)) {
+      return emptyResult();
+    }
+
     // step 7: candidate construction — statable rationale already validated at step 2
     // (D1-RP-02/D1-CDO-02 analog: no rationale, no Candidate).
-    var candidate = freezeShallow({
+    var candidate = freezeShallow(Object.assign({
       kind: 'INITIATIVE',
       action: opportunity.proposedAction,
       rationale: freezeShallow({
@@ -357,17 +426,34 @@
       // rank() only reorders), Stage 8 (Winner Selection, returns the literal surviving Candidate),
       // and Stage 9 (Decision Formation, copied onto terminalDecision.candidateProvenance) —
       // verified directly, no new field is added anywhere else. Never fabricated: undefined if the
-      // originating Opportunity (WP2) never carried a domain/topic.
+      // originating Opportunity (WP2) never carried a domain/topic. TRR-001
+      // (docs/specs/TRR_001_SPEC_v1.0.md §32; TDP Ch.13 item 11) additively appends sameNeedId —
+      // the CARF Ch.10 same-Need identity placeholder, undefined-safe for every non-TR&R caller.
       opportunityProvenance: freezeShallow({
         opportunityId: opportunity.id,
         sourceCategory: opportunity.sourceCategory,
         detectedAt: isFiniteNumber(opportunity.detectedAt) ? opportunity.detectedAt : null,
         domain: opportunity.domain,
-        topic: opportunity.topic
+        topic: opportunity.topic,
+        // CARF Ch.10's own frozen requirement — a same-Need identity is present even for a
+        // single-proposal V1, "so a second proposal is a strictly additive future change, never a
+        // rewrite." Defaults to the originating Opportunity's own id when the Opportunity itself
+        // does not carry one (every existing, non-TR&R Opportunity) — a real, stable value,
+        // sufficient today (exactly one Candidate ever carries a given id) and forward-compatible.
+        sameNeedId: opportunity.sameNeedId || opportunity.id
       }),
       validationResult: freezeShallow({ passed: true, reason: 'Section 19 contract validated' }),
       immutable: true
-    });
+    },
+      // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §22-§25; TDP Ch.09) — actionCategory/
+      // activityReference/actionIdentity, additive, sibling to each other, present only when the
+      // originating opportunity itself carried them (undefined-safe for every non-TR&R caller —
+      // Object.assign never sets a key for an `undefined`-valued spread source here since these
+      // are only included at all when the opportunity itself carries the field).
+      opportunity.actionCategory !== undefined ? { actionCategory: opportunity.actionCategory } : {},
+      opportunity.activityReference !== undefined ? { activityReference: opportunity.activityReference } : {},
+      opportunity.actionIdentity !== undefined ? { actionIdentity: opportunity.actionIdentity } : {}
+    ));
 
     // step 8: candidate validation — a Candidate that fails its own shape is discarded, not
     // returned (defensive; construction above is exhaustive, so this should never trip).
@@ -493,13 +579,84 @@
     return out;
   }
 
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §12; TDP Ch.13 item 3 — "collection-bucket fix") —
+  // Training Readiness Opportunity construction. A new, sibling function, kept entirely separate
+  // from detectSemanticOpportunities() above so the existing G-2 food-logging function remains
+  // byte-identical (zero diff surface on the existing, closed FOOD_LOGGING path). For every signal
+  // already present in pipelineContext.initiativeIntelligence.signals: interpret it via the same
+  // shared ContextualMeaningPolicy utility, constructing a complete DetectedOpportunity only where
+  // ADAPT_TO_CURRENT_STATE results (§11's own narrow Reason-Policy condition). The real proposal
+  // content is NOT yet known at Stage 3 — TrainingReadinessReasoningComponent produces it, between
+  // Stage 5 and Stage 6 (internalPipelineOrchestrator.js's own new invocation step, §19) — so
+  // proposedAction here is a placeholder sentinel only, guaranteed by that orchestration change to
+  // never reach a Stage-6 producer's generate() call intact (§12's own "Placeholder discipline").
+  function detectTrainingReadinessOpportunities(pipelineContext) {
+    var intelligence = pipelineContext && pipelineContext.initiativeIntelligence;
+    var signals = (intelligence && Array.isArray(intelligence.signals)) ? intelligence.signals : [];
+    var out = [];
+    signals.forEach(function (observation) {
+      var contextualMeaning;
+      try {
+        contextualMeaning = ContextualMeaningPolicy.computeContextualMeaning(observation, pipelineContext);
+      } catch (e) {
+        contextualMeaning = null;
+      }
+      if (!contextualMeaning) return;
+
+      var validReasonCategory;
+      try {
+        validReasonCategory = ContextualMeaningPolicy.deriveValidReasonCategory(observation, contextualMeaning);
+      } catch (e) {
+        return;
+      }
+      if (validReasonCategory !== 'ADAPT_TO_CURRENT_STATE') return;
+
+      out.push(freezeShallow({
+        id: 'trr-adapt-to-current-state:' + observation.signalId,
+        sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION',
+        detectingContributor: 'INITIATIVE_ENGINE',
+        // Placeholder only — never handed to a Stage-6 producer as-is. The real proposal is
+        // produced by trainingReadinessReasoningComponent.js between Stage 5 and Stage 6 (§19);
+        // this placeholder exists solely so this object's own shape matches every other
+        // DetectedOpportunity's required-non-empty-string contract until the orchestrator
+        // replaces it.
+        proposedAction: '__TRR_PENDING_REASONING__',
+        domain: observation.domain,
+        topic: observation.topic,
+        confidence: observation.confidence,
+        explanation: freezeShallow({
+          rationale: 'An established (ACTIVE/CONFIRMED) WORKOUT_FREQUENCY training pattern coincides ' +
+            'with a real, available user-reported current-state signal this Decision Pass.',
+          evidenceBasis: contextualMeaning.basis.priorEstablishmentBasis,
+          expectedValue: 'Adapting today\'s training guidance to the user\'s current state may prevent an ' +
+            'unnecessary setback or missed opportunity (D1-IE-01, ADAPT_TO_CURRENT_STATE — TDP Ch.05).',
+          uncertainty: 'Whether adaptation is actually warranted, and what form it should take, is not ' +
+            'determined at detection time — resolved only by bounded reasoning (TDP Ch.05, Ch.07).'
+        }),
+        detectedAt: pipelineContext.assembledAt,
+        valueDimensions: freezeShallow(['DECISION_QUALITY']), // D1-IP-03 — the reasoning this Need triggers
+        contextualMeaning: contextualMeaning,
+        validReasonCategory: validReasonCategory,
+        trustTestSignal: freezeShallow({
+          glad: null,
+          basis: 'No approved affirmative Trust source exists for this Opportunity (TDP Ch.05) — glad remains honestly null.'
+        }),
+        safetyHighRiskBypass: false
+      }));
+    });
+    return out;
+  }
+
   function detectOpportunities(pipelineContext) {
     pipelineContext = pipelineContext || {};
     return freezeShallow({
       confirmedPatternAnticipation: freezeShallow(detectConfirmedPatternAnticipation(pipelineContext)),
       disruption: freezeShallow(detectDisruptionOpportunities(pipelineContext)),
       milestoneRecovery: freezeShallow(detectMilestoneRecoveryOpportunities(pipelineContext)),
-      semanticOpportunities: freezeShallow(detectSemanticOpportunities(pipelineContext))
+      semanticOpportunities: freezeShallow(detectSemanticOpportunities(pipelineContext)),
+      // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §12) — additive fourth bucket; the existing three
+      // buckets' own construction is byte-identical, untouched.
+      trainingReadinessOpportunities: freezeShallow(detectTrainingReadinessOpportunities(pipelineContext))
     });
   }
 
@@ -507,8 +664,10 @@
     generate: generate,
     detectOpportunities: detectOpportunities,
     validateCandidateShape: validateCandidateShape,
+    activityOpposedAgainst: activityOpposedAgainst,
     VALUE_DIMENSIONS: VALUE_DIMENSIONS,
-    MATURITY_STAGES: MATURITY_STAGES
+    MATURITY_STAGES: MATURITY_STAGES,
+    SOURCE_REASON_MATURITY_OVERRIDES: SOURCE_REASON_MATURITY_OVERRIDES
   };
 
   if (typeof window !== 'undefined') { window.InitiativeEngine = API; }

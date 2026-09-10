@@ -33,6 +33,18 @@
 // added, removed, or altered; this is a strict, additive, backward-
 // compatible shape extension of an already-shipped contract, per RCD-13's
 // own approved terms.
+//
+// Stage-9 Winning-Candidate Safety Input Canonical Decision (additive extension,
+// docs/governance/FITME_Stage9_Winning_Candidate_Safety_Input_Canonical_Decision_v1.0.md,
+// narrowly superseding the one AD-MAI-01 clause requiring decisionFormation.js to remain
+// untouched for post-Stage-8 Candidate propagation): `finalReview()` gains one additive,
+// optional third parameter, `candidate` — the actual winning Candidate, supplied by
+// decisionFormation.js strictly for a SINGLE_WINNER Terminal Decision, so the Safety Layer can
+// evaluate the same Canonical Safety Rules at Stage 9 that it already evaluates at Stage 8. It is
+// omitted for TIED_SET (explicitly out of scope for that Canonical Decision — unchanged from
+// today) and for any caller not supplying one. No disposition, enum, reasonCode, or Rule-matching
+// semantic changes; this is a call-shape correction only, restoring reachability of authority
+// Stage 9 already held (D2 Unit 07(c), [T006 §21.3]).
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';

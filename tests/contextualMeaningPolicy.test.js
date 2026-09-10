@@ -226,7 +226,100 @@ test('22. determinism: same Observation + same ContextualMeaning yields the iden
   assert.equal(r1, r2);
 });
 
-test('23. VALID_REASON_CATEGORIES exposes the closed, seven-value D1-IE-01 enum', () => {
-  assert.equal(ContextualMeaningPolicy.VALID_REASON_CATEGORIES.length, 7);
+test('23. VALID_REASON_CATEGORIES exposes the closed, eight-value D1-IE-01 enum (TRR-001, docs/specs/TRR_001_SPEC_v1.0.md §10 — additively extended from seven to eight members by ADAPT_TO_CURRENT_STATE; no existing member removed, renamed, or reinterpreted)', () => {
+  assert.equal(ContextualMeaningPolicy.VALID_REASON_CATEGORIES.length, 8);
   assert.ok(ContextualMeaningPolicy.VALID_REASON_CATEGORIES.indexOf('REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION') !== -1);
+  assert.ok(ContextualMeaningPolicy.VALID_REASON_CATEGORIES.indexOf('ADAPT_TO_CURRENT_STATE') !== -1);
+  ['PREVENT_PREDICTABLE_MISTAKE', 'HELP_BEFORE_DIFFICULT_DECISION', 'CELEBRATE_MEANINGFUL_PROGRESS',
+    'SUPPORT_RECOVERY', 'PREPARE_FOR_FORESEEABLE_CHALLENGE', 'PROTECT_STATED_LONG_TERM_GOALS'
+  ].forEach((existing) => {
+    assert.ok(ContextualMeaningPolicy.VALID_REASON_CATEGORIES.indexOf(existing) !== -1, existing + ' must remain, unchanged');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §11) — ADAPT_TO_CURRENT_STATE Reason-Policy condition
+// ══════════════════════════════════════════════════════════════════
+
+function makeWorkoutObservation(overrides) {
+  return Object.assign({
+    id: 'HABIT:workout:weekday:1', signalId: 'HABIT:workout:weekday:1', sourceType: 'HABIT',
+    domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY', lifecycle: 'ACTIVE', confidence: 0.7,
+    evidence: { count: 5 },
+    temporal: { firstObservedAt: '2026-01-01', lastObservedAt: '2026-05-01', expectedIntervalDays: 7 }
+  }, overrides);
+}
+function readinessContext(hasSignal) {
+  return hasSignal
+    ? { readinessStateContext: { items: [{ statementText: 'I barely slept', sourceMemoryId: 'mem-1', provenance: 'USER_STATED' }] } }
+    : { readinessStateContext: null };
+}
+
+test('24. ADAPT_TO_CURRENT_STATE derivation positive case: established WORKOUT_FREQUENCY + real readinessStateContext signal', () => {
+  const obs = makeWorkoutObservation();
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  const reason = ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm);
+  assert.equal(reason, 'ADAPT_TO_CURRENT_STATE');
+  assert.ok(cm.basis.priorEstablishmentBasis, 'basis must be populated when the condition holds');
+});
+
+test('25. negative case: habit present, no readiness signal -> NO_VALID_REASON', () => {
+  const obs = makeWorkoutObservation();
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(false));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+  assert.equal(cm.basis.priorEstablishmentBasis, null);
+});
+
+test('26. negative case: readiness signal present, no established habit (CONFIRMED lifecycle still counts; CANDIDATE lifecycle does not)', () => {
+  const obs = makeWorkoutObservation({ lifecycle: 'CANDIDATE' });
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+});
+
+test('27. CONFIRMED lifecycle (not only ACTIVE) also qualifies, given a readiness signal', () => {
+  const obs = makeWorkoutObservation({ lifecycle: 'CONFIRMED' });
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'ADAPT_TO_CURRENT_STATE');
+});
+
+test('28. wrong topic (not WORKOUT_FREQUENCY) never derives ADAPT_TO_CURRENT_STATE, even with a readiness signal', () => {
+  const obs = makeWorkoutObservation({ topic: 'SEQUENCE_BEHAVIOR' });
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+});
+
+test('29. wrong domain (not WORKOUT) never derives ADAPT_TO_CURRENT_STATE', () => {
+  const obs = makeWorkoutObservation({ domain: 'NUTRITION' });
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+});
+
+test('30. WEAKENING lifecycle on a WORKOUT_FREQUENCY signal never derives ADAPT_TO_CURRENT_STATE (only ACTIVE/CONFIRMED qualify)', () => {
+  const obs = makeWorkoutObservation({ lifecycle: 'WEAKENING' });
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+});
+
+test('31. existing FOOD_LOGGING rule remains byte-identical and independent — a WORKOUT_FREQUENCY signal never falls into the FOOD_LOGGING branch', () => {
+  const obs = makeWorkoutObservation();
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  assert.equal(cm.trajectory, 'UNKNOWN'); // never WORSENING (that is the FOOD_LOGGING branch's own value)
+});
+
+test('32. CONFIRMED_PATTERN_ANTICIPATION is never blanket permission — an established habit alone (no readiness signal) never triggers reasoning for every generic workout observation', () => {
+  const obs = makeWorkoutObservation();
+  const cm = ContextualMeaningPolicy.computeContextualMeaning(obs, {});
+  assert.equal(ContextualMeaningPolicy.deriveValidReasonCategory(obs, cm), 'NO_VALID_REASON');
+});
+
+test('33. contextConsulted correctly reports readinessStateContext CONSULTED vs NOT_CONSULTED', () => {
+  const obs = makeWorkoutObservation();
+  const consulted = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(true));
+  const notConsulted = ContextualMeaningPolicy.computeContextualMeaning(obs, readinessContext(false));
+  assert.equal(consulted.basis.contextConsulted.readinessStateContext, 'CONSULTED');
+  assert.equal(notConsulted.basis.contextConsulted.readinessStateContext, 'NOT_CONSULTED');
+});
+
+test('34. malformed observation returns null, never a fabricated ADAPT_TO_CURRENT_STATE meaning', () => {
+  assert.equal(ContextualMeaningPolicy.computeContextualMeaning({ domain: 'WORKOUT' }, readinessContext(true)), null);
 });

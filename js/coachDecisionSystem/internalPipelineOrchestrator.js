@@ -94,6 +94,20 @@
   var ExpressionRenderer = (typeof module !== 'undefined' && module.exports)
     ? require('./expressionRenderer.js')
     : window.ExpressionRenderer;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19) — CARF Ch.08/09's bounded reasoning component,
+  // instantiated for this vertical. Required directly here, mirroring SafetyLayer/ExpressionRenderer
+  // above — invoked only by the new, narrowly-scoped reasoning step inside runDecisionPass() below,
+  // active only for validReasonCategory === 'ADAPT_TO_CURRENT_STATE'.
+  var TrainingReadinessReasoningComponent = (typeof module !== 'undefined' && module.exports)
+    ? require('./trainingReadinessReasoningComponent.js')
+    : window.TrainingReadinessReasoningComponent;
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §20) — the sole, deterministic producer of
+  // actionIdentity from an open activityReference. The reasoning component's own output schema
+  // carries no actionIdentity field at all (TDP's non-negotiable item 18) — this module is what
+  // actually computes it, downstream, never the model.
+  var ActivityReferenceNormalizer = (typeof module !== 'undefined' && module.exports)
+    ? require('../domain/activityReferenceNormalizer.js')
+    : window.ActivityReferenceNormalizer;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -236,6 +250,12 @@
     if (initDetections && Array.isArray(initDetections.semanticOpportunities)) {
       out = out.concat(initDetections.semanticOpportunities);
     }
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §12; TDP Ch.13 item 3 — "collection-bucket fix").
+    // Additive to the existing semanticOpportunities collection immediately above, which remains
+    // byte-identical.
+    if (initDetections && Array.isArray(initDetections.trainingReadinessOpportunities)) {
+      out = out.concat(initDetections.trainingReadinessOpportunities);
+    }
 
     var safetyDetections = SafetyLayer.detectSafetyOpportunities(pipelineContext);
     if (Array.isArray(safetyDetections)) out = out.concat(safetyDetections);
@@ -314,6 +334,47 @@
   // as a direct dispatch function for a future Stage 3/4 caller with real Opportunities, or
   // tests, structurally parallel to runForOpportunity/runForInitiativeOpportunity (§28.10).
   //
+  // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21) — resolves the bounded reasoning component's
+  // own structured output into a real EligibleOpportunity carrying the actual proposedAction, or
+  // returns null (NO_VIABLE_PROPOSAL / any failure mode) — in which case the originating
+  // Opportunity contributes nothing to this Decision Pass, exactly as CARF Ch.09's own frozen
+  // failure semantics require. actionIdentity is computed here, deterministically, from
+  // activityReference — the model's own output schema carries no actionIdentity field at all
+  // (TDP's non-negotiable item 18), so there is no channel through which the model could
+  // self-declare it.
+  function resolveTrainingReadinessProposal(eligibleOpportunity, proposal) {
+    if (!proposal) return null; // propose() already returns null for every invalid/failed case
+    if (proposal.outcome === 'NO_VIABLE_PROPOSAL') return null;
+
+    var actionIdentity = null;
+    if (proposal.actionCategory === 'PHYSICAL_ACTIVITY') {
+      var token = ActivityReferenceNormalizer.normalize(proposal.activityReference);
+      if (token) actionIdentity = { activity: token };
+    }
+
+    var resolved = {};
+    for (var k in eligibleOpportunity) { if (Object.prototype.hasOwnProperty.call(eligibleOpportunity, k)) resolved[k] = eligibleOpportunity[k]; }
+    resolved.proposedAction = proposal.action;
+    resolved.explanation = {
+      rationale: proposal.rationale, evidenceBasis: proposal.evidenceBasis,
+      expectedValue: proposal.expectedValue, uncertainty: proposal.uncertainty
+    };
+    // TDP's own V1 Action Envelope table row 8 (Clarification) — "Neither field," mirroring the
+    // existing G-2 info-request precedent exactly: fields are left absent (undefined), never set
+    // to a literal null, so initiativeEngine.js's own `!== undefined` gate (§22/§25) correctly
+    // omits them from the Candidate rather than constructing an invalid
+    // actionCategory:null shape that validateCandidateShape() would then reject.
+    if (proposal.actionCategory === 'PHYSICAL_ACTIVITY' || proposal.actionCategory === 'NON_ACTIVITY_COACHING_ACTION') {
+      resolved.actionCategory = proposal.actionCategory;
+      if (proposal.actionCategory === 'PHYSICAL_ACTIVITY') {
+        resolved.activityReference = proposal.activityReference;
+        if (actionIdentity) resolved.actionIdentity = actionIdentity; // present only when normalization succeeded
+      }
+    }
+    resolved.sameNeedId = eligibleOpportunity.id;
+    try { return Object.freeze(resolved); } catch (e) { return resolved; }
+  }
+
   // params.opportunities: array of { eligibilityInput: OpportunityEligibilityInput (§15.11),
   // eligibleOpportunity: EligibleOpportunity (Stage-6 input, existing shape) }.
   // params.pipelineContext, params.safetyPort (SafetyIntegrationPort, §21.8).
@@ -351,6 +412,22 @@
       });
 
       if (elig.outcome !== 'ELIGIBLE') continue; // §23.1/23.2 — internal Silence, no Stage 6 dispatch
+
+      // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19) — a new, narrowly-scoped step, active ONLY
+      // for validReasonCategory === 'ADAPT_TO_CURRENT_STATE'; every other Reason category's own
+      // dispatch immediately below is untouched, byte-identical. CARF's own canonical seam: bounded
+      // Reasoning Context -> AI Reasoning -> strict validation, all BETWEEN Stage 5 (already
+      // ELIGIBLE, above) and Stage 6 (dispatchStage6, below) — never before, never after.
+      if (eligibilityInput && eligibilityInput.validReasonCategory === 'ADAPT_TO_CURRENT_STATE') {
+        var reasoningContext = MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext, eligibleOpportunity);
+        var proposal;
+        try { proposal = await TrainingReadinessReasoningComponent.propose(reasoningContext); }
+        catch (e) { proposal = null; } // defensive — propose() itself never throws, kept for safety
+        var resolvedOpportunity = resolveTrainingReadinessProposal(eligibleOpportunity, proposal);
+        if (!resolvedOpportunity) continue; // NO_VIABLE_PROPOSAL / any failure — contributes nothing this pass
+        candidateLists.push(dispatchStage6(pipelineContext, resolvedOpportunity));
+        continue;
+      }
 
       candidateLists.push(dispatchStage6(pipelineContext, eligibleOpportunity));
     }
@@ -478,7 +555,9 @@
     // structurally parallel to the other direct-dispatch exports above.
     collectDetectedOpportunities: collectDetectedOpportunities,
     buildEligibilityAndCandidateInputs: buildEligibilityAndCandidateInputs,
-    buildOpportunitiesForDecisionPass: buildOpportunitiesForDecisionPass
+    buildOpportunitiesForDecisionPass: buildOpportunitiesForDecisionPass,
+    // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21) — exposed for direct unit testing.
+    resolveTrainingReadinessProposal: resolveTrainingReadinessProposal
   };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemOrchestrator = API; }
