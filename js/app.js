@@ -302,6 +302,47 @@ UserSafetyProvenanceInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §16, production-wiring correction) — same auth seam,
+// fifth instance. Same existing callClaude closure used above — never a live Firebase Auth user
+// object, never a token, never a change to Decision identity/ctx. The interpreter itself still
+// owns prompt/model/batching/parsing (ClaudeProxyClient/callClaude remain transport-only,
+// unmodified). A separate, non-merged interpreter from the four above; USC-001/USP-001 remain
+// closed and untouched. Restores the already-approved production dependency injection this
+// component's own SPEC contract (§16) always specified — no new seam, no behavior change.
+ReadinessStateInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §17, production-wiring correction) — same auth seam,
+// sixth instance. Advisory-only Reasoning-Context input (TDP Ch.11.J-A) — never a deterministic
+// gate; this wiring correction does not change that. Restores the already-approved production
+// dependency injection this component's own SPEC contract (§17) always specified.
+ActivityPreferenceInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §18, production-wiring correction) — same auth seam,
+// seventh instance. Classification only (TDP Ch.11.J-B) — the deterministic suppression gate
+// itself (activityOpposedAgainst()) remains in initiativeEngine.js, applied by that caller,
+// unchanged by this wiring correction. Restores the already-approved production dependency
+// injection this component's own SPEC contract (§18) always specified.
+ActivityOppositionInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19, production-wiring correction) — the bounded AI
+// Reasoning component CARF Chapters 08-09 freeze the contract for, instantiated for Training
+// Readiness & Recovery V1. Same existing callClaude closure used above — reuses the proven
+// bounded-interpreter shape verbatim (stateless; single injected callClaude closure; no live
+// Firebase Auth object; no provider-session memory; per-call timeout; no retry), never a new
+// invocation pattern. Restores the already-approved production dependency injection this
+// component's own SPEC contract (§19) always specified — invoked only by
+// internalPipelineOrchestrator.js's own narrowly-scoped ADAPT_TO_CURRENT_STATE reasoning step,
+// unchanged by this wiring correction.
+TrainingReadinessReasoningComponent.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
 // C1-WP6: מזריק DOM/state/callbacks. coachMessageFn עוטף כ-closure את coachMessage
 // (פסאדה ב-app.js המאצילה ל-CoachClient.sendMessage) — אין שכפול לוגיקה. coachCardShown
 // נשאר משתנה משותף ב-app.js (מאופס גם ב-_resetAppCoreState) — מוזרק כ-getter/setter.

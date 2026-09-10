@@ -525,3 +525,71 @@ test('32. the Expression module has no unauthorized chat/trigger/UI/delivery-sur
     assert.equal(code.indexOf('innerHTML'), -1);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════
+// ── TRR-001 production-wiring correction (docs/specs/TRR_001_SPEC_v1.0.md §16-19) ──
+// The previous verification proved these four components exist, are script-loaded, and behave
+// correctly against injected mocks — but never proved js/app.js actually configures them with a
+// real callClaude in production, exactly the gap that let them ship silently unwired. Tests 33-36
+// mirror test #21's own established static-source-assertion pattern (extract the configure() call
+// body, assert it contains a real callClaude( reference) for each of the four components
+// individually. Test 37 adds a single, bounded, self-discovering safeguard so a future fifth
+// component sharing this same bounded-interpreter shape cannot silently repeat this defect.
+// ══════════════════════════════════════════════════════════════════
+
+test('33. js/app.js configures ReadinessStateInterpreter with the real production callClaude (TRR-001 §16 production-wiring correction — component exists/is script-loaded/behaves correctly against mocks, but was never wired to a live model until this correction)', () => {
+  assert.match(appJs, /ReadinessStateInterpreter\.configure\(/);
+  const start = appJs.indexOf('ReadinessStateInterpreter.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /callClaude\(/);
+});
+
+test('34. js/app.js configures ActivityPreferenceInterpreter with the real production callClaude (TRR-001 §17 production-wiring correction)', () => {
+  assert.match(appJs, /ActivityPreferenceInterpreter\.configure\(/);
+  const start = appJs.indexOf('ActivityPreferenceInterpreter.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /callClaude\(/);
+});
+
+test('35. js/app.js configures ActivityOppositionInterpreter with the real production callClaude (TRR-001 §18 production-wiring correction)', () => {
+  assert.match(appJs, /ActivityOppositionInterpreter\.configure\(/);
+  const start = appJs.indexOf('ActivityOppositionInterpreter.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /callClaude\(/);
+});
+
+test('36. js/app.js configures TrainingReadinessReasoningComponent with the real production callClaude (TRR-001 §19 production-wiring correction — the reasoning component itself: without this, propose() unconditionally returns null in production, per its own documented never-throw fail-closed contract)', () => {
+  assert.match(appJs, /TrainingReadinessReasoningComponent\.configure\(/);
+  const start = appJs.indexOf('TrainingReadinessReasoningComponent.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /callClaude\(/);
+});
+
+test('37. every coachDecisionSystem module sharing the bounded-interpreter/reasoning-component `callClaude: null` default-dependency shape is configured with a real production callClaude in js/app.js — a single, self-discovering safeguard: this test enumerates js/coachDecisionSystem/*.js by scanning for that exact shared signature (not a hardcoded list a future component could be silently left off), so a future fifth component reusing this same shape cannot ship unwired without this test failing', () => {
+  const coachDecisionSystemDir = path.join(__dirname, '../js/coachDecisionSystem');
+  const files = fs.readdirSync(coachDecisionSystemDir).filter((f) => f.endsWith('.js'));
+  const boundedCallClaudeModules = [];
+  files.forEach((f) => {
+    const src = fs.readFileSync(path.join(coachDecisionSystemDir, f), 'utf8');
+    if (/callClaude:\s*null/.test(src)) {
+      const m = /window\.(\w+)\s*=\s*API/.exec(src);
+      assert.notEqual(m, null, f + ' declares a callClaude:null default dep but exposes no window.X = API global to cross-reference against js/app.js');
+      boundedCallClaudeModules.push({ file: f, globalName: m[1] });
+    }
+  });
+  // Sanity floor — proves the scan itself is functioning (not silently matching zero files), and
+  // documents the exact eight modules this shape currently covers (four pre-existing + four TRR-001).
+  assert.ok(boundedCallClaudeModules.length >= 8, 'expected at least the eight known bounded callClaude-dependent modules; found ' + boundedCallClaudeModules.length);
+  boundedCallClaudeModules.forEach(({ file, globalName }) => {
+    const configureCallRe = new RegExp(globalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.configure\\(');
+    assert.match(appJs, configureCallRe, file + ' (window.' + globalName + ') declares a callClaude:null default dep but js/app.js never calls ' + globalName + '.configure(...)');
+    const start = appJs.search(configureCallRe);
+    const end = appJs.indexOf('\n});', start);
+    const body = appJs.slice(start, end);
+    assert.match(body, /callClaude\(/, file + ' (window.' + globalName + ') is configure()\'d in js/app.js but its configure() body never references the real callClaude(...) closure');
+  });
+});

@@ -176,6 +176,23 @@
     // ── CD-T005-01 — focused extension for the Initiative Engine (Habit state / Pattern state).
     // Same read pattern as above, same B5 build() call shape, different consumer/policy pair
     // (reserved by B5 §19.3, enabled by this Canonical Decision — Section 25/32).
+    //
+    // TRR temporal-relevance correction (Product/Architecture decision, TRR Temporal Relevance
+    // Investigation) — `weekday` added to this request's own `intent`, restoring B5's own
+    // already-closed IMMEDIATE-purpose contract (B5_SPEC_v1.0.md §12.6/§23.3: "Temporal and
+    // sequence qualifiers must match the current request context" / "Friday Pattern on Tuesday:
+    // exclude unless the consumer is asking for a weekly review"), which this call had never
+    // actually supplied — the exact same real convention an existing sibling Coach-Prompt
+    // consumer request elsewhere in this repository already uses (`weekday: now.getDay()`),
+    // never invented fresh here. FITME's existing browser/system-local "today" convention, no
+    // new dependency: this file has no configure()/injected-dependency seam of its own (see
+    // header), so `new Date().getDay()` is computed inline here, identically to that sibling
+    // request's own inline computation — never a new timezone/date/calendar subsystem. `purpose`
+    // remains 'IMMEDIATE', unchanged — per the Product/Architecture decision, TRR V1 inherits
+    // B5's existing same-day relevance semantics exactly; REVIEW's own retrospective-summary
+    // meaning does not describe this autonomous Decision Pass and is not used here.
+    // js/derivedIntelligenceConsumer.js (B5, CLOSED) is untouched by this correction — only this
+    // call's own request payload changes.
     var initiativeIntelligence = null;
     var initiativeIntelligenceAvailable = true;
     try {
@@ -184,7 +201,7 @@
         consumer: 'INITIATIVE_ENGINE',
         policyId: 'INITIATIVE_SUPPORT_V1',
         session: { uid: identity.userId, generation: identity.sessionGeneration },
-        intent: { domain: 'GENERAL_COACHING', purpose: 'IMMEDIATE' }
+        intent: { domain: 'GENERAL_COACHING', purpose: 'IMMEDIATE', weekday: new Date().getDay() }
       });
       if (iiResult && (iiResult.status === 'SUCCESS' || iiResult.status === 'EMPTY' || iiResult.status === 'PARTIAL')) {
         initiativeIntelligence = iiResult.context;
