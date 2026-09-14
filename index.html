@@ -556,6 +556,13 @@
           <button class="btn-primary" onclick="generatePlanFromSettings()">צור תפריט שבועי</button>
           <div id="weekly-menu-settings" style="margin-top:10px"></div>
 
+          <!-- Friends Alpha Item 7 (Minimal Error/Crash Telemetry) — smallest existing surface
+               (Settings, reusing the existing .section-header/.quick-learn-sub classes verbatim,
+               no new inline style/class) for a concise trial disclosure. Copy is a Product-
+               reviewable placeholder, not final legal text — see the Item 7 integration report. -->
+          <div class="section-header"><span>יציבות ואבחון (Friends Alpha)</span></div>
+          <p class="quick-learn-sub">FitMe אוסף באופן אוטומטי דיווחי תקלות טכניים בלבד (קוד שגיאה, גרסת האפליקציה) כדי לשפר את היציבות בתקופת הבטא — לעולם לא את תוכן ההודעות, הארוחות, או הזיכרון שלך.</p>
+
           <button class="btn-danger" onclick="signOut()" style="margin-top:20px">התנתק</button>
           <button class="btn-danger" onclick="resetApp()" style="margin-top:8px;margin-bottom:32px">איפוס נתונים</button>
         </div>
@@ -608,6 +615,14 @@
     </div>
     <div id="barcode-status" class="barcode-status">מאתחל מצלמה...</div>
   </div>
+
+  <!-- Friends Alpha Item 7 (Minimal Error/Crash Telemetry) — deliberately the FIRST script on
+       the page, loaded before even the Firebase SDKs below, so its self-installing global
+       'error'/'unhandledrejection' handlers are registered before any other script can run —
+       covering the earliest possible load-time failure (including a future regression of
+       Item 1's own load-order defect class). Self-contained, zero dependencies at load time;
+       the composition root calls its configure() later, once db/currentUser/SessionLifecycle exist. -->
+  <script src="js/errorTelemetry.js"></script>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -673,6 +688,10 @@
   <script src="js/repositories/favoritesRepository.js"></script>
   <script src="js/repositories/groupRepository.js"></script>
   <script src="js/repositories/barcodeRepository.js"></script>
+  <!-- Friends Alpha Item 7 (Minimal Error/Crash Telemetry) — the repository js/errorTelemetry.js
+       (loaded first, above) writes through, exactly the same "loaded before the composition
+       root script" pattern every other repository on this list already follows. -->
+  <script src="js/repositories/errorLogRepository.js"></script>
   <script src="js/app/runtimeState.js"></script>
   <script src="js/app/bootstrapController.js"></script>
   <script src="js/app/authSessionController.js"></script>

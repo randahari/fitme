@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.47.0';
+const APP_VERSION = '2.47.1';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -30,6 +30,18 @@ DayRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
 FavoritesRepository.configure({ db: db });
 GroupRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
 BarcodeRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
+// Friends Alpha Item 7 (Minimal Error/Crash Telemetry): ErrorLogRepository follows the exact
+// same repository-configure() pattern as the five lines above it. ErrorTelemetry.configure()
+// is the point at which js/errorTelemetry.js (loaded first, before every other script —
+// index.html) gains a real Firestore path and a real getCurrentUser() closure — before this
+// line runs, every telemetry report call anywhere (including its own self-installed global
+// handlers) is console-only, by design (see js/errorTelemetry.js's own header).
+ErrorLogRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
+ErrorTelemetry.configure({
+  errorLogRepository: ErrorLogRepository,
+  getCurrentUser: function () { return currentUser; },
+  appVersion: APP_VERSION
+});
 
 // עוזר לקריאת Claude דרך ה-proxy שלנו (בלי לדרוש מפתח API אישי)
 async function callClaude(body) { return ClaudeProxyClient.send(body, currentUser); }
@@ -650,7 +662,12 @@ async function _loadUserDataCore() {
     favoriteMeals = favDoc.exists ? (favDoc.data().meals || []) : [];
     // Load quick-log items (מנה 3)
     quickItems = (userProfile && Array.isArray(userProfile.quickItems)) ? userProfile.quickItems : [];
-  } catch(e) { console.error('loadUserData:', e); }
+  } catch(e) {
+    console.error('loadUserData:', e);
+    // Friends Alpha Item 7 — a real, already-caught bootstrap failure Product would otherwise
+    // never know occurred. No user content exists in `e` here (a Firestore/network error object).
+    ErrorTelemetry.report({ code: (e && e.code) || 'LOAD_USER_DATA_FAILED', module: 'BOOTSTRAP', operation: 'LOAD_USER_DATA', message: (e && e.message) || '' });
+  }
 }
 
 // TASK-007 UX-19.1-19.4 (WP6 prerequisite, Product/Architecture-approved): returns a
@@ -668,7 +685,12 @@ async function saveProfile() {
     return { status: 'SUCCESS', error: null };
   } catch (e) {
     console.error('saveProfile:', e);
-    return { status: 'FAILED', error: PersistenceGateway.classifyError(e) };
+    var classified = PersistenceGateway.classifyError(e);
+    // Friends Alpha Item 7 — reuses the already-classified {code, message, retryable} shape
+    // PersistenceGateway.classifyError() produces (a Firestore SDK-generated technical error —
+    // e.g. "Missing or insufficient permissions" — never a document field/user-content value).
+    ErrorTelemetry.report({ code: classified.code || 'SAVE_PROFILE_FAILED', module: 'PERSISTENCE', operation: 'SAVE_PROFILE', message: classified.message || '', retryable: !!classified.retryable });
+    return { status: 'FAILED', error: classified };
   }
 }
 
@@ -1714,6 +1736,11 @@ async function toggleDark() {
 
 async function resetApp() {
   if (confirm('למחוק את כל הנתונים שלך?')) {
+    // Friends Alpha Item 7 — Firestore subcollection deletion is not automatic on parent-
+    // document delete (below); without this explicit step, error-log entries would silently
+    // survive a "delete all my data" action, a real privacy regression this item must not
+    // introduce. Never called by the telemetry reporting path itself — reset-only.
+    try { await ErrorLogRepository.deleteAllForUser(currentUser.uid); } catch(e) {}
     try { await db.collection('users').doc(currentUser.uid).delete(); } catch(e) {}
     userProfile = null; todayData = { meals:[], burned:0, steps:0 }; waterCount = 0;
     showOnboarding();
@@ -2338,6 +2365,12 @@ async function submitCoachConversationTurn() {
   } catch (e) {
     CoachConversationPresenter.renderNoResponse(turn.turnId);
     CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');
+    // Friends Alpha Item 7 — deliberately no `message` field here (unlike the other two
+    // integration points): this is the one path closest to user-authored content in the whole
+    // pipeline, so — even though `e` here is a transport/pipeline failure, never chat text
+    // itself (the pipeline never throws with embedded turn text) — only the closed
+    // code/module/operation identifiers are reported, never any string derived from `e.message`.
+    ErrorTelemetry.report({ code: (e && e.code) || 'COACH_TURN_FAILED', module: 'COACH', operation: 'DIRECT_TURN_PASS' });
   } finally {
     // Always re-enabled, regardless of staleness — never leaves the composer permanently
     // disabled (the stale-session guard above only controls whether a result is RENDERED, per

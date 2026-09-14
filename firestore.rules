@@ -72,6 +72,30 @@ service cloud.firestore {
         allow delete: if isSignedIn() && request.auth.uid == uid
           && resource.data.source in ['user_stated', 'migrated'];
       }
+
+      // ── יומן תקלות טכני (Friends Alpha Item 7 — Minimal Error/Crash Telemetry) ──
+      // אך ורק דיווחי תקלות טכניים חסומים ברשימת שדות סגורה (code/module/operation/message/
+      // appVersion/retryable/clientTimestamp/createdAt) — לעולם לא תוכן שיחה/ארוחה/זיכרון.
+      match /errorLog/{entryId} {
+        // קריאה: חסומה לחלוטין, גם לבעלים — אין צורך מוצרי לקרוא יומן זה בחזרה מהלקוח.
+        allow read: if false;
+        // עדכון: אסור — כל רשומה נכתבת פעם אחת בלבד (append-only).
+        allow update: if false;
+        // מחיקה: הבעלים בלבד. משמש אך ורק את זרימת "איפוס נתונים" המפורשת (resetApp) —
+        // מסלול הדיווח עצמו (js/errorTelemetry.js) לעולם אינו קורא למחיקה.
+        allow delete: if isSignedIn() && request.auth.uid == uid;
+        // יצירה: הבעלים בלבד, ורק תיעוד התואם במדויק לרשימת השדות הסגורה ולגבולות הגודל שלה.
+        allow create: if isSignedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['code', 'module', 'operation', 'message', 'appVersion', 'retryable', 'clientTimestamp', 'createdAt'])
+          && request.resource.data.code is string && request.resource.data.code.size() <= 64
+          && request.resource.data.module is string && request.resource.data.module.size() <= 64
+          && request.resource.data.operation is string && request.resource.data.operation.size() <= 64
+          && request.resource.data.message is string && request.resource.data.message.size() <= 300
+          && request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 32
+          && request.resource.data.retryable is bool
+          && request.resource.data.clientTimestamp is number
+          && request.resource.data.createdAt == request.time;
+      }
     }
 
     // ── קבוצות ──
