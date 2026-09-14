@@ -4,6 +4,18 @@ const APP_VERSION = '2.47.0';
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
 AuthAdapter.configure({ auth: auth, googleProvider: googleProvider });
+
+// BUGFIX (Friends Alpha Item 1 — Service Worker production defect): טיפול בחזרה מ-redirect
+// (רק אם ה-fallback הופעל) — הועבר לכאן מ-js/firebase-config.js (ראו הערה שם). זהה לחלוטין
+// להתנהגות הקודמת (אותו גוף .catch, בדיוק); רק נקודת-הקריאה זזה לנקודה הראשונה שבה
+// AuthAdapter קיים (הקובץ נטען) וגם מקונפג (השורה מיד למעלה) — לא לפני כן.
+AuthAdapter.handleRedirectResult().catch(err => {
+  const code = err && err.code;
+  if (code && code !== 'auth/no-auth-event') {
+    console.error('Redirect error:', code, err.message);
+  }
+});
+
 NotificationAdapter.configure({ notificationApi: (typeof Notification !== 'undefined' ? Notification : null), serviceWorkerContainer: (typeof navigator !== 'undefined' ? navigator.serviceWorker : null) });
 ImageAdapter.configure();
 BarcodeScannerAdapter.configure();

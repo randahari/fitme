@@ -32,15 +32,18 @@ function signInWithGoogle() {
   });
 }
 
-// טיפול בחזרה מ-redirect (רק אם ה-fallback הופעל)
-AuthAdapter.handleRedirectResult().catch(err => {
-  const code = err && err.code;
-  if (code && code !== 'auth/no-auth-event') {
-    console.error('Redirect error:', code, err.message);
-  }
-});
+// BUGFIX (Friends Alpha Item 1 — Service Worker production defect): טיפול בתוצאת redirect
+// (auth/handleRedirectResult ב-AuthAdapter) הועבר ל-js/app.js, מיד אחרי שבו AuthAdapter
+// מקונפג — קובץ זה נטען (index.html) לפני js/adapters/authAdapter.js, כך ש-AuthAdapter לא
+// היה קיים עדיין כשהקריאה הזו התבצעה כאן קודם, וה-ReferenceError שנוצר מנע את רישום ה-
+// Service Worker מתחת (אותו בלוק סקריפט סינכרוני) מלהתבצע בפועל בפרודקשן. הבעלות הלוגית
+// לא זזה — הפונקציה עצמה עדיין ב-js/adapters/authAdapter.js; רק נקודת-הקריאה זזה לנקודה
+// שבה AuthAdapter כבר קיים וגם מקונפג. קובץ זה אינו קורא עוד לפונקציה הזו כלל.
 
-// Register Service Worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/fitme/sw.js').catch(e => console.log('SW:', e));
-}
+// Register Service Worker — מבודד ב-try/catch משלו כדי שכשל בלתי-קשור בבוטסטראפ האימות
+// (למעלה, או עתידי) לעולם לא ימנע רישום Service Worker (BUGFIX, Friends Alpha Item 1).
+try {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/fitme/sw.js').catch(e => console.log('SW:', e));
+  }
+} catch (e) { console.log('SW:', e); }

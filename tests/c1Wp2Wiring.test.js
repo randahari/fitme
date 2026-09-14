@@ -73,12 +73,67 @@ test('signOut keeps its confirm() UI decision and delegates the platform call to
   assert.equal(appJs.indexOf('auth.signOut()'), -1, 'no direct auth.signOut() call should remain in app.js');
 });
 
-test('firebase-config.js routes Google sign-in and redirect-result handling through AuthAdapter', () => {
+test('firebase-config.js routes Google sign-in through AuthAdapter, with no direct popup/redirect platform calls', () => {
   assert.match(firebaseConfigJs, /AuthAdapter\.signInWithGoogle\(\)/);
-  assert.match(firebaseConfigJs, /AuthAdapter\.handleRedirectResult\(\)/);
   assert.equal(firebaseConfigJs.indexOf('signInWithPopup'), -1, 'no direct signInWithPopup call should remain in firebase-config.js');
   assert.equal(firebaseConfigJs.indexOf('signInWithRedirect'), -1, 'no direct signInWithRedirect call should remain in firebase-config.js');
   assert.equal(firebaseConfigJs.indexOf('getRedirectResult'), -1, 'no direct getRedirectResult call should remain in firebase-config.js (moved into AuthAdapter)');
+});
+
+// BUGFIX (Friends Alpha Item 1 — Service Worker production defect, docs/governance investigation
+// "FITME Friends Alpha Completion Audit" / "Friends Alpha P0/P1 Integration Plan"): previously,
+// firebase-config.js called AuthAdapter.handleRedirectResult() at its own top level — but
+// firebase-config.js is loaded (index.html) BEFORE js/adapters/authAdapter.js, so AuthAdapter was
+// undefined at that point. The resulting uncaught ReferenceError prevented the Service Worker
+// registration code immediately below it (same synchronous script block) from ever executing in
+// production. Fix: firebase-config.js no longer references AuthAdapter for redirect-result
+// handling at all (dependency direction fixed, not hidden); the call moved to js/app.js,
+// immediately after AuthAdapter.configure() — the first point at which AuthAdapter is both loaded
+// and configured — with byte-identical .catch() behavior. Service Worker registration is also now
+// isolated in its own try/catch, independent of anything that precedes it in either file.
+test('BUGFIX (SW defect): firebase-config.js no longer depends on AuthAdapter for redirect-result orchestration', () => {
+  assert.equal(firebaseConfigJs.indexOf('AuthAdapter.handleRedirectResult'), -1,
+    'firebase-config.js must not call AuthAdapter.handleRedirectResult() — see Friends Alpha Item 1 fix');
+  assert.equal(firebaseConfigJs.indexOf('getRedirectResult'), -1);
+  // signInWithGoogle() is intentionally unchanged and still delegates to AuthAdapter.signInWithGoogle()
+  // (asserted separately above) — that call site is inside a function body, only ever invoked by a
+  // user click after the whole page has loaded, so it carries none of the top-level load-order risk
+  // handleRedirectResult() did. This is not a residual dependency this fix needs to remove.
+  assert.match(firebaseConfigJs, /AuthAdapter\.signInWithGoogle\(\)/);
+});
+
+test('BUGFIX (SW defect): Service Worker registration in firebase-config.js is isolated in its own try/catch, and no AuthAdapter call precedes it at top level', () => {
+  const registerIdx = firebaseConfigJs.indexOf("navigator.serviceWorker.register('/fitme/sw.js')");
+  assert.notEqual(registerIdx, -1, 'sw.js registration call must still exist');
+  const beforeRegister = firebaseConfigJs.slice(0, registerIdx);
+  const tryIdx = beforeRegister.lastIndexOf('try {');
+  assert.notEqual(tryIdx, -1, 'the registration call must be inside a try block');
+  // The only AuthAdapter reference left in the file (signInWithGoogle(), asserted above) lives
+  // inside a function DECLARATION, never executed at top-level script-load time — so, unlike
+  // before this fix, nothing that can actually throw during the synchronous top-level execution of
+  // this file precedes the Service Worker registration block.
+  assert.equal(beforeRegister.indexOf('AuthAdapter.handleRedirectResult'), -1);
+  // This test additionally confirms the register() call's own promise rejection is still handled
+  // (never left to become an unhandled rejection), preserving pre-existing behavior.
+  const afterRegister = firebaseConfigJs.slice(registerIdx);
+  assert.match(afterRegister, /\.catch\(e => console\.log\('SW:', e\)\)/);
+});
+
+test('BUGFIX (SW defect): redirect-result handling moved to app.js, positioned after AuthAdapter.configure() — never before', () => {
+  const configureIdx = appJs.indexOf('AuthAdapter.configure(');
+  const handleRedirectIdx = appJs.indexOf('AuthAdapter.handleRedirectResult()');
+  assert.notEqual(configureIdx, -1, 'AuthAdapter.configure( must exist in app.js');
+  assert.notEqual(handleRedirectIdx, -1, 'AuthAdapter.handleRedirectResult() must now exist in app.js');
+  assert.ok(handleRedirectIdx > configureIdx,
+    'AuthAdapter.handleRedirectResult() must be invoked strictly after AuthAdapter.configure(), never before it');
+});
+
+test('BUGFIX (SW defect): redirect-result handling body (error-code filtering) is preserved unchanged, and occurs exactly once repository-wide', () => {
+  assert.match(appJs, /AuthAdapter\.handleRedirectResult\(\)\.catch\(err => \{\s*const code = err && err\.code;\s*if \(code && code !== 'auth\/no-auth-event'\) \{\s*console\.error\('Redirect error:', code, err\.message\);\s*\}\s*\}\);/);
+  const occurrencesInAppJs = (appJs.match(/AuthAdapter\.handleRedirectResult\(/g) || []).length;
+  const occurrencesInFirebaseConfig = (firebaseConfigJs.match(/AuthAdapter\.handleRedirectResult\(/g) || []).length;
+  assert.equal(occurrencesInAppJs, 1, 'exactly one call site in app.js — no duplicate redirect-result handling');
+  assert.equal(occurrencesInFirebaseConfig, 0, 'no call site remains in firebase-config.js');
 });
 
 test('no direct Notification/serviceWorker platform calls remain in app.js outside the single configure() injection', () => {
