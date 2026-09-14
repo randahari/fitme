@@ -31,8 +31,8 @@ const JS_FILES = [
   'js/ui/profilePresenter.js'
 ];
 
-test('index.html has exactly 40 inline style= occurrences, matching original evidence', () => {
-  assert.equal(countInlineStyles(html), 40);
+test('index.html has exactly 45 inline style= occurrences (40 original + 5 added by the DUC-001 Coach Conversation Surface markup, docs/specs/DUC_001_SPEC_v1.0.md §15 — new markup, not a WP10 classification change)', () => {
+  assert.equal(countInlineStyles(html), 45);
 });
 
 test('every catalog-component instance in index.html still uses its catalog class, unmigrated', () => {

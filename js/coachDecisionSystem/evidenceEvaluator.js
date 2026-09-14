@@ -81,6 +81,27 @@
     var sourceType = observation && observation.sourceType;
     var lifecycle = observation && observation.lifecycle;
 
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §20) — a DIRECT_USER_REQUEST-sourced
+    // DetectedOpportunity's own evidence basis is definitionally the user's own direct, current
+    // textual statement (§04's affirmativeRequest.present, classified from the live
+    // CurrentUserTurn itself) — the highest of the three sufficient tiers, EXPLICIT_USER_STATEMENT
+    // (§25.2's own D1-OD-01 sufficiency rule), exactly as the SPEC's own §20 dogfood trace names
+    // it verbatim ("Evidence (Explicit User Statement — D1's own highest tier)"). Unlike the
+    // Habit-derived CONFIRMED_PATTERN_ANTICIPATION branch below, this requires no
+    // contextualMeaning/observation lookup — there is no inferred pattern to establish, only the
+    // user's own present-tense assertion, already fully verified by Conversational Need Creator's
+    // own Step A gate (§06) before this Opportunity is ever constructed. Mechanically necessary:
+    // without this branch, every DIRECT_USER_REQUEST-sourced Opportunity falls through to this
+    // function's own default INSUFFICIENT outcome below and is silently excluded before Stage 5
+    // is ever reached — this file was not itself named in the SPEC's §22 Exact Implementation
+    // Scope file list, but this addition is the direct, narrow, mechanical realization of §20's
+    // own explicit evidence-tier statement, using only an existing, already-canonical evidence
+    // tier (no new tier invented).
+    if (input.sourceCategory === 'DIRECT_USER_REQUEST') {
+      return makeResult('EXPLICIT_USER_STATEMENT',
+        'The user\'s own direct, current request (Conversational Need Creator Step A, DUC-001 SPEC §06/§20) — the highest evidence tier by definition, requiring no inferred pattern.');
+    }
+
     if (input.sourceCategory === 'CONFIRMED_PATTERN_ANTICIPATION' && sourceType === 'HABIT') {
       if (lifecycle === 'ACTIVE' || lifecycle === 'CONFIRMED') {
         return makeResult('REPEATED_BEHAVIOUR',

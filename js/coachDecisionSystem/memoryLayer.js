@@ -134,7 +134,12 @@
     try { return JSON.stringify(payload); } catch (e) { return ''; }
   }
 
-  async function assembleContext(identity) {
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §11) — additive second parameter, `undefined` on
+  // every existing APP_READY call site (zero behavior change there). When present, it is the
+  // CurrentUserTurn (§02) driving a DIRECT_TURN_PASS Decision Pass — its own text is additively
+  // offered to the existing, unmodified ReadinessStateInterpreter/ExplicitRequestInterpreter
+  // collaborators below, alongside whatever durable Typed Memory each step already reads.
+  async function assembleContext(identity, currentUserTurn) {
     identity = identity || {};
 
     var access = StateAccess.createEngineAccess({
@@ -365,6 +370,15 @@
       var erRecords = (Array.isArray(erRaw) ? erRaw : [])
         .filter(function (m) { return m && m.id; })
         .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §11 REVISED/Blocker 6, §12a) — the identical
+      // additive submission: the current turn's own text is also offered to
+      // ExplicitRequestInterpreter.classify() as one more {id, text} record, making a
+      // negative-control clause within the current turn itself (not only previously-persisted
+      // Typed Memory) reachable by EUR-001's own existing, completely unmodified
+      // isActionableControl() gate. Zero effect when currentUserTurn is undefined (APP_READY).
+      if (currentUserTurn && typeof currentUserTurn.turnId === 'string' && typeof currentUserTurn.text === 'string') {
+        erRecords = erRecords.concat([{ id: 'turn:' + currentUserTurn.turnId, text: currentUserTurn.text }]);
+      }
       if (erRecords.length) {
         var classifiedRecords = await ExplicitRequestInterpreter.classify(erRecords);
         var actionable = classifiedRecords.filter(function (r) { return ExplicitRequestInterpreter.isActionableControl(r); });
@@ -522,19 +536,38 @@
       var rsRecords = (Array.isArray(rsRaw) ? rsRaw : [])
         .filter(function (m) { return m && m.id; })
         .map(function (m) { return { id: m.id, text: extractStatementText(m.payload) }; });
+      // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §11 REVISED/Blocker 4) — the current turn's own
+      // text is additively submitted as one more {id, text} record, reusing
+      // ReadinessStateInterpreter.classify() completely unmodified. Zero effect when
+      // currentUserTurn is undefined (APP_READY). currentTurnSourceMemoryId below lets the
+      // mapping step distinguish this one record's own result (provenance: 'CURRENT_TURN') from
+      // every durable Typed Memory result (provenance: 'USER_STATED', unchanged).
+      var currentTurnSourceMemoryId = null;
+      if (currentUserTurn && typeof currentUserTurn.turnId === 'string' && typeof currentUserTurn.text === 'string') {
+        currentTurnSourceMemoryId = 'turn:' + currentUserTurn.turnId;
+        rsRecords = rsRecords.concat([{ id: currentTurnSourceMemoryId, text: currentUserTurn.text }]);
+      }
       if (rsRecords.length) {
         var readinessItems = await ReadinessStateInterpreter.classify(rsRecords);
         readinessStateContext = freezeShallow({
           items: freezeShallow(readinessItems.map(function (r) {
-            return freezeShallow({
+            var isCurrentTurnItem = currentTurnSourceMemoryId !== null && r.sourceMemoryId === currentTurnSourceMemoryId;
+            var item = {
               statementText: r.statementText, sourceMemoryId: r.sourceMemoryId,
               interpretationAuthority: 'DERIVED_INTERPRETATION',
-              // TDP Ch.06(c) — closed three-value provenance tag. Every V1 item is USER_STATED —
-              // ReadinessStateInterpreter classifies only user-reported statements; MEASURED and
-              // DERIVED_INTERPRETATION are real, reserved values of the same tag with no V1
+              // TDP Ch.06(c) — closed three-value provenance tag, now REVISED (Blocker 4) with a
+              // third value: 'CURRENT_TURN' (this Decision Pass's own CurrentUserTurn, §02) versus
+              // the existing 'USER_STATED' (durable Typed Memory, unchanged). MEASURED and
+              // DERIVED_INTERPRETATION remain real, reserved values of the same tag with no V1
               // producer, never fabricated.
-              provenance: 'USER_STATED'
-            });
+              provenance: isCurrentTurnItem ? 'CURRENT_TURN' : 'USER_STATED'
+            };
+            // capturedAt — NEW, current-turn items only (§11's own disclosed temporal-boundary
+            // scope limit: durable Typed Memory items do not currently surface a per-record
+            // timestamp into this shape at all; adding one there is explicitly out of this SPEC's
+            // scope, not required by Blocker 4).
+            if (isCurrentTurnItem) { item.capturedAt = currentUserTurn.submittedAt; }
+            return freezeShallow(item);
           }))
         });
         readinessStateContextAvailable = true;

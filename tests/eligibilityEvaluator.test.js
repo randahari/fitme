@@ -199,10 +199,12 @@ test('TRR-1. VALID_REASON_CATEGORIES is eight members, including the new ADAPT_T
   assert.ok(EligibilityEvaluator.VALID_REASON_CATEGORIES.indexOf('ADAPT_TO_CURRENT_STATE') !== -1);
 });
 
-test('TRR-2. BOUNDED_ENGAGEMENT_POLICY contains exactly two entries — RGEF\'s existing one plus TRR-001\'s one new entry', () => {
+test('TRR-2. BOUNDED_ENGAGEMENT_POLICY contains exactly two top-level source keys — RGEF/TRR-001\'s existing CONFIRMED_PATTERN_ANTICIPATION entry plus DUC-001\'s new DIRECT_USER_REQUEST entry (docs/specs/DUC_001_SPEC_v1.0.md §08)', () => {
   const table = EligibilityEvaluator.BOUNDED_ENGAGEMENT_POLICY;
-  assert.deepEqual(Object.keys(table), ['CONFIRMED_PATTERN_ANTICIPATION']);
+  assert.deepEqual(Object.keys(table).sort(), ['CONFIRMED_PATTERN_ANTICIPATION', 'DIRECT_USER_REQUEST']);
   assert.deepEqual(Object.keys(table.CONFIRMED_PATTERN_ANTICIPATION).sort(), ['ADAPT_TO_CURRENT_STATE', 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION']);
+  assert.deepEqual(Object.keys(table.DIRECT_USER_REQUEST), ['ADAPT_TO_CURRENT_STATE']);
+  assert.equal(table.DIRECT_USER_REQUEST.ADAPT_TO_CURRENT_STATE, true);
 });
 
 test('TRR-3. Stage-5 new TR&R pair authorized: CONFIRMED_PATTERN_ANTICIPATION x ADAPT_TO_CURRENT_STATE, glad:null -> ELIGIBLE/BOUNDED_EARLY_RELATIONSHIP_ENGAGEMENT', () => {

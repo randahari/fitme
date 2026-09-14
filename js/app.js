@@ -343,6 +343,16 @@ TrainingReadinessReasoningComponent.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 
+// DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §04/§18, production-wiring) — same auth seam, eighth
+// instance. Same existing callClaude closure used above — never a live Firebase Auth user object,
+// never a token, never a change to Decision identity/ctx. The interpreter itself still owns
+// prompt/model/batching/parsing (ClaudeProxyClient/callClaude remain transport-only, unmodified).
+// Invoked only by internalPipelineOrchestrator.js's own runDirectTurnPass(), never from the
+// existing APP_READY path.
+TurnUnderstandingInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
 // C1-WP6: מזריק DOM/state/callbacks. coachMessageFn עוטף כ-closure את coachMessage
 // (פסאדה ב-app.js המאצילה ל-CoachClient.sendMessage) — אין שכפול לוגיקה. coachCardShown
 // נשאר משתנה משותף ב-app.js (מאופס גם ב-_resetAppCoreState) — מוזרק כ-getter/setter.
@@ -546,6 +556,13 @@ DayNavigationController.configure({
   authoritySourceForMeal: function (meal) { return authoritySourceForMeal(meal); },
   buildMealFromEditor: function () { return buildMealFromEditor(); },
   loadUserDataCore: function () { return _loadUserDataCore(); }
+});
+
+// DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §15) — the new Coach Conversation Surface's own
+// presenter. documentRef only, matching every other js/ui/* presenter's own dependency shape
+// above — never DOM/state/Firebase beyond what it renders into.
+CoachConversationPresenter.configure({
+  documentRef: document
 });
 
 function showLogin() {
@@ -2229,6 +2246,92 @@ function runAppReadyEngines() {
       }
     }).catch(function () {});
   } catch (e) { /* לעולם לא שובר עלייה */ }
+}
+
+// DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03) — the new USER_MESSAGE_SUBMITTED call site,
+// mirroring runAppReadyEngines()'s own shape and runEngineAction()'s own generic single-engine-
+// action helper exactly. Distinct action, DIRECT_TURN_PASS (never DECISION_PASS) — lets
+// internalPipelineOrchestrator.run(ctx) branch cleanly on ctx.action without touching the
+// existing APP_READY/DECISION_PASS path at all. Session-generation safety reused unmodified:
+// checked here before dispatch, and again (§15 step 6) before any UI-visible effect.
+async function runUserMessageEngine(turn) {
+  var gen = SessionLifecycle.getGeneration();
+  if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return { status: 'STALE_SESSION' };
+  return EngineRegistry.run({
+    trigger: 'USER_MESSAGE_SUBMITTED',
+    actions: { coachDecisionSystem: 'DIRECT_TURN_PASS' },
+    payloads: { coachDecisionSystem: { turn: turn } },
+    context: { userId: currentUser && currentUser.uid, sessionGeneration: gen, now: turn.submittedAt }
+  });
+}
+
+// DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §15) — the Coach Conversation Surface's own submit
+// handler (index.html's #coach-conversation-submit onclick / Enter-key handler). Constructs a new
+// CurrentUserTurn (§02), dispatches it via runUserMessageEngine() above, and renders the eventual,
+// correlated result through CoachConversationPresenter's own render function — NEVER
+// TriggerController.presentDeliveryIntent(), which remains exclusively APP_READY's own target,
+// unmodified by this addition.
+async function submitCoachConversationTurn() {
+  var text = (CoachConversationPresenter.getInputValue() || '').trim();
+  if (!text) return; // §17 — empty submission rejected client-side, runUserMessageEngine() never called
+
+  CoachConversationPresenter.hideError();
+  CoachConversationPresenter.setSubmitting(true); // §03 — UI-level duplicate-submission guard
+  CoachConversationPresenter.clearInput();
+
+  var turn = Object.freeze({
+    turnId: 'turn_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+    text: text,
+    submittedAt: Date.now(),
+    sessionGeneration: SessionLifecycle.getGeneration(),
+    clarificationContext: CoachConversationPresenter.consumeClarificationContext()
+  });
+
+  CoachConversationPresenter.renderUserTurn(turn.turnId, turn.text);
+
+  try {
+    var summary = await runUserMessageEngine(turn);
+    var cdsResult = summary && summary.results && summary.results.coachDecisionSystem;
+    var expression = cdsResult && cdsResult.output && cdsResult.output.expression;
+
+    // §15 step 6 — re-checked immediately before rendering, mirroring
+    // TriggerController.presentDeliveryIntent()'s own existing guard verbatim
+    // (triggerController.js:273). A stale result is silently discarded, never rendered.
+    if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+
+    if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
+      CoachConversationPresenter.renderResponse(expression.deliveryIntent, turn.turnId);
+
+      // §13/§14 — clarificationRef, constructed here (never inside DeliveryIntentContract/
+      // ExpressionRenderer) from data already in scope: the real, internal turnId/opportunityId
+      // provenance recorded on the governed terminalDecision itself
+      // (candidateProvenance[0].opportunityId/sourceCategory — the SAME established extraction
+      // RGEF WP5 already uses for opportunityId/domain/topic attribution, runAppReadyEngines()
+      // above), never a heuristic and never parsed from rendered text. Retained only for a
+      // decision whose winning Candidate actually originated from this turn's own direct request
+      // (sourceCategory === 'DIRECT_USER_REQUEST') — never for a proactive signal that happened to
+      // win the same Decision Pass.
+      var terminalDecision = cdsResult.output.terminalDecision;
+      var provenance = terminalDecision && Array.isArray(terminalDecision.candidateProvenance) && terminalDecision.candidateProvenance.length === 1
+        ? terminalDecision.candidateProvenance[0]
+        : null;
+      if (provenance && provenance.sourceCategory === 'DIRECT_USER_REQUEST') {
+        CoachConversationPresenter.setClarificationRef({ turnId: turn.turnId, opportunityId: provenance.opportunityId });
+      }
+    } else {
+      // §17 — a real, valid outcome that produced no Delivery Intent (Silence, Safety-DEFERRED,
+      // an aborted/failed dispatch). Never fabricated content; the pending placeholder is removed.
+      CoachConversationPresenter.renderNoResponse(turn.turnId);
+    }
+  } catch (e) {
+    CoachConversationPresenter.renderNoResponse(turn.turnId);
+    CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');
+  } finally {
+    // Always re-enabled, regardless of staleness — never leaves the composer permanently
+    // disabled (the stale-session guard above only controls whether a result is RENDERED, per
+    // §15 step 6; it never governs the composer's own reusability for a subsequent turn).
+    CoachConversationPresenter.setSubmitting(false);
+  }
 }
 
 // helper גנרי: action בודד למנוע בודד (SOURCE_DATA_CHANGED/MANUAL) — משתמש

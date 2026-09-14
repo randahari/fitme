@@ -130,7 +130,18 @@
   // Explicit-statement/action sources are excluded too — no canonical source assigns their
   // Stage-3 detection, or Stage-6 handling, to the Initiative Engine (Repository Gap G-2,
   // Follow-up).
-  var STAGE6_ACCEPTED_SOURCES = Object.freeze(['CONFIRMED_PATTERN_ANTICIPATION', 'DISRUPTION_DETECTION', 'MILESTONE_RECOVERY']);
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §07/§10) — DIRECT_USER_REQUEST added: this Stage-6
+  // ownership boundary is checked (line ~354, generate()) BEFORE SOURCE_REASON_MATURITY_OVERRIDES/
+  // categoryPermittedAtStage() below are ever consulted — without this entry, every
+  // DIRECT_USER_REQUEST-sourced EligibleOpportunity would return emptyResult() here regardless of
+  // Eligibility having already admitted it at Stage 5, and the SPEC's own §10 "existing,
+  // unmodified reasoning-invocation branch" could never actually be reached in practice.
+  // Mechanically necessary for the SPEC's own §20 dogfood path; never grants RecommendationEngine
+  // (recommendationEngine.js's own, separate STAGE6_ACCEPTED_SOURCES) any new source — that list
+  // is untouched, so RecommendationEngine still never produces a DIRECT_USER_REQUEST Candidate,
+  // preserving Initiative-Engine-exclusive ownership exactly as this file's own header already
+  // establishes for CONFIRMED_PATTERN_ANTICIPATION.
+  var STAGE6_ACCEPTED_SOURCES = Object.freeze(['CONFIRMED_PATTERN_ANTICIPATION', 'DISRUPTION_DETECTION', 'MILESTONE_RECOVERY', 'DIRECT_USER_REQUEST']);
 
   // Engineering-authored, provisional Relationship-Maturity category-gating table (D1-IP-02,
   // Constitution §12.2, TASK_005_SPEC_v1.0.md §17.3) — CDR candidate. No canonical source states
@@ -169,8 +180,51 @@
     CONFIRMED_PATTERN_ANTICIPATION: Object.freeze({
       REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH']),
       ADAPT_TO_CURRENT_STATE: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'])
+    }),
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §08) — new top-level source key. A legitimate direct
+    // user request must be serviceable from the earliest relationship stage — the user initiated
+    // this interaction, unlike proactive Initiative. All four stages permitted, mirroring TRR-001's
+    // own identical all-stages entry above.
+    DIRECT_USER_REQUEST: Object.freeze({
+      ADAPT_TO_CURRENT_STATE: Object.freeze(['OBSERVER', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'])
     })
   });
+
+  // DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved, Decision
+  // 2/3, frozen this turn) — a narrow, closed Source×Reason hierarchy-tier override, structurally
+  // identical in shape to SOURCE_REASON_MATURITY_OVERRIDES immediately above (the repository's own
+  // existing precedent for exactly this [sourceCategory][validReasonCategory] -> value pattern).
+  // `DIRECT_USER_REQUEST` describes WHY FITME is responding now (turn-causality) — it does NOT
+  // universally define the professional hierarchy tier of every future conversational capability,
+  // so no global, source-only DIRECT_USER_REQUEST entry exists in
+  // RecommendationCategories.SOURCE_HIERARCHY_TIER_MAP any more (see recommendationCategories.js).
+  // Only the one V1-live pair is authorized: DIRECT_USER_REQUEST x ADAPT_TO_CURRENT_STATE -> tier 5
+  // (Context Relevance, the same tier DECISION_WINDOW/DISRUPTION_DETECTION already use) — the
+  // narrowest expression of "this ONE reasoning gate, reused byte-identically from TRR-001 (§10),
+  // happens to serve present context." A future, different Reason under DIRECT_USER_REQUEST is
+  // deliberately NOT granted a tier here and falls through to
+  // RecommendationCategories.hierarchyTierForSource() below, which returns null for
+  // DIRECT_USER_REQUEST (no global assertion) — resolveHierarchyTier() below then also returns
+  // null, exactly as it already does for any other genuinely-unmapped source, causing
+  // InitiativeEngine.generate() to correctly return emptyResult() rather than inventing a tier. A
+  // second entry SHALL NOT be added without a new, explicit Product/Architecture decision, mirroring
+  // SOURCE_REASON_MATURITY_OVERRIDES's own identical discipline immediately above.
+  var SOURCE_REASON_HIERARCHY_TIER_OVERRIDES = Object.freeze({
+    DIRECT_USER_REQUEST: Object.freeze({
+      ADAPT_TO_CURRENT_STATE: 5 // Context Relevance — see comment above
+    })
+  });
+
+  // Consulted first; falls through to RecommendationCategories.hierarchyTierForSource(sourceCategory)
+  // (the existing, byte-unchanged, source-only default every pre-DUC source still resolves through
+  // exclusively) when no override entry matches this exact (sourceCategory, validReasonCategory)
+  // pair. Mirrors categoryPermittedAtStage()'s own identical override-then-fallback precedence.
+  function resolveHierarchyTier(sourceCategory, validReasonCategory) {
+    var override = SOURCE_REASON_HIERARCHY_TIER_OVERRIDES[sourceCategory] &&
+      SOURCE_REASON_HIERARCHY_TIER_OVERRIDES[sourceCategory][validReasonCategory];
+    if (typeof override === 'number') return override;
+    return RecommendationCategories.hierarchyTierForSource(sourceCategory);
+  }
 
   // D1-IP-08 — closed feedback tokens (reused verbatim from C2's already-canonical closed
   // vocabulary, FEEDBACK_TYPES in js/feedback/feedbackDomain.js — not a new taxonomy) that count
@@ -346,18 +400,20 @@
     // Initiative-policy or Relationship-Maturity check below is ever reached for it.
     if (STAGE6_ACCEPTED_SOURCES.indexOf(opportunity.sourceCategory) === -1) return emptyResult();
 
-    // step 3/4: hierarchy tier. Reuses recommendationCategories.js's hierarchyTierForSource()
-    // as-is, unmodified, purely as an implementation convenience — no duplication, no new file
-    // (Section 26/35). This does NOT reuse or reference any Recommendation Category
-    // (recommendationCategories.js's CATEGORIES: IMMEDIATE_ACTION/PREPARATION/RECOVERY/
-    // SYSTEM_BUILDING) — InitiativeCandidate carries no category field (CD-T005-02). The
-    // Source->Hierarchy-Tier mapping itself is TASK-004's own engineering-authored, provisional
-    // mapping (recommendationCategories.js's own header: "engineering-authored... provisional...
-    // Repository-Gap status") — it is not an approved canonical contract, not an approved
-    // Candidate-generic contract, and not a finalized cross-kind Product decision. Reusing it
-    // here does not elevate its status; it remains the same CDR / Product-review candidate it
-    // already was under TASK-004.
-    var hierarchyTier = RecommendationCategories.hierarchyTierForSource(opportunity.sourceCategory);
+    // step 3/4: hierarchy tier. Resolved via resolveHierarchyTier() above, which consults the
+    // narrow SOURCE_REASON_HIERARCHY_TIER_OVERRIDES table first (DUC-001 Post-Implementation
+    // Turn-Serving Correction, Decision 2/3) and falls through to
+    // recommendationCategories.js's own hierarchyTierForSource(sourceCategory) — byte-unchanged
+    // for every pre-DUC source, exactly as before this correction. This does NOT reuse or
+    // reference any Recommendation Category (recommendationCategories.js's CATEGORIES:
+    // IMMEDIATE_ACTION/PREPARATION/RECOVERY/SYSTEM_BUILDING) — InitiativeCandidate carries no
+    // category field (CD-T005-02). The Source->Hierarchy-Tier mapping itself is TASK-004's own
+    // engineering-authored, provisional mapping (recommendationCategories.js's own header:
+    // "engineering-authored... provisional... Repository-Gap status") — it is not an approved
+    // canonical contract, not an approved Candidate-generic contract, and not a finalized
+    // cross-kind Product decision. Reusing it here does not elevate its status; it remains the
+    // same CDR / Product-review candidate it already was under TASK-004.
+    var hierarchyTier = resolveHierarchyTier(opportunity.sourceCategory, opportunity.validReasonCategory);
     if (hierarchyTier === null) return emptyResult();
 
     // step 5: Relationship-Maturity gating (D1-IP-02)
@@ -440,7 +496,12 @@
         // rewrite." Defaults to the originating Opportunity's own id when the Opportunity itself
         // does not carry one (every existing, non-TR&R Opportunity) — a real, stable value,
         // sufficient today (exactly one Candidate ever carries a given id) and forward-compatible.
-        sameNeedId: opportunity.sameNeedId || opportunity.id
+        sameNeedId: opportunity.sameNeedId || opportunity.id,
+        // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §14) — additive, undefined-safe for every
+        // non-direct-user-request caller, mirroring sameNeedId's own precedent immediately above.
+        // Real internal turn provenance, surviving through the identical Stage 7/8/9 path already
+        // proven for domain/topic/sameNeedId.
+        turnId: opportunity.turnId
       }),
       validationResult: freezeShallow({ passed: true, reason: 'Section 19 contract validated' }),
       immutable: true
@@ -667,7 +728,10 @@
     activityOpposedAgainst: activityOpposedAgainst,
     VALUE_DIMENSIONS: VALUE_DIMENSIONS,
     MATURITY_STAGES: MATURITY_STAGES,
-    SOURCE_REASON_MATURITY_OVERRIDES: SOURCE_REASON_MATURITY_OVERRIDES
+    SOURCE_REASON_MATURITY_OVERRIDES: SOURCE_REASON_MATURITY_OVERRIDES,
+    // DUC-001 Post-Implementation Turn-Serving Correction — exposed for direct unit testing.
+    SOURCE_REASON_HIERARCHY_TIER_OVERRIDES: SOURCE_REASON_HIERARCHY_TIER_OVERRIDES,
+    resolveHierarchyTier: resolveHierarchyTier
   };
 
   if (typeof window !== 'undefined') { window.InitiativeEngine = API; }

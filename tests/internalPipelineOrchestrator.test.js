@@ -902,3 +902,59 @@ test('TRR-ORCH-8. malformed reasoning output (isValidReasoningOutput fails) mean
   });
   assert.equal(result.decision.kind, 'SILENCE');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved, Decision 1)
+// — isAdmittedForTurnServingPass() and buildOpportunitiesForDecisionPass()'s own additive,
+// optional third parameter (currentTurnId). Domain-agnostic: gated on turnId/safetyHighRiskBypass
+// only, never sourceCategory/domain/topic/opaque needRef-or-sameNeedId parsing.
+// ══════════════════════════════════════════════════════════════════
+
+function turnCausedOpportunity(id, turnId, overrides) {
+  return Object.assign({
+    id: id, sourceCategory: 'DIRECT_USER_REQUEST', turnId: turnId, safetyHighRiskBypass: false,
+    validReasonCategory: 'ADAPT_TO_CURRENT_STATE', trustTestSignal: { glad: null, basis: 'x' }
+  }, overrides || {});
+}
+function unrelatedProactiveOpportunity(id, overrides) {
+  return Object.assign({
+    id: id, sourceCategory: 'CONFIRMED_PATTERN_ANTICIPATION', safetyHighRiskBypass: false,
+    validReasonCategory: 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION', trustTestSignal: { glad: null, basis: 'x' }
+  }, overrides || {});
+  // note: no turnId field at all — matches every real, non-turn-caused Stage-3 contributor today
+}
+function safetyOpportunity(id, overrides) {
+  return Object.assign({ id: id, sourceCategory: 'SAFETY_HIGH_RISK', safetyHighRiskBypass: true }, overrides || {});
+}
+
+test('DUC-CORRECTION-6. isAdmittedForTurnServingPass(): a Safety opportunity (safetyHighRiskBypass:true) is admitted unconditionally, even with no turnId at all and a mismatched currentTurnId', () => {
+  assert.equal(Orchestrator.isAdmittedForTurnServingPass(safetyOpportunity('s1'), 't1'), true);
+  assert.equal(Orchestrator.isAdmittedForTurnServingPass(Object.assign(safetyOpportunity('s2'), { turnId: 'some-other-turn' }), 't1'), true);
+});
+
+test('DUC-CORRECTION-7. isAdmittedForTurnServingPass(): a turn-caused opportunity (turnId matches) is admitted', () => {
+  assert.equal(Orchestrator.isAdmittedForTurnServingPass(turnCausedOpportunity('d1', 't1'), 't1'), true);
+});
+
+test('DUC-CORRECTION-8. isAdmittedForTurnServingPass(): an unrelated proactive opportunity (no turnId, not Safety) is excluded', () => {
+  assert.equal(Orchestrator.isAdmittedForTurnServingPass(unrelatedProactiveOpportunity('p1'), 't1'), false);
+});
+
+test('DUC-CORRECTION-9. isAdmittedForTurnServingPass(): a DIFFERENT turn\'s own opportunity (turnId mismatch, not Safety) is excluded — never sourceCategory alone', () => {
+  assert.equal(Orchestrator.isAdmittedForTurnServingPass(turnCausedOpportunity('d2', 't2'), 't1'), false);
+});
+
+test('DUC-CORRECTION-10. buildOpportunitiesForDecisionPass() applies the turn-serving filter ONLY when currentTurnId is supplied (the third, additive parameter) — omitting it (the existing APP_READY call shape) is a complete no-op', () => {
+  const pipelineContext = { initiativeIntelligence: { signals: [] } };
+  // Two-argument call (existing APP_READY shape) — directOpportunity itself is the only thing
+  // ever collected here (no live Stage-3 signal configured); the point is that adding a THIRD
+  // argument nowhere in this call changes nothing about it.
+  const direct = turnCausedOpportunity('d3', 't1', {
+    proposedAction: 'x', domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY', confidence: 1,
+    valueDimensions: ['DECISION_QUALITY'], detectedAt: Date.now(),
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }
+  });
+  const withoutFilter = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext, direct);
+  const withFilterMatchingTurn = Orchestrator.buildOpportunitiesForDecisionPass(pipelineContext, direct, 't1');
+  assert.equal(withoutFilter.length, withFilterMatchingTurn.length, 'the filter must not change the outcome when the direct opportunity\'s own turnId already matches');
+});

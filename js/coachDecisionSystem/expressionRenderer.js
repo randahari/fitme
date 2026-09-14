@@ -190,6 +190,57 @@
     return true;
   }
 
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12) — the UNSUPPORTED-case boundary: kind
+  // 'UNSUPPORTED' carries no safetyDisposition at all (no Candidate ever existed, so Safety was
+  // never invoked — decisionFormation.js's formUnsupportedCapabilityOutcome() never attaches one),
+  // unlike every other rendering path above, each of which requires one. The explicit
+  // hasOwnProperty check (rather than merely `!isPlainObject(...safetyDisposition)`) exists so a
+  // malformed TerminalDecision that somehow carries both kind 'UNSUPPORTED' and a
+  // safetyDisposition is refused into the final `else` branch below, never silently misrendered
+  // through this path.
+  function isUnsupportedCase(terminalDecision) {
+    if (!isPlainObject(terminalDecision)) return false;
+    if (terminalDecision.kind !== 'UNSUPPORTED') return false;
+    if (Object.prototype.hasOwnProperty.call(terminalDecision, 'safetyDisposition')) return false;
+    return true;
+  }
+
+  // DUC-001 — the generative-call system instruction for UNSUPPORTED rendering: an honest,
+  // non-evasive statement that FitMe has no currently-authorized professional capability for the
+  // recognized request — never silence, never a fabricated professional answer, never disguised
+  // as a refusal/boundary (that vocabulary is reserved for real Safety dispositions, which this
+  // path never carries). No disclosure-acknowledgment line — EXP-69's three disclosure-eligible
+  // dispositions (MODIFIED/BLOCKED/ESCALATED) never apply here (see isUnsupportedCase above).
+  function buildUnsupportedSystemInstruction(terminalDecision, expressionRenderingContext) {
+    var maturityGuidance = RELATIONSHIP_MATURITY_GUIDANCE[expressionRenderingContext.relationshipMaturityStage];
+    var lines = [
+      VOICE_IDENTITY_LINE,
+      'ההחלטה היא שאין כרגע ל-FitMe יכולת מקצועית מוסמכת לטפל בבקשה הספציפית הזו. אמור זאת ' +
+        'במפורש, בכנות ובאופן ידידותי — לעולם אל תתעלם מהבקשה, אל תשתוק, ואל תמציא תשובה ' +
+        'מקצועית שאינה קיימת בפועל.',
+      'אל תנסח זאת כסירוב או כהפניה בטיחותית — זו פשוט מגבלת יכולת נוכחית של המערכת, לא שיקול ' +
+        'בטיחות ולא שיפוט כלשהו כלפי הבקשה או כלפי המשתמש.',
+      maturityGuidance,
+      NO_MOTIVATIONAL_PRESSURE_LINE,
+      HEBREW_ONLY_LINE
+    ];
+    return lines.join(' ');
+  }
+
+  // DUC-001 — the generative layer's user-turn content for UNSUPPORTED rendering. Derived
+  // exclusively from the already-approved TerminalDecision.rationale (identical field, same
+  // {rationale, evidenceBasis, expectedValue, uncertainty} shape every other path already uses) —
+  // no other field is read; confidence/hierarchyTier/boundaryType never exist on this kind.
+  function buildUnsupportedUserContent(terminalDecision) {
+    var r = terminalDecision.rationale || {};
+    return [
+      'ההחלטה: אין יכולת מקצועית מוסמכת זמינה כרגע (UNSUPPORTED).',
+      'נימוק: ' + (r.rationale || ''),
+      'בסיס הראיות: ' + (r.evidenceBasis || ''),
+      'נסח הודעת מאמן אחת, קצרה וכנה, שמעבירה את זה למשתמש בהתאם להנחיות.'
+    ].join(' ');
+  }
+
   // EXP-76 — steering guidance per closed relationshipMaturityStage value, never a literal
   // phrasebook (these describe register/depth, exactly like coachPromptComposer.js's own
   // COACH_STYLE_GUIDE/COACH_CHATTER_GUIDE — never a sentence the user will see verbatim). Per
@@ -537,10 +588,14 @@
         kind: terminalDecision.kind,
         safetyDisposition: terminalDecision.safetyDisposition.disposition
       };
+    } else if (isUnsupportedCase(terminalDecision)) {
+      system = buildUnsupportedSystemInstruction(terminalDecision, expressionRenderingContext);
+      userContent = buildUnsupportedUserContent(terminalDecision);
+      semanticSignal = { kind: terminalDecision.kind };
     } else {
-      // No TerminalDecision shape matches any of the four rendering paths above (each of which now
-      // covers both its single-option and tied-set form, WP8) — explicitly refused rather than
-      // silently mishandled, never fabricated content.
+      // No TerminalDecision shape matches any of the five rendering paths above (each of the first
+      // four now covers both its single-option and tied-set form, WP8) — explicitly refused rather
+      // than silently mishandled, never fabricated content.
       throw new Error('EXPRESSION_RENDERER_UNSUPPORTED_TERMINAL_DECISION');
     }
 

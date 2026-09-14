@@ -63,6 +63,14 @@
     CONFIRMED_PATTERN_ANTICIPATION: Object.freeze({
       REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION: true, // RGEF's existing entry — untouched
       ADAPT_TO_CURRENT_STATE: true                         // TRR-001's one new, fixed entry
+    }),
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §08) — new top-level source key, the mechanism's
+    // third authorized case (RGEF's, TRR-001's, now DUC-001's own), not a third value nested under
+    // CONFIRMED_PATTERN_ANTICIPATION. A legitimate direct user request must be serviceable from the
+    // earliest relationship stage — see the identical rationale already applied to TRR-001's own
+    // entry above.
+    DIRECT_USER_REQUEST: Object.freeze({
+      ADAPT_TO_CURRENT_STATE: true
     })
   });
 
@@ -70,12 +78,20 @@
     return !!(BOUNDED_ENGAGEMENT_POLICY[sourceCategory] && BOUNDED_ENGAGEMENT_POLICY[sourceCategory][validReasonCategory] === true);
   }
 
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §07) — "DIRECT_USER_REQUEST is added to the
+  // code-level sourceCategory vocabulary wherever it is currently declared as a closed set,"
+  // applied here: this file's own validateInput() rejects any sourceCategory this list does not
+  // recognize before BOUNDED_ENGAGEMENT_POLICY/§08's own extension can ever be reached — this is
+  // this file's own independently-maintained copy of recommendationCategories.js's identical
+  // OPPORTUNITY_SOURCES list (the two have always been independently maintained, per this file's
+  // own VALID_REASON_CATEGORIES precedent immediately above), extended identically.
   var OPPORTUNITY_SOURCES = Object.freeze([
     'DECISION_WINDOW',
     'CONFIRMED_PATTERN_ANTICIPATION',
     'DISRUPTION_DETECTION',
     'MILESTONE_RECOVERY',
-    'SAFETY_HIGH_RISK'
+    'SAFETY_HIGH_RISK',
+    'DIRECT_USER_REQUEST'
   ]);
 
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }

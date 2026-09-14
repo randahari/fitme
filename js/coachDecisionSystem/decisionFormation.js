@@ -76,6 +76,51 @@
     });
   }
 
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12) — a second, narrow, non-Safety-reviewed Terminal
+  // Decision construction path, structurally identical in status to formDecisionPassSilence() above
+  // — not a second Stage-9 authority (Decision Formation remains the sole constructor of every
+  // TerminalDecision; this is simply its third recognized construction shape, alongside form()'s
+  // Safety-reviewed path and formDecisionPassSilence()'s zero-Candidate path). Called when the
+  // Conversational Need Creator recognizes a legitimate DirectUserNeed whose professional-capability
+  // resolution found no currently-authorized capability — no Candidate ever existed, so
+  // safetyPort.finalReview() is never invoked, and no safetyDisposition/boundaryType/confidence/
+  // hierarchyTier/modification is ever attached (never fabricated Safety or Candidate data).
+  //
+  // Internal provenance: consideredEntry.opportunityId (= need.needRef =
+  // 'duc:direct-user-request:' + turnId, the same id convention every DetectedOpportunity in this
+  // SPEC uses) is recorded directly on decisionPassTrace.opportunitiesConsidered, reusing the exact
+  // {opportunityId, sourceCategory, internalOutcome, reason} shape runDecisionPass() already
+  // constructs for every other considered Opportunity — real canonical provenance on the immutable
+  // TerminalDecision itself, independent of any calling code's own closure (DUC-001 SPEC §12/§B).
+  function formUnsupportedCapabilityOutcome(params) {
+    params = params || {};
+    var need = params.need || {};
+    var consideredEntry = freezeShallow({
+      opportunityId: need.needRef, sourceCategory: 'DIRECT_USER_REQUEST',
+      internalOutcome: 'UNSUPPORTED_CAPABILITY',
+      reason: 'No (domain, topic) match against any currently-authorized professional capability.'
+    });
+    return freezeShallow({
+      status: 'FORMED',
+      decision: freezeShallow({
+        kind: 'UNSUPPORTED',
+        rationale: freezeShallow({
+          rationale: 'A legitimate direct-user request was recognized, but no currently-authorized professional capability exists to handle it.',
+          evidenceBasis: 'Conversational Need Creator Step B — no (domain, topic) match against any currently-authorized professional capability.',
+          expectedValue: 'An honest response, rather than silence or misrouting, preserves user trust in FITME\'s own boundaries.',
+          uncertainty: 'None — deterministic given the professional-capability resolution already performed.'
+        }),
+        decisionPassTrace: freezeShallow({
+          opportunitiesConsidered: freezeShallow([consideredEntry].concat((params.opportunitiesConsidered || []).slice())),
+          candidatePoolSize: 0,
+          disqualifiedCandidates: freezeShallow([])
+        }),
+        candidateProvenance: freezeShallow([]),
+        immutable: true
+      })
+    });
+  }
+
   // §22.1/22.2/22.4/23.5, Canonical Decision CD-T006-06 — assembles the Terminal Decision from
   // Stage 8's SINGLE_WINNER, TIED_SET, or ALL_DISQUALIFIED selection result.
   async function form(params) {
@@ -212,6 +257,7 @@
 
   var API = {
     formDecisionPassSilence: formDecisionPassSilence,
+    formUnsupportedCapabilityOutcome: formUnsupportedCapabilityOutcome,
     form: form
   };
 

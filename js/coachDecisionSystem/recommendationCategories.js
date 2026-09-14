@@ -23,18 +23,36 @@
   // D1 Unit 05's five canonical Opportunity Sources, transcribed as a closed engineering
   // vocabulary (D1 names these in prose, not as an enum — this is a verbatim transcription,
   // not a new category).
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §07) — "DIRECT_USER_REQUEST is added to the
+  // code-level sourceCategory vocabulary wherever it is currently declared as a closed set,"
+  // applied here: evidenceEvaluator.js's own validateInput() rejects any sourceCategory this list
+  // does not recognize (RecommendationCategories.isValidOpportunitySource()), and would otherwise
+  // reject every DIRECT_USER_REQUEST-sourced DetectedOpportunity at Stage 4 before it could ever
+  // reach Stage 5/6 — mechanically necessary for the SPEC's own §10/§20 dogfood path to function
+  // at all, exactly mirroring TRR-001's own precedent of extending a closed sourceCategory-keyed
+  // vocabulary (ADAPT_TO_CURRENT_STATE into VALID_REASON_CATEGORIES) — never a sixth D1 Unit 05
+  // Opportunity Source in substance, only this file's own engineering transcription of the SPEC's
+  // one new, Product/Architecture-approved source.
   var OPPORTUNITY_SOURCES = Object.freeze([
     'DECISION_WINDOW',
     'CONFIRMED_PATTERN_ANTICIPATION',
     'DISRUPTION_DETECTION',
     'MILESTONE_RECOVERY',
-    'SAFETY_HIGH_RISK'
+    'SAFETY_HIGH_RISK',
+    'DIRECT_USER_REQUEST'
   ]);
 
   // Engineering-authored, deterministic mapping (implementation-time work per the SPEC's own
   // Ownership note above — not a further Product decision). No canonical source defines this
   // mapping today; it is provisional and flagged for future Product confirmation (see TASK-004
   // implementation report, Open Items / Follow-up).
+  // DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved, Decision
+  // 4, frozen this turn) — NO `DIRECT_USER_REQUEST` entry exists here. Investigation confirmed
+  // `categoryForSource()` is consumed ONLY by recommendationEngine.js, whose own
+  // STAGE6_ACCEPTED_SOURCES = ['DECISION_WINDOW'] permanently excludes DIRECT_USER_REQUEST — and
+  // InitiativeCandidate (the only kind DUC-001's own path ever produces) carries no `category`
+  // field at all (CD-T005-02). A DIRECT_USER_REQUEST entry here was therefore dead code: unused,
+  // premature, and not part of DUC-001's required semantics. Removed rather than left unused.
   var SOURCE_CATEGORY_MAP = Object.freeze({
     SAFETY_HIGH_RISK: 'IMMEDIATE_ACTION',
     DECISION_WINDOW: 'PREPARATION',
@@ -46,6 +64,16 @@
   // D1 Unit 02's 10-tier Canonical Decision Hierarchy (1 Safety ... 10 Product Engagement).
   // Engineering-authored mapping from Opportunity Source to the tier it most directly serves —
   // same provisional/Repository-Gap status as SOURCE_CATEGORY_MAP above.
+  // DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved, Decision
+  // 2, frozen this turn) — NO global, source-only `DIRECT_USER_REQUEST` entry exists here any
+  // more. `DIRECT_USER_REQUEST` describes WHY FITME is responding now (turn-causality); it does
+  // NOT universally define the professional hierarchy tier of every future conversational
+  // capability admitted through it. The one V1-live pair, DIRECT_USER_REQUEST x
+  // ADAPT_TO_CURRENT_STATE -> tier 5, is now expressed narrowly by initiativeEngine.js's own
+  // SOURCE_REASON_HIERARCHY_TIER_OVERRIDES table (consulted before this map, mirroring
+  // SOURCE_REASON_MATURITY_OVERRIDES's own established precedent) — never asserted here at the
+  // source-only level. hierarchyTierForSource('DIRECT_USER_REQUEST') therefore correctly returns
+  // null (no global assertion); every pre-DUC source below is byte-unchanged.
   var SOURCE_HIERARCHY_TIER_MAP = Object.freeze({
     SAFETY_HIGH_RISK: 1,                // Safety
     MILESTONE_RECOVERY: 3,              // Trust

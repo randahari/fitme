@@ -69,9 +69,10 @@
 
   var SCHEMA_VERSION = 'coach-decision-system-delivery-intent/1.0';
 
-  // Never 'SILENCE' — EXP-50/EXP-29; the four Terminal Decision kinds minus the one that never
-  // produces a Delivery Intent at all.
-  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY']);
+  // Never 'SILENCE' — EXP-50/EXP-29; the Terminal Decision kinds that do produce a Delivery
+  // Intent. DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12/§16) adds 'UNSUPPORTED' — an honest
+  // no-capability response is itself a Delivery Intent, unlike Silence's own zero-output case.
+  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED']);
   var BOUNDARY_TYPES = freezeShallow(['REFUSAL', 'ESCALATION']);
   // Never 'DEFERRED' — always co-occurs with kind: 'SILENCE' (TASK_006_SPEC_v1.0.md §25.4), which
   // never reaches this builder.

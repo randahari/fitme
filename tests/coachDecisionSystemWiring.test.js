@@ -304,7 +304,11 @@ test('16b. no TASK-006 module has any knowledge of platform/UI/notification/push
 
 test('16c. decisionFormation.js exposes no Expression/Delivery-Intent-production or wording-generation function', () => {
   const DecisionFormation = require('../js/coachDecisionSystem/decisionFormation.js');
-  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['form', 'formDecisionPassSilence']);
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12) authorized a third, narrow, sibling
+  // TerminalDecision construction function, formUnsupportedCapabilityOutcome() — structurally
+  // identical in status to the other two (a decision-construction function, never Expression/
+  // Delivery-Intent production or wording generation, which this test's own name guards against).
+  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['form', 'formDecisionPassSilence', 'formUnsupportedCapabilityOutcome']);
 });
 
 // ── TASK-006 — Native / Platform-Neutral Contract tests (§35.19, D3 §5.5/§14) ──
@@ -564,6 +568,14 @@ test('35. js/app.js configures ActivityOppositionInterpreter with the real produ
 test('36. js/app.js configures TrainingReadinessReasoningComponent with the real production callClaude (TRR-001 §19 production-wiring correction — the reasoning component itself: without this, propose() unconditionally returns null in production, per its own documented never-throw fail-closed contract)', () => {
   assert.match(appJs, /TrainingReadinessReasoningComponent\.configure\(/);
   const start = appJs.indexOf('TrainingReadinessReasoningComponent.configure(');
+  const end = appJs.indexOf('\n});', start);
+  const body = appJs.slice(start, end);
+  assert.match(body, /callClaude\(/);
+});
+
+test('38. js/app.js configures TurnUnderstandingInterpreter with the real production callClaude (DUC-001 §18 production-wiring — docs/specs/DUC_001_SPEC_v1.0.md §04/§18)', () => {
+  assert.match(appJs, /TurnUnderstandingInterpreter\.configure\(/);
+  const start = appJs.indexOf('TurnUnderstandingInterpreter.configure(');
   const end = appJs.indexOf('\n});', start);
   const body = appJs.slice(start, end);
   assert.match(body, /callClaude\(/);

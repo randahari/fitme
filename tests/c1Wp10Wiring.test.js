@@ -198,10 +198,10 @@ test('app.js no longer contains any UI controller/presenter rendering logic (DOM
 
 // ── no unexpected files/vocabulary introduced ───────────────────────────────────────────
 
-test('js/ui/ contains exactly the six expected WP10 files', () => {
+test('js/ui/ contains exactly the six expected WP10 files, plus DUC-001\'s own new Coach Conversation Surface presenter (docs/specs/DUC_001_SPEC_v1.0.md §15 — a seventh, later-authorized js/ui/* module, not a WP10 classification change)', () => {
   const files = fs.readdirSync(path.join(__dirname, '../js/ui')).sort();
   assert.deepEqual(files, [
-    'dayNavigationController.js', 'foodScreenPresenter.js', 'homePresenter.js',
+    'coachConversationPresenter.js', 'dayNavigationController.js', 'foodScreenPresenter.js', 'homePresenter.js',
     'navigationController.js', 'profilePresenter.js', 'settingsPresenter.js'
   ]);
 });

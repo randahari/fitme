@@ -164,7 +164,9 @@ test('isValidDeliveryIntent rejects a plausible-looking but malformed candidate'
 
 test('KINDS excludes SILENCE; SAFETY_DISPOSITIONS excludes DEFERRED', () => {
   assert.equal(DeliveryIntentContract.KINDS.indexOf('SILENCE'), -1);
-  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY']);
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12) authorized a fifth Delivery-Intent-producing
+  // kind, 'UNSUPPORTED' — an honest no-capability response is itself a Delivery Intent.
+  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED']);
   assert.equal(DeliveryIntentContract.SAFETY_DISPOSITIONS.indexOf('DEFERRED'), -1);
   assert.deepEqual(DeliveryIntentContract.SAFETY_DISPOSITIONS, ['UNMODIFIED', 'MODIFIED', 'BLOCKED', 'ESCALATED']);
   assert.deepEqual(DeliveryIntentContract.BOUNDARY_TYPES, ['REFUSAL', 'ESCALATION']);

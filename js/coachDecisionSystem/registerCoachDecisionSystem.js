@@ -26,7 +26,11 @@
     return _registerEngine({
       id: 'coachDecisionSystem',
       version: '1.0.0',
-      triggers: ['APP_READY'],
+      // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03) — a second trigger value, additive only.
+      // The same, single, already-registered Composite Engine now answers a second trigger,
+      // exactly the pattern habitEngine/patternEngine/triggerEngine already use for their own
+      // multiple triggers — no second EngineRegistry.register() call, no second Engine.
+      triggers: ['APP_READY', 'USER_MESSAGE_SUBMITTED'],
       dependsOn: [],
       run: Orchestrator.run
     });

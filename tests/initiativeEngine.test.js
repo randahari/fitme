@@ -956,3 +956,52 @@ test('TRR-20. the existing semanticOpportunities bucket (G-2 food-logging) remai
   assert.deepEqual(result.semanticOpportunities, []); // no FOOD_LOGGING signal present
   assert.equal(result.trainingReadinessOpportunities.length, 0); // no readiness signal present
 });
+
+// ══════════════════════════════════════════════════════════════════
+// DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved, Decision 3)
+// — narrow Source x Reason hierarchy-tier override (SOURCE_REASON_HIERARCHY_TIER_OVERRIDES /
+// resolveHierarchyTier()), mirroring SOURCE_REASON_MATURITY_OVERRIDES's own established shape.
+// ══════════════════════════════════════════════════════════════════
+
+test('DUC-CORRECTION-1. DIRECT_USER_REQUEST x ADAPT_TO_CURRENT_STATE resolves hierarchyTier 5 via the narrow override table', () => {
+  assert.equal(InitiativeEngine.resolveHierarchyTier('DIRECT_USER_REQUEST', 'ADAPT_TO_CURRENT_STATE'), 5);
+});
+
+test('DUC-CORRECTION-2. DIRECT_USER_REQUEST has NO global source-only tier — an unsupported/future Reason under it does not silently inherit tier 5', () => {
+  assert.equal(InitiativeEngine.resolveHierarchyTier('DIRECT_USER_REQUEST', 'PROTECT_STATED_LONG_TERM_GOALS'), null);
+  assert.equal(InitiativeEngine.resolveHierarchyTier('DIRECT_USER_REQUEST', undefined), null);
+  assert.equal(InitiativeEngine.resolveHierarchyTier('DIRECT_USER_REQUEST', null), null);
+});
+
+test('DUC-CORRECTION-3. every pre-existing source-only hierarchy mapping is unchanged — resolveHierarchyTier() falls through identically to RecommendationCategories.hierarchyTierForSource() for every non-overridden (source, reason) pair', () => {
+  const RecommendationCategories = require('../js/coachDecisionSystem/recommendationCategories.js');
+  ['SAFETY_HIGH_RISK', 'MILESTONE_RECOVERY', 'CONFIRMED_PATTERN_ANTICIPATION', 'DECISION_WINDOW', 'DISRUPTION_DETECTION'].forEach((source) => {
+    ['ADAPT_TO_CURRENT_STATE', 'REQUEST_SIGNIFICANTLY_IMPROVING_INFORMATION', undefined].forEach((reason) => {
+      assert.equal(
+        InitiativeEngine.resolveHierarchyTier(source, reason),
+        RecommendationCategories.hierarchyTierForSource(source),
+        'resolveHierarchyTier(' + source + ', ' + reason + ') must equal the unchanged source-only default'
+      );
+    });
+  });
+});
+
+test('DUC-CORRECTION-4. SOURCE_REASON_HIERARCHY_TIER_OVERRIDES contains exactly one entry — DIRECT_USER_REQUEST x ADAPT_TO_CURRENT_STATE — a second entry SHALL NOT be added without a new, explicit Product/Architecture decision', () => {
+  const table = InitiativeEngine.SOURCE_REASON_HIERARCHY_TIER_OVERRIDES;
+  assert.deepEqual(Object.keys(table), ['DIRECT_USER_REQUEST']);
+  assert.deepEqual(Object.keys(table.DIRECT_USER_REQUEST), ['ADAPT_TO_CURRENT_STATE']);
+  assert.equal(table.DIRECT_USER_REQUEST.ADAPT_TO_CURRENT_STATE, 5);
+});
+
+test('DUC-CORRECTION-5. generate() constructs a real DIRECT_USER_REQUEST Candidate with hierarchyTier 5, via the narrow override — end to end through the real Stage-6 gate', () => {
+  const opportunity = {
+    id: 'duc:direct-user-request:t1', sourceCategory: 'DIRECT_USER_REQUEST', turnId: 't1',
+    proposedAction: 'x', domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY',
+    validReasonCategory: 'ADAPT_TO_CURRENT_STATE', confidence: 1, valueDimensions: ['DECISION_QUALITY'],
+    trustTestSignal: { glad: null, basis: 'x' }, safetyHighRiskBypass: false, detectedAt: Date.now(),
+    explanation: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }
+  };
+  const result = InitiativeEngine.generate({ opportunity: opportunity, pipelineContext: { relationshipMaturity: { stage: 'OBSERVER' }, feedbackHistory: [] } });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].hierarchyTier, 5);
+});

@@ -108,6 +108,18 @@
   var ActivityReferenceNormalizer = (typeof module !== 'undefined' && module.exports)
     ? require('../domain/activityReferenceNormalizer.js')
     : window.ActivityReferenceNormalizer;
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §04) — bounded Turn Understanding, invoked only on
+  // the new DIRECT_TURN_PASS action path (runDirectTurnPass() below); never reached from the
+  // existing APP_READY/DECISION_PASS path above, which supplies no CurrentUserTurn at all.
+  var TurnUnderstandingInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./turnUnderstandingInterpreter.js')
+    : window.TurnUnderstandingInterpreter;
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §06) — the fifth Stage-3 contributor, dispatched
+  // only from runDirectTurnPass() below, structurally parallel to how SafetyLayer/InitiativeEngine
+  // are already required directly above.
+  var ConversationalNeedCreator = (typeof module !== 'undefined' && module.exports)
+    ? require('./conversationalNeedCreator.js')
+    : window.ConversationalNeedCreator;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -115,6 +127,15 @@
   async function run(ctx) {
     ctx = ctx || {};
     var identity = { userId: ctx.userId, sessionGeneration: ctx.sessionGeneration, runId: ctx.runId };
+
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03) — a distinct action, DIRECT_TURN_PASS (never
+    // DECISION_PASS), branched on additively, before any of the existing APP_READY/DECISION_PASS
+    // logic below — which remains fully untouched, byte-identical, for every other action value
+    // (including the existing implicit APP_READY dispatch, which never sets ctx.action to this
+    // value).
+    if (ctx.action === 'DIRECT_TURN_PASS') {
+      return runDirectTurnPass(ctx, identity);
+    }
 
     var pipelineContext;
     try {
@@ -168,6 +189,88 @@
       return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, expression: { status: 'SUPERSEDED' } } };
     }
 
+    var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+    var expressionResult = (renderingContextResult && renderingContextResult.status === 'BUILT')
+      ? await runExpressionStage(terminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
+      : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
+
+    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, expression: expressionResult } };
+  }
+
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03/§04/§06/§07/§10/§12) — the DIRECT_TURN_PASS
+  // action path, dispatched only from run() above when ctx.action === 'DIRECT_TURN_PASS'. Reuses
+  // every existing Stage 4-10 mechanism completely unmodified (buildOpportunitiesForDecisionPass,
+  // runDecisionPass, runExpressionStage — the same functions the APP_READY path above already
+  // calls); the only new logic here is: (a) threading the CurrentUserTurn into Context Assembly
+  // (§11), (b) the new Stage-3 Turn Understanding / Need Creator steps (§04/§06), and (c) the new,
+  // narrow UNSUPPORTED dispatch (§12) for the one outcome that never reaches Stage 4 at all.
+  async function runDirectTurnPass(ctx, identity) {
+    var turn = ctx.payload && ctx.payload.turn;
+    if (!turn || typeof turn.turnId !== 'string' || turn.turnId.length === 0) {
+      // Defensive only — runUserMessageEngine() (§03, app.js) never constructs a payload without
+      // a valid turn; never fabricate a Decision Pass output for a malformed one.
+      return { status: 'FAILED', error: { code: 'INVALID_TURN', message: 'DIRECT_TURN_PASS requires a valid turn payload' } };
+    }
+
+    var pipelineContext;
+    try {
+      // §11 — the additive second parameter; this is the ONLY call site in this file that ever
+      // supplies it. The existing APP_READY call above (MemoryLayer.assembleContext(identity))
+      // remains byte-identical.
+      pipelineContext = await MemoryLayer.assembleContext(identity, turn);
+    } catch (e) {
+      return { status: 'FAILED', error: { code: 'CONTEXT_ASSEMBLY_FAILED', message: (e && e.message) || 'Memory Layer context assembly failed' } };
+    }
+
+    // §04 — Bounded Turn Understanding. Never throws (classify() itself is fail-closed by
+    // contract); the defensive catch below exists only for symmetry with every other collaborator
+    // call in this file, never because classify() is known to throw.
+    var turnUnderstanding;
+    try {
+      turnUnderstanding = await TurnUnderstandingInterpreter.classify(turn);
+    } catch (e) {
+      turnUnderstanding = TurnUnderstandingInterpreter._internal.failedResult();
+    }
+
+    // §06 — Conversational Need Creator, Step A (domain-agnostic Need recognition) + Step B
+    // (professional-capability resolution), a single combined call per its own contract. Returns
+    // null for §17 Case A (no request) / Case C (interpretation failure) — neither ever produces
+    // a Need — or {kind: 'DETECTED_OPPORTUNITY', opportunity} / {kind: 'UNSUPPORTED', need}.
+    var needCreatorResult = ConversationalNeedCreator.recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext);
+
+    if (needCreatorResult && needCreatorResult.kind === 'UNSUPPORTED') {
+      // §12 — bypasses Stage 4 (Evidence)/Stage 5 (Eligibility)/Stage 6 (Candidate)/Stage 8-9's
+      // Safety-review branch entirely: there is no Candidate to evaluate, so safetyPort.
+      // finalReview() is never called, exactly as it is already never called for
+      // formDecisionPassSilence()'s own zero-Candidate path. No fake Candidate or Safety data is
+      // ever attached.
+      var unsupportedDecision = DecisionFormation.formUnsupportedCapabilityOutcome({ need: needCreatorResult.need });
+      var unsupportedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+      var unsupportedExpressionResult = (unsupportedRenderingContextResult && unsupportedRenderingContextResult.status === 'BUILT')
+        ? await runExpressionStage(unsupportedDecision.decision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
+        : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, expression: unsupportedExpressionResult } };
+    }
+
+    // §06/§07 — a real DETECTED_OPPORTUNITY (or nothing, for Case A/C/UNSUPPORTED-already-handled)
+    // joins the SAME Stage-3->4->5->6->7->8->9 aggregation/flow every other Stage-3 contributor
+    // already uses, reused entirely unmodified — buildOpportunitiesForDecisionPass()'s own
+    // additive second parameter (collectDetectedOpportunities()'s own additive branch) is the
+    // ONLY mechanism threading this contribution in; nothing about Evidence/Eligibility/
+    // Candidate/Prioritization/Winner-Selection/Decision-Formation/Safety is touched.
+    var directOpportunity = (needCreatorResult && needCreatorResult.kind === 'DETECTED_OPPORTUNITY') ? needCreatorResult.opportunity : null;
+    // DUC-001 Post-Implementation Turn-Serving Correction — turn.turnId, the ONLY call site in
+    // this file that ever supplies buildOpportunitiesForDecisionPass()'s third parameter. See its
+    // own header comment there for the full rationale.
+    var opportunities = buildOpportunitiesForDecisionPass(pipelineContext, directOpportunity, turn.turnId);
+    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer });
+
+    if (passResult.status !== 'FORMED') {
+      // Defensive only — mirrors the APP_READY path's own identical defensive branch above.
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
+    }
+
+    var terminalDecision = passResult.decision;
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
     var expressionResult = (renderingContextResult && renderingContextResult.status === 'BUILT')
       ? await runExpressionStage(terminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
@@ -241,7 +344,15 @@
   // (no Health/Safety Profile source exists yet, §17.3) — a Safety-sourced detection's
   // safetyHighRiskBypass:true status is preserved unconditionally through this collection step
   // (G2-RA-05 corrected wording) since no field of any collected object is altered here.
-  function collectDetectedOpportunities(pipelineContext) {
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §06/§07) — `directOpportunity`, an additive,
+  // optional second parameter: a single already-complete DetectedOpportunity object, supplied
+  // ONLY by the new DIRECT_TURN_PASS path (runDirectTurnPass() above), which is the sole caller
+  // that ever passes it — the existing APP_READY path's own call site below (inside
+  // buildOpportunitiesForDecisionPass(pipelineContext), invoked with a single argument from
+  // run() above) never supplies it, so this branch is always a no-op there. Mirrors the existing
+  // trainingReadinessOpportunities branch immediately above it: purely additive collection, no
+  // semantic construction performed here.
+  function collectDetectedOpportunities(pipelineContext, directOpportunity) {
     var out = [];
     var recDetections = RecommendationEngine.detectOpportunities(pipelineContext);
     if (Array.isArray(recDetections)) out = out.concat(recDetections);
@@ -259,6 +370,13 @@
 
     var safetyDetections = SafetyLayer.detectSafetyOpportunities(pipelineContext);
     if (Array.isArray(safetyDetections)) out = out.concat(safetyDetections);
+
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §06/§07) — the Conversational Need Creator's own
+    // Step-B contribution, active only when the caller supplies one (DIRECT_TURN_PASS only). Only
+    // ever a kind: 'DETECTED_OPPORTUNITY' result's own `.opportunity` — a kind: 'UNSUPPORTED'
+    // result is never collected here at all; it is handled by the orchestrator's own separate,
+    // pre-Stage-4 branch (§12, runDirectTurnPass() above).
+    if (directOpportunity) out = out.concat([directOpportunity]);
 
     return out;
   }
@@ -294,6 +412,28 @@
     return { eligibilityInput: eligibilityInput, eligibleOpportunity: d };
   }
 
+  // DUC-001 Post-Implementation Turn-Serving Correction (Product/Architecture-approved,
+  // frozen this turn) — DIRECT_TURN_PASS is a turn-serving Decision Pass: an unrelated
+  // autonomous/proactive Opportunity MUST NOT displace the legitimate Need created from the
+  // originating Current User Turn. This is a Decision-Pass-causality/turn-serving-SCOPE concern
+  // (which Opportunities are even ADMITTED into this specific pass), structurally separate from
+  // Canonical Candidate hierarchy (Prioritization/hierarchyTier — entirely untouched by this
+  // function; a DetectedOpportunity admitted here still competes on hierarchyTier exactly as
+  // before, against whatever else was also admitted).
+  //
+  // Domain-agnostic by construction (never sourceCategory/domain/topic/opaque needRef-or-
+  // sameNeedId parsing): a DetectedOpportunity is admitted to a turn-serving pass iff it carries
+  // the existing, pre-existing safetyHighRiskBypass:true flag (Safety's own unconditional
+  // authority — never gated by turn-causality, never required to carry the originating turnId),
+  // OR its own turnId matches the pass's originating turn. turnId is already set, generically,
+  // by ConversationalNeedCreator's own Step B (conversationalNeedCreator.js) on any Opportunity it
+  // constructs — not TRR-specific code — so a future, non-TRR, non-DIRECT_USER_REQUEST-sourced
+  // turn-caused capability participates correctly here with zero changes to this function.
+  function isAdmittedForTurnServingPass(d, currentTurnId) {
+    if (d.safetyHighRiskBypass === true) return true; // Safety — unconditional, never gated by turnId
+    return d.turnId === currentTurnId;
+  }
+
   // G-2 (docs/specs/G2_SPEC_v1.0.md §29) — orchestrates Stage 3 detection (collectDetectedOpportunities
   // above) -> Stage 4 Evidence Evaluation (§24-26) -> Stage 4->5 handoff (buildEligibilityAndCandidateInputs
   // above), producing the exact `opportunities` array runDecisionPass() already expects
@@ -302,8 +442,23 @@
   // An INSUFFICIENT DetectedOpportunity is excluded here — it never reaches Stage 5 (§26); no
   // fabricated Silence or synthetic outcome is created for it, it is simply not included in the
   // array runDecisionPass() iterates.
-  function buildOpportunitiesForDecisionPass(pipelineContext) {
-    var detected = collectDetectedOpportunities(pipelineContext);
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §06/§07) — `directOpportunity`, threaded straight
+  // through to collectDetectedOpportunities()'s own identically-named, identically-optional
+  // parameter (see there). The existing APP_READY call site (run() above,
+  // buildOpportunitiesForDecisionPass(pipelineContext)) never supplies it.
+  //
+  // DUC-001 Post-Implementation Turn-Serving Correction — `currentTurnId`, a third, additive,
+  // optional parameter: supplied ONLY by runDirectTurnPass() below (the sole DIRECT_TURN_PASS
+  // call site), never by the existing APP_READY call site (run() above,
+  // buildOpportunitiesForDecisionPass(pipelineContext), a single argument) — so this filter is
+  // structurally a no-op for APP_READY, exactly mirroring directOpportunity's own established
+  // additive-parameter discipline immediately above. Applied AFTER Stage-3 mechanical collection
+  // and BEFORE ordinary Stage-4 Evidence evaluation, per the approved architecture.
+  function buildOpportunitiesForDecisionPass(pipelineContext, directOpportunity, currentTurnId) {
+    var detected = collectDetectedOpportunities(pipelineContext, directOpportunity);
+    if (typeof currentTurnId === 'string' && currentTurnId.length > 0) {
+      detected = detected.filter(function (d) { return !!d && isAdmittedForTurnServingPass(d, currentTurnId); });
+    }
     var out = [];
     detected.forEach(function (d) {
       if (!d) return;
@@ -372,6 +527,13 @@
       }
     }
     resolved.sameNeedId = eligibleOpportunity.id;
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §10/§14) — additive, undefined-safe field,
+    // mirroring sameNeedId's own precedent immediately above: absent (undefined) for every
+    // proactive/non-DUC Candidate (eligibleOpportunity.turnId is never set on those), real for a
+    // DIRECT_USER_REQUEST-sourced one — carrying §14's own correlation chain into the Candidate
+    // itself (Candidate.opportunityProvenance.turnId, via initiativeEngine.js's own generic
+    // opportunityProvenance copy).
+    resolved.turnId = eligibleOpportunity.turnId;
     try { return Object.freeze(resolved); } catch (e) { return resolved; }
   }
 
@@ -545,6 +707,10 @@
 
   var API = {
     run: run,
+    // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03) — exposed for direct unit/integration
+    // testing, structurally parallel to the other direct-dispatch exports below. Production never
+    // calls this directly — always through run(ctx) with ctx.action === 'DIRECT_TURN_PASS'.
+    runDirectTurnPass: runDirectTurnPass,
     runForOpportunity: runForOpportunity,
     runForInitiativeOpportunity: runForInitiativeOpportunity,
     detectInitiativeOpportunities: detectInitiativeOpportunities,
@@ -556,6 +722,8 @@
     collectDetectedOpportunities: collectDetectedOpportunities,
     buildEligibilityAndCandidateInputs: buildEligibilityAndCandidateInputs,
     buildOpportunitiesForDecisionPass: buildOpportunitiesForDecisionPass,
+    // DUC-001 Post-Implementation Turn-Serving Correction — exposed for direct unit testing.
+    isAdmittedForTurnServingPass: isAdmittedForTurnServingPass,
     // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21) — exposed for direct unit testing.
     resolveTrainingReadinessProposal: resolveTrainingReadinessProposal
   };

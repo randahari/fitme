@@ -40,7 +40,11 @@
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
   function isNonEmptyString(s) { return typeof s === 'string' && s.length > 0; }
 
-  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY'];
+  // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §12) — fifth canonical, Product/Architecture-
+  // authorized kind for a recognized-but-unsupported direct user request. Never Safety-reviewed
+  // (no Candidate ever existed), so it carries no safetyDisposition/boundaryType/confidence/
+  // hierarchyTier/modification — see the dedicated exclusion below.
+  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED'];
   var BOUNDARY_TYPES = ['REFUSAL', 'ESCALATION'];
   var SAFETY_DISPOSITIONS = ['UNMODIFIED', 'MODIFIED', 'DEFERRED', 'BLOCKED', 'ESCALATED'];
 
@@ -90,9 +94,11 @@
       if (sd.disposition === 'DEFERRED' && candidate.kind !== 'SILENCE') return false;
       if (sd.disposition === 'BLOCKED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'REFUSAL')) return false;
       if (sd.disposition === 'ESCALATED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'ESCALATION')) return false;
-    } else if (candidate.kind !== 'SILENCE') {
+    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED') {
       // Absent only for a Decision-Pass-level Silence formed from zero surviving Candidates
-      // (§23.4) — required for every other kind, including a Safety-DEFERRED Silence.
+      // (§23.4), or a DUC-001 UNSUPPORTED outcome (docs/specs/DUC_001_SPEC_v1.0.md §12 — no
+      // Candidate ever existed, so Safety was never invoked) — required for every other kind,
+      // including a Safety-DEFERRED Silence.
       return false;
     }
 
