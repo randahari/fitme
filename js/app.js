@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.47.1';
+const APP_VERSION = '2.47.2';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -25,6 +25,11 @@ ClaudeProxyClient.configure();
 // C1-WP3: מזריק את db (Firestore) האמיתי ואת serverTimestamp לתוך שכבת ה-Repository.
 // אותו אובייקט db גלובלי כמו קודם — רק דרך שכבת repository, לא ישירות.
 function _fsServerTimestamp() { return firebase.firestore.FieldValue.serverTimestamp(); }
+// CCC-001 pagination cursor-stability correction (Product/Architecture Final Review): a live-SDK
+// static utility, injected exactly like _fsServerTimestamp above rather than referenced directly
+// inside js/repositories/conversationRepository.js — see that file's fetchRecent() header for
+// why a documentId() tie-breaker is required alongside orderBy('createdAt').
+function _fsDocumentIdField() { return firebase.firestore.FieldPath.documentId(); }
 ProfileRepository.configure({ db: db });
 DayRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
 FavoritesRepository.configure({ db: db });
@@ -37,6 +42,9 @@ BarcodeRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
 // line runs, every telemetry report call anywhere (including its own self-installed global
 // handlers) is console-only, by design (see js/errorTelemetry.js's own header).
 ErrorLogRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp });
+// CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5): same repository-configure() pattern as every
+// line above it.
+ConversationRepository.configure({ db: db, serverTimestamp: _fsServerTimestamp, documentIdField: _fsDocumentIdField });
 ErrorTelemetry.configure({
   errorLogRepository: ErrorLogRepository,
   getCurrentUser: function () { return currentUser; },
@@ -615,6 +623,7 @@ function showApp() {
   renderSettings();
   renderPlanBanner();
   buildWater();
+  loadCoachConversationHistory(); // CCC-001 — fire-and-forget, fail-open (see its own header comment)
   // buildWeekChart() מוסר כאן: renderHome() כבר קורא לו (ומונע קריאת היסטוריה כפולה ב-Cold Start). PERF-001
   runAppReadyEngines(); // B2: Engine Registry orchestration (Habit/Pattern/Adaptive TDEE/Trigger) — non-blocking
 }
@@ -1741,6 +1750,11 @@ async function resetApp() {
     // survive a "delete all my data" action, a real privacy regression this item must not
     // introduce. Never called by the telemetry reporting path itself — reset-only.
     try { await ErrorLogRepository.deleteAllForUser(currentUser.uid); } catch(e) {}
+    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §12) — same rationale as ErrorLogRepository's own
+    // cleanup immediately above: Firestore subcollection deletion is not automatic on parent-
+    // document delete (below), so without this explicit step conversation transcript would
+    // silently survive a "delete all my data" action.
+    try { await ConversationRepository.deleteAllForUser(currentUser.uid); } catch(e) {}
     try { await db.collection('users').doc(currentUser.uid).delete(); } catch(e) {}
     userProfile = null; todayData = { meals:[], burned:0, steps:0 }; waterCount = 0;
     showOnboarding();
@@ -2208,7 +2222,11 @@ StateAccess.configure({
   // later, at Coach-prompt-composition time, well after js/memory.js has loaded (the same
   // deferred-property-access style app.js already uses elsewhere, e.g. window.AuthorityContract
   // below).
-  fetchUserStatedMemory: function () { return FitMeMemory.list(); }
+  fetchUserStatedMemory: function () { return FitMeMemory.list(); },
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §9/§14): mirrors fetchUserStatedMemory's own
+  // established injection shape — uid closed over via currentUser, limit + the additive
+  // pagination cursor (afterCreatedAt, PRODUCT CORRECTION applied to §9) both passed through.
+  fetchRecentConversation: function (limitCount, afterCreatedAt, afterTurnId) { return ConversationRepository.fetchRecent(currentUser.uid, limitCount, afterCreatedAt, afterTurnId); }
 });
 
 // B5: מזריק תלויות ל-derivedIntelligenceConsumer.js — קורא Habit/Pattern Derived
@@ -2328,6 +2346,20 @@ async function submitCoachConversationTurn() {
 
   CoachConversationPresenter.renderUserTurn(turn.turnId, turn.text);
 
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2/§11) — PENDING create, awaited but never
+  // allowed to throw (a create failure never blocks Coach processing, per §11's own fail-open
+  // requirement). Awaited specifically so a later completion update — which requires the
+  // document to already exist in Firestore — can never race ahead of its own create; the added
+  // latency (one Firestore write, well under the governed pipeline's own multi-second latency)
+  // is invisible under the existing setSubmitting(true) loading state above.
+  var pendingPersisted = true;
+  try {
+    await ConversationRepository.createPending(currentUser.uid, turn.turnId, { userText: turn.text, submittedAt: turn.submittedAt });
+  } catch (e) {
+    pendingPersisted = false;
+    ErrorTelemetry.report({ code: (e && e.code) || 'PERSIST_TURN_CREATE_FAILED', module: 'COACH', operation: 'PERSIST_TURN_CREATE' });
+  }
+
   try {
     var summary = await runUserMessageEngine(turn);
     var cdsResult = summary && summary.results && summary.results.coachDecisionSystem;
@@ -2340,6 +2372,14 @@ async function submitCoachConversationTurn() {
 
     if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
       CoachConversationPresenter.renderResponse(expression.deliveryIntent, turn.turnId);
+
+      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2) — PENDING -> COMPLETED: a real Delivery
+      // Intent was dispatched by the governed pipeline. Fire-and-forget, fail-open (§11) —
+      // never awaited (rendering above is already complete regardless of this write's outcome).
+      if (pendingPersisted) {
+        ConversationRepository.completeTurn(currentUser.uid, turn.turnId, { status: 'COMPLETED', assistantText: expression.deliveryIntent.renderedLanguage })
+          .catch(function (e) { ErrorTelemetry.report({ code: (e && e.code) || 'PERSIST_TURN_COMPLETE_FAILED', module: 'COACH', operation: 'PERSIST_TURN_COMPLETE' }); });
+      }
 
       // §13/§14 — clarificationRef, constructed here (never inside DeliveryIntentContract/
       // ExpressionRenderer) from data already in scope: the real, internal turnId/opportunityId
@@ -2361,6 +2401,27 @@ async function submitCoachConversationTurn() {
       // §17 — a real, valid outcome that produced no Delivery Intent (Silence, Safety-DEFERRED,
       // an aborted/failed dispatch). Never fabricated content; the pending placeholder is removed.
       CoachConversationPresenter.renderNoResponse(turn.turnId);
+
+      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2, PRODUCT CORRECTION 2) — PENDING ->
+      // SILENCE ONLY when the governed pipeline itself genuinely completed
+      // (cdsResult.status === 'SUCCESS') with a real, recognized, non-dispatch expression
+      // outcome. NO_DELIVERY_INTENT (Silence-kind Terminal Decision) and NOT_ATTEMPTED
+      // (PASS_NOT_FORMED) are the only two statuses runDirectTurnPass() can actually produce
+      // for a genuine governed decision not to respond — ABORTED is deliberately excluded here:
+      // every ABORTED reason (INVALID_TERMINAL_DECISION / INVALID_EXPRESSION_RENDERING_CONTEXT /
+      // EXPRESSION_PORT_UNAVAILABLE / EXPRESSION_RENDER_THREW / INVALID_DELIVERY_INTENT) is a
+      // defensive or technical Expression-stage failure, never a governed decision, so it is
+      // treated the same as any other technical failure below: the turn stays PENDING. Any other
+      // case — cdsResult.status !== 'SUCCESS' (an engine-level structural failure), or a missing/
+      // malformed expression result — likewise leaves the turn PENDING: no update is attempted.
+      var CCC_GENUINE_SILENCE_STATUSES = ['NO_DELIVERY_INTENT', 'NOT_ATTEMPTED'];
+      var isGenuineGovernedSilence = !!(cdsResult && cdsResult.status === 'SUCCESS' && expression && CCC_GENUINE_SILENCE_STATUSES.indexOf(expression.status) !== -1);
+      if (isGenuineGovernedSilence && pendingPersisted) {
+        ConversationRepository.completeTurn(currentUser.uid, turn.turnId, { status: 'SILENCE', assistantText: null })
+          .catch(function (e) { ErrorTelemetry.report({ code: (e && e.code) || 'PERSIST_TURN_COMPLETE_FAILED', module: 'COACH', operation: 'PERSIST_TURN_COMPLETE' }); });
+      }
+      // else: a technical/engine-level failure — the persisted turn remains PENDING, truthfully,
+      // exactly as CCC_001_SPEC_v1.0.md §5.2 requires; no FAILED/ERROR status is fabricated.
     }
   } catch (e) {
     CoachConversationPresenter.renderNoResponse(turn.turnId);
@@ -2371,11 +2432,34 @@ async function submitCoachConversationTurn() {
     // itself (the pipeline never throws with embedded turn text) — only the closed
     // code/module/operation identifiers are reported, never any string derived from `e.message`.
     ErrorTelemetry.report({ code: (e && e.code) || 'COACH_TURN_FAILED', module: 'COACH', operation: 'DIRECT_TURN_PASS' });
+    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2) — a JS-level exception here means the
+    // governed pipeline never reached a real outcome at all: the persisted turn remains PENDING,
+    // exactly like the technical-failure branch above — no update is ever attempted from this
+    // catch block.
   } finally {
     // Always re-enabled, regardless of staleness — never leaves the composer permanently
     // disabled (the stale-session guard above only controls whether a result is RENDERED, per
     // §15 step 6; it never governs the composer's own reusability for a subsequent turn).
     CoachConversationPresenter.setSubmitting(false);
+  }
+}
+
+// CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §7/§12) — fetches and renders up to the most recent
+// 50 persisted Coach conversation turns, called once from showApp() (below) — boot-time, not
+// per-navigation, so the thread is already populated (even while the Coach screen is not yet
+// the visible one) by the time the user first taps into it, with no separate loading flash.
+// Fail-open (§11): a fetch failure is reported via Item 7 telemetry and otherwise silently
+// leaves the thread empty — never blocks app boot, never surfaces a blocking error to the user.
+async function loadCoachConversationHistory() {
+  if (!currentUser) return;
+  var _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
+  try {
+    var records = await ConversationRepository.fetchRecent(currentUser.uid, 50);
+    if (!SessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי הטעינה — לא מציגים תוכן ישן
+    records.reverse(); // fetchRecent() returns newest->oldest; the presenter renders oldest->newest
+    CoachConversationPresenter.renderHistory(records);
+  } catch (e) {
+    ErrorTelemetry.report({ code: (e && e.code) || 'LOAD_CONVERSATION_HISTORY_FAILED', module: 'COACH', operation: 'LOAD_HISTORY' });
   }
 }
 

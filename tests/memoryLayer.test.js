@@ -202,12 +202,25 @@ test('10b. Relationship Maturity resolves to UNKNOWN when no approved source exi
   assert.equal(ctxUnavailable.relationshipMaturity.basis, null);
 });
 
-test('10c. no replacement maturity heuristic exists in the source: no evidence-count derivation, no thresholds, no elapsed-time read', () => {
+test('10c. no replacement maturity heuristic exists in the Relationship Maturity source region: no evidence-count derivation, no thresholds, no elapsed-time read', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/memoryLayer.js'), 'utf8');
+  // Scoped to the Relationship Maturity assembly region only (CD-T005-01) — NOT the whole file.
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §8/§9, Product Correction applied to the pagination
+  // design) legitimately reads a real `createdAt` field value elsewhere in this same file, as a
+  // Coach-conversation pagination cursor — an entirely unrelated concept from Relationship
+  // Maturity's own elapsed-time-heuristic concern this test guards against. Scoping the scan to
+  // the actual Relationship Maturity code region (its own comment block through its own
+  // `relationshipMaturity = freezeShallow(...)` assignment, ending just before the next field's
+  // own comment block begins) preserves this test's real intent without false-flagging that
+  // legitimate, unrelated, approved addition.
+  const regionStart = src.indexOf('CD-T005-01 — Relationship Maturity signal');
+  const regionEnd = src.indexOf("var relationshipMaturity = freezeShallow({ stage: 'UNKNOWN', basis: null });") + 80;
+  assert.notEqual(regionStart, -1);
+  const region = src.slice(regionStart, regionEnd);
   ['ENGINEERING_PROVISIONAL_EVIDENCE_COUNT_V1', 'evidenceScore', 'confirmedSignalCount', 'createdAt', 'ASSISTANT', 'TRUSTED_COACH', 'PERSONAL_COACH'].forEach((token) => {
-    assert.equal(src.indexOf(token), -1, 'must not contain ' + token);
+    assert.equal(region.indexOf(token), -1, 'must not contain ' + token + ' within the Relationship Maturity region');
   });
 });
 
@@ -1600,4 +1613,306 @@ test('TRR-MEM-7. buildTrainingReadinessReasoningContext() projects only the CARF
 test('TRR-MEM-8. buildTrainingReadinessReasoningContext() never throws on a malformed/empty pipelineContext', () => {
   assert.doesNotThrow(() => MemoryLayer.buildTrainingReadinessReasoningContext(null, null));
   assert.doesNotThrow(() => MemoryLayer.buildTrainingReadinessReasoningContext(undefined, undefined));
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §8/§9) — recentConversationContext assembly.
+// ══════════════════════════════════════════════════════════════════
+
+// A record's own `createdAt` doubles as the fake's cursor marker (any unique, comparable value
+// works for this fake — Memory Layer's own pagination logic only ever compares cursors by
+// identity, never interprets their internal shape, exactly as it would treat an opaque
+// Firestore Timestamp in production). Most fixtures below give every record a distinct
+// `submittedAt`/`createdAt`, so `createdAt` alone happens to be unique in THOSE particular
+// arrays — the equal-`createdAt` boundary scenario (PRODUCT-6, below) is the one fixture that
+// deliberately breaks that assumption, to prove the cursor is genuinely a (createdAt, turnId)
+// PAIR, not merely `createdAt` alone.
+function makeConversationRecord(turnId, userText, assistantText, status, submittedAt, createdAtOverride) {
+  return { turnId: turnId, userText: userText, assistantText: assistantText, status: status, submittedAt: submittedAt, createdAt: (createdAtOverride !== undefined ? createdAtOverride : submittedAt) };
+}
+
+// PRODUCT CORRECTION (Product/Architecture Final Review) — simulates real, cursor-based,
+// multi-page Firestore pagination over a FULL history array (newest-first), exactly mirroring
+// js/repositories/conversationRepository.js's own real fetchRecent(uid, pageSize,
+// afterCreatedAt, afterTurnId) contract: each call returns the next `pageSize` records strictly
+// after the given (createdAt, turnId) cursor PAIR, continuing the same ordered sequence — never
+// a single unbounded fetch.
+//
+// CURSOR STABILITY CORRECTION (Product/Architecture Final Review — pagination correctness): the
+// cursor lookup below matches on BOTH `createdAt` AND `turnId` together — exactly like
+// conversationRepository.js's real compound `.orderBy('createdAt').orderBy(documentId())`
+// query, whose `.startAfter(afterCreatedAt, afterTurnId)` cursor is unambiguous even when
+// several records share one `createdAt` value. `fullHistoryNewestFirst` must therefore already
+// be arranged in the true, fully deterministic (createdAt desc, turnId desc) order — exactly as
+// a correctly tie-broken Firestore index would present it — including within any group of equal
+// `createdAt` records. If Memory Layer's own loop ever regressed to tracking only `createdAt`
+// (forgetting `turnId`), this lookup would fail to match a real record inside a tie group
+// (`turnId` would stay `undefined`), collapse `startIdx` to the end of the array, and the walk
+// would terminate early — so this fake also acts as a regression guard, not merely a simulation.
+function configureWithConversationHistory(fullHistoryNewestFirst) {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [] }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchRecentConversation: async (pageSize, afterCreatedAt, afterTurnId) => {
+      var startIdx = 0;
+      if (afterCreatedAt !== undefined) {
+        var cursorIdx = fullHistoryNewestFirst.findIndex((r) => r.createdAt === afterCreatedAt && r.turnId === afterTurnId);
+        startIdx = cursorIdx === -1 ? fullHistoryNewestFirst.length : cursorIdx + 1;
+      }
+      return fullHistoryNewestFirst.slice(startIdx, startIdx + pageSize);
+    }
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [] }),
+    readPatternSnapshot: async () => ({ patterns: [] }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+}
+
+test('CCC-H: recentConversationContext includes at most the latest 6 COMPLETED turns, chronologically ordered (single-page case, unchanged from before)', async () => {
+  const history = [];
+  for (let i = 8; i >= 1; i--) history.push(makeConversationRecord('t' + i, 'u' + i, 'a' + i, 'COMPLETED', i)); // newest (t8) first
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext.items.length, 6);
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t3', 't4', 't5', 't6', 't7', 't8']);
+});
+
+// ── Product-required test 1: MORE THAN 20 recent non-COMPLETED turns ───────────────────────
+test('PRODUCT-1: 25 consecutive newest PENDING/SILENCE turns never prevent recovery of the actual latest 6 COMPLETED turns further back in history (proves the pagination loop, not a bounded candidate window)', async () => {
+  const history = [];
+  for (let i = 31; i >= 7; i--) history.push(makeConversationRecord('noise' + i, 'noise', null, i % 2 === 0 ? 'PENDING' : 'SILENCE', i)); // 25 newest, non-COMPLETED
+  for (let i = 6; i >= 1; i--) history.push(makeConversationRecord('t' + i, 'u' + i, 'a' + i, 'COMPLETED', i)); // 6 older COMPLETED turns
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext.items.length, 6);
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t1', 't2', 't3', 't4', 't5', 't6']);
+});
+
+// ── Product-required test 2: the 6th COMPLETED turn is outside the first page (page size 10) ──
+test('PRODUCT-2: when only 5 COMPLETED turns occur within the first page, the 6th (older, on a later page) is still found and included', async () => {
+  const history = [];
+  // First page (10 newest): 5 non-COMPLETED interleaved with 5 COMPLETED.
+  for (let i = 15; i >= 6; i--) history.push(makeConversationRecord('p' + i, 'x', i % 2 === 0 ? null : 'reply', i % 2 === 0 ? 'PENDING' : 'COMPLETED', i));
+  // Older history (page 2+): the 6th COMPLETED turn.
+  history.push(makeConversationRecord('t-sixth', 'the sixth completed turn', 'reply', 'COMPLETED', 5));
+  history.push(makeConversationRecord('older', 'even older', 'reply', 'COMPLETED', 4));
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
+  assert.equal(ids.length, 6);
+  assert.ok(ids.includes('t-sixth'), 'the 6th COMPLETED turn, found only on a later page, must be included');
+});
+
+// ── Product-required test 3: history exhaustion ─────────────────────────────────────────────
+test('PRODUCT-3: fewer than 6 COMPLETED turns exist in the ENTIRE history — returns exactly those available, without error or infinite pagination', async () => {
+  const history = [
+    makeConversationRecord('noise1', 'x', null, 'PENDING', 10),
+    makeConversationRecord('t2', 'u2', 'a2', 'COMPLETED', 9),
+    makeConversationRecord('noise2', 'x', null, 'SILENCE', 8),
+    makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 7)
+  ]; // only 4 non-COMPLETED/COMPLETED docs total, only 2 COMPLETED — far fewer than one page (10)
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t1', 't2']);
+  assert.equal(ctx.availability.recentConversationContext, 'AVAILABLE'); // exhaustion is a valid, honest outcome — never an error
+});
+
+test('PRODUCT-3: an entirely empty conversation history resolves to zero items, never an error', async () => {
+  configureWithConversationHistory([]);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.recentConversationContext.items, []);
+});
+
+// ── Product-required test 4: the 6,000-character cap across page boundaries ────────────────
+test('PRODUCT-4: the 6,000-character whole-turn cap is enforced correctly even when eligible COMPLETED turns are split across more than one page', async () => {
+  const mk = (n) => 'x'.repeat(n);
+  const history = [];
+  // Page 1 (10 newest): 9 non-COMPLETED + 1 large COMPLETED turn (2,500 chars) at the oldest end of the page.
+  for (let i = 19; i >= 11; i--) history.push(makeConversationRecord('noise' + i, 'x', null, 'PENDING', i));
+  history.push(makeConversationRecord('t3', mk(1250), mk(1250), 'COMPLETED', 10)); // newest COMPLETED, page 1's own last item
+  // Page 2 (older): two more large COMPLETED turns.
+  history.push(makeConversationRecord('t2', mk(1250), mk(1250), 'COMPLETED', 9)); // cumulative 5000, still fits
+  history.push(makeConversationRecord('t1', mk(1250), mk(1250), 'COMPLETED', 8)); // would push cumulative to 7500 -> excluded
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t2', 't3']); // t1 (oldest, on page 2) correctly excluded by the cap
+  assert.equal(ctx.recentConversationContext.items[0].userText.length, 1250); // whole turn, never truncated
+});
+
+// ── Product-required test (cursor stability): a page boundary falls INSIDE a group of turns
+// that all share the exact same `createdAt` value, with eligible COMPLETED turns on BOTH sides
+// of that boundary — proving the (createdAt, turnId) compound cursor skips nothing and
+// duplicates nothing, unlike a `createdAt`-only cursor would.
+test('PRODUCT-6: a pagination boundary landing inside a group of equal-createdAt turns skips no eligible COMPLETED turn and duplicates none, on either side of the boundary', async () => {
+  var T_TIE = 'TIE-TIMESTAMP'; // one Firestore server-timestamp value shared by 4 documents —
+                                // the exact scenario a createdAt-only cursor cannot safely paginate.
+  var history = [
+    makeConversationRecord('n00', 'x', null, 'SILENCE', 100),
+    makeConversationRecord('n01', 'x', null, 'PENDING', 99),
+    makeConversationRecord('n02', 'u2', 'a2', 'COMPLETED', 98),   // eligible #1
+    makeConversationRecord('n03', 'u3', 'a3', 'COMPLETED', 97),   // eligible #2
+    makeConversationRecord('n04', 'x', null, 'SILENCE', 96),
+    makeConversationRecord('n05', 'u5', 'a5', 'COMPLETED', 95),   // eligible #3
+    makeConversationRecord('n06', 'x', null, 'PENDING', 94),
+    // Tie group: 4 documents, ALL sharing createdAt = T_TIE, distinguished only by turnId — the
+    // true Firestore order among ties is (createdAt desc, turnId desc), so this array is already
+    // arranged tie_d > tie_c > tie_b > tie_a, exactly as a correctly tie-broken index would sort them.
+    makeConversationRecord('tie_d', 'ud', 'ad', 'COMPLETED', 93, T_TIE),  // eligible #4 (page 1 side of the tie group)
+    makeConversationRecord('tie_c', 'x', null, 'SILENCE', 92, T_TIE),     // not eligible (page 1 side)
+    makeConversationRecord('tie_b', 'ub', 'ab', 'COMPLETED', 91, T_TIE),  // eligible #5 — LAST item of page 1: becomes the cursor (T_TIE, 'tie_b')
+    makeConversationRecord('tie_a', 'ua', 'aa', 'COMPLETED', 90, T_TIE),  // eligible #6 — FIRST item of page 2: must NOT be skipped by the boundary
+    makeConversationRecord('n11', 'u11', 'a11', 'COMPLETED', 89)          // older still — must NOT be reached; the walk stops once 6 are found
+  ]; // page size 10 -> page 1 = indices 0-9 (n00..n06, tie_d, tie_c, tie_b); page 2 begins at tie_a
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
+  assert.equal(ids.length, 6, 'exactly the latest 6 COMPLETED turns — none skipped by the tie, none duplicated');
+  assert.equal(new Set(ids).size, 6, 'no turnId appears twice');
+  // Chronological (oldest -> newest) order: within the tie group, turnId desc means tie_d is
+  // newest and tie_a is oldest of the four — tie_a/tie_b (both COMPLETED) must appear BEFORE
+  // tie_d, exactly reflecting that deterministic tie-break, never an arbitrary/skipped order.
+  assert.deepEqual(ids, ['tie_a', 'tie_b', 'tie_d', 'n05', 'n03', 'n02']);
+  assert.equal(ids.includes('tie_c'), false, 'SILENCE turn inside the tie group correctly excluded');
+  assert.equal(ids.includes('n11'), false, 'older turn beyond the 6th eligible one correctly never reached');
+  // 6,000-character whole-turn cap: unaffected by the tie-break correction — all 6 short turns
+  // fit comfortably under the cap, so none is excluded by it (the cap's own boundary-crossing
+  // math is covered in full by PRODUCT-4, above; this assertion only proves the cap gate still
+  // runs normally, undisturbed, in a tie-break scenario).
+  const totalChars = ctx.recentConversationContext.items.reduce((sum, t) => sum + t.userText.length + t.assistantText.length, 0);
+  assert.ok(totalChars < 6000);
+});
+
+test('CCC-I/J/K: a 6,000-character cap is enforced, whole turns only (never truncated), dropping the OLDEST candidates first (newest-first selection) — single-page case', async () => {
+  const mk = (n) => 'x'.repeat(n);
+  const history = [
+    makeConversationRecord('t3', mk(1250), mk(1250), 'COMPLETED', 3), // newest, 2500 chars
+    makeConversationRecord('t2', mk(1250), mk(1250), 'COMPLETED', 2), // 2500 chars, cumulative 5000
+    makeConversationRecord('t1', mk(1250), mk(1250), 'COMPLETED', 1)  // would push cumulative to 7500 -> excluded
+  ];
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t2', 't3']); // oldest->newest of the SELECTED set; t1 (oldest overall) dropped
+  assert.equal(ctx.recentConversationContext.items[0].userText.length, 1250); // whole turn, never partially truncated
+  assert.equal(ctx.recentConversationContext.items[0].assistantText.length, 1250);
+});
+
+test('CCC-I: the 6,000-character cap is a hard ceiling even for a single very large turn', async () => {
+  const history = [makeConversationRecord('t1', 'x'.repeat(4000), 'y'.repeat(4000), 'COMPLETED', 1)]; // 8000 chars alone
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext.items.length, 0); // exceeds the cap even alone -> excluded entirely, never truncated
+});
+
+test('CCC-L/M: PENDING and SILENCE turns are walked past (advancing the pagination cursor) but never included in the assembled context', async () => {
+  const history = [
+    makeConversationRecord('t4', 'pending text', null, 'PENDING', 4),
+    makeConversationRecord('t3', 'silence text', null, 'SILENCE', 3),
+    makeConversationRecord('t2', 'u2', 'a2', 'COMPLETED', 2),
+    makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 1)
+  ];
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
+  assert.equal(ids.includes('t4'), false);
+  assert.equal(ids.includes('t3'), false);
+  assert.deepEqual(ids, ['t1', 't2']);
+});
+
+test('CCC-N: recentConversationContext carries provenance: \'CONVERSATION_CONTEXT\'', async () => {
+  configureWithConversationHistory([makeConversationRecord('t1', 'u', 'a', 'COMPLETED', 1)]);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext.provenance, 'CONVERSATION_CONTEXT');
+});
+
+test('CCC-O: recentConversationContext never carries interpretationAuthority (Product Correction 1 — a context/provenance class, never a new authority-tier value)', async () => {
+  configureWithConversationHistory([makeConversationRecord('t1', 'u', 'a', 'COMPLETED', 1)]);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal('interpretationAuthority' in ctx.recentConversationContext, false);
+  assert.deepEqual(Object.keys(ctx.recentConversationContext).sort(), ['items', 'provenance']);
+});
+
+test('CCC: recentConversationContext degrades gracefully to UNAVAILABLE on a read failure, never blocking the Decision Pass (D3 §12.3)', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [] }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchRecentConversation: async () => { throw new Error('read failed'); }
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [] }),
+    readPatternSnapshot: async () => ({ patterns: [] }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext, null);
+  assert.equal(ctx.availability.recentConversationContext, 'UNAVAILABLE');
+});
+
+test('CCC: a read failure on a LATER page (first page succeeds, second throws) still degrades gracefully to UNAVAILABLE — never a partial/corrupt context', async () => {
+  let callCount = 0;
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [] }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchRecentConversation: async (pageSize) => {
+      callCount++;
+      if (callCount === 1) {
+        const page = [];
+        for (let i = 10; i >= 1; i--) page.push(makeConversationRecord('noise' + i, 'x', null, 'PENDING', i)); // full page, all non-COMPLETED -> triggers a 2nd page fetch
+        return page;
+      }
+      throw new Error('second page read failed');
+    }
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [] }),
+    readPatternSnapshot: async () => ({ patterns: [] }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext, null);
+  assert.equal(ctx.availability.recentConversationContext, 'UNAVAILABLE');
+  assert.equal(callCount, 2);
+});
+
+test('CCC-Z: a safety-relevant statement inside recentConversationContext never affects userSafetyContext — Safety isolation proven behaviorally, not just by convention', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1,
+    fetchUserStatedMemory: async () => [],
+    fetchRecentConversation: async () => [makeConversationRecord('t1', 'הרופא אמר לי לא לרוץ', 'reply', 'COMPLETED', 1)]
+  });
+  Consumer.configure({
+    isSessionCurrent: (gen) => gen === 1,
+    readHabitSnapshot: async () => ({ habits: [] }),
+    readPatternSnapshot: async () => ({ patterns: [] }),
+    getLocalDate: () => '2026-07-29',
+    getWeekday: () => 3
+  });
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.userSafetyContext, null); // sourced ONLY from Typed Memory (empty here), never from conversation
+  assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
+  assert.notEqual(ctx.recentConversationContext, null); // conversation context itself IS populated, independently
+});
+
+test('CCC-10.2: buildTrainingReadinessReasoningContext() selectively re-projects the SAME shared recentConversationContext field, never assembling its own copy', () => {
+  const pipelineContext = {
+    readinessStateContext: null, userSafetyContext: null, userSafetyProvenance: null,
+    explicitRequestControls: null, activityPreference: null,
+    recentConversationContext: { items: [{ turnId: 't1', userText: 'u', assistantText: 'a', submittedAt: 1 }], provenance: 'CONVERSATION_CONTEXT' },
+    availability: { recentConversationContext: 'AVAILABLE' }
+  };
+  const detectedOpportunity = { id: 'trr-1', validReasonCategory: 'ADAPT_TO_CURRENT_STATE', contextualMeaning: { basis: { observation: {} } } };
+  const reasoningContext = MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext, detectedOpportunity);
+  assert.deepEqual(reasoningContext.recentConversationContext, pipelineContext.recentConversationContext);
+  assert.equal(reasoningContext.availability.recentConversationContext, 'AVAILABLE');
 });

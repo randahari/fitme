@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.1';
+const VERSION = 'v2.47.2';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -45,6 +45,7 @@ const SHELL = [
   '/fitme/js/repositories/groupRepository.js',
   '/fitme/js/repositories/barcodeRepository.js',
   '/fitme/js/repositories/errorLogRepository.js',
+  '/fitme/js/repositories/conversationRepository.js',
   '/fitme/js/app/runtimeState.js',
   '/fitme/js/app/bootstrapController.js',
   '/fitme/js/app/authSessionController.js',

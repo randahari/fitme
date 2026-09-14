@@ -225,9 +225,13 @@
     // §04 — Bounded Turn Understanding. Never throws (classify() itself is fail-closed by
     // contract); the defensive catch below exists only for symmetry with every other collaborator
     // call in this file, never because classify() is known to throw.
+    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §10.1) — pipelineContext.recentConversationContext
+    // (already assembled by MemoryLayer.assembleContext() above) is threaded through as an
+    // additive second argument — undefined/null when unavailable, in which case classify()
+    // behaves byte-identically to its pre-CCC-001 contract.
     var turnUnderstanding;
     try {
-      turnUnderstanding = await TurnUnderstandingInterpreter.classify(turn);
+      turnUnderstanding = await TurnUnderstandingInterpreter.classify(turn, pipelineContext.recentConversationContext);
     } catch (e) {
       turnUnderstanding = TurnUnderstandingInterpreter._internal.failedResult();
     }

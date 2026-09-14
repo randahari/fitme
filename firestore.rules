@@ -96,6 +96,44 @@ service cloud.firestore {
           && request.resource.data.clientTimestamp is number
           && request.resource.data.createdAt == request.time;
       }
+
+      // ── שיחת המאמן (CCC-001, docs/specs/CCC_001_SPEC_v1.0.md §5/§6) ──
+      // תמלול שיחה — לעולם לא זיכרון מטויפס, לעולם לא Safety Context. הבעלים בלבד יכול
+      // לקרוא/ליצור/למחוק; עדכון מותר אך ורק במעבר PENDING -> {COMPLETED, SILENCE} יחיד,
+      // עם userText/submittedAt/createdAt בלתי-ניתנים לשינוי.
+      match /coachConversation/{turnId} {
+        // קריאה: הבעלים בלבד — בניגוד ל-errorLog לעיל, זהו תוכן של המשתמש עצמו.
+        allow read: if isSignedIn() && request.auth.uid == uid;
+
+        // יצירה: הבעלים בלבד, מסמך PENDING חדש בלבד, ברשימת שדות סגורה.
+        allow create: if isSignedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['userText', 'assistantText', 'status', 'submittedAt', 'completedAt', 'createdAt'])
+          && request.resource.data.userText is string && request.resource.data.userText.size() <= 4000
+          && request.resource.data.assistantText == null
+          && request.resource.data.status == 'PENDING'
+          && request.resource.data.submittedAt is number
+          && request.resource.data.completedAt == null
+          && request.resource.data.createdAt == request.time;
+
+        // עדכון: המעבר היחיד המותר — PENDING -> {COMPLETED, SILENCE}, פעם אחת בלבד, עם
+        // userText/submittedAt/createdAt מוכחים כבלתי-משתנים. מסמך COMPLETED/SILENCE קיים
+        // לעולם אינו יכול להתאים לחוק הזה שוב (התנאי resource.data.status == 'PENDING' חוסם זאת).
+        allow update: if isSignedIn() && request.auth.uid == uid
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status in ['COMPLETED', 'SILENCE']
+          && request.resource.data.userText == resource.data.userText
+          && request.resource.data.submittedAt == resource.data.submittedAt
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.keys().hasOnly(['userText', 'assistantText', 'status', 'submittedAt', 'completedAt', 'createdAt'])
+          && (request.resource.data.assistantText == null
+              || (request.resource.data.assistantText is string && request.resource.data.assistantText.size() <= 4000))
+          && request.resource.data.completedAt == request.time;
+
+        // מחיקה: הבעלים בלבד. משמש אך ורק את זרימת "איפוס נתונים" המפורשת (resetApp) —
+        // מסלול היצירה/העדכון עצמו (js/repositories/conversationRepository.js) לעולם אינו
+        // קורא למחיקה.
+        allow delete: if isSignedIn() && request.auth.uid == uid;
+      }
     }
 
     // ── קבוצות ──

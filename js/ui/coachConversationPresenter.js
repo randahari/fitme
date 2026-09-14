@@ -23,7 +23,26 @@
   'use strict';
 
   var deps = null;
-  function configure(injected) { deps = injected || {}; }
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §12) — a fresh configure() call registers the
+  // sign-out/session-transition cleanup, mirroring js/errorTelemetry.js's own identical
+  // deferred-registration pattern (this file is NOT the first script on the page, so
+  // window.SessionLifecycle IS already available whenever js/app.js actually calls
+  // configure() — unlike errorTelemetry.js, no ordering workaround is needed here beyond
+  // registering inside configure() rather than at module-load time, for consistency).
+  function configure(injected) {
+    deps = injected || {};
+    if (typeof window !== 'undefined' && window.SessionLifecycle && typeof window.SessionLifecycle.registerCleanup === 'function') {
+      // Clears the rendered thread only — Firestore history is never touched by a sign-out
+      // transition (CCC_001_SPEC_v1.0.md §12). Also resets lastClarificationRef, consistent
+      // with (not a change to) its own existing one-shot/in-memory/session-scoped contract
+      // (DUC_001_SPEC_v1.0.md §13) — it was already correctly unusable across a session
+      // transition; this only ensures it can never leak forward as stale state either.
+      window.SessionLifecycle.registerCleanup('coachConversation', function () {
+        clearThread();
+        lastClarificationRef = null;
+      });
+    }
+  }
 
   // §13 — never a Firestore/Typed Memory write; a plain, session-scoped module-local variable,
   // reset naturally on page reload (matching CARF's own frozen "no provider-session memory"
@@ -111,6 +130,50 @@
     if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble);
   }
 
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §7/§12) — clears the rendered thread only, never
+  // Firestore history. Called on Coach-screen restoration (before rendering fetched history, to
+  // avoid duplicate rendering across repeated calls) and on sign-out (registered in configure()
+  // above), matching js/memory.js's own closeSheet()-on-cleanup precedent.
+  function clearThread() {
+    var container = threadEl();
+    if (container) container.innerHTML = '';
+  }
+
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §7) — renders one persisted turn record exactly as
+  // the live in-session path already renders a turn: the user's own bubble always; an assistant
+  // bubble only when a real response exists. A PENDING or SILENCE record renders identically —
+  // the user's own message, no assistant bubble — matching renderNoResponse()'s own established
+  // treatment (never a structural "this failed" indicator, per Expression's own "no output" /
+  // honest-Silence discipline extended to the persisted record).
+  function renderHistoryTurn(record) {
+    var container = threadEl();
+    if (!container || !record) return;
+
+    var userBubble = deps.documentRef.createElement('div');
+    userBubble.className = 'coach-conversation-bubble coach-conversation-bubble-user';
+    userBubble.style.cssText = 'align-self:flex-end;background:#e8f0fe;border-radius:12px;padding:8px 12px;max-width:80%';
+    userBubble.textContent = record.userText;
+    container.appendChild(userBubble);
+
+    if (record.status === 'COMPLETED' && record.assistantText) {
+      var responseBubble = deps.documentRef.createElement('div');
+      responseBubble.className = 'coach-conversation-bubble coach-conversation-bubble-coach';
+      responseBubble.style.cssText = 'align-self:flex-start;background:#f1f1f1;border-radius:12px;padding:8px 12px;max-width:80%';
+      responseBubble.textContent = record.assistantText;
+      container.appendChild(responseBubble);
+    }
+  }
+
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §7/§12) — renders up to the most recent 50
+  // persisted turns, chronologically (records is already oldest->newest — the caller,
+  // js/app.js's loadCoachConversationHistory(), is responsible for that ordering). Clears the
+  // thread first so a repeated call (e.g. a second sign-in in the same page lifetime) never
+  // duplicates rendered content.
+  function renderHistory(records) {
+    clearThread();
+    (records || []).forEach(renderHistoryTurn);
+  }
+
   // §13/§14 — set by js/app.js's own DIRECT_TURN_PASS result handler after a successful render,
   // ONLY when the delivered TerminalDecision's own candidateProvenance[0].sourceCategory ===
   // 'DIRECT_USER_REQUEST' (real internal provenance already present on the governed decision
@@ -140,7 +203,9 @@
     renderResponse: renderResponse,
     renderNoResponse: renderNoResponse,
     setClarificationRef: setClarificationRef,
-    consumeClarificationContext: consumeClarificationContext
+    consumeClarificationContext: consumeClarificationContext,
+    clearThread: clearThread,
+    renderHistory: renderHistory
   };
 
   if (typeof window !== 'undefined') { window.CoachConversationPresenter = API; }

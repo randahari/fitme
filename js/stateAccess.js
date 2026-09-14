@@ -253,6 +253,35 @@
     return copyArrayOfObjects(filtered);
   }
 
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §9): bounded read of the user's own persisted
+  // Coach conversation transcript (js/repositories/conversationRepository.js), exposed only
+  // to Memory Layer's own new capability-holder identity (memoryLayer/
+  // RECENT_CONVERSATION_READ, mirroring memoryLayer/USER_STATED_MEMORY_READ's own established
+  // pattern exactly) — never coachDecisionSystem/DECISION_PASS, never widened. No consent gate
+  // (unlike readUserStatedMemory) — conversation transcript is the user's own directly-typed
+  // chat content, not an inferred/derived Typed Memory record; its own display surface already
+  // requires no separate consent today. Returns one raw candidate PAGE, newest-first,
+  // unfiltered by status — Memory Layer's own §8/§9 trimming logic (COMPLETED-only selection,
+  // the 6-turn/6,000-character bound, and the pagination LOOP itself, continuing across pages
+  // via the additive `afterCreatedAt` cursor until 6 COMPLETED turns are found or history is
+  // exhausted — PRODUCT CORRECTION applied to §9) is applied entirely by the caller, not here,
+  // matching this file's own "read op returns a protected snapshot, never pre-applies a
+  // caller's own business logic" discipline throughout.
+  //
+  // CURSOR STABILITY CORRECTION (Product/Architecture Final Review — pagination correctness):
+  // `afterTurnId` is an additive second cursor part, forwarded alongside `afterCreatedAt` —
+  // both are opaque, ordinary values (never a live Firestore SDK object), so passing a second
+  // one through this generic argument-forwarding read op raises no new snapshot-protection
+  // concern beyond the one already accepted for `afterCreatedAt` alone. See
+  // js/repositories/conversationRepository.js's own fetchRecent() header for the full rationale
+  // (a Firestore server timestamp is not guaranteed unique across documents).
+  async function readRecentConversation(identity, limitCount, afterCreatedAt, afterTurnId) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var records = await deps.fetchRecentConversation(limitCount, afterCreatedAt, afterTurnId);
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError(); // B3 §9 כלל 8: re-check אחרי async
+    return copyArrayOfObjects(Array.isArray(records) ? records : []);
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Write operations (owner commands, B3 SPEC §10/§11) ──
   // ══════════════════════════════════════════════════════════════════
@@ -389,7 +418,8 @@
     canFire: readCanFire,
     workoutPayload: readWorkoutPayload,
     recommendationFeedbackHistory: readRecommendationFeedbackHistory,
-    userStatedMemory: readUserStatedMemory
+    userStatedMemory: readUserStatedMemory,
+    recentConversation: readRecentConversation
   };
 
   var WRITE_OPS = {
@@ -477,6 +507,14 @@
     memoryLayer: {
       USER_STATED_MEMORY_READ: {
         reads: ['userStatedMemory'],
+        writes: []
+      },
+      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §9): a sibling capability-holder identity
+      // under the same engine, mirroring USER_STATED_MEMORY_READ's own established shape
+      // exactly — not a widening of it, not a new engine, not an alias for
+      // coachDecisionSystem.DECISION_PASS.
+      RECENT_CONVERSATION_READ: {
+        reads: ['recentConversation'],
         writes: []
       }
     }

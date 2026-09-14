@@ -641,6 +641,102 @@
       activityOppositionControlsAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §8/§9) — Recent Conversation Context: a
+    // bounded, recompute-from-source, non-authoritative projection of the user's own persisted
+    // Coach conversation transcript (users/{uid}/coachConversation), read via the new
+    // memoryLayer/RECENT_CONVERSATION_READ StateAccess capability-holder identity — never
+    // js/repositories/conversationRepository.js directly (CD-02-style discipline, mirroring
+    // every other Firestore-backed read in this file).
+    //
+    // PRODUCT CORRECTION (Product/Architecture Final Review, applied to the original §9 design):
+    // the canonical requirement is the ACTUAL latest 6 COMPLETED turns, found regardless of how
+    // many PENDING/SILENCE turns are interleaved more recently — a single bounded candidate
+    // window (the original design) is not semantically equivalent to that and was rejected.
+    // This block instead performs deterministic, cursor-based pagination — one bounded,
+    // single-field, auto-indexed page query at a time (never a composite `status ==` + orderBy
+    // query, which would require a manually configured Firestore index this repository does not
+    // have; never one unbounded whole-collection read) — continuing strictly until either 6
+    // COMPLETED turns have been found, the 6,000-character cap is reached, or the collection is
+    // exhausted (a page returning fewer documents than requested). No additional page-count
+    // ceiling is imposed — Product's own explicit instruction was that no arbitrary lookback
+    // bound may prevent finding the true latest 6 COMPLETED turns; the two real, already-
+    // approved termination conditions (found 6, or exhausted) are the only bound.
+    //
+    // Only status === 'COMPLETED' turns are ever included in the final projection (§8) — a
+    // PENDING or SILENCE turn encountered mid-walk is skipped, never included, regardless of how
+    // recent it is, but its own createdAt still advances the pagination cursor correctly (the
+    // cursor always continues from the oldest document actually returned in the page just read,
+    // across ALL statuses — never only among COMPLETED ones — so the walk never skips over or
+    // loses track of real chronological history). Whole-turn, newest-first selection under the
+    // 6,000-character cap (walking the full, potentially multi-page candidate sequence exactly
+    // as if it were one continuous list), then re-ordered chronologically (§8's own frozen,
+    // deterministic trimming algorithm) — never summarized, never embedded, never a second AI
+    // pass. Graceful degradation to UNAVAILABLE on any failure (D3 §12.3) — never blocks the
+    // Decision Pass.
+    //
+    // CURSOR STABILITY CORRECTION (Product/Architecture Final Review — pagination correctness):
+    // `createdAt` alone is not a safe cursor — a Firestore server timestamp is not guaranteed
+    // unique across documents (two turns created in the same tick can legitimately share one),
+    // and Firestore's own documented cursor semantics warn that a single-field cursor is not
+    // guaranteed deterministic when that field has duplicate values: `.startAfter(value)`
+    // excludes EVERY document equal to that value, so a page boundary landing inside an
+    // equal-createdAt group could silently skip sibling documents. The cursor is therefore a
+    // TWO-PART value — `createdAt` plus `turnId` (the document's own ID, always unique) — mirrored
+    // exactly by conversationRepository.js's own compound `.orderBy('createdAt').orderBy(
+    // documentId())` query shape, so (createdAt, turnId) together give a total, fully
+    // deterministic order with no possible tie.
+    var CCC_CONTEXT_PAGE_SIZE = 10;
+    var CCC_CONTEXT_MAX_TURNS = 6;
+    var CCC_CONTEXT_MAX_CHARS = 6000;
+    var recentConversationContext = null;
+    var recentConversationContextAvailable = false;
+    try {
+      var rccAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer', action: 'RECENT_CONVERSATION_READ',
+        userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+      });
+      var selected = [];
+      var runningChars = 0;
+      var cursor;            // undefined on the first page — StateAccess's generic read wrapper
+      var cursorTurnId;      // passes both straight through to fetchRecentConversation(limit,
+                              // cursor, cursorTurnId) — a matched pair, always advanced together
+      var capReached = false;
+      var exhausted = false;
+      while (selected.length < CCC_CONTEXT_MAX_TURNS && !capReached && !exhausted) {
+        var page = await rccAccess.read.recentConversation(CCC_CONTEXT_PAGE_SIZE, cursor, cursorTurnId);
+        var pageArr = Array.isArray(page) ? page : [];
+        if (pageArr.length < CCC_CONTEXT_PAGE_SIZE) exhausted = true; // fewer than requested -> no older history remains
+        if (!pageArr.length) break;
+        var lastOfPage = pageArr[pageArr.length - 1];
+        cursor = lastOfPage.createdAt;       // continue from the oldest doc THIS page returned,
+        cursorTurnId = lastOfPage.turnId;    // across all statuses — both halves of the pair
+        for (var pi = 0; pi < pageArr.length && selected.length < CCC_CONTEXT_MAX_TURNS; pi++) {
+          var candidate = pageArr[pi];
+          if (!candidate || candidate.status !== 'COMPLETED') continue; // skipped, never included — but already advanced the cursor above
+          var turnChars = (candidate.userText ? candidate.userText.length : 0) + (candidate.assistantText ? candidate.assistantText.length : 0);
+          if (runningChars + turnChars > CCC_CONTEXT_MAX_CHARS) { capReached = true; break; } // whole turns only — never a partial turn; stop the entire walk here
+          runningChars += turnChars;
+          selected.push(candidate);
+        }
+      }
+      selected.reverse(); // newest-first selection -> chronological order for the actual projection
+      recentConversationContext = freezeShallow({
+        items: freezeShallow(selected.map(function (t) {
+          return freezeShallow({ turnId: t.turnId, userText: t.userText, assistantText: t.assistantText, submittedAt: t.submittedAt });
+        })),
+        // PRODUCT CORRECTION 1 (CCC_001_SPEC_v1.0.md §9) — a context/provenance class, never an
+        // authority tier: modeled on, never injected into, readinessStateContext's own existing
+        // `provenance` tag below. `interpretationAuthority` is deliberately never set on this
+        // shape — that tag's one real meaning elsewhere in this file ("an AI classifier produced
+        // this reading") does not apply to raw, verbatim, already-rendered transcript.
+        provenance: 'CONVERSATION_CONTEXT'
+      });
+      recentConversationContextAvailable = true;
+    } catch (e) {
+      recentConversationContext = null;
+      recentConversationContextAvailable = false; // graceful degradation, D3 §12.3
+    }
+
     return freezeShallow({
       schemaVersion: 'coach-decision-system-pipeline-context/1.0',
       userId: identity.userId,
@@ -661,6 +757,7 @@
       readinessStateContext: readinessStateContext,
       activityPreference: activityPreference,
       activityOppositionControls: activityOppositionControls,
+      recentConversationContext: recentConversationContext,
       availability: freezeShallow({
         derivedIntelligence: derivedAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         feedbackHistory: feedbackAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
@@ -680,7 +777,8 @@
         userSafetyProvenance: userSafetyProvenanceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         readinessStateContext: readinessStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         activityPreference: activityPreferenceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
-        activityOppositionControls: activityOppositionControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
+        activityOppositionControls: activityOppositionControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        recentConversationContext: recentConversationContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE'
       })
     });
   }
@@ -722,11 +820,18 @@
       explicitRequestControls: pipelineContext.explicitRequestControls, // always, per CARF Ch.07
       activityPreference: pipelineContext.activityPreference,
       goalObjectiveContext: null, // not domain-relevant for TR&R V1 (CARF Ch.07's own conditional-inclusion rule)
+      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §10.2) — selective, domain-agnostic
+      // re-projection of the SAME shared pipelineContext.recentConversationContext field
+      // assembled once above (never a TRR-specific conversation-history mechanism; any future
+      // reasoning-context builder re-projects this identical field with zero new assembly
+      // logic).
+      recentConversationContext: pipelineContext.recentConversationContext,
       availability: freezeShallow({
         readinessStateContext: pipelineContext.availability && pipelineContext.availability.readinessStateContext,
         userSafetyContext: pipelineContext.availability && pipelineContext.availability.userSafetyContext,
         explicitRequestControls: pipelineContext.availability && pipelineContext.availability.explicitRequestControls,
-        activityPreference: pipelineContext.availability && pipelineContext.availability.activityPreference
+        activityPreference: pipelineContext.availability && pipelineContext.availability.activityPreference,
+        recentConversationContext: pipelineContext.availability && pipelineContext.availability.recentConversationContext
       })
     });
   }

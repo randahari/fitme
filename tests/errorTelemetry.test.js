@@ -367,12 +367,20 @@ test('Correction 1 wiring: neither global handler function body ever supplies a 
   assert.match(rejectionBody, /console\.error\('\[FitMe telemetry\] GLOBAL\/UNHANDLED_REJECTION \(console-only, never persisted\):', event && event\.reason\)/);
 });
 
-test('wiring: the three named application-failure integration points call ErrorTelemetry.report, and no other call site was mechanically added', () => {
+test('wiring: the named application-failure integration points call ErrorTelemetry.report, and no other call site was mechanically added', () => {
+  // Item 7's original 3 (loadUserData / saveProfile / submitCoachConversationTurn's own
+  // pipeline-exception catch) plus CCC-001's own 4 new, individually-reviewed persistence
+  // integration points (docs/specs/CCC_001_SPEC_v1.0.md §11: PENDING create failure,
+  // COMPLETED/SILENCE completion-update failure — two call sites — and history-load failure) —
+  // still a small, explicit, hand-reviewed set, never a mechanical console.error replacement.
   const occurrences = (appJs.match(/ErrorTelemetry\.report\(/g) || []).length;
-  assert.equal(occurrences, 3, 'exactly loadUserData / saveProfile / submitCoachConversationTurn — a small, explicit set, not a mechanical console.error replacement');
+  assert.equal(occurrences, 7, 'expected exactly 7 explicit integration points (3 from Item 7 + 4 from CCC-001)');
   assert.match(appJs, /operation: 'LOAD_USER_DATA'/);
   assert.match(appJs, /operation: 'SAVE_PROFILE'/);
   assert.match(appJs, /operation: 'DIRECT_TURN_PASS'/);
+  assert.match(appJs, /operation: 'PERSIST_TURN_CREATE'/);
+  assert.match(appJs, /operation: 'PERSIST_TURN_COMPLETE'/);
+  assert.match(appJs, /operation: 'LOAD_HISTORY'/);
 });
 
 test('wiring: the Coach turn integration point never passes a `message` field (the one path closest to user-authored content)', () => {
