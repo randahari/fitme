@@ -226,8 +226,13 @@
   // coachDecisionSystem/DECISION_PASS, never widened. Consent
   // (userProfile.memoryConsent.granted) is checked BEFORE any fetch is attempted — missing
   // or false fails closed to [] with the fetch dependency never invoked (§7). Filters to
-  // exactly the V1-approved subset (type ∈ {'fact','preference'} AND source==='user_stated'
-  // AND status==='active') — never widened merely because other fields exist on a record.
+  // exactly the V1-approved subset (type in {'fact','preference','safety_disclosure'} AND
+  // source==='user_stated' AND status==='active') — never widened merely because other fields
+  // exist on a record. Friends Alpha Item 6 (USER_DISCLOSURE V1) — 'safety_disclosure' added to
+  // this closed set so USC-001's own, unmodified downstream read of userStatedMemory() can
+  // observe a durably-captured Safety disclosure exactly as it already observes a manually
+  // Settings-entered 'fact' — USC-001's own assembly logic, consent gate, ordering, and output
+  // shape below are otherwise byte-unchanged.
   // Deterministic order: updated_at desc, id asc tie-break (§10.2) — owned here explicitly,
   // never relying on js/memory.js's own internal sort as an implicit contract. No CRUD is
   // exposed — read-only, single operation, same discipline as every other read op above.
@@ -240,7 +245,7 @@
     if (!isCurrent(identity.sessionGeneration)) throw staleSessionError(); // B3 §9 כלל 8
     var list = Array.isArray(raw) ? raw : [];
     var filtered = list.filter(function (m) {
-      return m && (m.type === 'fact' || m.type === 'preference') && m.source === 'user_stated' && m.status === 'active';
+      return m && (m.type === 'fact' || m.type === 'preference' || m.type === 'safety_disclosure') && m.source === 'user_stated' && m.status === 'active';
     }).map(function (m) {
       return { id: m._id || m.id || null, type: m.type, payload: m.payload, confidence: m.confidence, source: 'user_stated', updatedAt: m.updated_at };
     });

@@ -2483,16 +2483,87 @@ async function persistCpiPreferenceRecord(candidateRecord) {
   };
 }
 
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — deterministic document ID for a conversational
+// Safety disclosure: 'conv_safety_' + safeKey(subjectKey). subjectKey is already normalized
+// (lowercased/trimmed, by safetyDisclosureIntakeGate.js's own normalizeLiteral()) before
+// authorization — never re-normalized here. Same subject -> same record, for both a fresh
+// restriction and any later correction addressing it (idempotency/dedup, §16).
+function safetyDisclosureDeterministicMemoryId(subjectKey) {
+  return 'conv_safety_' + FitMeMemory.safeKey(subjectKey);
+}
+
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — the persistence boundary for durable Safety
+// capture, structurally mirroring persistCpiPreferenceRecord() above exactly (same js/memory.js
+// CRUD API, same never-partially-applies-a-write discipline). Two modes, both gated by
+// safetyDisclosureIntakeGate.js's own consent+Safety-veto authorization before this function is
+// ever called:
+//   NEW_RESTRICTION — create-or-update-in-place an active 'safety_disclosure' record.
+//   CORRECTION — mark an existing active record superseded (§15 — an ordinary state statement
+//     never reaches this function at all; only an explicit, unambiguous correction, already
+//     matched to one specific existing record by the gate, does). If no active record exists at
+//     that subjectKey any more (already superseded/never existed), this is a safe no-op success
+//     — ambiguity/staleness never fabricates a change.
+// Returns { success: true, record: {category, capturedToMemory, safetyRelevant} } or
+// { success: false } — capturedToMemory is true only once the write has actually completed.
+async function persistSafetyDisclosureRecord(candidateRecord) {
+  var id = safetyDisclosureDeterministicMemoryId(candidateRecord.subjectKey);
+
+  if (candidateRecord.mode === 'CORRECTION') {
+    var existingForCorrection;
+    try {
+      existingForCorrection = await FitMeMemory.get(id);
+    } catch (e) {
+      ErrorTelemetry.report({ code: (e && e.code) || 'SAFETY_DISCLOSURE_EXISTENCE_CHECK_FAILED', module: 'COACH', operation: 'SAFETY_DISCLOSURE_PERSIST' });
+      return { success: false };
+    }
+    if (!existingForCorrection || existingForCorrection.status !== 'active') {
+      // §15 — nothing active to correct any more; a safe no-op, never fabricates a change.
+      return { success: true, record: { category: candidateRecord.category, capturedToMemory: false, safetyRelevant: true } };
+    }
+    try {
+      await FitMeMemory.update(id, { status: 'superseded' });
+    } catch (e) {
+      ErrorTelemetry.report({ code: (e && e.code) || 'SAFETY_DISCLOSURE_PERSIST_WRITE_FAILED', module: 'COACH', operation: 'SAFETY_DISCLOSURE_PERSIST' });
+      return { success: false };
+    }
+    return { success: true, record: { category: candidateRecord.category, capturedToMemory: true, safetyRelevant: true } };
+  }
+
+  // mode === 'NEW_RESTRICTION'
+  var payload = {
+    restrictionText: candidateRecord.restrictedActivityText,
+    subjectKey: candidateRecord.subjectKey,
+    sourceTurnId: candidateRecord.sourceTurnId
+  };
+  try {
+    var existing = await FitMeMemory.get(id);
+    if (!existing) {
+      await FitMeMemory.create({ type: 'safety_disclosure', payload: payload, confidence: 1, source: 'user_stated', status: 'active' }, id);
+    } else {
+      await FitMeMemory.update(id, { payload: payload, confidence: 1, status: 'active' });
+    }
+  } catch (e) {
+    ErrorTelemetry.report({ code: (e && e.code) || 'SAFETY_DISCLOSURE_PERSIST_WRITE_FAILED', module: 'COACH', operation: 'SAFETY_DISCLOSURE_PERSIST' });
+    return { success: false };
+  }
+
+  return { success: true, record: { category: candidateRecord.category, capturedToMemory: true, safetyRelevant: true } };
+}
+
 // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — dispatches Unified Finalization
 // through the SAME governed EngineRegistry.run() entry point runUserMessageEngine() already uses
 // (mirroring exactly how DIRECT_TURN_PASS itself was introduced, DUC-001 §03) — app.js never
 // calls internalPipelineOrchestrator.js directly, only ever through the governed engine entry
 // point. Called only after persistCpiPreferenceRecord() above has already confirmed success.
-async function runPreferenceAcknowledgmentFinalizationEngine(pipelineContext, terminalDecision, confirmedRecord, sessionGeneration) {
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — confirmedDisclosureRecord is an additive, optional
+// 5th parameter (null for every pre-Item-6 call site, i.e. byte-identical behavior there): the
+// SAME single Unified Finalization action now carries both CPI's own confirmedRecord and this
+// module's confirmedDisclosureRecord, never a second finalization action/pipeline.
+async function runPreferenceAcknowledgmentFinalizationEngine(pipelineContext, terminalDecision, confirmedRecord, sessionGeneration, confirmedDisclosureRecord) {
   return EngineRegistry.run({
     trigger: 'USER_MESSAGE_SUBMITTED',
     actions: { coachDecisionSystem: 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE' },
-    payloads: { coachDecisionSystem: { pipelineContext: pipelineContext, terminalDecision: terminalDecision, confirmedRecord: confirmedRecord } },
+    payloads: { coachDecisionSystem: { pipelineContext: pipelineContext, terminalDecision: terminalDecision, confirmedRecord: confirmedRecord, confirmedDisclosureRecord: confirmedDisclosureRecord || null } },
     context: { userId: currentUser && currentUser.uid, sessionGeneration: sessionGeneration, now: Date.now() }
   });
 }
@@ -2550,6 +2621,12 @@ async function submitCoachConversationTurn() {
     // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 5) — additive; undefined for every
     // pre-CPI-001 engine result shape.
     var preferenceIntakeAuthorization = cdsResult && cdsResult.output && cdsResult.output.preferenceIntakeAuthorization;
+    // Friends Alpha Item 6 (USER_DISCLOSURE V1) — additive; undefined for every pre-Item-6 engine
+    // result shape, and authorized:false whenever no disclosure was recognized or capture wasn't
+    // eligible/consented (the overwhelmingly common case — a recognized disclosure with no
+    // capture already rendered synchronously inside Pass 1 itself, never reaching this branch at
+    // all; see internalPipelineOrchestrator.js's own applyDisclosureAcknowledgmentIfNeeded()).
+    var disclosureCaptureAuthorization = cdsResult && cdsResult.output && cdsResult.output.disclosureCaptureAuthorization;
 
     // §15 step 6 — re-checked immediately before rendering, mirroring
     // TriggerController.presentDeliveryIntent()'s own existing guard verbatim
@@ -2559,10 +2636,13 @@ async function submitCoachConversationTurn() {
     // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15) — the ENTIRE authorized branch is
     // handled separately, below; the pre-existing rendering/CCC-001 logic in this function
     // (everything from here through the matching `}` below) remains byte-identical, reached only
-    // when authorized !== true (Product Decision "C").
+    // when NEITHER authorization is true (Product Decision "C", generalized to two independent,
+    // parallel authorizations — CPI-only turns are completely unaffected by this generalization).
     var cpiAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
+    var disclosureCaptureAuthorized = !!(disclosureCaptureAuthorization && disclosureCaptureAuthorization.authorized === true);
+    var deferAuthorized = cpiAuthorized || disclosureCaptureAuthorized;
 
-    if (!cpiAuthorized) {
+    if (!deferAuthorized) {
 
     if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
       CoachConversationPresenter.renderResponse(expression.deliveryIntent, turn.turnId);
@@ -2619,21 +2699,25 @@ async function submitCoachConversationTurn() {
     }
 
     return;
-    } // end: if (!cpiAuthorized) — pre-existing, unmodified DUC-001 rendering/CCC-001 logic above.
+    } // end: if (!deferAuthorized) — pre-existing, unmodified DUC-001 rendering/CCC-001 logic above.
 
     // ══════════════════════════════════════════════════════════════════
-    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15) — cpiAuthorized === true.
-    // No rendering, no CCC-001 write yet: the record stays PENDING (§14 step 8) until persistence
-    // and Unified Finalization have both resolved (§14's own required invariant, verbatim).
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15), generalized for Friends Alpha
+    // Item 6 (USER_DISCLOSURE V1) — deferAuthorized === true (cpiAuthorized and/or
+    // disclosureCaptureAuthorized). No rendering, no CCC-001 write yet: the record stays PENDING
+    // (§14 step 8) until every attempted, authorized persistence write AND Unified Finalization
+    // have both resolved (§14's own required invariant, generalized to cover either or both
+    // records). If ANY authorized write fails, the entire turn is treated as a technical failure
+    // — the same all-or-nothing discipline CPI-001 already established for its own single write,
+    // extended rather than redesigned for the rare turn where two independent writes are both
+    // authorized.
     // ══════════════════════════════════════════════════════════════════
     var cpiPipelineContext = cdsResult.output.pipelineContext;
     var cpiBaseTerminalDecision = cdsResult.output.terminalDecision || null;
 
-    var cpiPersistResult = await persistCpiPreferenceRecord(preferenceIntakeAuthorization.candidateRecord);
-
+    var cpiPersistResult = cpiAuthorized ? await persistCpiPreferenceRecord(preferenceIntakeAuthorization.candidateRecord) : null;
     if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
-
-    if (!cpiPersistResult.success) {
+    if (cpiAuthorized && !cpiPersistResult.success) {
       // §14 step 10 / §16 Scenario 4 — the entire turn is treated as a technical failure, exactly
       // like the outer catch block below: PENDING remains, no completeTurn() call at all, even
       // when Pass 1 had separately computed a real primary decision this cycle (disclosed,
@@ -2643,11 +2727,24 @@ async function submitCoachConversationTurn() {
       return;
     }
 
-    // §14 steps 11-13 — Unified Finalization, dispatched unconditionally on a successful write,
-    // regardless of whether cpiBaseTerminalDecision is SILENCE-kind, absent, or real content
-    // (the shape decision itself is made inside runPreferenceAcknowledgmentFinalization()).
+    var disclosurePersistResult = disclosureCaptureAuthorized ? await persistSafetyDisclosureRecord(disclosureCaptureAuthorization.candidateRecord) : null;
+    if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+    if (disclosureCaptureAuthorized && !disclosurePersistResult.success) {
+      // Same all-or-nothing discipline as the CPI write above — a partially-succeeded turn
+      // (e.g. the CPI write above already succeeded) is never rendered/finalized as if nothing
+      // failed; the turn stays PENDING, truthfully.
+      CoachConversationPresenter.renderNoResponse(turn.turnId);
+      CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');
+      return;
+    }
+
+    // §14 steps 11-13 — Unified Finalization, dispatched unconditionally once every authorized
+    // write above has succeeded, regardless of whether cpiBaseTerminalDecision is SILENCE-kind,
+    // absent, or real content (the shape decision itself is made inside
+    // runPreferenceAcknowledgmentFinalization()).
     var cpiFinalizationSummary = await runPreferenceAcknowledgmentFinalizationEngine(
-      cpiPipelineContext, cpiBaseTerminalDecision, cpiPersistResult.record, turn.sessionGeneration);
+      cpiPipelineContext, cpiBaseTerminalDecision, cpiPersistResult && cpiPersistResult.record,
+      turn.sessionGeneration, disclosurePersistResult && disclosurePersistResult.record);
     var cpiFinalizationResult = cpiFinalizationSummary && cpiFinalizationSummary.results && cpiFinalizationSummary.results.coachDecisionSystem;
     var cpiFinalExpression = cpiFinalizationResult && cpiFinalizationResult.output && cpiFinalizationResult.output.expression;
 

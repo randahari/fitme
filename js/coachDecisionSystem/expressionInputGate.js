@@ -48,7 +48,11 @@
   // authorized kind for a durably-captured, non-actionable explicit preference. Never Safety-
   // reviewed (no Candidate ever existed), exactly like UNSUPPORTED — see the dedicated exclusion
   // below (mirrors UNSUPPORTED's own established treatment byte-for-byte).
-  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE'];
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — a seventh canonical, Product/Architecture-
+  // authorized kind for a bounded acknowledgment of a recognized, non-request user disclosure.
+  // Never Safety-reviewed (no Candidate ever existed), exactly like UNSUPPORTED/
+  // ACKNOWLEDGED_PREFERENCE — see the dedicated exclusion below.
+  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE'];
   var BOUNDARY_TYPES = ['REFUSAL', 'ESCALATION'];
   var SAFETY_DISPOSITIONS = ['UNMODIFIED', 'MODIFIED', 'DEFERRED', 'BLOCKED', 'ESCALATED'];
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §8) — this module's own, independently-authored copy
@@ -58,6 +62,11 @@
   // turnUnderstandingInterpreter.js's own DUC_VALID_DOMAIN_TOPIC_PAIRS).
   var PREFERENCE_CLASSES = ['ACTIVITY_SENTIMENT', 'TRAINING_TIME_PREFERENCE', 'TRAINING_FORMAT_PREFERENCE'];
   var PREFERENCE_POLARITIES = ['POSITIVE', 'NEGATIVE'];
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — this module's own, independently-authored copy of
+  // the closed disclosure-category vocabulary userDisclosureRecognizer.js already declares
+  // (reused BY PATTERN, never by import — matching PREFERENCE_CLASSES's own established
+  // convention immediately above).
+  var DISCLOSURE_CATEGORIES = ['STATE', 'DESIRE', 'CAPACITY_OR_CONSTRAINT', 'COACHING_RELEVANT_EXPERIENCE'];
 
   function isValidRationale(rationale) {
     if (!isPlainObject(rationale)) return false;
@@ -76,6 +85,19 @@
     if (PREFERENCE_POLARITIES.indexOf(ack.polarity) === -1) return false;
     if (typeof ack.target !== 'string' || ack.target.length === 0) return false;
     if (typeof ack.wasReactivatedFromRejected !== 'boolean') return false;
+    return true;
+  }
+
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — the disclosure-acknowledgment analogue of
+  // isValidAcknowledgmentShape() above, reused for both `disclosureAcknowledgment`
+  // (kind:'ACKNOWLEDGED_DISCLOSURE' only, required) and `secondaryDisclosureAcknowledgment` (any
+  // kind, optional) — identical field/vocabulary requirements, just different presence rules at
+  // the two call sites below.
+  function isValidDisclosureAcknowledgmentShape(ack) {
+    if (!isPlainObject(ack)) return false;
+    if (DISCLOSURE_CATEGORIES.indexOf(ack.category) === -1) return false;
+    if (typeof ack.capturedToMemory !== 'boolean') return false;
+    if (typeof ack.safetyRelevant !== 'boolean') return false;
     return true;
   }
 
@@ -118,12 +140,13 @@
       if (sd.disposition === 'DEFERRED' && candidate.kind !== 'SILENCE') return false;
       if (sd.disposition === 'BLOCKED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'REFUSAL')) return false;
       if (sd.disposition === 'ESCALATED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'ESCALATION')) return false;
-    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED' && candidate.kind !== 'ACKNOWLEDGED_PREFERENCE') {
+    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED' && candidate.kind !== 'ACKNOWLEDGED_PREFERENCE' && candidate.kind !== 'ACKNOWLEDGED_DISCLOSURE') {
       // Absent only for a Decision-Pass-level Silence formed from zero surviving Candidates
       // (§23.4), a DUC-001 UNSUPPORTED outcome (docs/specs/DUC_001_SPEC_v1.0.md §12 — no
-      // Candidate ever existed, so Safety was never invoked), or a CPI-001 ACKNOWLEDGED_PREFERENCE
-      // outcome (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1 — same reason, no Candidate ever existed)
-      // — required for every other kind, including a Safety-DEFERRED Silence.
+      // Candidate ever existed, so Safety was never invoked), a CPI-001 ACKNOWLEDGED_PREFERENCE
+      // outcome (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1 — same reason), or a Friends Alpha Item 6
+      // ACKNOWLEDGED_DISCLOSURE outcome (same reason — no Candidate ever existed) — required for
+      // every other kind, including a Safety-DEFERRED Silence.
       return false;
     }
 
@@ -151,6 +174,24 @@
       if (!isValidAcknowledgmentShape(candidate.secondaryAcknowledgment)) return false;
     }
 
+    // Friends Alpha Item 6 (USER_DISCLOSURE V1) — disclosureAcknowledgment present iff
+    // kind === 'ACKNOWLEDGED_DISCLOSURE' (mirrors preferenceAcknowledgment's own "present iff
+    // kind===..." discipline immediately above). Never present on any other kind.
+    var hasDisclosureAcknowledgment = Object.prototype.hasOwnProperty.call(candidate, 'disclosureAcknowledgment');
+    if (candidate.kind === 'ACKNOWLEDGED_DISCLOSURE') {
+      if (!hasDisclosureAcknowledgment || !isValidDisclosureAcknowledgmentShape(candidate.disclosureAcknowledgment)) return false;
+    } else if (hasDisclosureAcknowledgment) {
+      return false;
+    }
+
+    // Friends Alpha Item 6 (USER_DISCLOSURE V1) — secondaryDisclosureAcknowledgment is a purely
+    // ADDITIVE, OPTIONAL field on ANY kind, composable with secondaryAcknowledgment (a turn may
+    // carry both a preference and a disclosure acknowledgment) — absent on every pre-Item-6
+    // TerminalDecision; when present, must conform to the same closed shape.
+    if (Object.prototype.hasOwnProperty.call(candidate, 'secondaryDisclosureAcknowledgment')) {
+      if (!isValidDisclosureAcknowledgmentShape(candidate.secondaryDisclosureAcknowledgment)) return false;
+    }
+
     return true;
   }
 
@@ -164,6 +205,7 @@
     isValidTerminalDecision: isValidTerminalDecision,
     isSilenceKind: isSilenceKind,
     isValidAcknowledgmentShape: isValidAcknowledgmentShape,
+    isValidDisclosureAcknowledgmentShape: isValidDisclosureAcknowledgmentShape,
     KINDS: KINDS
   };
 

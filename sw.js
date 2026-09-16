@@ -90,6 +90,8 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/conversationalNeedCreator.js',
   '/fitme/js/coachDecisionSystem/explicitPreferenceStatementInterpreter.js',
   '/fitme/js/coachDecisionSystem/preferenceIntakeGate.js',
+  '/fitme/js/coachDecisionSystem/userDisclosureRecognizer.js',
+  '/fitme/js/coachDecisionSystem/safetyDisclosureIntakeGate.js',
   '/fitme/js/coachDecisionSystem/internalPipelineOrchestrator.js',
   '/fitme/js/coachDecisionSystem/registerCoachDecisionSystem.js',
   '/fitme/js/ui/navigationController.js',

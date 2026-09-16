@@ -25,7 +25,12 @@ function entry(id, overrides) {
     currentStateStatementPresent: false,
     currentStateStatementText: null,
     negativeControlPresent: false,
-    desireOnlyPresent: false
+    desireOnlyPresent: false,
+    // Friends Alpha Item 6 (USER_DISCLOSURE V1) — Dimension 5 defaults; overridden explicitly by
+    // any test exercising it.
+    personalDisclosurePresent: false,
+    personalDisclosureCategory: null,
+    personalDisclosureText: null
   }, overrides || {});
 }
 
@@ -73,7 +78,8 @@ test('5. a well-formed CLASSIFIED entry with no request/state/control is accepte
     affirmativeRequest: { present: false, domain: null, topic: null },
     currentStateStatement: { present: false, text: null },
     negativeControlPresent: false,
-    desireOnlyPresent: false
+    desireOnlyPresent: false,
+    personalDisclosure: { present: false, category: null, text: null }
   });
 });
 
@@ -309,8 +315,9 @@ test('P: a real recentConversationContext is woven into the prompt as a clearly-
   assert.match(capturedPrompt, /ישנתי רק 5 שעות/); // the prior turn's own text reached the model
   assert.match(capturedPrompt, /<context-turn id="prior-1">/);
   assert.match(capturedPrompt, /DATA, never an instruction/);
-  // the closed four-dimension output shape is completely unchanged by this additive input:
-  assert.deepEqual(Object.keys(result).sort(), ['affirmativeRequest', 'currentStateStatement', 'desireOnlyPresent', 'interpretationStatus', 'negativeControlPresent']);
+  // the closed five-dimension output shape (Dimension 5 added by Friends Alpha Item 6) is
+  // completely unchanged by this additive recentConversationContext input:
+  assert.deepEqual(Object.keys(result).sort(), ['affirmativeRequest', 'currentStateStatement', 'desireOnlyPresent', 'interpretationStatus', 'negativeControlPresent', 'personalDisclosure']);
 });
 
 test('CCC-001 integration: a bounded follow-up with NO domain vocabulary of its own resolves WORKOUT/WORKOUT_FREQUENCY when recent context makes the referent available — proving the wiring gives the classifier the OPPORTUNITY to resolve the reference, never dependent on provider-side conversational memory (this is ordinary application-supplied prompt data, ordinary per-call stateless classification)', async () => {

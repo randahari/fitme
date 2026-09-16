@@ -377,9 +377,13 @@ test('wiring: the named application-failure integration points call ErrorTelemet
   // inside persistCpiPreferenceRecord() — two call sites — and the SAME, already-established
   // 'PERSIST_TURN_COMPLETE' operation's own COMPLETED/SILENCE completion-write failure paths,
   // reused verbatim for the Unified Finalization branch's own two completeTurn() call sites) —
-  // still a small, explicit, hand-reviewed set, never a mechanical console.error replacement.
+  // plus Friends Alpha Item 6's own 3 new, individually-reviewed integration points inside
+  // persistSafetyDisclosureRecord() (the CORRECTION-mode existence-check failure, the
+  // CORRECTION-mode supersede-write failure, and the NEW_RESTRICTION-mode create/update-write
+  // failure) — still a small, explicit, hand-reviewed set, never a mechanical console.error
+  // replacement.
   const occurrences = (appJs.match(/ErrorTelemetry\.report\(/g) || []).length;
-  assert.equal(occurrences, 11, 'expected exactly 11 explicit integration points (3 from Item 7 + 4 from CCC-001 + 4 from CPI-001)');
+  assert.equal(occurrences, 14, 'expected exactly 14 explicit integration points (3 from Item 7 + 4 from CCC-001 + 4 from CPI-001 + 3 from Item 6)');
   assert.match(appJs, /operation: 'LOAD_USER_DATA'/);
   assert.match(appJs, /operation: 'SAVE_PROFILE'/);
   assert.match(appJs, /operation: 'DIRECT_TURN_PASS'/);
@@ -389,6 +393,9 @@ test('wiring: the named application-failure integration points call ErrorTelemet
   assert.match(appJs, /operation: 'CPI_PERSIST'/);
   assert.match(appJs, /code: \(e && e\.code\) \|\| 'CPI_EXISTENCE_CHECK_FAILED'/);
   assert.match(appJs, /code: \(e && e\.code\) \|\| 'CPI_PERSIST_WRITE_FAILED'/);
+  assert.match(appJs, /operation: 'SAFETY_DISCLOSURE_PERSIST'/);
+  assert.match(appJs, /code: \(e && e\.code\) \|\| 'SAFETY_DISCLOSURE_EXISTENCE_CHECK_FAILED'/);
+  assert.match(appJs, /code: \(e && e\.code\) \|\| 'SAFETY_DISCLOSURE_PERSIST_WRITE_FAILED'/);
 });
 
 test('wiring: the Coach turn integration point never passes a `message` field (the one path closest to user-authored content)', () => {

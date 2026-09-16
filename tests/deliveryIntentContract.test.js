@@ -168,8 +168,9 @@ test('KINDS excludes SILENCE; SAFETY_DISPOSITIONS excludes DEFERRED', () => {
   // kind, 'UNSUPPORTED' — an honest no-capability response is itself a Delivery Intent.
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) authorized a sixth, by the identical
   // precedent: 'ACKNOWLEDGED_PREFERENCE' — a durably-captured preference acknowledgment is
-  // itself a real Delivery Intent, never Silence's own zero-output case.
-  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE']);
+  // itself a real Delivery Intent, never Silence's own zero-output case. Friends Alpha Item 6
+  // authorized a seventh, by the identical precedent: 'ACKNOWLEDGED_DISCLOSURE'.
+  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
   assert.equal(DeliveryIntentContract.SAFETY_DISPOSITIONS.indexOf('DEFERRED'), -1);
   assert.deepEqual(DeliveryIntentContract.SAFETY_DISPOSITIONS, ['UNMODIFIED', 'MODIFIED', 'BLOCKED', 'ESCALATED']);
   assert.deepEqual(DeliveryIntentContract.BOUNDARY_TYPES, ['REFUSAL', 'ESCALATION']);

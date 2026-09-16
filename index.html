@@ -768,6 +768,13 @@
        require/window time, so both must already be loaded by this point. -->
   <script src="js/coachDecisionSystem/explicitPreferenceStatementInterpreter.js"></script>
   <script src="js/coachDecisionSystem/preferenceIntakeGate.js"></script>
+  <!-- Friends Alpha Item 6 (USER_DISCLOSURE V1) — two new modules, loaded before
+       internalPipelineOrchestrator.js, their sole consumer (same pattern as
+       explicitPreferenceStatementInterpreter.js/preferenceIntakeGate.js immediately above).
+       safetyDisclosureIntakeGate.js resolves safetyContextInterpreter.js (loaded far above) at
+       top-of-module require/window time, so it must already be loaded by this point. -->
+  <script src="js/coachDecisionSystem/userDisclosureRecognizer.js"></script>
+  <script src="js/coachDecisionSystem/safetyDisclosureIntakeGate.js"></script>
   <script src="js/coachDecisionSystem/internalPipelineOrchestrator.js"></script>
   <script src="js/coachDecisionSystem/registerCoachDecisionSystem.js"></script>
   <script src="js/ui/navigationController.js"></script>

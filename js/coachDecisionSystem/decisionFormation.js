@@ -194,6 +194,69 @@
     return freezeShallow(resolved);
   }
 
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — a fifth, narrow, non-Safety-reviewed Terminal
+  // Decision construction path, structurally identical in status/shape discipline to
+  // formAcknowledgedPreferenceOutcome() above: no Candidate ever existed, so safetyPort.
+  // finalReview() is never invoked, and no safetyDisposition/boundaryType/confidence/
+  // hierarchyTier/modification is ever attached. Used ONLY when no other primary decision exists
+  // this turn (mirrors formAcknowledgedPreferenceOutcome()'s own standalone-case usage exactly).
+  //
+  // disclosureAcknowledgment carries only closed fields (Product Decision 16 — never raw
+  // interpreter/model text): category is USER_DISCLOSURE's own closed vocabulary;
+  // capturedToMemory reflects the ACTUAL post-write outcome (this function is only ever called
+  // with capturedToMemory:true after a real, confirmed Typed Memory write, or capturedToMemory:
+  // false when no capture was attempted at all — never a pre-write intent); safetyRelevant is
+  // true only when the captured/attempted content is Safety-relevant (a new restriction or an
+  // explicit correction), false for an ordinary state/desire/capacity disclosure.
+  function formAcknowledgedDisclosureOutcome(params) {
+    params = params || {};
+    return freezeShallow({
+      status: 'FORMED',
+      decision: freezeShallow({
+        kind: 'ACKNOWLEDGED_DISCLOSURE',
+        rationale: freezeShallow({
+          rationale: 'The user shared meaningful information about themselves in conversation, without asking a question.',
+          evidenceBasis: 'UserDisclosureRecognizer (Friends Alpha Item 6) — a bounded, closed-vocabulary recognition of a materially coaching-relevant disclosure, independent of any request.',
+          expectedValue: 'An honest, brief acknowledgment that FITME understood what the user said, without inventing professional advice.',
+          uncertainty: 'None — deterministic given the already-confirmed recognition (and, where applicable, the already-confirmed Typed Memory write).'
+        }),
+        disclosureAcknowledgment: freezeShallow({
+          category: params.category,
+          capturedToMemory: !!params.capturedToMemory,
+          safetyRelevant: !!params.safetyRelevant
+        }),
+        decisionPassTrace: freezeShallow({
+          opportunitiesConsidered: freezeShallow([]),
+          candidatePoolSize: 0,
+          disqualifiedCandidates: freezeShallow([])
+        }),
+        candidateProvenance: freezeShallow([]),
+        immutable: true
+      })
+    });
+  }
+
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — a PURE, additive, structural copy-plus-one-field
+  // operation, structurally identical to attachSecondaryAcknowledgment() above (CPI-001's own
+  // precedent), composable with it: a turn may carry both a secondaryAcknowledgment (preference)
+  // and a secondaryDisclosureAcknowledgment (disclosure) on the same TerminalDecision, each
+  // independently additive. Never applied to a SILENCE-kind decision (the caller routes that case
+  // to formAcknowledgedDisclosureOutcome() above instead, mirroring CPI-001's own discipline).
+  function attachSecondaryDisclosureAcknowledgment(terminalDecision, ack) {
+    if (!isPlainObject(terminalDecision)) return terminalDecision;
+    ack = ack || {};
+    var resolved = {};
+    for (var k in terminalDecision) {
+      if (Object.prototype.hasOwnProperty.call(terminalDecision, k)) resolved[k] = terminalDecision[k];
+    }
+    resolved.secondaryDisclosureAcknowledgment = freezeShallow({
+      category: ack.category,
+      capturedToMemory: !!ack.capturedToMemory,
+      safetyRelevant: !!ack.safetyRelevant
+    });
+    return freezeShallow(resolved);
+  }
+
   // §22.1/22.2/22.4/23.5, Canonical Decision CD-T006-06 — assembles the Terminal Decision from
   // Stage 8's SINGLE_WINNER, TIED_SET, or ALL_DISQUALIFIED selection result.
   async function form(params) {
@@ -333,6 +396,8 @@
     formUnsupportedCapabilityOutcome: formUnsupportedCapabilityOutcome,
     formAcknowledgedPreferenceOutcome: formAcknowledgedPreferenceOutcome,
     attachSecondaryAcknowledgment: attachSecondaryAcknowledgment,
+    formAcknowledgedDisclosureOutcome: formAcknowledgedDisclosureOutcome,
+    attachSecondaryDisclosureAcknowledgment: attachSecondaryDisclosureAcknowledgment,
     form: form
   };
 

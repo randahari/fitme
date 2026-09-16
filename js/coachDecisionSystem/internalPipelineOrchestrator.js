@@ -129,6 +129,16 @@
   var PreferenceIntakeGate = (typeof module !== 'undefined' && module.exports)
     ? require('./preferenceIntakeGate.js')
     : window.PreferenceIntakeGate;
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — two new, narrow collaborators, dispatched only
+  // from runDirectTurnPass() below, in parallel with TurnUnderstandingInterpreter/
+  // ConversationalNeedCreator/ExplicitPreferenceStatementInterpreter/PreferenceIntakeGate above —
+  // never gated on, and never gating, Need recognition or CPI's own preference intake.
+  var UserDisclosureRecognizer = (typeof module !== 'undefined' && module.exports)
+    ? require('./userDisclosureRecognizer.js')
+    : window.UserDisclosureRecognizer;
+  var SafetyDisclosureIntakeGate = (typeof module !== 'undefined' && module.exports)
+    ? require('./safetyDisclosureIntakeGate.js')
+    : window.SafetyDisclosureIntakeGate;
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 3) — the new memoryLayer/
   // PREFERENCE_CONSENT_READ StateAccess capability-holder identity, a sibling to the existing
   // memoryLayer identities (user-stated-memory / recent-conversation) MemoryLayer.js itself
@@ -224,6 +234,23 @@
     return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, expression: expressionResult } };
   }
 
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — applies a synchronous (non-deferred) disclosure
+  // acknowledgment onto whatever decision this Decision Pass already produced this turn (or
+  // builds a standalone ACKNOWLEDGED_DISCLOSURE when none exists / the only decision is SILENCE)
+  // — mirrors runPreferenceAcknowledgmentFinalization()'s own standalone-vs-attach branching
+  // exactly (decisionFormation.js:387-393), reused here for the case that needs no deferral at
+  // all (acknowledgement without capture has nothing async to wait for). A no-op (returns
+  // baseDecision unchanged) whenever no disclosure was recognized, or capture was authorized (in
+  // which case Unified Finalization handles it instead, after persistence resolves).
+  function applyDisclosureAcknowledgmentIfNeeded(baseDecision, disclosureRecognizedOnly, category) {
+    if (!disclosureRecognizedOnly) return baseDecision;
+    var ack = { category: category, capturedToMemory: false, safetyRelevant: false };
+    if (!baseDecision || baseDecision.kind === 'SILENCE') {
+      return DecisionFormation.formAcknowledgedDisclosureOutcome(ack).decision;
+    }
+    return DecisionFormation.attachSecondaryDisclosureAcknowledgment(baseDecision, ack);
+  }
+
   // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §03/§04/§06/§07/§10/§12) — the DIRECT_TURN_PASS
   // action path, dispatched only from run() above when ctx.action === 'DIRECT_TURN_PASS'. Reuses
   // every existing Stage 4-10 mechanism completely unmodified (buildOpportunitiesForDecisionPass,
@@ -303,11 +330,48 @@
       preferenceIntakeAuthorization = { authorized: false, reason: 'NOT_ELIGIBLE', candidateRecord: null };
     }
     var preferenceAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
+
+    // Friends Alpha Item 6 (USER_DISCLOSURE V1) — a third, independent, parallel track: never
+    // gated on, and never gating, Need recognition or CPI's own preference intake (a disclosure
+    // is never a request, and is entirely orthogonal to whether a preference was also stated).
+    // Recognition reuses turnUnderstanding's own already-computed Dimension 2/4/5 output — no
+    // second AI call for recognition itself. Capture-eligibility is a separate, independent gate
+    // (mirrors PreferenceIntakeGate's own shape exactly), reusing SafetyContextInterpreter — never
+    // a second Safety authority.
+    var userDisclosureResolution = UserDisclosureRecognizer.recognize(turn, turnUnderstanding, pipelineContext);
+    var disclosureCaptureAuthorization = { authorized: false, reason: 'NOT_RECOGNIZED', candidateRecord: null };
+    if (userDisclosureResolution && userDisclosureResolution.recognized === true) {
+      try {
+        var disclosureConsentAccess = StateAccess.createEngineAccess({
+          engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
+          userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+        });
+        var disclosureConsentGranted = disclosureConsentAccess.read.memoryConsentGranted() === true;
+        disclosureCaptureAuthorization = await SafetyDisclosureIntakeGate.authorize({
+          turn: turn, pipelineContext: pipelineContext, consentGranted: disclosureConsentGranted,
+          category: userDisclosureResolution.category
+        });
+      } catch (e) {
+        disclosureCaptureAuthorization = { authorized: false, reason: 'GATE_THREW', candidateRecord: null };
+      }
+    }
+    var disclosureCaptureAuthorized = !!(disclosureCaptureAuthorization && disclosureCaptureAuthorization.authorized === true);
+    // Acknowledgement without capture has nothing async to wait for and resolves synchronously,
+    // within THIS Decision Pass — only a capture-authorized disclosure requires deferral, for the
+    // same honesty reason CPI-001 already established (never claim a durable write before it is
+    // confirmed). Product Decision (Final Binding Decisions #4): a turn that successfully crosses
+    // the bounded USER_DISCLOSURE V1 recognition boundary produces a governed acknowledgement.
+    var disclosureRecognizedOnly = !!(userDisclosureResolution && userDisclosureResolution.recognized === true) && !disclosureCaptureAuthorized;
+    var disclosureCategory = userDisclosureResolution && userDisclosureResolution.category;
+
     // §14 step 5 — the deferred-Expression-dispatch sentinel, used identically across every
-    // branch below whenever preferenceAuthorized is true: this turn's own primary decision is
-    // returned fully formed (Stage 1-9 complete) but deliberately unrendered, for the caller
-    // (app.js) to hand to Unified Finalization only after persistence resolves.
+    // branch below whenever preferenceAuthorized OR disclosureCaptureAuthorized is true: this
+    // turn's own primary decision is returned fully formed (Stage 1-9 complete) but deliberately
+    // unrendered, for the caller (app.js) to hand to Unified Finalization only after persistence
+    // resolves. A single, shared sentinel and a single, shared Unified Finalization step (never a
+    // second finalization pipeline) — generalized to accept either or both confirmed records.
     var DEFERRED_EXPRESSION = Object.freeze({ status: 'DEFERRED', reason: 'PREFERENCE_FINALIZATION_PENDING' });
+    var deferForFinalization = preferenceAuthorized || disclosureCaptureAuthorized;
 
     if (needCreatorResult && needCreatorResult.kind === 'UNSUPPORTED') {
       // §12 — bypasses Stage 4 (Evidence)/Stage 5 (Eligibility)/Stage 6 (Candidate)/Stage 8-9's
@@ -316,14 +380,15 @@
       // formDecisionPassSilence()'s own zero-Candidate path. No fake Candidate or Safety data is
       // ever attached.
       var unsupportedDecision = DecisionFormation.formUnsupportedCapabilityOutcome({ need: needCreatorResult.need });
-      if (preferenceAuthorized) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+      if (deferForFinalization) {
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
       }
+      var unsupportedFinalDecision = applyDisclosureAcknowledgmentIfNeeded(unsupportedDecision.decision, disclosureRecognizedOnly, disclosureCategory);
       var unsupportedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
       var unsupportedExpressionResult = (unsupportedRenderingContextResult && unsupportedRenderingContextResult.status === 'BUILT')
-        ? await runExpressionStage(unsupportedDecision.decision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
+        ? await runExpressionStage(unsupportedFinalDecision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
         : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: unsupportedExpressionResult } };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedFinalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: unsupportedExpressionResult } };
     }
 
     // §06/§07 — a real DETECTED_OPPORTUNITY (or nothing, for Case A/C/UNSUPPORTED-already-handled)
@@ -343,53 +408,88 @@
       // Defensive only — mirrors the APP_READY path's own identical defensive branch above. No
       // terminalDecision exists in this case; runPreferenceAcknowledgmentFinalization() treats a
       // missing base terminalDecision exactly like a SILENCE one (§14) — the standalone
-      // ACKNOWLEDGED_PREFERENCE shape, never an attach attempt against a nonexistent object.
-      if (preferenceAuthorized) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+      // ACKNOWLEDGED_PREFERENCE/ACKNOWLEDGED_DISCLOSURE shape, never an attach attempt against a
+      // nonexistent object.
+      if (deferForFinalization) {
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
       }
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
+      if (disclosureRecognizedOnly) {
+        var standaloneDisclosureDecision = applyDisclosureAcknowledgmentIfNeeded(null, disclosureRecognizedOnly, disclosureCategory);
+        var passNotFormedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+        var passNotFormedExpressionResult = (passNotFormedRenderingContextResult && passNotFormedRenderingContextResult.status === 'BUILT')
+          ? await runExpressionStage(standaloneDisclosureDecision, passNotFormedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
+          : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: standaloneDisclosureDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: passNotFormedExpressionResult } };
+      }
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
     }
 
     var terminalDecision = passResult.decision;
-    if (preferenceAuthorized) {
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+    if (deferForFinalization) {
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
     }
+    var finalTerminalDecision = applyDisclosureAcknowledgmentIfNeeded(terminalDecision, disclosureRecognizedOnly, disclosureCategory);
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
     var expressionResult = (renderingContextResult && renderingContextResult.status === 'BUILT')
-      ? await runExpressionStage(terminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
+      ? await runExpressionStage(finalTerminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
       : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
 
-    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: expressionResult } };
+    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: finalTerminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: expressionResult } };
   }
 
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — Unified Finalization: dispatched
   // only via run(ctx) with ctx.action === 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE', only by app.js,
-  // only after it has confirmed a successful Typed Memory write (§11/§12). Performs exactly the
-  // following deterministic/Stage-10-only calls — NO Stage 1-9 re-run, no Context re-assembly, no
-  // interpreter/AI classification call of its own, and no TrainingReadinessReasoningComponent or
-  // any other professional reasoning component:
-  //   (a) select formAcknowledgedPreferenceOutcome() (standalone, §13.B.1) when the base
-  //       terminalDecision is absent or SILENCE-kind, else attachSecondaryAcknowledgment()
-  //       (attached, §13.B.2) — a PURE, additive copy-plus-one-field operation that never
-  //       re-invokes Safety/Eligibility/Evidence/Prioritization/Winner-Selection;
+  // only after it has confirmed every attempted, authorized Typed Memory write (§11/§12).
+  // Performs exactly the following deterministic/Stage-10-only calls — NO Stage 1-9 re-run, no
+  // Context re-assembly, no interpreter/AI classification call of its own, and no
+  // TrainingReadinessReasoningComponent or any other professional reasoning component:
+  //   (a) select formAcknowledgedPreferenceOutcome()/formAcknowledgedDisclosureOutcome()
+  //       (standalone) when the base terminalDecision is absent or SILENCE-kind, else
+  //       attachSecondaryAcknowledgment()/attachSecondaryDisclosureAcknowledgment() (attached) —
+  //       PURE, additive copy-plus-one-field operations that never re-invoke Safety/Eligibility/
+  //       Evidence/Prioritization/Winner-Selection;
   //   (b) MemoryLayer.buildExpressionRenderingContext(pipelineContext) — the SAME pipelineContext
   //       object Pass 1 already assembled, threaded forward via ctx.payload, never re-assembled;
   //   (c) runExpressionStage(...) — the exact same, already-exported function every other
   //       rendering path already calls, exactly once.
+  //
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — generalized to accept a SECOND, independent,
+  // optional confirmed record (confirmedDisclosureRecord) alongside CPI's own confirmedRecord —
+  // never a second finalization pipeline, the SAME single step, still exactly one Expression
+  // call/one Delivery Intent/one CCC terminal write regardless of how many of the two records are
+  // present. When only one is present, the other's own attach/standalone step is simply skipped
+  // (a no-op) — CPI-only turns behave byte-identically to before this generalization. When
+  // NEITHER base decision exists and BOTH records are present, ACKNOWLEDGED_PREFERENCE is built
+  // as the standalone base (matching the existing, already-tested precedent) with the disclosure
+  // attached onto it as a secondary — an arbitrary but harmless ordering choice, since both are
+  // equally bounded, non-advice acknowledgments.
   // ctx.payload: { pipelineContext, terminalDecision (Pass 1's own, or null/undefined),
-  // confirmedRecord: {preferenceClass, polarity, target, sourceTurnId, wasReactivatedFromRejected} }.
+  // confirmedRecord: {preferenceClass, polarity, target, sourceTurnId, wasReactivatedFromRejected}
+  // | null, confirmedDisclosureRecord: {category, capturedToMemory, safetyRelevant} | null }.
   async function runPreferenceAcknowledgmentFinalization(ctx, identity) {
     var payload = ctx.payload || {};
     var pipelineContext = payload.pipelineContext;
     var baseTerminalDecision = payload.terminalDecision || null;
-    var confirmedRecord = payload.confirmedRecord || {};
+    var confirmedRecord = payload.confirmedRecord || null;
+    var confirmedDisclosureRecord = payload.confirmedDisclosureRecord || null;
 
     var finalTerminalDecision;
-    if (!baseTerminalDecision || baseTerminalDecision.kind === 'SILENCE') {
-      var formed = DecisionFormation.formAcknowledgedPreferenceOutcome(confirmedRecord);
-      finalTerminalDecision = formed.decision;
+    var hasRealBase = !!(baseTerminalDecision && baseTerminalDecision.kind !== 'SILENCE');
+
+    if (hasRealBase) {
+      finalTerminalDecision = baseTerminalDecision;
+      if (confirmedRecord) finalTerminalDecision = DecisionFormation.attachSecondaryAcknowledgment(finalTerminalDecision, confirmedRecord);
+      if (confirmedDisclosureRecord) finalTerminalDecision = DecisionFormation.attachSecondaryDisclosureAcknowledgment(finalTerminalDecision, confirmedDisclosureRecord);
+    } else if (confirmedRecord) {
+      finalTerminalDecision = DecisionFormation.formAcknowledgedPreferenceOutcome(confirmedRecord).decision;
+      if (confirmedDisclosureRecord) finalTerminalDecision = DecisionFormation.attachSecondaryDisclosureAcknowledgment(finalTerminalDecision, confirmedDisclosureRecord);
+    } else if (confirmedDisclosureRecord) {
+      finalTerminalDecision = DecisionFormation.formAcknowledgedDisclosureOutcome(confirmedDisclosureRecord).decision;
     } else {
-      finalTerminalDecision = DecisionFormation.attachSecondaryAcknowledgment(baseTerminalDecision, confirmedRecord);
+      // Defensive only — app.js never dispatches this action without at least one confirmed
+      // record (mirrors the pre-existing standalone-preference path's own defensive shape rather
+      // than throwing; should not occur in practice).
+      finalTerminalDecision = DecisionFormation.formAcknowledgedPreferenceOutcome({}).decision;
     }
 
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);

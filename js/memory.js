@@ -26,7 +26,12 @@
     : window.CoachDecisionSystemMemoryLayer;
 
   // ── סכמה מטויפסת (v3 §4) ─────────────────────────────────────────
-  var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal'];
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — 'safety_disclosure' is a narrow, additive 8th
+  // type: an explicit Safety-relevant user-stated restriction/correction, kept explicitly
+  // identifiable/distinguishable from a generic 'fact' (Product/Architecture binding decision) —
+  // never a second memory store or authority; same collection, same CLIENT_WRITABLE_SOURCES gate,
+  // same create/update/delete machinery below.
+  var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal', 'safety_disclosure'];
   var MEMORY_SOURCES = ['user_stated', 'inferred_event', 'inferred_pattern', 'coach_generated', 'migrated'];
   var MEMORY_STATUS = ['candidate', 'active', 'superseded', 'rejected', 'archived'];
   // מקורות שהלקוח רשאי לכתוב (תואם ל-firestore.rules). השאר — server-only.
@@ -50,13 +55,16 @@
       : baseMsg + ' ולא ניתן לנסות שוב כרגע. נסה מאוחר יותר.';
   }
 
-  // ESAF-001 (§4/§6/§7) — the exact USM-001 read-path-visibility filter, reused unchanged
-  // (not widened, not narrowed): a record only ever mattered to the authoritative Coach-facing
-  // read path (StateAccess.userStatedMemory / assembleUserStatedMemoryFragment()) if it is
-  // type∈{fact,preference} ∧ source==='user_stated' ∧ status==='active'. Editing/rejecting/
-  // deleting a record outside this set cannot change what that read path could see, so must
-  // not produce freshness churn (SPEC §6/§7 "Why the tightened gate").
-  var ESAF_QUALIFYING_TYPES = ['fact', 'preference'];
+  // ESAF-001 (§4/§6/§7) — the exact USM-001 read-path-visibility filter, kept in lockstep with
+  // stateAccess.js's own readUserStatedMemory() filter (js/stateAccess.js): a record only ever
+  // matters to the authoritative Coach-facing read path if it is
+  // type∈{fact,preference,safety_disclosure} ∧ source==='user_stated' ∧ status==='active'.
+  // Friends Alpha Item 6 (Product/Architecture binding decision) — 'safety_disclosure' added
+  // additively: Safety-relevant durable state and explicit corrections to it must participate in
+  // this existing freshness/invalidation mechanism exactly like an ordinary fact/preference does,
+  // never a redesign of ESAF-001 itself. Editing/rejecting/deleting a record outside this set
+  // still cannot change what that read path could see, so still produces no freshness churn.
+  var ESAF_QUALIFYING_TYPES = ['fact', 'preference', 'safety_disclosure'];
   function esafQualifies(m) {
     return !!m && ESAF_QUALIFYING_TYPES.indexOf(m.type) >= 0 && m.source === 'user_stated' && m.status === 'active';
   }
@@ -274,7 +282,12 @@
   // ══════════════════════════════════════════════════════════════════
   var TYPE_LABELS = {
     fact: 'עובדות', habit: 'הרגלים', pattern: 'דפוסים', preference: 'העדפות',
-    coach_note: 'הערות המאמן', conversation_memory: 'זיכרונות משיחות', recurring_meal: 'ארוחות חוזרות'
+    coach_note: 'הערות המאמן', conversation_memory: 'זיכרונות משיחות', recurring_meal: 'ארוחות חוזרות',
+    // Friends Alpha Item 6 — smallest additive UI treatment (Product/Architecture binding
+    // decision): grouping by MEMORY_TYPES already renders a distinct, labeled section per type,
+    // so adding this one label is sufficient to make Safety-relevant durable items visibly
+    // distinguishable from ordinary generic facts — no other transparency-UI change needed.
+    safety_disclosure: 'מידע בטיחותי'
   };
   var STATUS_LABELS = {
     candidate: 'מועמד', active: 'פעיל', superseded: 'הוחלף', rejected: 'נדחה', archived: 'בארכיון'

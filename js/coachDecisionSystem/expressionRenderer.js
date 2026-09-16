@@ -225,6 +225,10 @@
     // terminalDecision.secondaryAcknowledgment is absent.
     var unsupportedSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
     if (unsupportedSecondaryLine) { lines.push(unsupportedSecondaryLine); }
+    // Friends Alpha Item 6 — additive; a no-op when terminalDecision.secondaryDisclosureAcknowledgment
+    // is absent; composable with the preference line above.
+    var unsupportedDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (unsupportedDisclosureSecondaryLine) { lines.push(unsupportedDisclosureSecondaryLine); }
     lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -240,7 +244,8 @@
       'נימוק: ' + (r.rationale || ''),
       'בסיס הראיות: ' + (r.evidenceBasis || ''),
       'נסח הודעת מאמן אחת, קצרה וכנה, שמעבירה את זה למשתמש בהתאם להנחיות.'
-    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+      buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
   }
 
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1/§15) — the standalone-case boundary: kind
@@ -281,6 +286,10 @@
         'ובכנות שההעדפה הזו מתעדכנת כעת בהתאם למה שנאמר, מבלי לנקוב בשם מנגנון, סטטוס, או פרט ' +
         'טכני פנימי כלשהו.');
     }
+    // Friends Alpha Item 6 — additive; a no-op when terminalDecision.secondaryDisclosureAcknowledgment
+    // is absent (the rare combined preference+disclosure, no-other-primary-decision turn).
+    var preferenceDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (preferenceDisclosureSecondaryLine) { lines.push(preferenceDisclosureSecondaryLine); }
     lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -298,7 +307,80 @@
       'נושא: ' + ack.target + '.',
       ack.wasReactivatedFromRejected ? 'זו הפעלה מחדש של העדפה שסומנה בעבר כלא נכונה — חובה לציין זאת.' : '',
       'נסח הודעת מאמן אחת, קצרה וכנה, שמאשרת קליטה בלבד, בהתאם להנחיות.'
+    ].join(' ') + buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
+  }
+
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) — the standalone-case boundary: kind
+  // 'ACKNOWLEDGED_DISCLOSURE' carries no safetyDisposition at all (no Candidate ever existed, so
+  // Safety was never invoked), exactly like isUnsupportedCase()/isAcknowledgedPreferenceCase()
+  // above — mirrored byte-for-byte.
+  function isAcknowledgedDisclosureCase(terminalDecision) {
+    if (!isPlainObject(terminalDecision)) return false;
+    if (terminalDecision.kind !== 'ACKNOWLEDGED_DISCLOSURE') return false;
+    if (Object.prototype.hasOwnProperty.call(terminalDecision, 'safetyDisposition')) return false;
+    return true;
+  }
+
+  // Friends Alpha Item 6 — the generative-call system instruction for standalone
+  // ACKNOWLEDGED_DISCLOSURE rendering: an honest, brief, first-person acknowledgment that FITME
+  // understood a piece of meaningful, non-request information the user just shared — never
+  // professional advice, never a diagnosis, never treatment/prognosis, never implying an
+  // intervention beyond noting what was said. When the disclosure was also durably captured, the
+  // instruction additionally steers toward an honest, non-alarming note that it was remembered —
+  // never naming an internal mechanism/status.
+  function buildAcknowledgedDisclosureSystemInstruction(terminalDecision, expressionRenderingContext) {
+    var maturityGuidance = RELATIONSHIP_MATURITY_GUIDANCE[expressionRenderingContext.relationshipMaturityStage];
+    var ack = terminalDecision.disclosureAcknowledgment || {};
+    var lines = [
+      VOICE_IDENTITY_LINE,
+      'ההחלטה היא שהמשתמש שיתף זה עתה, מיוזמתו ובלי לשאול שאלה, מידע משמעותי על עצמו הרלוונטי ' +
+        'לליווי האימוני (למשל מצב נוכחי, מגבלה, או חוויה רלוונטית). אמור בקצרה, בכנות, ובגוף ' +
+        'ראשון: שהבנת מה שנאמר. לעולם אל תיתן המלצה מקצועית, עצה מקצועית, אבחנה, טיפול, או ' +
+        'תחזית החלמה כלשהי בהודעה הזו — אין כאן החלטה מקצועית, רק אישור שמיעה/הבנה.'
+    ];
+    if (ack.capturedToMemory) {
+      lines.push('בנוסף, המידע הזה גם נשמר — ציין זאת בקצרה ובכנות, מבלי לנקוב בשם מנגנון, ' +
+        'סטטוס, או פרט טכני פנימי כלשהו, ומבלי להבטיח כיצד בדיוק ייעשה בו שימוש בעתיד.');
+    }
+    lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
+    return lines.join(' ');
+  }
+
+  // Friends Alpha Item 6 — the generative layer's user-turn content for standalone
+  // ACKNOWLEDGED_DISCLOSURE rendering. Derived exclusively from the closed, non-free-text
+  // disclosureAcknowledgment field (Product Decision 16 — never raw interpreter/model text, never
+  // the user's own verbatim disclosure text); confidence/hierarchyTier/boundaryType never exist
+  // on this kind.
+  function buildAcknowledgedDisclosureUserContent(terminalDecision) {
+    var ack = terminalDecision.disclosureAcknowledgment || {};
+    return [
+      'ההחלטה: מידע אישי נקלט (ACKNOWLEDGED_DISCLOSURE).',
+      'קטגוריה: ' + ack.category + '.',
+      'נשמר במאגר: ' + (ack.capturedToMemory ? 'כן' : 'לא') + '.',
+      'רלוונטי בטיחותית: ' + (ack.safetyRelevant ? 'כן' : 'לא') + '.',
+      'נסח הודעת מאמן אחת, קצרה וכנה, שמאשרת קליטה בלבד, בהתאם להנחיות.'
     ].join(' ');
+  }
+
+  // Friends Alpha Item 6 — shared, additive instruction fragment reused across EVERY existing
+  // rendering path below, added only when terminalDecision.secondaryDisclosureAcknowledgment is
+  // present (absent on every pre-Item-6 TerminalDecision — those paths remain byte-identical).
+  // Mirrors buildSecondaryAcknowledgmentLine()'s own established shape exactly, composable with
+  // it (a turn may carry both).
+  function buildSecondaryDisclosureAcknowledgmentLine(secondaryDisclosureAcknowledgment) {
+    if (!secondaryDisclosureAcknowledgment) return null;
+    return 'בנוסף לתוכן העיקרי שלמעלה, ולעולם לא כהערה נפרדת: המשתמש שיתף גם מידע אישי נוסף ' +
+      'שרלוונטי לליווי — שזור בהודעה, בקצרה, אמירה כנה שזה נקלט (ואם רלוונטי, נשמר), מבלי לתת ' +
+      'עליו כל המלצה מקצועית — משני ותמציתי, לעולם לא בולט יותר מהתוכן העיקרי שלמעלה.';
+  }
+
+  // Companion user-turn-content fragment — the closed, non-free-text source Expression renders
+  // the secondary disclosure acknowledgment from (Product Decision 16).
+  function buildSecondaryDisclosureAcknowledgmentUserContent(secondaryDisclosureAcknowledgment) {
+    if (!secondaryDisclosureAcknowledgment) return '';
+    return ' מידע אישי נוסף שנקלט (לשילוב משני בלבד, אל תיתן לו לדחוק את התוכן העיקרי): קטגוריה: ' +
+      secondaryDisclosureAcknowledgment.category + '. נשמר במאגר: ' +
+      (secondaryDisclosureAcknowledgment.capturedToMemory ? 'כן' : 'לא') + '.';
   }
 
   // EXP-76 — steering guidance per closed relationshipMaturityStage value, never a literal
@@ -420,6 +502,10 @@
     // terminalDecision.secondaryAcknowledgment is absent, i.e. byte-identical to before this Item.
     var baseSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
     if (baseSecondaryLine) { lines.push(baseSecondaryLine); }
+    // Friends Alpha Item 6 — additive; a no-op when terminalDecision.secondaryDisclosureAcknowledgment
+    // is absent; composable with the preference line above.
+    var baseDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (baseDisclosureSecondaryLine) { lines.push(baseDisclosureSecondaryLine); }
     lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -436,7 +522,8 @@
       return describeOptions(terminalDecision.options) +
         ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
         ' האפשרויות הללו למשתמש כפי שתוארו, בהתאם להנחיות.' +
-        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+        buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
     }
     var r = terminalDecision.rationale || {};
     return [
@@ -447,7 +534,8 @@
       'אי-ודאות: ' + (r.uncertainty || ''),
       'רמת עדיפות (hierarchyTier): ' + terminalDecision.hierarchyTier + '.',
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את ההחלטה הזו למשתמש.'
-    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+      buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
   }
 
   // WP5 — the generative-call system instruction for REFUSAL rendering, realizing EXP-58–62
@@ -485,6 +573,8 @@
     // terminalDecision.secondaryAcknowledgment is absent.
     var refusalSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
     if (refusalSecondaryLine) { lines.push(refusalSecondaryLine); }
+    var refusalDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (refusalDisclosureSecondaryLine) { lines.push(refusalDisclosureSecondaryLine); }
     lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -510,7 +600,8 @@
         content: describeOptions(terminalDecision.options) +
           ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
           ' האפשרויות הללו כסירוב אחד, בהתאם להנחיות.' +
-          buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment),
+          buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+          buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment),
         saferAlternative: null
       };
     }
@@ -523,7 +614,8 @@
         'ערך צפוי: ' + (r.expectedValue || ''),
         'אי-ודאות: ' + (r.uncertainty || ''),
         'נסח הודעת מאמן אחת, קצרה, שמעבירה את הסירוב הזה למשתמש בהתאם להנחיות.'
-      ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment),
+      ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+        buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment),
       saferAlternative: null // no canonical field exists to carry one — see comment above (EXP-61)
     };
   }
@@ -568,6 +660,8 @@
     // terminalDecision.secondaryAcknowledgment is absent.
     var escalationSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
     if (escalationSecondaryLine) { lines.push(escalationSecondaryLine); }
+    var escalationDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (escalationDisclosureSecondaryLine) { lines.push(escalationDisclosureSecondaryLine); }
     lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -584,7 +678,8 @@
       return describeOptions(terminalDecision.options) +
         ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
         ' האפשרויות הללו כהפניה אחת להתייעצות מקצועית, בהתאם להנחיות.' +
-        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+        buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
     }
     var r = terminalDecision.rationale || {};
     return [
@@ -594,7 +689,8 @@
       'ערך צפוי: ' + (r.expectedValue || ''),
       'אי-ודאות: ' + (r.uncertainty || ''),
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את ההפניה הזו למשתמש בהתאם להנחיות.'
-    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+      buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
   }
 
   // WP7 — the generative-call system instruction for MODIFIED rendering. The substantive content
@@ -617,6 +713,8 @@
     // terminalDecision.secondaryAcknowledgment is absent.
     var modifiedSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
     if (modifiedSecondaryLine) { lines.push(modifiedSecondaryLine); }
+    var modifiedDisclosureSecondaryLine = buildSecondaryDisclosureAcknowledgmentLine(terminalDecision.secondaryDisclosureAcknowledgment);
+    if (modifiedDisclosureSecondaryLine) { lines.push(modifiedDisclosureSecondaryLine); }
     lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -636,7 +734,8 @@
       'ההחלטה: תוכן שהותאם משיקולי בטיחות (MODIFIED).',
       'התוכן שכבר הוחלט ונוסח מראש, כפי שסופק (אל תשנה, אל תוסיף, אל תגרע): ' + serialized,
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את התוכן הזה למשתמש בהתאם להנחיות.'
-    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment) +
+      buildSecondaryDisclosureAcknowledgmentUserContent(terminalDecision.secondaryDisclosureAcknowledgment);
   }
 
   // No pass/run identity is threaded into runExpressionStage()/render() today — EXP-OD-9's own
@@ -708,6 +807,10 @@
     } else if (isAcknowledgedPreferenceCase(terminalDecision)) {
       system = buildAcknowledgedPreferenceSystemInstruction(terminalDecision, expressionRenderingContext);
       userContent = buildAcknowledgedPreferenceUserContent(terminalDecision);
+      semanticSignal = { kind: terminalDecision.kind };
+    } else if (isAcknowledgedDisclosureCase(terminalDecision)) {
+      system = buildAcknowledgedDisclosureSystemInstruction(terminalDecision, expressionRenderingContext);
+      userContent = buildAcknowledgedDisclosureUserContent(terminalDecision);
       semanticSignal = { kind: terminalDecision.kind };
     } else {
       // No TerminalDecision shape matches any of the five rendering paths above (each of the first

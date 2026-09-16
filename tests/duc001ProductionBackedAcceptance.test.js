@@ -56,7 +56,10 @@ function stubTurnUnderstanding(resultByTurnId) {
         id: id,
         affirmativeRequestPresent: false, domain: null, topic: null,
         currentStateStatementPresent: false, currentStateStatementText: null,
-        negativeControlPresent: false, desireOnlyPresent: false
+        negativeControlPresent: false, desireOnlyPresent: false,
+        // Friends Alpha Item 6 (USER_DISCLOSURE V1) — Dimension 5 defaults; overridden explicitly
+        // by any acceptance case exercising it.
+        personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }, resultByTurnId[id] || {}));
       return { content: [{ text: JSON.stringify({ results: results }) }] };
     }

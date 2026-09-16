@@ -417,3 +417,105 @@ test('CPI-9. attachSecondaryAcknowledgment(): the resulting decision still passe
   const unsupported = Object.freeze({ kind: 'UNSUPPORTED', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, candidateProvenance: [], decisionPassTrace: {}, immutable: true });
   assert.equal(ExpressionInputGate.isValidTerminalDecision(DecisionFormation.attachSecondaryAcknowledgment(unsupported, ackParams())), true);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — formAcknowledgedDisclosureOutcome() (standalone) and
+// attachSecondaryDisclosureAcknowledgment() (attached) additive tests, mirroring CPI-001's own
+// formAcknowledgedPreferenceOutcome()/attachSecondaryAcknowledgment() coverage above exactly.
+// ══════════════════════════════════════════════════════════════════
+
+function disclosureAckParams(overrides) {
+  return Object.assign({ category: 'STATE', capturedToMemory: false, safetyRelevant: false }, overrides || {});
+}
+
+test('DISC-1. formAcknowledgedDisclosureOutcome(): produces a FORMED, kind:ACKNOWLEDGED_DISCLOSURE decision with no boundaryType/confidence/hierarchyTier/safetyDisposition', () => {
+  const result = DecisionFormation.formAcknowledgedDisclosureOutcome(disclosureAckParams());
+  assert.equal(result.status, 'FORMED');
+  const d = result.decision;
+  assert.equal(d.kind, 'ACKNOWLEDGED_DISCLOSURE');
+  assert.equal(d.immutable, true);
+  assert.equal('boundaryType' in d, false);
+  assert.equal('confidence' in d, false);
+  assert.equal('hierarchyTier' in d, false);
+  assert.equal('safetyDisposition' in d, false);
+  assert.deepEqual(d.candidateProvenance, []);
+});
+
+test('DISC-2. formAcknowledgedDisclosureOutcome(): the standard rationale shape is present (isValidRationale-compatible) — never replaced by the closed disclosureAcknowledgment fields', () => {
+  const result = DecisionFormation.formAcknowledgedDisclosureOutcome(disclosureAckParams());
+  const r = result.decision.rationale;
+  assert.equal(typeof r.rationale, 'string');
+  assert.equal(typeof r.evidenceBasis, 'string');
+  assert.equal(typeof r.expectedValue, 'string');
+  assert.equal(typeof r.uncertainty, 'string');
+});
+
+test('DISC-3. formAcknowledgedDisclosureOutcome(): disclosureAcknowledgment carries the closed, non-free-text fields Expression renders from (Product Decision 16) — never the user\'s own raw disclosure text', () => {
+  const result = DecisionFormation.formAcknowledgedDisclosureOutcome(disclosureAckParams({ category: 'CAPACITY_OR_CONSTRAINT', capturedToMemory: true, safetyRelevant: true }));
+  assert.deepEqual(result.decision.disclosureAcknowledgment, { category: 'CAPACITY_OR_CONSTRAINT', capturedToMemory: true, safetyRelevant: true });
+  const serialized = JSON.stringify(result.decision);
+  // No raw text field of any kind ever appears on this closed shape.
+  assert.equal('text' in result.decision.disclosureAcknowledgment, false);
+  assert.equal(serialized.indexOf('restrictedActivityText'), -1);
+});
+
+test('DISC-4. formAcknowledgedDisclosureOutcome(): the resulting decision passes ExpressionInputGate.isValidTerminalDecision() for every closed category', () => {
+  ['STATE', 'DESIRE', 'CAPACITY_OR_CONSTRAINT', 'COACHING_RELEVANT_EXPERIENCE'].forEach((category) => {
+    const result = DecisionFormation.formAcknowledgedDisclosureOutcome(disclosureAckParams({ category: category }));
+    assert.equal(ExpressionInputGate.isValidTerminalDecision(result.decision), true, category);
+  });
+});
+
+test('DISC-5. formAcknowledgedDisclosureOutcome(): never invokes any Safety/Eligibility/Evidence/Winner-Selection collaborator (pure, deterministic construction)', () => {
+  assert.doesNotThrow(() => DecisionFormation.formAcknowledgedDisclosureOutcome(disclosureAckParams()));
+});
+
+test('DISC-6. attachSecondaryDisclosureAcknowledgment(): a pure copy-plus-one-field operation — every existing field of a RECOMMENDATION decision is preserved byte-identical', () => {
+  const primary = Object.freeze({
+    kind: 'RECOMMENDATION',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    confidence: 0.8,
+    hierarchyTier: 3,
+    candidateProvenance: [{ opportunityId: 'x' }],
+    decisionPassTrace: { opportunitiesConsidered: [], candidatePoolSize: 1, disqualifiedCandidates: [] },
+    safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' },
+    immutable: true
+  });
+  const result = DecisionFormation.attachSecondaryDisclosureAcknowledgment(primary, disclosureAckParams());
+  assert.equal(result.kind, 'RECOMMENDATION');
+  assert.equal(result.confidence, 0.8);
+  assert.equal(result.hierarchyTier, 3);
+  assert.deepEqual(result.safetyDisposition, { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' });
+  assert.deepEqual(result.candidateProvenance, [{ opportunityId: 'x' }]);
+  assert.deepEqual(result.rationale, primary.rationale);
+});
+
+test('DISC-7. attachSecondaryDisclosureAcknowledgment(): adds exactly one new field, secondaryDisclosureAcknowledgment, with the closed shape; the input itself is never mutated', () => {
+  const primary = Object.freeze({ kind: 'UNSUPPORTED', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, decisionPassTrace: {}, candidateProvenance: [], immutable: true });
+  const result = DecisionFormation.attachSecondaryDisclosureAcknowledgment(primary, disclosureAckParams({ category: 'COACHING_RELEVANT_EXPERIENCE', capturedToMemory: false, safetyRelevant: false }));
+  assert.deepEqual(result.secondaryDisclosureAcknowledgment, { category: 'COACHING_RELEVANT_EXPERIENCE', capturedToMemory: false, safetyRelevant: false });
+  assert.equal('secondaryDisclosureAcknowledgment' in primary, false);
+});
+
+test('DISC-8. attachSecondaryDisclosureAcknowledgment(): a BOUNDARY/REFUSAL decision\'s own safetyDisposition/boundaryType are never altered or weakened', () => {
+  const primary = Object.freeze({
+    kind: 'BOUNDARY', boundaryType: 'REFUSAL',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    candidateProvenance: [], decisionPassTrace: {},
+    safetyDisposition: { disposition: 'BLOCKED', originalKind: 'RECOMMENDATION' },
+    immutable: true
+  });
+  const result = DecisionFormation.attachSecondaryDisclosureAcknowledgment(primary, disclosureAckParams());
+  assert.equal(result.boundaryType, 'REFUSAL');
+  assert.deepEqual(result.safetyDisposition, { disposition: 'BLOCKED', originalKind: 'RECOMMENDATION' });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(result), true);
+});
+
+test('DISC-9. a decision may carry BOTH secondaryAcknowledgment (CPI-001) and secondaryDisclosureAcknowledgment (Item 6) simultaneously — each independently additive, composable, and still valid', () => {
+  const primary = Object.freeze({ kind: 'RECOMMENDATION', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, confidence: 0.5, hierarchyTier: 2, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true });
+  const withPreference = DecisionFormation.attachSecondaryAcknowledgment(primary, ackParams());
+  const withBoth = DecisionFormation.attachSecondaryDisclosureAcknowledgment(withPreference, disclosureAckParams({ category: 'DESIRE' }));
+  assert.deepEqual(withBoth.secondaryAcknowledgment, { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false });
+  assert.deepEqual(withBoth.secondaryDisclosureAcknowledgment, { category: 'DESIRE', capturedToMemory: false, safetyRelevant: false });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(withBoth), true);
+});

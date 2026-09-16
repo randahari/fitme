@@ -410,3 +410,91 @@ test('50. classifyWithStatus() is reusable independently of preferenceIntakeGate
   assert.equal(typeof Interpreter.classify, 'function');
   assert.notEqual(Interpreter.classifyWithStatus, Interpreter.classify);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — classifyCorrectionWithStatus() additive tests.
+// classify()/classifyWithStatus() themselves are completely unexercised by anything below (proven
+// directly in test 52).
+// ══════════════════════════════════════════════════════════════════
+
+function correctionResponse(id, confirmed) {
+  return fakeResponse([{ id: id, correctionConfirmed: confirmed }]);
+}
+
+test('51. classifyCorrectionWithStatus(): an explicit, unambiguous correction returns status:CLASSIFIED, correctionConfirmed:true', async () => {
+  configureStub(async () => correctionResponse('turn:t1', true));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'הרופא אישר לי לחזור לרוץ' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'CLASSIFIED', correctionConfirmed: true });
+});
+
+test('52. classifyCorrectionWithStatus(): an ordinary state-improvement statement returns status:CLASSIFIED, correctionConfirmed:false — never inferring recovery from an ordinary state change', async () => {
+  configureStub(async () => correctionResponse('turn:t1', false));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'הברך שלי מרגישה יותר טוב' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'CLASSIFIED', correctionConfirmed: false });
+});
+
+test('53. classifyCorrectionWithStatus(): the existing restriction text is embedded verbatim in the prompt sent to the model', async () => {
+  let capturedPrompt = null;
+  configureStub(async (body) => { capturedPrompt = body.messages[0].content; return correctionResponse('turn:t1', false); });
+  await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ בבוקר');
+  assert.match(capturedPrompt, /לרוץ בבוקר/);
+});
+
+test('54. classifyCorrectionWithStatus(): a thrown transport error fails closed to status:FAILED — never coerced into correctionConfirmed:false being trusted the same way as a genuine negative', async () => {
+  configureStub(() => { throw new Error('transport failure'); });
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('55. classifyCorrectionWithStatus(): a timeout fails closed to status:FAILED', async () => {
+  configureStub(() => new Promise(() => {}));
+  Interpreter.configure({ timeoutMs: 5 });
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('56. classifyCorrectionWithStatus(): malformed/unparseable model output fails closed to status:FAILED', async () => {
+  configureStub(async () => fakeResponseFromRawText('not json'));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('57. classifyCorrectionWithStatus(): a response for a different/mismatched id fails closed to status:FAILED', async () => {
+  configureStub(async () => correctionResponse('wrong-id', true));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('58. classifyCorrectionWithStatus(): a non-boolean correctionConfirmed value fails closed to status:FAILED', async () => {
+  configureStub(async () => fakeResponse([{ id: 'turn:t1', correctionConfirmed: 'yes' }]));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('59. classifyCorrectionWithStatus(): an unconfigured callClaude fails closed to status:FAILED', async () => {
+  Interpreter.configure({ callClaude: null });
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, 'לרוץ');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('60. classifyCorrectionWithStatus(): a malformed turnRecord (missing id/text) or missing/empty existingRestrictionText fails closed to status:FAILED without attempting a call', async () => {
+  let called = false;
+  configureStub(async () => { called = true; return correctionResponse('turn:t1', true); });
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus(null, 'לרוץ'), { status: 'FAILED' });
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1' }, 'לרוץ'), { status: 'FAILED' });
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, ''), { status: 'FAILED' });
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus({ id: 'turn:t1', text: 'x' }, null), { status: 'FAILED' });
+  assert.equal(called, false);
+});
+
+test('61. classify()/classifyWithStatus() remain byte-identical after this addition — same empty-on-failure/status-FAILED behavior as before', async () => {
+  Interpreter.configure({ callClaude: () => { throw new Error('boom'); } });
+  assert.deepEqual(await Interpreter.classify([{ id: 'mem-1', text: 'x' }]), []);
+  assert.deepEqual(await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]), { status: 'FAILED', restrictions: [] });
+});
+
+test('62. classifyCorrectionWithStatus() is directly exposed on the main API and on _internal alongside buildCorrectionPrompt/parseAndValidateCorrection', () => {
+  assert.equal(typeof Interpreter.classifyCorrectionWithStatus, 'function');
+  assert.equal(typeof Interpreter._internal.buildCorrectionPrompt, 'function');
+  assert.equal(typeof Interpreter._internal.parseAndValidateCorrection, 'function');
+});

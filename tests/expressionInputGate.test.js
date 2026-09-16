@@ -218,5 +218,71 @@ test('CPI: isValidAcknowledgmentShape() is directly exposed and closed to exactl
 });
 
 test('CPI: KINDS includes ACKNOWLEDGED_PREFERENCE alongside the five pre-existing kinds', () => {
-  assert.deepEqual(ExpressionInputGate.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE']);
+  assert.deepEqual(ExpressionInputGate.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — ACKNOWLEDGED_DISCLOSURE kind and the additive
+// secondaryDisclosureAcknowledgment field, mirroring CPI-001's own coverage above exactly.
+// ══════════════════════════════════════════════════════════════════
+
+function validDisclosureAck(overrides) {
+  return Object.assign({
+    kind: 'ACKNOWLEDGED_DISCLOSURE',
+    rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' },
+    disclosureAcknowledgment: { category: 'STATE', capturedToMemory: false, safetyRelevant: false },
+    candidateProvenance: [],
+    decisionPassTrace: {},
+    immutable: true
+  }, overrides || {});
+}
+
+test('DISC: a well-formed ACKNOWLEDGED_DISCLOSURE decision (no safetyDisposition/confidence/hierarchyTier/boundaryType) is valid', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validDisclosureAck()), true);
+});
+
+test('DISC: ACKNOWLEDGED_DISCLOSURE requires disclosureAcknowledgment — absent is invalid', () => {
+  const d = validDisclosureAck(); delete d.disclosureAcknowledgment;
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(d), false);
+});
+
+test('DISC: ACKNOWLEDGED_DISCLOSURE rejects a malformed disclosureAcknowledgment (unknown category, missing capturedToMemory/safetyRelevant)', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validDisclosureAck({ disclosureAcknowledgment: { category: 'PERSONAL', capturedToMemory: false, safetyRelevant: false } })), false);
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validDisclosureAck({ disclosureAcknowledgment: { category: 'STATE', safetyRelevant: false } })), false);
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validDisclosureAck({ disclosureAcknowledgment: { category: 'STATE', capturedToMemory: false } })), false);
+});
+
+test('DISC: disclosureAcknowledgment present iff kind===ACKNOWLEDGED_DISCLOSURE — present on a RECOMMENDATION is invalid', () => {
+  const rec = { kind: 'RECOMMENDATION', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, confidence: 0.5, hierarchyTier: 1, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true, disclosureAcknowledgment: { category: 'STATE', capturedToMemory: false, safetyRelevant: false } };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(rec), false);
+});
+
+test('DISC: ACKNOWLEDGED_DISCLOSURE never carries a safetyDisposition in practice (formAcknowledgedDisclosureOutcome() never attaches one, no Candidate ever existed) — SAFETY_HIGH_RISK remains entirely untouched by this kind', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validDisclosureAck()), true);
+});
+
+test('DISC: secondaryDisclosureAcknowledgment is optional and additive on ANY kind — absent leaves every existing kind byte-identical', () => {
+  const rec = { kind: 'RECOMMENDATION', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, confidence: 0.5, hierarchyTier: 1, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(rec), true);
+  const withAck = Object.assign({}, rec, { secondaryDisclosureAcknowledgment: { category: 'DESIRE', capturedToMemory: false, safetyRelevant: false } });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(withAck), true);
+});
+
+test('DISC: secondaryDisclosureAcknowledgment must be well-formed when present, on any kind, including SILENCE-adjacent UNSUPPORTED', () => {
+  const unsupported = { kind: 'UNSUPPORTED', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, candidateProvenance: [], decisionPassTrace: {}, immutable: true, secondaryDisclosureAcknowledgment: { category: 'NOPE', capturedToMemory: false, safetyRelevant: false } };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(unsupported), false);
+});
+
+test('DISC: a decision may carry BOTH secondaryAcknowledgment and secondaryDisclosureAcknowledgment simultaneously — each independently validated, both required well-formed', () => {
+  const rec = { kind: 'RECOMMENDATION', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, confidence: 0.5, hierarchyTier: 1, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true, secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'x', wasReactivatedFromRejected: false }, secondaryDisclosureAcknowledgment: { category: 'STATE', capturedToMemory: true, safetyRelevant: true } };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(rec), true);
+  const withBadDisclosure = Object.assign({}, rec, { secondaryDisclosureAcknowledgment: { category: 'STATE' } });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(withBadDisclosure), false);
+});
+
+test('DISC: isValidDisclosureAcknowledgmentShape() is directly exposed and closed to exactly the three fields, category closed to the four USER_DISCLOSURE values', () => {
+  assert.equal(ExpressionInputGate.isValidDisclosureAcknowledgmentShape({ category: 'COACHING_RELEVANT_EXPERIENCE', capturedToMemory: true, safetyRelevant: false }), true);
+  assert.equal(ExpressionInputGate.isValidDisclosureAcknowledgmentShape(null), false);
+  assert.equal(ExpressionInputGate.isValidDisclosureAcknowledgmentShape({}), false);
+  assert.equal(ExpressionInputGate.isValidDisclosureAcknowledgmentShape({ category: 'UNKNOWN_CATEGORY', capturedToMemory: true, safetyRelevant: false }), false);
 });

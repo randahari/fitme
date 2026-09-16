@@ -79,13 +79,19 @@ test('wiring: js/memory.js exports get() and safeKey() on its main, browser-reac
 
 // ── CCC-001 lifecycle deferral (§14) — never a second write path, never SILENCE -> COMPLETED ──
 
-test('wiring: submitCoachConversationTurn() branches on cpiAuthorized BEFORE any rendering/completeTurn() call, and the pre-existing (authorized!==true) branch is otherwise untouched', () => {
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) generalized the single authorized-branch guard from
+// cpiAuthorized alone to deferAuthorized (cpiAuthorized || disclosureCaptureAuthorized) — CPI-001
+// turns (disclosureCaptureAuthorized always false for them) behave byte-identically; these tests
+// are updated to the new guard name while verifying the exact same invariants.
+test('wiring: submitCoachConversationTurn() branches on deferAuthorized (cpiAuthorized || disclosureCaptureAuthorized) BEFORE any rendering/completeTurn() call, and the pre-existing (neither authorized) branch is otherwise untouched', () => {
   const idx = appJs.indexOf('async function submitCoachConversationTurn()');
   assert.notEqual(idx, -1);
   const endIdx = appJs.indexOf('\n// CCC-001', appJs.indexOf('async function loadCoachConversationHistory()'));
   const body = appJs.slice(idx, endIdx);
   assert.match(body, /var cpiAuthorized = !!\(preferenceIntakeAuthorization && preferenceIntakeAuthorization\.authorized === true\);/);
-  const branchIdx = body.indexOf('if (!cpiAuthorized) {');
+  assert.match(body, /var disclosureCaptureAuthorized = !!\(disclosureCaptureAuthorization && disclosureCaptureAuthorization\.authorized === true\);/);
+  assert.match(body, /var deferAuthorized = cpiAuthorized \|\| disclosureCaptureAuthorized;/);
+  const branchIdx = body.indexOf('if (!deferAuthorized) {');
   assert.notEqual(branchIdx, -1);
   // The existing DUC-001 rendering logic (renderResponse for a DISPATCHED expression) occurs
   // textually AFTER the branch guard, inside it.
@@ -93,19 +99,23 @@ test('wiring: submitCoachConversationTurn() branches on cpiAuthorized BEFORE any
   assert.ok(branchIdx < existingRenderIdx);
 });
 
-test('wiring: for cpiAuthorized === true, no rendering or completeTurn() call occurs before persistCpiPreferenceRecord() resolves', () => {
-  const idx = appJs.indexOf("if (!cpiAuthorized) {");
-  const endOfPreExistingBranch = appJs.indexOf('} // end: if (!cpiAuthorized)', idx);
+test('wiring: for deferAuthorized === true, no rendering or completeTurn() call occurs before either persistCpiPreferenceRecord() or persistSafetyDisclosureRecord() resolves', () => {
+  const idx = appJs.indexOf("if (!deferAuthorized) {");
+  const endOfPreExistingBranch = appJs.indexOf('} // end: if (!deferAuthorized)', idx);
   assert.notEqual(endOfPreExistingBranch, -1);
   const authorizedBranch = appJs.slice(endOfPreExistingBranch, appJs.indexOf("} catch (e) {\n    CoachConversationPresenter.renderNoResponse(turn.turnId);\n    CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');\n    // Friends Alpha Item 7", endOfPreExistingBranch));
   const persistIdx = authorizedBranch.indexOf('persistCpiPreferenceRecord(');
+  const disclosurePersistIdx = authorizedBranch.indexOf('persistSafetyDisclosureRecord(');
   const firstRenderIdx = authorizedBranch.indexOf('CoachConversationPresenter.renderResponse(');
   const firstCompleteTurnIdx = authorizedBranch.indexOf('ConversationRepository.completeTurn(');
   assert.notEqual(persistIdx, -1);
+  assert.notEqual(disclosurePersistIdx, -1);
   assert.notEqual(firstRenderIdx, -1);
   assert.notEqual(firstCompleteTurnIdx, -1);
-  assert.ok(persistIdx < firstRenderIdx, 'persistence must resolve before any rendering in the authorized branch');
-  assert.ok(persistIdx < firstCompleteTurnIdx, 'persistence must resolve before any completeTurn() call in the authorized branch');
+  assert.ok(persistIdx < firstRenderIdx, 'CPI persistence must resolve before any rendering in the authorized branch');
+  assert.ok(persistIdx < firstCompleteTurnIdx, 'CPI persistence must resolve before any completeTurn() call in the authorized branch');
+  assert.ok(disclosurePersistIdx < firstRenderIdx, 'disclosure persistence must resolve before any rendering in the authorized branch');
+  assert.ok(disclosurePersistIdx < firstCompleteTurnIdx, 'disclosure persistence must resolve before any completeTurn() call in the authorized branch');
 });
 
 test('wiring: the authorized branch dispatches Unified Finalization through the governed EngineRegistry.run() entry point, never a direct internalPipelineOrchestrator call', () => {
@@ -119,7 +129,7 @@ test('wiring: the authorized branch dispatches Unified Finalization through the 
 });
 
 test('wiring: exactly one completeTurn() call site exists in the authorized branch for each of COMPLETED/SILENCE — no duplicate/second write path', () => {
-  const idx = appJs.indexOf("} // end: if (!cpiAuthorized)");
+  const idx = appJs.indexOf("} // end: if (!deferAuthorized)");
   const authorizedBranch = appJs.slice(idx, appJs.indexOf('} catch (e) {', idx));
   const completedCount = (authorizedBranch.match(/status: 'COMPLETED'/g) || []).length;
   const silenceCount = (authorizedBranch.match(/status: 'SILENCE'/g) || []).length;
@@ -127,14 +137,28 @@ test('wiring: exactly one completeTurn() call site exists in the authorized bran
   assert.equal(silenceCount, 1);
 });
 
-test('wiring: on a persistence failure, the authorized branch returns before dispatching Unified Finalization or calling completeTurn() — the record is left PENDING', () => {
-  const idx = appJs.indexOf('if (!cpiPersistResult.success) {');
+// Friends Alpha Item 6 — the CPI write's own failure guard is now conditional on cpiAuthorized
+// (never attempted at all when only a disclosure was authorized), but preserves the exact same
+// all-or-nothing failure discipline: return before Unified Finalization / completeTurn().
+test('wiring: on a CPI persistence failure, the authorized branch returns before dispatching Unified Finalization or calling completeTurn() — the record is left PENDING', () => {
+  const idx = appJs.indexOf('if (cpiAuthorized && !cpiPersistResult.success) {');
   assert.notEqual(idx, -1);
   const endIdx = appJs.indexOf('\n    }', idx);
   const body = appJs.slice(idx, endIdx);
   assert.match(body, /return;/);
   // Checks the actual call-site shapes (never the bare word, which this block's own explanatory
   // comment legitimately also contains as documentation).
+  assert.equal(body.indexOf('ConversationRepository.completeTurn('), -1);
+  assert.equal(body.indexOf('runPreferenceAcknowledgmentFinalizationEngine('), -1);
+});
+
+// Friends Alpha Item 6 — the disclosure write's own, structurally identical failure guard.
+test('wiring: on a disclosure persistence failure, the authorized branch returns before dispatching Unified Finalization or calling completeTurn() — the record is left PENDING', () => {
+  const idx = appJs.indexOf('if (disclosureCaptureAuthorized && !disclosurePersistResult.success) {');
+  assert.notEqual(idx, -1);
+  const endIdx = appJs.indexOf('\n    }', idx);
+  const body = appJs.slice(idx, endIdx);
+  assert.match(body, /return;/);
   assert.equal(body.indexOf('ConversationRepository.completeTurn('), -1);
   assert.equal(body.indexOf('runPreferenceAcknowledgmentFinalizationEngine('), -1);
 });

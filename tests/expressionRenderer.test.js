@@ -926,6 +926,139 @@ test('CPI-9. MODIFIED rendering with secondaryAcknowledgment: modifiedContent is
   assert.match(gen.calls[0].messages[0].content, /TRAINING_FORMAT_PREFERENCE/);
 });
 
+// ══════════════════════════════════════════════════════════════════
+// Friends Alpha Item 6 (USER_DISCLOSURE V1) — standalone ACKNOWLEDGED_DISCLOSURE rendering and the
+// additive secondaryDisclosureAcknowledgment append across pre-existing rendering paths, mirroring
+// CPI-001's own coverage above (CPI-1 through CPI-9) exactly. Per AC-6/EXP-43 (this file's own
+// header), generated language content is never asserted identical — only dispatch outcome and
+// composed-payload shape are.
+// ══════════════════════════════════════════════════════════════════
+
+function validAcknowledgedDisclosureTerminalDecision(overrides) {
+  return Object.assign({
+    kind: 'ACKNOWLEDGED_DISCLOSURE',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    disclosureAcknowledgment: { category: 'STATE', capturedToMemory: false, safetyRelevant: false },
+    candidateProvenance: [],
+    decisionPassTrace: {},
+    immutable: true
+  }, overrides || {});
+}
+
+test('DISC-1. renders a valid ACKNOWLEDGED_DISCLOSURE (standalone) into a schema-conformant Delivery Intent with semanticSignal.kind only', async () => {
+  var gen = fakeGenerateFnReturning('הבנתי, תודה ששיתפת.');
+  ExpressionRenderer.configure({ generateFn: gen });
+  const DeliveryIntentContract = require('../js/coachDecisionSystem/deliveryIntentContract.js');
+  const di = await ExpressionRenderer.render(validAcknowledgedDisclosureTerminalDecision(), validRenderingContext());
+  assert.equal(DeliveryIntentContract.isValidDeliveryIntent(di), true);
+  assert.equal(di.semanticSignal.kind, 'ACKNOWLEDGED_DISCLOSURE');
+  assert.equal(Object.prototype.hasOwnProperty.call(di.semanticSignal, 'boundaryType'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(di.semanticSignal, 'safetyDisposition'), false);
+});
+
+test('DISC-2. the ACKNOWLEDGED_DISCLOSURE composed content is derived only from disclosureAcknowledgment, never raw interpreter/model text or the user\'s own disclosure text', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validAcknowledgedDisclosureTerminalDecision({
+    disclosureAcknowledgment: { category: 'CAPACITY_OR_CONSTRAINT', capturedToMemory: true, safetyRelevant: true }
+  }), validRenderingContext());
+  var user = gen.calls[0].messages[0].content;
+  assert.match(user, /CAPACITY_OR_CONSTRAINT/);
+  assert.match(user, /כן/); // capturedToMemory: true -> 'כן'
+});
+
+test('DISC-3. ACKNOWLEDGED_DISCLOSURE includes no Safety disclosure line (no Safety review on this path)', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validAcknowledgedDisclosureTerminalDecision(), validRenderingContext());
+  var sys = gen.calls[0].system;
+  assert.doesNotMatch(sys, /שזור בתוך אותה ההודעה עצמה/); // DISCLOSURE_ACKNOWLEDGMENT_LINE never appears here
+});
+
+test('DISC-4. capturedToMemory:true produces a distinguishable system instruction from capturedToMemory:false, without naming any internal mechanism', async () => {
+  var genFalse = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genFalse });
+  await ExpressionRenderer.render(validAcknowledgedDisclosureTerminalDecision(), validRenderingContext());
+
+  var genTrue = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genTrue });
+  await ExpressionRenderer.render(validAcknowledgedDisclosureTerminalDecision({ disclosureAcknowledgment: { category: 'STATE', capturedToMemory: true, safetyRelevant: false } }), validRenderingContext());
+
+  assert.notEqual(genFalse.calls[0].system, genTrue.calls[0].system);
+});
+
+// ── secondaryDisclosureAcknowledgment append — additive across pre-existing rendering paths ──
+
+test('DISC-5. RECOMMENDATION base case: secondaryDisclosureAcknowledgment absent leaves the composed payload byte-identical to before this Item', async () => {
+  var gen1 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen1 });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  var gen2 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen2 });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  assert.equal(gen1.calls[0].system, gen2.calls[0].system);
+  assert.equal(gen1.calls[0].messages[0].content, gen2.calls[0].messages[0].content);
+});
+
+test('DISC-6. RECOMMENDATION base case: secondaryDisclosureAcknowledgment present adds closed content, distinct from the no-secondary case', async () => {
+  var genBase = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genBase });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  var genAck = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genAck });
+  await ExpressionRenderer.render(validTerminalDecision({ secondaryDisclosureAcknowledgment: { category: 'DESIRE', capturedToMemory: false, safetyRelevant: false } }), validRenderingContext());
+
+  assert.notEqual(genAck.calls[0].system, genBase.calls[0].system);
+  assert.match(genAck.calls[0].messages[0].content, /DESIRE/);
+});
+
+test('DISC-7. REFUSAL rendering with secondaryDisclosureAcknowledgment: the Safety disclosure line is still present, and the secondary content is additionally included', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validRefusalTerminalDecision({ secondaryDisclosureAcknowledgment: { category: 'CAPACITY_OR_CONSTRAINT', capturedToMemory: true, safetyRelevant: true } }), validRenderingContext());
+  assert.match(gen.calls[0].system, /שזור בתוך אותה ההודעה עצמה/); // DISCLOSURE_ACKNOWLEDGMENT_LINE still present
+  assert.match(gen.calls[0].messages[0].content, /CAPACITY_OR_CONSTRAINT/);
+});
+
+test('DISC-8. ESCALATION rendering with secondaryDisclosureAcknowledgment: both the Safety disclosure and the disclosure secondary framing are present', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validEscalationTerminalDecision({ secondaryDisclosureAcknowledgment: { category: 'COACHING_RELEVANT_EXPERIENCE', capturedToMemory: false, safetyRelevant: false } }), validRenderingContext());
+  assert.match(gen.calls[0].system, /שזור בתוך אותה ההודעה עצמה/);
+  assert.match(gen.calls[0].messages[0].content, /COACHING_RELEVANT_EXPERIENCE/);
+});
+
+test('DISC-9. MODIFIED rendering with secondaryDisclosureAcknowledgment: modifiedContent is still passed through, plus the secondary content', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validModifiedTerminalDecision({ secondaryDisclosureAcknowledgment: { category: 'STATE', capturedToMemory: true, safetyRelevant: true } }), validRenderingContext());
+  assert.match(gen.calls[0].messages[0].content, /STATE/);
+});
+
+test('DISC-10. UNSUPPORTED rendering may carry BOTH secondaryAcknowledgment (CPI-001) and secondaryDisclosureAcknowledgment (Item 6) simultaneously — composable, one Expression call, one Delivery Intent', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  const DeliveryIntentContract = require('../js/coachDecisionSystem/deliveryIntentContract.js');
+  const di = await ExpressionRenderer.render(validUnsupportedTerminalDecision({
+    secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false },
+    secondaryDisclosureAcknowledgment: { category: 'STATE', capturedToMemory: false, safetyRelevant: false }
+  }), validRenderingContext());
+  assert.equal(DeliveryIntentContract.isValidDeliveryIntent(di), true);
+  assert.equal(gen.calls.length, 1); // exactly one generative call — one coherent response per turn
+  assert.match(gen.calls[0].messages[0].content, /ACTIVITY_SENTIMENT/);
+  assert.match(gen.calls[0].messages[0].content, /STATE/);
+});
+
+test('DISC-11. ACKNOWLEDGED_PREFERENCE (CPI-001 standalone) rendering with secondaryDisclosureAcknowledgment: the preference acknowledgment framing is preserved, the disclosure secondary content is additionally included', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision({ secondaryDisclosureAcknowledgment: { category: 'DESIRE', capturedToMemory: false, safetyRelevant: false } }), validRenderingContext());
+  assert.match(gen.calls[0].messages[0].content, /DESIRE/);
+});
+
 test('CPI-10. UNSUPPORTED rendering with secondaryAcknowledgment: dispatches correctly and includes the closed secondary content', async () => {
   var gen = fakeGenerateFnReturning('x');
   ExpressionRenderer.configure({ generateFn: gen });

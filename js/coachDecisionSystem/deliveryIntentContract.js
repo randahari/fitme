@@ -75,7 +75,10 @@
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) adds 'ACKNOWLEDGED_PREFERENCE' by the
   // identical precedent — a durably-captured preference acknowledgment is itself a real Delivery
   // Intent, never Silence's own zero-output case.
-  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE']);
+  // Friends Alpha Item 6 (USER_DISCLOSURE V1) adds 'ACKNOWLEDGED_DISCLOSURE' by the identical
+  // precedent — a bounded acknowledgment of a recognized, non-request user disclosure is itself a
+  // real Delivery Intent, never Silence's own zero-output case.
+  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
   var BOUNDARY_TYPES = freezeShallow(['REFUSAL', 'ESCALATION']);
   // Never 'DEFERRED' — always co-occurs with kind: 'SILENCE' (TASK_006_SPEC_v1.0.md §25.4), which
   // never reaches this builder.
