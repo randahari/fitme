@@ -211,6 +211,10 @@ input, button, select, textarea { font-family: 'Heebo', -apple-system, sans-seri
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Friends Alpha Blocker B2 — minimal failure/retry state, shown in place of the spinner only
+   when the user-data load technically failed (never for a confirmed-new-user load). */
+.load-failed { display: flex; flex-direction: column; align-items: center; gap: var(--space-7); padding: 0 var(--space-11); text-align: center; }
+.load-failed-text { font-size: var(--font-size-6); color: var(--color-text-secondary); }
 
 /* ── LOGIN ── */
 .login-screen {

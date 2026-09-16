@@ -25,6 +25,12 @@
     <div class="loading-logo">💪</div>
     <div class="loading-text">FitMe</div>
     <div class="spinner"></div>
+    <!-- Friends Alpha Blocker B2 — shown instead of the spinner only when the user-data load
+         technically failed; never shown for a confirmed-new-user (no profile) load. -->
+    <div id="load-failed" class="load-failed hidden">
+      <p class="load-failed-text">לא הצלחנו לטעון את הנתונים שלך. נסה שוב.</p>
+      <button class="btn-primary" onclick="retryLoadUserData()">נסה שוב</button>
+    </div>
   </div>
 
   <!-- LOGIN -->

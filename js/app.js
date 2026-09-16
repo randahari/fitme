@@ -163,6 +163,7 @@ AuthSessionController.configure({
   showApp: function () { showApp(); },
   showOnboarding: function () { showOnboarding(); },
   showLogin: function () { showLogin(); },
+  showLoadFailed: function () { showLoadFailed(); }, // B2 — Returning User Load Integrity
   initNotifications: function () { initNotifications(); },
   // REM-002: הרצה מחדש של בדיקת המיגרציה בכל סשן מאומת (לא רק בטעינת הדף הראשונה),
   // כדי שמשתמש B שמתחבר אחרי A באותו טאב יקבל גם הוא הזדמנות למיגרציה. אידמפוטנטי מטבעו.
@@ -638,6 +639,27 @@ function showApp() {
   runAppReadyEngines(); // B2: Engine Registry orchestration (Habit/Pattern/Adaptive TDEE/Trigger) — non-blocking
 }
 
+// Friends Alpha Blocker B2 (Returning User Load Integrity) — a technical user-data load failure
+// must be shown as its own state, distinct from both onboarding and the app itself, so a
+// returning user is never routed into onboarding (and risking an overwrite of their existing
+// profile) merely because a read technically failed. Reuses the existing #loading-screen /
+// show*() toggle-hidden-classes convention — no new screen paradigm.
+function showLoadFailed() {
+  document.getElementById('loading-screen').classList.remove('hidden');
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('load-failed').classList.remove('hidden');
+}
+
+// B2 — retry reuses the exact same auth/load path a fresh sign-in uses (handleAuthStateChange),
+// rather than a new retry mechanism: SessionLifecycle.reset() is documented idempotent/safe to
+// call repeatedly, and the existing generation guard already protects against overlap with any
+// still-settling prior attempt.
+function retryLoadUserData() {
+  AuthSessionController.handleAuthStateChange(currentUser);
+}
+
 // signInWithGoogle מוגדר ב-firebase-config.js (redirect באייפון/PWA, popup בדסקטופ)
 
 async function signOut() {
@@ -651,14 +673,14 @@ async function signOut() {
 // C1_WP0_INVENTORY.md §2.1 ו-js/ui/dayNavigationController.js). הפסאדה הציבורית
 // loadUserData() נמצאת כעת בסוף הקובץ, לצד שאר פסאדות ניווט התאריך.
 async function _loadUserDataCore() {
-  if (!currentUser) return;
+  if (!currentUser) return { status: 'NO_OP', error: null };
   const _gen = SessionLifecycle.getGeneration(); // REM-002: session guard
   try {
     // PERF-001: שלוש הקריאות עצמאיות — מונפקות במקביל (Promise.all) במקום טורית.
     // C1-WP4: מנגנון ה-fetch עצמו חי כעת ב-BootstrapController.loadUserSnapshot.
     const todayKey = getTodayKey();
     const [profileDoc, todayDoc, favDoc] = await BootstrapController.loadUserSnapshot(currentUser.uid, todayKey);
-    if (!SessionLifecycle.isCurrent(_gen)) return; // REM-002: סשן הוחלף תוך כדי הטעינה — לא כותבים state ישן
+    if (!SessionLifecycle.isCurrent(_gen)) return { status: 'STALE_SESSION', error: null }; // REM-002: סשן הוחלף תוך כדי הטעינה — לא כותבים state ישן
     if (profileDoc.exists) {
       userProfile = profileDoc.data();
       darkMode = userProfile.darkMode || false;
@@ -681,11 +703,17 @@ async function _loadUserDataCore() {
     favoriteMeals = favDoc.exists ? (favDoc.data().meals || []) : [];
     // Load quick-log items (מנה 3)
     quickItems = (userProfile && Array.isArray(userProfile.quickItems)) ? userProfile.quickItems : [];
+    return { status: 'SUCCESS', error: null };
   } catch(e) {
     console.error('loadUserData:', e);
     // Friends Alpha Item 7 — a real, already-caught bootstrap failure Product would otherwise
     // never know occurred. No user content exists in `e` here (a Firestore/network error object).
     ErrorTelemetry.report({ code: (e && e.code) || 'LOAD_USER_DATA_FAILED', module: 'BOOTSTRAP', operation: 'LOAD_USER_DATA', message: (e && e.message) || '' });
+    // Friends Alpha Blocker B2 — a technical read failure must never be represented the same way
+    // as "profile confirmed absent" (userProfile is deliberately left untouched above, exactly as
+    // before). FAILED is the one signal AuthSessionController uses to route to a retry state
+    // instead of silently falling through to onboarding and risking an existing user's data.
+    return { status: 'FAILED', error: PersistenceGateway.classifyError(e) };
   }
 }
 

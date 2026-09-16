@@ -206,3 +206,56 @@ test('every WP4 module exports configure() and both a window.X and module.export
     assert.match(content, /configure: configure/);
   });
 });
+
+// ── Friends Alpha Blocker B2 (Returning User Load Integrity) — static source assertions ──────
+// _loadUserDataCore() cannot be executed here (no DOM/Firebase harness, same scope limit as the
+// rest of this file); its behavioral contract is verified dynamically via the loadUserData
+// mock boundary in tests/authSessionController.test.js and tests/dayNavigationController.test.js.
+// These assertions confirm the three distinct return states actually exist in the source, so a
+// future edit cannot silently collapse the FAILED/SUCCESS/STALE_SESSION distinction.
+
+test('B2: _loadUserDataCore returns three distinct, non-throwing outcomes — SUCCESS, STALE_SESSION, and FAILED (never silently swallowed)', () => {
+  const idx = appJs.indexOf('async function _loadUserDataCore()');
+  assert.notEqual(idx, -1);
+  const body = appJs.slice(idx, appJs.indexOf('\n}\n', idx));
+  assert.match(body, /return \{ status: 'STALE_SESSION', error: null \};/);
+  assert.match(body, /return \{ status: 'SUCCESS', error: null \};/);
+  assert.match(body, /return \{ status: 'FAILED', error: PersistenceGateway\.classifyError\(e\) \};/);
+});
+
+test('B2: AuthSessionController routes a FAILED load result to showLoadFailed, before the profile-existence check, and never falls through to showOnboarding for it', () => {
+  const authSessionControllerJs = fs.readFileSync(path.join(__dirname, '..', 'js/app/authSessionController.js'), 'utf8');
+  const idx = authSessionControllerJs.indexOf('async function handleAuthStateChange(user) {');
+  const body = authSessionControllerJs.slice(idx, authSessionControllerJs.indexOf('\n  } else {', idx));
+  const failedCheckIdx = body.indexOf("_loadResult.status === 'FAILED'");
+  const showLoadFailedIdx = body.indexOf('deps.showLoadFailed()');
+  const profileCheckIdx = body.indexOf('deps.runtimeState.getProfile()');
+  assert.notEqual(failedCheckIdx, -1, 'must check loadResult.status === FAILED');
+  assert.notEqual(showLoadFailedIdx, -1, 'must call deps.showLoadFailed()');
+  assert.ok(failedCheckIdx < profileCheckIdx, 'the FAILED check must happen before the profile-existence branch');
+  assert.ok(showLoadFailedIdx < profileCheckIdx, 'showLoadFailed must be called before reaching the profile-existence branch');
+});
+
+test('B2: showLoadFailed is wired into app.js as its own screen-toggle function (not reusing showOnboarding) and injected into AuthSessionController.configure', () => {
+  assert.match(appJs, /function showLoadFailed\(\) \{/);
+  assert.match(appJs, /document\.getElementById\('load-failed'\)\.classList\.remove\('hidden'\)/);
+  const idx = appJs.indexOf('AuthSessionController.configure({');
+  const body = appJs.slice(idx, appJs.indexOf('\nAuthSessionController.start();', idx));
+  assert.match(body, /showLoadFailed: function \(\) \{ showLoadFailed\(\); \}/);
+});
+
+test('B2: retryLoadUserData() reuses the existing auth/load path (handleAuthStateChange) rather than a new retry mechanism', () => {
+  assert.match(appJs, /function retryLoadUserData\(\) \{\s*AuthSessionController\.handleAuthStateChange\(currentUser\);\s*\}/);
+});
+
+test('B2: index.html exposes a #load-failed element (hidden by default) inside #loading-screen, with a retry control wired to retryLoadUserData()', () => {
+  const loadingIdx = indexHtml.indexOf('id="loading-screen"');
+  const loadingScreenEnd = indexHtml.indexOf('</div>\n\n  <!-- LOGIN -->');
+  assert.notEqual(loadingIdx, -1);
+  assert.notEqual(loadingScreenEnd, -1);
+  const loadingBody = indexHtml.slice(loadingIdx, loadingScreenEnd);
+  assert.match(loadingBody, /id="load-failed" class="load-failed hidden"/);
+  assert.match(loadingBody, /onclick="retryLoadUserData\(\)"/);
+  // User-facing copy must stay non-technical (no Firebase/Firestore/network/error-code exposure).
+  assert.doesNotMatch(loadingBody, /Firebase|Firestore|network|error code/i);
+});

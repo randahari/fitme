@@ -339,13 +339,16 @@
   }
 
   // ── עטיפת loadUserData: איפוס מצב הניווט להיום בכל טעינה ──
+  // B2: מחזירה כעת את תוצאת loadUserDataCore() ({status, error}) לקורא (AuthSessionController,
+  // דרך פסאדת js/app.js) — קוראים קיימים שהתעלמו מערך ההחזרה (undefined) אינם מושפעים.
   async function loadUserData() {
     var _gen = deps.sessionLifecycle.getGeneration(); // REM-002: session guard
-    await deps.loadUserDataCore();
-    if (!deps.sessionLifecycle.isCurrent(_gen)) return; // סשן הוחלף תוך כדי — לא עוקפים את מצב הניווט הנוכחי
+    var _result = await deps.loadUserDataCore();
+    if (!deps.sessionLifecycle.isCurrent(_gen)) return _result; // סשן הוחלף תוך כדי — לא עוקפים את מצב הניווט הנוכחי
     deps.setCurrentDayKey(DateUtils.getTodayKey());
     deps.setRealTodayData(deps.getTodayData());
     deps.setRealWaterCount(deps.getWaterCount());
+    return _result;
   }
 
   var API = {

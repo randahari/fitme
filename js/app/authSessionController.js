@@ -32,8 +32,16 @@
     var _authGen = deps.sessionLifecycle.reset(user ? 'auth:signed-in' : 'auth:signed-out');
     if (user) {
       deps.runtimeState.setAuthenticatedUser(user);
-      await deps.loadUserData();
+      var _loadResult = await deps.loadUserData();
       if (!deps.sessionLifecycle.isCurrent(_authGen)) return; // סשן זה הוחלף בזמן הטעינה — לא ממשיכים
+      // B2 (Returning User Load Integrity): a technical load failure must NEVER be routed to
+      // onboarding — only a load that genuinely completed (and found no profile) may. loadUserData
+      // resolves to undefined for any caller that predates this contract (e.g. an older/partial
+      // test double), which the falsy check below safely treats as "not a failure."
+      if (_loadResult && _loadResult.status === 'FAILED') {
+        deps.showLoadFailed();
+        return;
+      }
       if (deps.runtimeState.getProfile()) {
         deps.showApp();
         deps.initNotifications();

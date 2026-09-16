@@ -501,6 +501,30 @@ test('loadUserData suppresses the day-navigation-state reset when the session go
   assert.equal(state.currentDayKey, '2020-01-01', 'must not overwrite day-navigation state after a stale session');
 });
 
+// Friends Alpha Blocker B2 (Returning User Load Integrity) — loadUserData must propagate
+// loadUserDataCore's {status, error} result to its own caller (AuthSessionController, via the
+// js/app.js facade) so a technical load failure can be distinguished from a confirmed-absent
+// profile. Existing callers that ignore the return value (both tests above) are unaffected.
+test('loadUserData propagates the {status, error} result from loadUserDataCore to its own caller', async () => {
+  const failure = { status: 'FAILED', error: { code: 'unavailable', message: 'offline', retryable: true } };
+  const { deps } = fakeDeps({}, { loadUserDataCore: async () => failure });
+  DayNavigationController.configure(deps);
+  const result = await DayNavigationController.loadUserData();
+  assert.deepEqual(result, failure);
+});
+
+test('loadUserData still propagates the loadUserDataCore result even when the session goes stale mid-load', async () => {
+  const failure = { status: 'FAILED', error: { code: 'unavailable' } };
+  const { deps, state } = fakeDeps(
+    { currentDayKey: '2020-01-01' },
+    { sessionLifecycle: { getGeneration: () => 1, isCurrent: () => false }, loadUserDataCore: async () => failure }
+  );
+  DayNavigationController.configure(deps);
+  const result = await DayNavigationController.loadUserData();
+  assert.deepEqual(result, failure);
+  assert.equal(state.currentDayKey, '2020-01-01', 'must still not overwrite day-navigation state after a stale session');
+});
+
 // ── updateFoodDateBanner ─────────────────────────────────────────────────────────────────
 
 test('updateFoodDateBanner creates the banner under #screen-food .scroll-content, hides it when viewing today, and shows the day label otherwise', () => {

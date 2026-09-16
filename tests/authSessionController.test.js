@@ -49,6 +49,7 @@ function baseDeps(overrides) {
     showApp: function () { log.push('showApp'); },
     showOnboarding: function () { log.push('showOnboarding'); },
     showLogin: function () { log.push('showLogin'); },
+    showLoadFailed: function () { log.push('showLoadFailed'); },
     initNotifications: function () { log.push('initNotifications'); },
     migrateIfNeeded: function () { log.push('migrateIfNeeded'); },
     onSignedOut: function () { log.push('onSignedOut'); }
@@ -75,6 +76,83 @@ test('signed-in without a profile (onboarding case): showOnboarding is called; s
   // loadUserData leaves the profile null (new user, no Firestore doc yet)
   await AuthSessionController.handleAuthStateChange({ uid: 'u2' });
   assert.deepEqual(log, ['loadUserData', 'showOnboarding']);
+});
+
+// ── Friends Alpha Blocker B2 (Returning User Load Integrity) ──────────────────────────────
+// Invariant under test: a technical user-data load failure must NEVER be routed to onboarding —
+// only a load that genuinely completed (and found no profile document) may reach showOnboarding.
+
+test('B2: a technical load failure (loadUserData resolves {status:"FAILED"}) calls showLoadFailed; showApp and showOnboarding are NOT called', async () => {
+  const { deps, log } = baseDeps();
+  deps.loadUserData = function () {
+    log.push('loadUserData');
+    return Promise.resolve({ status: 'FAILED', error: { code: 'unavailable', message: 'offline', retryable: true } });
+  };
+  AuthSessionController.configure(deps);
+  await AuthSessionController.handleAuthStateChange({ uid: 'u3' });
+  assert.deepEqual(log, ['loadUserData', 'showLoadFailed']);
+  assert.ok(!log.includes('showOnboarding'), 'a technical load failure must never be treated as confirmed profile absence');
+  assert.ok(!log.includes('showApp'));
+  assert.ok(!log.includes('initNotifications'));
+  assert.ok(!log.includes('migrateIfNeeded'));
+});
+
+test('B2: retry after a failure reaches showApp with the profile intact once loadUserData succeeds, without ever visiting showOnboarding', async () => {
+  const { deps, log, runtimeState } = baseDeps();
+  var attempt = 0;
+  deps.loadUserData = function () {
+    attempt++;
+    log.push('loadUserData');
+    if (attempt === 1) return Promise.resolve({ status: 'FAILED', error: { code: 'unavailable' } });
+    runtimeState._setProfileForTest({ name: 'Dana', streak: 12 }); // proves the existing profile is intact, not reset
+    return Promise.resolve({ status: 'SUCCESS', error: null });
+  };
+  AuthSessionController.configure(deps);
+  await AuthSessionController.handleAuthStateChange({ uid: 'u1' }); // first attempt: fails
+  assert.deepEqual(log, ['loadUserData', 'showLoadFailed']);
+  log.length = 0;
+  await AuthSessionController.handleAuthStateChange({ uid: 'u1' }); // retry: succeeds (mirrors retryLoadUserData())
+  assert.deepEqual(log, ['loadUserData', 'showApp', 'initNotifications', 'migrateIfNeeded']);
+  assert.ok(!log.includes('showOnboarding'));
+  assert.deepEqual(runtimeState.getProfile(), { name: 'Dana', streak: 12 });
+});
+
+test('B2: no stale failure state leaks — a normal signed-in-with-profile transition after an earlier failure reaches showApp directly', async () => {
+  const { deps, log, runtimeState } = baseDeps();
+  deps.loadUserData = function () { log.push('loadUserData'); return Promise.resolve({ status: 'FAILED', error: { code: 'unavailable' } }); };
+  AuthSessionController.configure(deps);
+  await AuthSessionController.handleAuthStateChange({ uid: 'u1' });
+  assert.deepEqual(log, ['loadUserData', 'showLoadFailed']);
+
+  // A completely independent, later transition (e.g. a different tab/session) must behave
+  // exactly as if the earlier failure never happened — nothing about the FAILED status is
+  // stored anywhere in AuthSessionController/RuntimeState between calls.
+  log.length = 0;
+  deps.loadUserData = function () { log.push('loadUserData'); runtimeState._setProfileForTest({ name: 'Noa' }); return Promise.resolve({ status: 'SUCCESS', error: null }); };
+  await AuthSessionController.handleAuthStateChange({ uid: 'u1' });
+  assert.deepEqual(log, ['loadUserData', 'showApp', 'initNotifications', 'migrateIfNeeded']);
+});
+
+test('B2: no stale failure state leaks across sign-out — signing out after a failed load still runs the normal signed-out path', async () => {
+  const { deps, log, runtimeState, sessionLifecycle } = baseDeps();
+  deps.loadUserData = function () { log.push('loadUserData'); return Promise.resolve({ status: 'FAILED', error: { code: 'unavailable' } }); };
+  AuthSessionController.configure(deps);
+  await AuthSessionController.handleAuthStateChange({ uid: 'u1' });
+  assert.deepEqual(log, ['loadUserData', 'showLoadFailed']);
+
+  log.length = 0;
+  await AuthSessionController.handleAuthStateChange(null);
+  assert.deepEqual(sessionLifecycle.resetCalls, ['auth:signed-in', 'auth:signed-out']);
+  assert.deepEqual(runtimeState.calls.slice(-2), [['setAuthenticatedUser', null], ['replaceProfile', null]]);
+  assert.deepEqual(log, ['onSignedOut', 'showLogin']);
+});
+
+test('B2: a loadUserData that resolves to undefined (older/partial test double) is treated as "not a failure", preserving prior behavior', async () => {
+  const { deps, log } = baseDeps(); // default mock already resolves to undefined
+  AuthSessionController.configure(deps);
+  await AuthSessionController.handleAuthStateChange({ uid: 'u2' });
+  assert.deepEqual(log, ['loadUserData', 'showOnboarding']);
+  assert.ok(!log.includes('showLoadFailed'));
 });
 
 test('signed-out: reset reason is auth:signed-out, identity is cleared via RuntimeState, onSignedOut runs, then showLogin', async () => {
