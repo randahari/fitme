@@ -219,11 +219,13 @@
         'במפורש, בכנות ובאופן ידידותי — לעולם אל תתעלם מהבקשה, אל תשתוק, ואל תמציא תשובה ' +
         'מקצועית שאינה קיימת בפועל.',
       'אל תנסח זאת כסירוב או כהפניה בטיחותית — זו פשוט מגבלת יכולת נוכחית של המערכת, לא שיקול ' +
-        'בטיחות ולא שיפוט כלשהו כלפי הבקשה או כלפי המשתמש.',
-      maturityGuidance,
-      NO_MOTIVATIONAL_PRESSURE_LINE,
-      HEBREW_ONLY_LINE
+        'בטיחות ולא שיפוט כלשהו כלפי הבקשה או כלפי המשתמש.'
     ];
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §15) — additive; a no-op when
+    // terminalDecision.secondaryAcknowledgment is absent.
+    var unsupportedSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
+    if (unsupportedSecondaryLine) { lines.push(unsupportedSecondaryLine); }
+    lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
 
@@ -238,6 +240,64 @@
       'נימוק: ' + (r.rationale || ''),
       'בסיס הראיות: ' + (r.evidenceBasis || ''),
       'נסח הודעת מאמן אחת, קצרה וכנה, שמעבירה את זה למשתמש בהתאם להנחיות.'
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1/§15) — the standalone-case boundary: kind
+  // 'ACKNOWLEDGED_PREFERENCE' carries no safetyDisposition at all (no Candidate ever existed, so
+  // Safety was never invoked — decisionFormation.js's own formAcknowledgedPreferenceOutcome()
+  // never attaches one), exactly like isUnsupportedCase() above — mirrored byte-for-byte.
+  function isAcknowledgedPreferenceCase(terminalDecision) {
+    if (!isPlainObject(terminalDecision)) return false;
+    if (terminalDecision.kind !== 'ACKNOWLEDGED_PREFERENCE') return false;
+    if (Object.prototype.hasOwnProperty.call(terminalDecision, 'safetyDisposition')) return false;
+    return true;
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) — the generative-call system instruction
+  // for standalone ACKNOWLEDGED_PREFERENCE rendering: an honest, brief, first-person acknowledgment
+  // that FITME understood and durably noted a piece of explicit, non-actionable, non-professional
+  // personal information the user just stated — never restating professional advice (none exists
+  // on this path), never implying an action was taken beyond noting the preference, never
+  // fabricating certainty about how it will be used. No disclosure-acknowledgment line — EXP-69's
+  // three disclosure-eligible dispositions never apply here (see isAcknowledgedPreferenceCase()
+  // above). When preferenceAcknowledgment.wasReactivatedFromRejected===true, the instruction
+  // additionally steers toward an honest, non-alarming acknowledgment that a previous rejection is
+  // being updated — mandatorily, never omitted — mirroring DISCLOSURE_ACKNOWLEDGMENT_LINE's own
+  // "never name an internal status/mechanism" discipline.
+  function buildAcknowledgedPreferenceSystemInstruction(terminalDecision, expressionRenderingContext) {
+    var maturityGuidance = RELATIONSHIP_MATURITY_GUIDANCE[expressionRenderingContext.relationshipMaturityStage];
+    var ack = terminalDecision.preferenceAcknowledgment || {};
+    var lines = [
+      VOICE_IDENTITY_LINE,
+      'ההחלטה היא שהמשתמש ציין זה עתה, במפורש ובגוף ראשון, העדפה אישית לא-מקצועית ולא-ניתנת-' +
+        'לפעולה (לדוגמה לגבי פעילות, שעת אימון, או אורך אימון) — וזו כבר נשמרה בהצלחה. אמור זאת ' +
+        'בקצרה, בכנות, ובגוף ראשון: שהבנת והפנמת את מה שנאמר. לעולם אל תיתן המלצה מקצועית או ' +
+        'עצה מקצועית כלשהי בהודעה הזו — אין כאן החלטה מקצועית, רק אישור קליטה.',
+      'לעולם אל תמציא ודאות לגבי איך ההעדפה תשמש בעתיד — רק שהיא נקלטה ותילקח בחשבון.'
+    ];
+    if (ack.wasReactivatedFromRejected) {
+      lines.push('המשתמש ציין כעת מחדש העדפה שבעבר סומנה אצלכם כלא נכונה — חובה לציין בקצרה ' +
+        'ובכנות שההעדפה הזו מתעדכנת כעת בהתאם למה שנאמר, מבלי לנקוב בשם מנגנון, סטטוס, או פרט ' +
+        'טכני פנימי כלשהו.');
+    }
+    lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
+    return lines.join(' ');
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) — the generative layer's user-turn content
+  // for standalone ACKNOWLEDGED_PREFERENCE rendering. Derived exclusively from the closed,
+  // non-free-text preferenceAcknowledgment field (Product Decision 16 — never raw interpreter/
+  // model text); confidence/hierarchyTier/boundaryType never exist on this kind.
+  function buildAcknowledgedPreferenceUserContent(terminalDecision) {
+    var ack = terminalDecision.preferenceAcknowledgment || {};
+    return [
+      'ההחלטה: העדפה נקלטה בהצלחה (ACKNOWLEDGED_PREFERENCE).',
+      'קטגוריה: ' + ack.preferenceClass + '.',
+      'קוטביות: ' + ack.polarity + '.',
+      'נושא: ' + ack.target + '.',
+      ack.wasReactivatedFromRejected ? 'זו הפעלה מחדש של העדפה שסומנה בעבר כלא נכונה — חובה לציין זאת.' : '',
+      'נסח הודעת מאמן אחת, קצרה וכנה, שמאשרת קליטה בלבד, בהתאם להנחיות.'
     ].join(' ');
   }
 
@@ -289,6 +349,42 @@
     'במלואן, בדיוק לפי הסדר שסופקו, בלי להשמיט אף אחת מהן, בלי להוסיף אפשרות שלא סופקה לך, ' +
     'ובלי לדרג, להעדיף, או להמליץ על אחת מהן על פני האחרות. הבחירה ביניהן היא של המשתמש בלבד.';
 
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14/§15, this round's same-turn acknowledgment-
+  // preservation correction) — shared instruction fragment, reused additively across EVERY
+  // existing rendering path below, added only when terminalDecision.secondaryAcknowledgment is
+  // present (absent on every pre-CPI-001 TerminalDecision — those paths remain byte-identical).
+  // Mirrors DISCLOSURE_ACKNOWLEDGMENT_LINE's own already-established "woven into the same
+  // message, never a separate notice" precedent (EXP-69-72) exactly — this is a reuse of that
+  // existing discipline for a new secondary semantic, never a new mechanism. The reactivation
+  // sub-case is framed as MANDATORY/never-omit (mirroring DISCLOSURE_ACKNOWLEDGMENT_LINE's own
+  // "unconditional" framing for its own three dispositions); the ordinary sub-case is framed as
+  // always-represented-but-brief-and-secondary — in both sub-cases, the primary content above
+  // always remains the message's own lead and priority.
+  function buildSecondaryAcknowledgmentLine(secondaryAcknowledgment) {
+    if (!secondaryAcknowledgment) return null;
+    if (secondaryAcknowledgment.wasReactivatedFromRejected) {
+      return 'בנוסף לתוכן העיקרי שלמעלה, ולעולם לא כהערה נפרדת: המשתמש ציין כעת העדפה שבעבר סומנה ' +
+        'כלא נכונה — שזור בהודעה, בקצרה, אמירה כנה שהעדפה זו מתעדכנת בהתאם למה שנאמר כעת. חובה לכלול ' +
+        'את האזכור הזה — לעולם אל תשמיט אותו — אך הוא נשאר תמיד משני, קצר, ולעולם אינו מחליף, מעמעם, ' +
+        'או מתחרה בבולטות עם התוכן העיקרי שלמעלה.';
+    }
+    return 'בנוסף לתוכן העיקרי שלמעלה, ולעולם לא כהערה נפרדת: שזור בהודעה, במשפט קצר אחד בלבד, ' +
+      'אמירה כנה שהמשתמש ציין העדפה אישית שנקלטה ותילקח בחשבון — משני ותמציתי, לעולם לא בולט יותר ' +
+      'מהתוכן העיקרי שלמעלה, ולעולם לא פוגע בבהירות או בחומרה שלו.';
+  }
+
+  // Companion user-turn-content fragment — the closed, non-free-text source Expression renders
+  // the secondary acknowledgment from (Product Decision 16: never raw interpreter/model text).
+  function buildSecondaryAcknowledgmentUserContent(secondaryAcknowledgment) {
+    if (!secondaryAcknowledgment) return '';
+    return ' העדפה נוספת שנקלטה (לשילוב משני בלבד, אל תיתן לה לדחוק את התוכן העיקרי): קטגוריה: ' +
+      secondaryAcknowledgment.preferenceClass + '. קוטביות: ' + secondaryAcknowledgment.polarity +
+      '. נושא: ' + secondaryAcknowledgment.target + '.' +
+      (secondaryAcknowledgment.wasReactivatedFromRejected
+        ? ' זו הפעלה מחדש של העדפה שסומנה בעבר כלא נכונה — חובה לציין זאת בקצרה.'
+        : '');
+  }
+
   // WP8 — enumerates every entry of `options[]` (each the full, unmutated winning-tied Candidate
   // object, TASK_006_SPEC_v1.0.md §25.10) into the generative layer's user-turn content, preserving
   // option count, order, and membership exactly — never summarized, reordered, or filtered. Each
@@ -320,6 +416,10 @@
         'בזהירות ובכנות, מבלי להסתיר את אי-הוודאות ומבלי להמציא ודאות שאינה קיימת.'
     ];
     if (hasTiedSet(terminalDecision)) { lines.push(TIED_SET_PRESENTATION_LINE); } // WP8 (§15/EXP-35)
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §15) — additive; a no-op (no line pushed) when
+    // terminalDecision.secondaryAcknowledgment is absent, i.e. byte-identical to before this Item.
+    var baseSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
+    if (baseSecondaryLine) { lines.push(baseSecondaryLine); }
     lines.push(maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -335,7 +435,8 @@
     if (hasTiedSet(terminalDecision)) {
       return describeOptions(terminalDecision.options) +
         ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
-        ' האפשרויות הללו למשתמש כפי שתוארו, בהתאם להנחיות.';
+        ' האפשרויות הללו למשתמש כפי שתוארו, בהתאם להנחיות.' +
+        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
     }
     var r = terminalDecision.rationale || {};
     return [
@@ -346,7 +447,7 @@
       'אי-ודאות: ' + (r.uncertainty || ''),
       'רמת עדיפות (hierarchyTier): ' + terminalDecision.hierarchyTier + '.',
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את ההחלטה הזו למשתמש.'
-    ].join(' ');
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
   }
 
   // WP5 — the generative-call system instruction for REFUSAL rendering, realizing EXP-58–62
@@ -380,6 +481,10 @@
       'אל תשווה, תמדוד, או תשפוט את המשתמש בשום צורה — כבודו מוחלט ואינו מותנה בדבר.'
     ];
     if (hasTiedSet(terminalDecision)) { lines.push(TIED_SET_PRESENTATION_LINE); } // WP8 (§15/EXP-35)
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §15) — additive; a no-op when
+    // terminalDecision.secondaryAcknowledgment is absent.
+    var refusalSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
+    if (refusalSecondaryLine) { lines.push(refusalSecondaryLine); }
     lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -404,7 +509,8 @@
       return {
         content: describeOptions(terminalDecision.options) +
           ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
-          ' האפשרויות הללו כסירוב אחד, בהתאם להנחיות.',
+          ' האפשרויות הללו כסירוב אחד, בהתאם להנחיות.' +
+          buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment),
         saferAlternative: null
       };
     }
@@ -417,7 +523,7 @@
         'ערך צפוי: ' + (r.expectedValue || ''),
         'אי-ודאות: ' + (r.uncertainty || ''),
         'נסח הודעת מאמן אחת, קצרה, שמעבירה את הסירוב הזה למשתמש בהתאם להנחיות.'
-      ].join(' '),
+      ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment),
       saferAlternative: null // no canonical field exists to carry one — see comment above (EXP-61)
     };
   }
@@ -458,6 +564,10 @@
       'אל תרכך את הניסוח עד כדי כך שהרצינות עלולה להתפספס — כנות מלאה, בלי להבהיל ובלי להרגיע יתר על המידה.'
     ];
     if (hasTiedSet(terminalDecision)) { lines.push(TIED_SET_PRESENTATION_LINE); } // WP8 (§15/EXP-35)
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §15) — additive; a no-op when
+    // terminalDecision.secondaryAcknowledgment is absent.
+    var escalationSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
+    if (escalationSecondaryLine) { lines.push(escalationSecondaryLine); }
     lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
     return lines.join(' ');
   }
@@ -473,7 +583,8 @@
     if (hasTiedSet(terminalDecision)) {
       return describeOptions(terminalDecision.options) +
         ' נסח הודעת מאמן אחת שמציגה את כל ' + terminalDecision.options.length +
-        ' האפשרויות הללו כהפניה אחת להתייעצות מקצועית, בהתאם להנחיות.';
+        ' האפשרויות הללו כהפניה אחת להתייעצות מקצועית, בהתאם להנחיות.' +
+        buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
     }
     var r = terminalDecision.rationale || {};
     return [
@@ -483,7 +594,7 @@
       'ערך צפוי: ' + (r.expectedValue || ''),
       'אי-ודאות: ' + (r.uncertainty || ''),
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את ההפניה הזו למשתמש בהתאם להנחיות.'
-    ].join(' ');
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
   }
 
   // WP7 — the generative-call system instruction for MODIFIED rendering. The substantive content
@@ -496,16 +607,18 @@
   // MODIFIED is one of EXP-69's exact three disclosure-eligible dispositions.
   function buildModifiedSystemInstruction(terminalDecision, expressionRenderingContext) {
     var maturityGuidance = RELATIONSHIP_MATURITY_GUIDANCE[expressionRenderingContext.relationshipMaturityStage];
-    return [
+    var lines = [
       VOICE_IDENTITY_LINE,
       'התוכן שעליך להעביר כבר הוחלט ונוסח במלואו מראש על ידי גורם אחר — תפקידך לנסח אותו מחדש ' +
         'בקול המאמן בלבד. לעולם אל תשנה את משמעותו, אל תוסיף עליו, אל תגרע ממנו, ואל "תתקן" אותו ' +
-        'בשום צורה.',
-      DISCLOSURE_ACKNOWLEDGMENT_LINE,
-      maturityGuidance,
-      NO_MOTIVATIONAL_PRESSURE_LINE,
-      HEBREW_ONLY_LINE
-    ].join(' ');
+        'בשום צורה.'
+    ];
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §15) — additive; a no-op when
+    // terminalDecision.secondaryAcknowledgment is absent.
+    var modifiedSecondaryLine = buildSecondaryAcknowledgmentLine(terminalDecision.secondaryAcknowledgment);
+    if (modifiedSecondaryLine) { lines.push(modifiedSecondaryLine); }
+    lines.push(DISCLOSURE_ACKNOWLEDGMENT_LINE, maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE);
+    return lines.join(' ');
   }
 
   // WP7 — the generative layer's user-turn content for MODIFIED rendering. `modification.
@@ -523,7 +636,7 @@
       'ההחלטה: תוכן שהותאם משיקולי בטיחות (MODIFIED).',
       'התוכן שכבר הוחלט ונוסח מראש, כפי שסופק (אל תשנה, אל תוסיף, אל תגרע): ' + serialized,
       'נסח הודעת מאמן אחת, קצרה, שמעבירה את התוכן הזה למשתמש בהתאם להנחיות.'
-    ].join(' ');
+    ].join(' ') + buildSecondaryAcknowledgmentUserContent(terminalDecision.secondaryAcknowledgment);
   }
 
   // No pass/run identity is threaded into runExpressionStage()/render() today — EXP-OD-9's own
@@ -591,6 +704,10 @@
     } else if (isUnsupportedCase(terminalDecision)) {
       system = buildUnsupportedSystemInstruction(terminalDecision, expressionRenderingContext);
       userContent = buildUnsupportedUserContent(terminalDecision);
+      semanticSignal = { kind: terminalDecision.kind };
+    } else if (isAcknowledgedPreferenceCase(terminalDecision)) {
+      system = buildAcknowledgedPreferenceSystemInstruction(terminalDecision, expressionRenderingContext);
+      userContent = buildAcknowledgedPreferenceUserContent(terminalDecision);
       semanticSignal = { kind: terminalDecision.kind };
     } else {
       // No TerminalDecision shape matches any of the five rendering paths above (each of the first

@@ -282,6 +282,19 @@
     return copyArrayOfObjects(Array.isArray(records) ? records : []);
   }
 
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §7/§14 step 3): a single, narrow, synchronous boolean
+  // read of userProfile.memoryConsent.granted — mirrors readGoalObjectiveContext's own "closed to
+  // exactly the fields needed" pattern. Exposed only to memoryLayer/PREFERENCE_CONSENT_READ, a
+  // sibling capability-holder identity to the existing memoryLayer/USER_STATED_MEMORY_READ/
+  // RECENT_CONVERSATION_READ identities — never coachDecisionSystem/DECISION_PASS, never a
+  // widening of an existing grant. No new fetch dependency: reuses the already-injected
+  // deps.getUserProfile() every other profile-field read in this file already uses.
+  function readMemoryConsentGranted(identity) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var profile = deps.getUserProfile() || {};
+    return !!(profile.memoryConsent && profile.memoryConsent.granted === true);
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Write operations (owner commands, B3 SPEC §10/§11) ──
   // ══════════════════════════════════════════════════════════════════
@@ -419,7 +432,8 @@
     workoutPayload: readWorkoutPayload,
     recommendationFeedbackHistory: readRecommendationFeedbackHistory,
     userStatedMemory: readUserStatedMemory,
-    recentConversation: readRecentConversation
+    recentConversation: readRecentConversation,
+    memoryConsentGranted: readMemoryConsentGranted
   };
 
   var WRITE_OPS = {
@@ -515,6 +529,14 @@
       // coachDecisionSystem.DECISION_PASS.
       RECENT_CONVERSATION_READ: {
         reads: ['recentConversation'],
+        writes: []
+      },
+      // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 3): a third sibling capability-holder
+      // identity under the same engine, mirroring RECENT_CONVERSATION_READ's own established
+      // precedent exactly — not a widening of USER_STATED_MEMORY_READ, not a new engine, not an
+      // alias for coachDecisionSystem.DECISION_PASS.
+      PREFERENCE_CONSENT_READ: {
+        reads: ['memoryConsentGranted'],
         writes: []
       }
     }

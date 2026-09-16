@@ -341,3 +341,72 @@ test('40. each statement is wrapped in its own delimited block in the prompt, ke
   assert.ok(prompt.includes('<statement id="mem-1">a</statement>'));
   assert.ok(prompt.includes('<statement id="mem-2">b</statement>'));
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §10 point 5, Safety fail-closed clarification) —
+// classifyWithStatus() additive tests. classify() itself is completely unexercised by anything
+// below — every test above this point remains the sole, unmodified regression coverage for it.
+// ══════════════════════════════════════════════════════════════════
+
+test('41. classifyWithStatus(): a genuine, confident empty result returns status:CLASSIFIED, restrictions:[]', async () => {
+  Interpreter.configure({ callClaude: async () => fakeResponse([notRestriction('mem-1')]) });
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'I ran yesterday' }]);
+  assert.deepEqual(result, { status: 'CLASSIFIED', restrictions: [] });
+});
+
+test('42. classifyWithStatus(): a genuine restriction result returns status:CLASSIFIED with the restriction included', async () => {
+  Interpreter.configure({ callClaude: async () => fakeResponse([{ id: 'mem-1', restrictionClassification: STATED, restrictedActivityText: 'run', statedDurationText: null }]) });
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: "my doctor told me not to run" }]);
+  assert.equal(result.status, 'CLASSIFIED');
+  assert.equal(result.restrictions.length, 1);
+  assert.equal(result.restrictions[0].restrictedActivityText, 'run');
+});
+
+test('43. classifyWithStatus(): a thrown transport error fails closed to status:FAILED, restrictions:[] — never coerced into "no restriction found"', async () => {
+  Interpreter.configure({ callClaude: () => { throw new Error('boom'); } });
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]);
+  assert.deepEqual(result, { status: 'FAILED', restrictions: [] });
+});
+
+test('44. classifyWithStatus(): a timeout fails closed to status:FAILED', async () => {
+  Interpreter.configure({ callClaude: () => new Promise(() => {}), timeoutMs: 5 }); // never resolves
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]);
+  assert.deepEqual(result, { status: 'FAILED', restrictions: [] });
+});
+
+test('45. classifyWithStatus(): malformed/unparseable model output fails closed to status:FAILED (never silently treated as empty-but-classified)', async () => {
+  Interpreter.configure({ callClaude: async () => fakeResponseFromRawText('not json') });
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]);
+  assert.deepEqual(result, { status: 'FAILED', restrictions: [] });
+});
+
+test('46. classifyWithStatus(): an unconfigured callClaude fails closed to status:FAILED', async () => {
+  Interpreter.configure({ callClaude: null });
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]);
+  assert.deepEqual(result, { status: 'FAILED', restrictions: [] });
+});
+
+test('47. classifyWithStatus(): a submitted id missing from the model\'s own response fails the WHOLE batch closed, never treated as "no restriction" for that id', async () => {
+  Interpreter.configure({ callClaude: async () => fakeResponse([]) }); // responds, but omits mem-1 entirely
+  const result = await Interpreter.classifyWithStatus([{ id: 'mem-1', text: 'x' }]);
+  assert.deepEqual(result, { status: 'FAILED', restrictions: [] });
+});
+
+test('48. classifyWithStatus(): an empty records array short-circuits to status:CLASSIFIED, restrictions:[] (no call attempted)', async () => {
+  let called = false;
+  Interpreter.configure({ callClaude: async () => { called = true; return fakeResponse([]); } });
+  const result = await Interpreter.classifyWithStatus([]);
+  assert.deepEqual(result, { status: 'CLASSIFIED', restrictions: [] });
+  assert.equal(called, false);
+});
+
+test('49. classify() itself remains byte-identical after this addition — same empty-on-failure behavior as before', async () => {
+  Interpreter.configure({ callClaude: () => { throw new Error('boom'); } });
+  assert.deepEqual(await Interpreter.classify([{ id: 'mem-1', text: 'x' }]), []);
+});
+
+test('50. classifyWithStatus() is reusable independently of preferenceIntakeGate.js — a plain, additive export, never a redesign of classify()\'s own contract', () => {
+  assert.equal(typeof Interpreter.classifyWithStatus, 'function');
+  assert.equal(typeof Interpreter.classify, 'function');
+  assert.notEqual(Interpreter.classifyWithStatus, Interpreter.classify);
+});

@@ -63,11 +63,11 @@ test('all six new WP1 modules are in the sw.js SHELL cache list, and VERSION was
   files.forEach((f) => assert.notEqual(swJs.indexOf(f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
   assert.notEqual(versionMatch, null);
-  assert.equal(versionMatch[1], '2.47.2');
+  assert.equal(versionMatch[1], '2.47.3');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
   assert.notEqual(appVersionMatch, null);
-  assert.equal(appVersionMatch[1], '2.47.2');
+  assert.equal(appVersionMatch[1], '2.47.3');
 });

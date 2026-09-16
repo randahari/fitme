@@ -130,6 +130,20 @@
     await memCol().doc(id).delete();
   }
 
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §12) — a single, narrow, additive existence-and-
+  // status read on the exact same CRUD surface createMemory()/updateMemory() already use.
+  // Reused by the persistence boundary (js/app.js) to decide CREATE / UPDATE-active / REACTIVATE-
+  // from-rejected / no-write-other-status before writing (§12's own deterministic table). Returns
+  // the raw document (with its own _id set, matching listMemories()'s own convention) or null
+  // when absent. No business logic here — that decision lives entirely at the calling boundary.
+  async function getMemory(id) {
+    var doc = await memCol().doc(id).get();
+    if (!doc.exists) return null;
+    var v = doc.data();
+    v._id = doc.id;
+    return v;
+  }
+
   async function listMemories() {
     var snap = await memCol().get();
     var out = [];
@@ -219,8 +233,15 @@
     create: createMemory,
     update: updateMemory,
     remove: deleteMemory,
+    get: getMemory,
     list: listMemories,
-    migrateIfNeeded: migrateIfNeeded
+    migrateIfNeeded: migrateIfNeeded,
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §12) — promoted from the pre-existing, Node/test-
+    // only `_internal` export (below) to the main, browser-reachable API surface: the persistence
+    // boundary (js/app.js) needs this exact same deterministic-ID helper migrateIfNeeded() already
+    // uses internally ('mig_pref_' + safeKey(k)), to compute CPI's own 'conv_pref_' + ... document
+    // IDs (§12). No behavior change to safeKey() itself — purely an additive export.
+    safeKey: safeKey
   };
 
   // ══════════════════════════════════════════════════════════════════

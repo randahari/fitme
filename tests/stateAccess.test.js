@@ -808,3 +808,58 @@ test('USM1-17. memoryLayer/USER_STATED_MEMORY_READ is denied every other read/wr
   assert.equal(deniedWrite.status, 'REJECTED');
   assert.equal(deniedWrite.error.code, 'STATE_ACCESS_DENIED');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §7/§14 step 3) — readMemoryConsentGranted /
+// memoryLayer's new PREFERENCE_CONSENT_READ capability-holder identity. A single, narrow,
+// synchronous boolean read — never CRUD, never a fetch dependency of its own (reuses the
+// already-injected getUserProfile()).
+// ══════════════════════════════════════════════════════════════════
+
+test('CPI-1. memoryConsentGranted() returns true when userProfile.memoryConsent.granted === true', () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  const cap = access('memoryLayer', 'PREFERENCE_CONSENT_READ', env);
+  assert.equal(cap.read.memoryConsentGranted(), true);
+});
+
+test('CPI-2. memoryConsentGranted() returns false when granted is false, missing, or memoryConsent itself is absent — never fabricated true', () => {
+  const envFalse = makeEnv({ profile: { memoryConsent: { granted: false } } }); configure(envFalse);
+  assert.equal(access('memoryLayer', 'PREFERENCE_CONSENT_READ', envFalse).read.memoryConsentGranted(), false);
+
+  const envMissing = makeEnv({ profile: { memoryConsent: undefined } }); configure(envMissing);
+  assert.equal(access('memoryLayer', 'PREFERENCE_CONSENT_READ', envMissing).read.memoryConsentGranted(), false);
+});
+
+test('CPI-3. memoryConsentGranted() throws StaleSessionError under a stale session generation', () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  const cap = access('memoryLayer', 'PREFERENCE_CONSENT_READ', env);
+  env.setGeneration(2);
+  assert.throws(() => cap.read.memoryConsentGranted(), (e) => e.code === 'STALE_SESSION');
+});
+
+test('CPI-4. PREFERENCE_CONSENT_READ is denied to every other engine/action — the capability is not accidentally exposed elsewhere', () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  assert.throws(() => access('coachDecisionSystem', 'DECISION_PASS', env).read.memoryConsentGranted(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => access('habitEngine', 'RECOMPUTE', env).read.memoryConsentGranted(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => access('memoryLayer', 'USER_STATED_MEMORY_READ', env).read.memoryConsentGranted(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => access('memoryLayer', 'RECENT_CONVERSATION_READ', env).read.memoryConsentGranted(), (e) => e.code === 'STATE_ACCESS_DENIED');
+});
+
+test('CPI-5. memoryLayer/PREFERENCE_CONSENT_READ is denied every other read/write on the closed surface (least-privilege) — never a widening of USER_STATED_MEMORY_READ/RECENT_CONVERSATION_READ', () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  const cap = access('memoryLayer', 'PREFERENCE_CONSENT_READ', env);
+  assert.throws(() => cap.read.userStatedMemory(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => cap.read.recentConversation(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  assert.throws(() => cap.read.habitView(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  const deniedWrite = cap.write.replaceDerivedHabitView({ habits: [], habitsMeta: {} });
+  assert.equal(deniedWrite.status, 'REJECTED');
+  assert.equal(deniedWrite.error.code, 'STATE_ACCESS_DENIED');
+});
+
+test('CPI-6. this Item never widens coachDecisionSystem/DECISION_PASS\'s own existing grant — memoryConsentGranted remains denied there (regression)', () => {
+  const env = makeEnv({ profile: { memoryConsent: { granted: true } } }); configure(env);
+  const decisionPass = access('coachDecisionSystem', 'DECISION_PASS', env);
+  assert.throws(() => decisionPass.read.memoryConsentGranted(), (e) => e.code === 'STATE_ACCESS_DENIED');
+  // regression: the pre-existing grant itself is unchanged
+  assert.deepEqual(decisionPass.read.goalObjectiveContext(), { goal: 'cut', goalKcal: 2000 });
+});

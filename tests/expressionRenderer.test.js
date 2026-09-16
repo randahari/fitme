@@ -802,3 +802,147 @@ test('72. Expression WP13 / EXP-71 — a disclosure-bearing (MODIFIED) rendering
   const violating = await ExpressionRenderer.render(validModifiedTerminalDecision(), validRenderingContext());
   assert.equal(QualitativeChecker.leaksInternalImplementationDetail(violating.renderedLanguage), true);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B/§15) — standalone ACKNOWLEDGED_PREFERENCE
+// rendering (B.1) and the additive secondaryAcknowledgment append across the five pre-existing
+// rendering paths (B.2). Per AC-6/EXP-43 (this file's own header), generated language content is
+// never asserted identical — only dispatch outcome and composed-payload shape are.
+// ══════════════════════════════════════════════════════════════════
+
+function validAcknowledgedPreferenceTerminalDecision(overrides) {
+  return Object.assign({
+    kind: 'ACKNOWLEDGED_PREFERENCE',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false },
+    candidateProvenance: [],
+    decisionPassTrace: {},
+    immutable: true
+  }, overrides || {});
+}
+
+function validUnsupportedTerminalDecision(overrides) {
+  return Object.assign({
+    kind: 'UNSUPPORTED',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    candidateProvenance: [],
+    decisionPassTrace: {},
+    immutable: true
+  }, overrides || {});
+}
+
+test('CPI-1. renders a valid ACKNOWLEDGED_PREFERENCE (standalone) into a schema-conformant Delivery Intent with semanticSignal.kind only', async () => {
+  var gen = fakeGenerateFnReturning('הבנתי, אקח את זה בחשבון.');
+  ExpressionRenderer.configure({ generateFn: gen });
+  const DeliveryIntentContract = require('../js/coachDecisionSystem/deliveryIntentContract.js');
+  const di = await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision(), validRenderingContext());
+  assert.equal(DeliveryIntentContract.isValidDeliveryIntent(di), true);
+  assert.equal(di.semanticSignal.kind, 'ACKNOWLEDGED_PREFERENCE');
+  assert.equal(Object.prototype.hasOwnProperty.call(di.semanticSignal, 'boundaryType'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(di.semanticSignal, 'safetyDisposition'), false);
+});
+
+test('CPI-2. the ACKNOWLEDGED_PREFERENCE composed content is derived only from preferenceAcknowledgment, never raw interpreter/model text', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision({
+    preferenceAcknowledgment: { preferenceClass: 'TRAINING_TIME_PREFERENCE', polarity: 'POSITIVE', target: 'EVENING', wasReactivatedFromRejected: false }
+  }), validRenderingContext());
+  var user = gen.calls[0].messages[0].content;
+  assert.match(user, /TRAINING_TIME_PREFERENCE/);
+  assert.match(user, /POSITIVE/);
+  assert.match(user, /EVENING/);
+});
+
+test('CPI-3. ACKNOWLEDGED_PREFERENCE includes no Safety disclosure line (no Safety review on this path)', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision(), validRenderingContext());
+  var sys = gen.calls[0].system;
+  assert.doesNotMatch(sys, /שזור בתוך אותה ההודעה עצמה/); // DISCLOSURE_ACKNOWLEDGMENT_LINE never appears here
+});
+
+test('CPI-4. wasReactivatedFromRejected:true produces a distinguishable, mandatory-framed system instruction from false', async () => {
+  var genFalse = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genFalse });
+  await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision(), validRenderingContext());
+
+  var genTrue = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genTrue });
+  await ExpressionRenderer.render(validAcknowledgedPreferenceTerminalDecision({ preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'POSITIVE', target: 'running', wasReactivatedFromRejected: true } }), validRenderingContext());
+
+  assert.notEqual(genFalse.calls[0].system, genTrue.calls[0].system);
+  assert.match(genTrue.calls[0].system, /חובה/); // mandatory framing present only in the reactivation case
+});
+
+// ── secondaryAcknowledgment append — additive across the five existing rendering paths ──
+
+test('CPI-5. RECOMMENDATION base case: secondaryAcknowledgment absent leaves the composed payload byte-identical to before this Item', async () => {
+  var gen1 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen1 });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  var gen2 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen2 });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  assert.equal(gen1.calls[0].system, gen2.calls[0].system);
+  assert.equal(gen1.calls[0].messages[0].content, gen2.calls[0].messages[0].content);
+});
+
+test('CPI-6. RECOMMENDATION base case: secondaryAcknowledgment present adds closed content, distinct from the no-secondary case', async () => {
+  var genBase = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genBase });
+  await ExpressionRenderer.render(validTerminalDecision(), validRenderingContext());
+
+  var genAck = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: genAck });
+  await ExpressionRenderer.render(validTerminalDecision({ secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false } }), validRenderingContext());
+
+  assert.notEqual(genAck.calls[0].system, genBase.calls[0].system);
+  assert.match(genAck.calls[0].messages[0].content, /ACTIVITY_SENTIMENT/);
+});
+
+test('CPI-7. REFUSAL rendering with secondaryAcknowledgment: the Safety disclosure line is still present, and the secondary content is additionally included', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validRefusalTerminalDecision({ secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false } }), validRenderingContext());
+  assert.match(gen.calls[0].system, /שזור בתוך אותה ההודעה עצמה/); // DISCLOSURE_ACKNOWLEDGMENT_LINE still present
+  assert.match(gen.calls[0].messages[0].content, /ACTIVITY_SENTIMENT/);
+});
+
+test('CPI-8. ESCALATION rendering with a MANDATORY reactivation secondaryAcknowledgment: both the Safety disclosure and the reactivation framing are present', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validEscalationTerminalDecision({ secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'POSITIVE', target: 'running', wasReactivatedFromRejected: true } }), validRenderingContext());
+  assert.match(gen.calls[0].system, /שזור בתוך אותה ההודעה עצמה/);
+  assert.match(gen.calls[0].system, /חובה/);
+});
+
+test('CPI-9. MODIFIED rendering with secondaryAcknowledgment: modifiedContent is still passed through, plus the secondary content', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  await ExpressionRenderer.render(validModifiedTerminalDecision({ secondaryAcknowledgment: { preferenceClass: 'TRAINING_FORMAT_PREFERENCE', polarity: 'NEGATIVE', target: 'LONG', wasReactivatedFromRejected: false } }), validRenderingContext());
+  assert.match(gen.calls[0].messages[0].content, /TRAINING_FORMAT_PREFERENCE/);
+});
+
+test('CPI-10. UNSUPPORTED rendering with secondaryAcknowledgment: dispatches correctly and includes the closed secondary content', async () => {
+  var gen = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen });
+  const DeliveryIntentContract = require('../js/coachDecisionSystem/deliveryIntentContract.js');
+  const di = await ExpressionRenderer.render(validUnsupportedTerminalDecision({ secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false } }), validRenderingContext());
+  assert.equal(DeliveryIntentContract.isValidDeliveryIntent(di), true);
+  assert.match(gen.calls[0].messages[0].content, /ACTIVITY_SENTIMENT/);
+});
+
+test('CPI-11. UNSUPPORTED rendering WITHOUT secondaryAcknowledgment remains byte-identical to before this Item (regression)', async () => {
+  var gen1 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen1 });
+  await ExpressionRenderer.render(validUnsupportedTerminalDecision(), validRenderingContext());
+
+  var gen2 = fakeGenerateFnReturning('x');
+  ExpressionRenderer.configure({ generateFn: gen2 });
+  await ExpressionRenderer.render(validUnsupportedTerminalDecision(), validRenderingContext());
+
+  assert.equal(gen1.calls[0].system, gen2.calls[0].system);
+});

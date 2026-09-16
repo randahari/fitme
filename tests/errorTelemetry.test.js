@@ -372,15 +372,23 @@ test('wiring: the named application-failure integration points call ErrorTelemet
   // pipeline-exception catch) plus CCC-001's own 4 new, individually-reviewed persistence
   // integration points (docs/specs/CCC_001_SPEC_v1.0.md §11: PENDING create failure,
   // COMPLETED/SILENCE completion-update failure — two call sites — and history-load failure) —
+  // plus CPI-001's own 4 new, individually-reviewed integration points
+  // (docs/specs/CPI_001_SPEC_v1.0.md §16: the Typed Memory existence-check and write failures
+  // inside persistCpiPreferenceRecord() — two call sites — and the SAME, already-established
+  // 'PERSIST_TURN_COMPLETE' operation's own COMPLETED/SILENCE completion-write failure paths,
+  // reused verbatim for the Unified Finalization branch's own two completeTurn() call sites) —
   // still a small, explicit, hand-reviewed set, never a mechanical console.error replacement.
   const occurrences = (appJs.match(/ErrorTelemetry\.report\(/g) || []).length;
-  assert.equal(occurrences, 7, 'expected exactly 7 explicit integration points (3 from Item 7 + 4 from CCC-001)');
+  assert.equal(occurrences, 11, 'expected exactly 11 explicit integration points (3 from Item 7 + 4 from CCC-001 + 4 from CPI-001)');
   assert.match(appJs, /operation: 'LOAD_USER_DATA'/);
   assert.match(appJs, /operation: 'SAVE_PROFILE'/);
   assert.match(appJs, /operation: 'DIRECT_TURN_PASS'/);
   assert.match(appJs, /operation: 'PERSIST_TURN_CREATE'/);
   assert.match(appJs, /operation: 'PERSIST_TURN_COMPLETE'/);
   assert.match(appJs, /operation: 'LOAD_HISTORY'/);
+  assert.match(appJs, /operation: 'CPI_PERSIST'/);
+  assert.match(appJs, /code: \(e && e\.code\) \|\| 'CPI_EXISTENCE_CHECK_FAILED'/);
+  assert.match(appJs, /code: \(e && e\.code\) \|\| 'CPI_PERSIST_WRITE_FAILED'/);
 });
 
 test('wiring: the Coach turn integration point never passes a `message` field (the one path closest to user-authored content)', () => {

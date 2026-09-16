@@ -120,6 +120,25 @@
   var ConversationalNeedCreator = (typeof module !== 'undefined' && module.exports)
     ? require('./conversationalNeedCreator.js')
     : window.ConversationalNeedCreator;
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9/§10) — two new, narrow collaborators, dispatched
+  // only from runDirectTurnPass() below, in parallel with TurnUnderstandingInterpreter/
+  // ConversationalNeedCreator above — never gated on, and never gating, Need recognition.
+  var ExplicitPreferenceStatementInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./explicitPreferenceStatementInterpreter.js')
+    : window.ExplicitPreferenceStatementInterpreter;
+  var PreferenceIntakeGate = (typeof module !== 'undefined' && module.exports)
+    ? require('./preferenceIntakeGate.js')
+    : window.PreferenceIntakeGate;
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 3) — the new memoryLayer/
+  // PREFERENCE_CONSENT_READ StateAccess capability-holder identity, a sibling to the existing
+  // memoryLayer identities (user-stated-memory / recent-conversation) MemoryLayer.js itself
+  // already uses — required directly here (not through MemoryLayer) since this single,
+  // narrow boolean read is consumed only by PreferenceIntakeGate.authorize(), never by Pipeline
+  // Context assembly itself (CD-02-style discipline: a narrow, purpose-specific read, not a
+  // widening of an existing capability grant).
+  var StateAccess = (typeof module !== 'undefined' && module.exports)
+    ? require('../stateAccess.js')
+    : window.StateAccess;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -135,6 +154,14 @@
     // value).
     if (ctx.action === 'DIRECT_TURN_PASS') {
       return runDirectTurnPass(ctx, identity);
+    }
+
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 11-13) — a second, distinct, additively-
+    // branched action value, mirroring DIRECT_TURN_PASS's own precedent exactly: branched on
+    // before any of the existing APP_READY/DECISION_PASS/DIRECT_TURN_PASS logic, which remains
+    // fully untouched for every other action value.
+    if (ctx.action === 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE') {
+      return runPreferenceAcknowledgmentFinalization(ctx, identity);
     }
 
     var pipelineContext;
@@ -242,6 +269,46 @@
     // a Need — or {kind: 'DETECTED_OPPORTUNITY', opportunity} / {kind: 'UNSUPPORTED', need}.
     var needCreatorResult = ConversationalNeedCreator.recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext);
 
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9/§10/§14 steps 2-5) — the new, parallel
+    // Preference Intake Authorization computation: never gated on, and never gating,
+    // needCreatorResult above (a bare preference statement is never a request). The gate
+    // (PreferenceIntakeGate.authorize()) is invoked ONLY when the interpreter itself returns
+    // eligible:true (§10's own "invoked only when..." contract) — a not-eligible turn never
+    // reaches it at all, and reason:'NOT_ELIGIBLE' is set directly here instead (a value the gate
+    // itself never produces).
+    var preferenceIntakeAuthorization;
+    try {
+      var preferenceInterpreterResult = await ExplicitPreferenceStatementInterpreter.classify(turn, pipelineContext.recentConversationContext);
+      if (preferenceInterpreterResult && preferenceInterpreterResult.eligible === true) {
+        var consentGranted = false;
+        try {
+          var consentAccess = StateAccess.createEngineAccess({
+            engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
+            userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+          });
+          consentGranted = consentAccess.read.memoryConsentGranted() === true;
+        } catch (e) {
+          consentGranted = false; // fail closed — never authorize on a consent-read failure
+        }
+        preferenceIntakeAuthorization = await PreferenceIntakeGate.authorize({
+          interpreterResult: preferenceInterpreterResult,
+          turn: turn,
+          pipelineContext: pipelineContext,
+          consentGranted: consentGranted
+        });
+      } else {
+        preferenceIntakeAuthorization = { authorized: false, reason: 'NOT_ELIGIBLE', candidateRecord: null };
+      }
+    } catch (e) {
+      preferenceIntakeAuthorization = { authorized: false, reason: 'NOT_ELIGIBLE', candidateRecord: null };
+    }
+    var preferenceAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
+    // §14 step 5 — the deferred-Expression-dispatch sentinel, used identically across every
+    // branch below whenever preferenceAuthorized is true: this turn's own primary decision is
+    // returned fully formed (Stage 1-9 complete) but deliberately unrendered, for the caller
+    // (app.js) to hand to Unified Finalization only after persistence resolves.
+    var DEFERRED_EXPRESSION = Object.freeze({ status: 'DEFERRED', reason: 'PREFERENCE_FINALIZATION_PENDING' });
+
     if (needCreatorResult && needCreatorResult.kind === 'UNSUPPORTED') {
       // §12 — bypasses Stage 4 (Evidence)/Stage 5 (Eligibility)/Stage 6 (Candidate)/Stage 8-9's
       // Safety-review branch entirely: there is no Candidate to evaluate, so safetyPort.
@@ -249,11 +316,14 @@
       // formDecisionPassSilence()'s own zero-Candidate path. No fake Candidate or Safety data is
       // ever attached.
       var unsupportedDecision = DecisionFormation.formUnsupportedCapabilityOutcome({ need: needCreatorResult.need });
+      if (preferenceAuthorized) {
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+      }
       var unsupportedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
       var unsupportedExpressionResult = (unsupportedRenderingContextResult && unsupportedRenderingContextResult.status === 'BUILT')
         ? await runExpressionStage(unsupportedDecision.decision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
         : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, expression: unsupportedExpressionResult } };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: unsupportedExpressionResult } };
     }
 
     // §06/§07 — a real DETECTED_OPPORTUNITY (or nothing, for Case A/C/UNSUPPORTED-already-handled)
@@ -270,17 +340,64 @@
     var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer });
 
     if (passResult.status !== 'FORMED') {
-      // Defensive only — mirrors the APP_READY path's own identical defensive branch above.
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
+      // Defensive only — mirrors the APP_READY path's own identical defensive branch above. No
+      // terminalDecision exists in this case; runPreferenceAcknowledgmentFinalization() treats a
+      // missing base terminalDecision exactly like a SILENCE one (§14) — the standalone
+      // ACKNOWLEDGED_PREFERENCE shape, never an attach attempt against a nonexistent object.
+      if (preferenceAuthorized) {
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+      }
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
     }
 
     var terminalDecision = passResult.decision;
+    if (preferenceAuthorized) {
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: DEFERRED_EXPRESSION } };
+    }
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
     var expressionResult = (renderingContextResult && renderingContextResult.status === 'BUILT')
       ? await runExpressionStage(terminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
       : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
 
-    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, expression: expressionResult } };
+    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, expression: expressionResult } };
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — Unified Finalization: dispatched
+  // only via run(ctx) with ctx.action === 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE', only by app.js,
+  // only after it has confirmed a successful Typed Memory write (§11/§12). Performs exactly the
+  // following deterministic/Stage-10-only calls — NO Stage 1-9 re-run, no Context re-assembly, no
+  // interpreter/AI classification call of its own, and no TrainingReadinessReasoningComponent or
+  // any other professional reasoning component:
+  //   (a) select formAcknowledgedPreferenceOutcome() (standalone, §13.B.1) when the base
+  //       terminalDecision is absent or SILENCE-kind, else attachSecondaryAcknowledgment()
+  //       (attached, §13.B.2) — a PURE, additive copy-plus-one-field operation that never
+  //       re-invokes Safety/Eligibility/Evidence/Prioritization/Winner-Selection;
+  //   (b) MemoryLayer.buildExpressionRenderingContext(pipelineContext) — the SAME pipelineContext
+  //       object Pass 1 already assembled, threaded forward via ctx.payload, never re-assembled;
+  //   (c) runExpressionStage(...) — the exact same, already-exported function every other
+  //       rendering path already calls, exactly once.
+  // ctx.payload: { pipelineContext, terminalDecision (Pass 1's own, or null/undefined),
+  // confirmedRecord: {preferenceClass, polarity, target, sourceTurnId, wasReactivatedFromRejected} }.
+  async function runPreferenceAcknowledgmentFinalization(ctx, identity) {
+    var payload = ctx.payload || {};
+    var pipelineContext = payload.pipelineContext;
+    var baseTerminalDecision = payload.terminalDecision || null;
+    var confirmedRecord = payload.confirmedRecord || {};
+
+    var finalTerminalDecision;
+    if (!baseTerminalDecision || baseTerminalDecision.kind === 'SILENCE') {
+      var formed = DecisionFormation.formAcknowledgedPreferenceOutcome(confirmedRecord);
+      finalTerminalDecision = formed.decision;
+    } else {
+      finalTerminalDecision = DecisionFormation.attachSecondaryAcknowledgment(baseTerminalDecision, confirmedRecord);
+    }
+
+    var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
+    var expressionResult = (renderingContextResult && renderingContextResult.status === 'BUILT')
+      ? await runExpressionStage(finalTerminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
+      : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
+
+    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: finalTerminalDecision, expression: expressionResult } };
   }
 
   // Direct Stage 6 invocation for a real EligibleOpportunity, once one exists (future Decision
@@ -715,6 +832,10 @@
     // testing, structurally parallel to the other direct-dispatch exports below. Production never
     // calls this directly — always through run(ctx) with ctx.action === 'DIRECT_TURN_PASS'.
     runDirectTurnPass: runDirectTurnPass,
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14) — exposed for direct unit/integration
+    // testing, structurally parallel to runDirectTurnPass above. Production never calls this
+    // directly — always through run(ctx) with ctx.action === 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE'.
+    runPreferenceAcknowledgmentFinalization: runPreferenceAcknowledgmentFinalization,
     runForOpportunity: runForOpportunity,
     runForInitiativeOpportunity: runForInitiativeOpportunity,
     detectInitiativeOpportunities: detectInitiativeOpportunities,

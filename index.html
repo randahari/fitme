@@ -754,6 +754,14 @@
        trainingReadinessReasoningComponent.js immediately above). -->
   <script src="js/coachDecisionSystem/turnUnderstandingInterpreter.js"></script>
   <script src="js/coachDecisionSystem/conversationalNeedCreator.js"></script>
+  <!-- CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9/§10) — two new modules, loaded before
+       internalPipelineOrchestrator.js, their sole consumer (same pattern as
+       turnUnderstandingInterpreter.js/conversationalNeedCreator.js immediately above).
+       preferenceIntakeGate.js resolves safetyContextInterpreter.js (loaded far above) and
+       explicitPreferenceStatementInterpreter.js (immediately above it) at top-of-module
+       require/window time, so both must already be loaded by this point. -->
+  <script src="js/coachDecisionSystem/explicitPreferenceStatementInterpreter.js"></script>
+  <script src="js/coachDecisionSystem/preferenceIntakeGate.js"></script>
   <script src="js/coachDecisionSystem/internalPipelineOrchestrator.js"></script>
   <script src="js/coachDecisionSystem/registerCoachDecisionSystem.js"></script>
   <script src="js/ui/navigationController.js"></script>

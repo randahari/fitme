@@ -121,6 +121,79 @@
     });
   }
 
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) — a fourth, narrow, non-Safety-reviewed
+  // Terminal Decision construction path, structurally identical in status/shape discipline to
+  // formUnsupportedCapabilityOutcome() above: no Candidate ever existed, so safetyPort.
+  // finalReview() is never invoked, and no safetyDisposition/boundaryType/confidence/hierarchyTier/
+  // modification is ever attached. Used ONLY by the Unified Finalization step
+  // (internalPipelineOrchestrator.js runPreferenceAcknowledgmentFinalization()) when Pass 1's own
+  // primary terminalDecision.kind==='SILENCE' — i.e. nothing else needed saying this turn.
+  //
+  // rationale keeps the SAME standard {rationale, evidenceBasis, expectedValue, uncertainty} shape
+  // every other TerminalDecision kind already carries (ExpressionInputGate.isValidTerminalDecision()
+  // requires this unconditionally, for every kind, via its own already-closed isValidRationale()
+  // check — ALL other kinds' own rationale, including formUnsupportedCapabilityOutcome()'s own,
+  // use exactly this shape). The CLOSED, non-free-text content Expression actually renders from
+  // (§13/Product Decision 16 — "never raw interpreter/model text") is carried on a SEPARATE,
+  // additive top-level field, preferenceAcknowledgment: {preferenceClass, polarity, target,
+  // wasReactivatedFromRejected} — never nested inside rationale itself, which remains the existing,
+  // human-readable, closed-shape field every kind already has.
+  function formAcknowledgedPreferenceOutcome(params) {
+    params = params || {};
+    return freezeShallow({
+      status: 'FORMED',
+      decision: freezeShallow({
+        kind: 'ACKNOWLEDGED_PREFERENCE',
+        rationale: freezeShallow({
+          rationale: 'The user explicitly stated a non-actionable, non-professional personal preference, which was durably captured.',
+          evidenceBasis: 'ExplicitPreferenceStatementInterpreter (CPI-001 §9) + the deterministic Preference Intake Gate (§10) — a literally-anchored, consented, non-Safety-vetoed explicit statement, already persisted to Typed Memory before this outcome was formed.',
+          expectedValue: 'An honest, brief acknowledgment that FITME understood and remembered what the user said.',
+          uncertainty: 'None — deterministic given the already-confirmed successful Typed Memory write.'
+        }),
+        preferenceAcknowledgment: freezeShallow({
+          preferenceClass: params.preferenceClass,
+          polarity: params.polarity,
+          target: params.target,
+          wasReactivatedFromRejected: !!params.wasReactivatedFromRejected
+        }),
+        decisionPassTrace: freezeShallow({
+          opportunitiesConsidered: freezeShallow([]),
+          candidatePoolSize: 0,
+          disqualifiedCandidates: freezeShallow([])
+        }),
+        candidateProvenance: freezeShallow([]),
+        immutable: true
+      })
+    });
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.2) — a PURE, additive, structural copy-plus-
+  // one-field operation. Used ONLY by Unified Finalization when Pass 1's own primary
+  // terminalDecision.kind !== 'SILENCE' (real professional/Safety content already exists this
+  // turn). Every existing field of the input (kind, rationale, confidence, hierarchyTier,
+  // boundaryType, safetyDisposition, modification, decisionPassTrace, candidateProvenance,
+  // immutable, options) is copied through byte-identical — never re-derived, never re-evaluated,
+  // never weakened. This function calls no Safety/Eligibility/Evidence/Prioritization/Winner-
+  // Selection component and is not a second Decision-Formation act for the primary content — it
+  // only adds ONE new, optional, closed field: secondaryAcknowledgment. Never applied to a
+  // SILENCE-kind decision (Unified Finalization routes that case to
+  // formAcknowledgedPreferenceOutcome() above instead).
+  function attachSecondaryAcknowledgment(terminalDecision, ack) {
+    if (!isPlainObject(terminalDecision)) return terminalDecision;
+    ack = ack || {};
+    var resolved = {};
+    for (var k in terminalDecision) {
+      if (Object.prototype.hasOwnProperty.call(terminalDecision, k)) resolved[k] = terminalDecision[k];
+    }
+    resolved.secondaryAcknowledgment = freezeShallow({
+      preferenceClass: ack.preferenceClass,
+      polarity: ack.polarity,
+      target: ack.target,
+      wasReactivatedFromRejected: !!ack.wasReactivatedFromRejected
+    });
+    return freezeShallow(resolved);
+  }
+
   // §22.1/22.2/22.4/23.5, Canonical Decision CD-T006-06 — assembles the Terminal Decision from
   // Stage 8's SINGLE_WINNER, TIED_SET, or ALL_DISQUALIFIED selection result.
   async function form(params) {
@@ -258,6 +331,8 @@
   var API = {
     formDecisionPassSilence: formDecisionPassSilence,
     formUnsupportedCapabilityOutcome: formUnsupportedCapabilityOutcome,
+    formAcknowledgedPreferenceOutcome: formAcknowledgedPreferenceOutcome,
+    attachSecondaryAcknowledgment: attachSecondaryAcknowledgment,
     form: form
   };
 

@@ -157,3 +157,66 @@ test('non-object candidates are rejected, not thrown', () => {
   assert.equal(ExpressionInputGate.isValidTerminalDecision('not an object'), false);
   assert.equal(ExpressionInputGate.isValidTerminalDecision([]), false);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B) — ACKNOWLEDGED_PREFERENCE kind and the
+// additive secondaryAcknowledgment field.
+// ══════════════════════════════════════════════════════════════════
+
+function validAck(overrides) {
+  return Object.assign({
+    kind: 'ACKNOWLEDGED_PREFERENCE',
+    rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' },
+    preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false },
+    candidateProvenance: [],
+    decisionPassTrace: {},
+    immutable: true
+  }, overrides || {});
+}
+
+test('CPI: a well-formed ACKNOWLEDGED_PREFERENCE decision (no safetyDisposition/confidence/hierarchyTier/boundaryType) is valid', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck()), true);
+});
+
+test('CPI: ACKNOWLEDGED_PREFERENCE requires preferenceAcknowledgment — absent is invalid', () => {
+  const d = validAck(); delete d.preferenceAcknowledgment;
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(d), false);
+});
+
+test('CPI: ACKNOWLEDGED_PREFERENCE rejects a malformed preferenceAcknowledgment (unknown preferenceClass/polarity, missing target/flag)', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck({ preferenceAcknowledgment: { preferenceClass: 'FOOD', polarity: 'NEGATIVE', target: 'x', wasReactivatedFromRejected: false } })), false);
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck({ preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'MAYBE', target: 'x', wasReactivatedFromRejected: false } })), false);
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck({ preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', wasReactivatedFromRejected: false } })), false);
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck({ preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'x' } })), false);
+});
+
+test('CPI: preferenceAcknowledgment present iff kind===ACKNOWLEDGED_PREFERENCE — present on a RECOMMENDATION is invalid', () => {
+  const rec = { kind: 'RECOMMENDATION', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, confidence: 0.5, hierarchyTier: 1, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true, preferenceAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'x', wasReactivatedFromRejected: false } };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(rec), false);
+});
+
+test('CPI: ACKNOWLEDGED_PREFERENCE never carries a safetyDisposition in practice (formAcknowledgedPreferenceOutcome() never attaches one, no Candidate ever existed) — absence is what §25.4\'s existing per-kind exclusion list (extended for this kind) actually guards, mirroring UNSUPPORTED\'s own identical, pre-existing treatment', () => {
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(validAck()), true); // absent — the only shape this Item's own producer ever constructs
+});
+
+test('CPI: secondaryAcknowledgment is optional and additive on ANY kind — absent leaves every existing kind byte-identical', () => {
+  const rec = { kind: 'RECOMMENDATION', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, confidence: 0.5, hierarchyTier: 1, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(rec), true); // unchanged, no secondaryAcknowledgment
+  const withAck = Object.assign({}, rec, { secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'x', wasReactivatedFromRejected: false } });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(withAck), true); // present, well-formed
+});
+
+test('CPI: secondaryAcknowledgment must be well-formed when present, on any kind, including SILENCE-adjacent UNSUPPORTED', () => {
+  const unsupported = { kind: 'UNSUPPORTED', rationale: { rationale: 'x', evidenceBasis: 'x', expectedValue: 'x', uncertainty: 'x' }, candidateProvenance: [], decisionPassTrace: {}, immutable: true, secondaryAcknowledgment: { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NOPE', target: 'x', wasReactivatedFromRejected: false } };
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(unsupported), false);
+});
+
+test('CPI: isValidAcknowledgmentShape() is directly exposed and closed to exactly the four fields', () => {
+  assert.equal(ExpressionInputGate.isValidAcknowledgmentShape({ preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'POSITIVE', target: 'x', wasReactivatedFromRejected: true }), true);
+  assert.equal(ExpressionInputGate.isValidAcknowledgmentShape(null), false);
+  assert.equal(ExpressionInputGate.isValidAcknowledgmentShape({}), false);
+});
+
+test('CPI: KINDS includes ACKNOWLEDGED_PREFERENCE alongside the five pre-existing kinds', () => {
+  assert.deepEqual(ExpressionInputGate.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE']);
+});

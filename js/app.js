@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.47.2';
+const APP_VERSION = '2.47.3';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -382,6 +382,16 @@ TrainingReadinessReasoningComponent.configure({
 // Invoked only by internalPipelineOrchestrator.js's own runDirectTurnPass(), never from the
 // existing APP_READY path.
 TurnUnderstandingInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9, production-wiring) — same auth seam, ninth
+// instance. Same existing callClaude closure used above — never a live Firebase Auth user object,
+// never a token, never a change to Decision identity/ctx. The interpreter itself still owns
+// prompt/model/batching/parsing (ClaudeProxyClient/callClaude remain transport-only, unmodified).
+// Invoked only by internalPipelineOrchestrator.js's own runDirectTurnPass(), in parallel with
+// TurnUnderstandingInterpreter above, never gated on/gating it.
+ExplicitPreferenceStatementInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 
@@ -2322,12 +2332,101 @@ async function runUserMessageEngine(turn) {
   });
 }
 
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §12) — deterministic document ID for a conversational
+// preference record: 'conv_pref_' + <preferenceClass> + '_' + safeKey(target). preferenceClass is
+// already a closed token (safe to use directly); target is already normalized (lowercased/
+// trimmed for class A, an already-closed token for classes B/C) by preferenceIntakeGate.js's own
+// validateInterpreterResult() before authorization — never re-normalized here.
+function cpiDeterministicMemoryId(preferenceClass, target) {
+  return 'conv_pref_' + preferenceClass + '_' + FitMeMemory.safeKey(target);
+}
+
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §11/§12) — the persistence boundary: performs the
+// identity-and-status check plus the actual Typed Memory write, using the existing js/memory.js
+// CRUD API exclusively — never inside internalPipelineOrchestrator.js/memoryLayer.js, mirroring
+// the ConversationRepository module's own already-established "app.js performs the actual
+// Firestore side effect" convention. Implements §12's own deterministic table (absent -> create
+// active; existing active -> update-in-place; existing rejected -> reactivate + mark
+// wasReactivatedFromRejected; any other existing status -> fail closed, no write). Returns
+// { success: true, record } or { success: false } — never partially applies a write.
+async function persistCpiPreferenceRecord(candidateRecord) {
+  var id = cpiDeterministicMemoryId(candidateRecord.preferenceClass, candidateRecord.target);
+  var payload = {
+    key: candidateRecord.preferenceClass + ':' + candidateRecord.target,
+    value: candidateRecord.polarity,
+    preferenceClass: candidateRecord.preferenceClass,
+    polarity: candidateRecord.polarity,
+    target: candidateRecord.target,
+    sourceTurnId: candidateRecord.sourceTurnId
+  };
+
+  var existing;
+  try {
+    existing = await FitMeMemory.get(id);
+  } catch (e) {
+    ErrorTelemetry.report({ code: (e && e.code) || 'CPI_EXISTENCE_CHECK_FAILED', module: 'COACH', operation: 'CPI_PERSIST' });
+    return { success: false };
+  }
+
+  var wasReactivatedFromRejected = false;
+  try {
+    if (!existing) {
+      await FitMeMemory.create({ type: 'preference', payload: payload, confidence: 1, source: 'user_stated', status: 'active' }, id);
+    } else if (existing.status === 'active') {
+      await FitMeMemory.update(id, { payload: payload, confidence: 1, status: 'active' });
+    } else if (existing.status === 'rejected') {
+      await FitMeMemory.update(id, { payload: payload, confidence: 1, status: 'active' });
+      wasReactivatedFromRejected = true;
+    } else {
+      // §12 — any other existing status (superseded/archived/candidate — not expected at this ID
+      // namespace, since no other producer ever writes conv_pref_* ids) fails closed: no write.
+      return { success: false };
+    }
+  } catch (e) {
+    ErrorTelemetry.report({ code: (e && e.code) || 'CPI_PERSIST_WRITE_FAILED', module: 'COACH', operation: 'CPI_PERSIST' });
+    return { success: false };
+  }
+
+  return {
+    success: true,
+    record: {
+      preferenceClass: candidateRecord.preferenceClass,
+      polarity: candidateRecord.polarity,
+      target: candidateRecord.target,
+      sourceTurnId: candidateRecord.sourceTurnId,
+      wasReactivatedFromRejected: wasReactivatedFromRejected
+    }
+  };
+}
+
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — dispatches Unified Finalization
+// through the SAME governed EngineRegistry.run() entry point runUserMessageEngine() already uses
+// (mirroring exactly how DIRECT_TURN_PASS itself was introduced, DUC-001 §03) — app.js never
+// calls internalPipelineOrchestrator.js directly, only ever through the governed engine entry
+// point. Called only after persistCpiPreferenceRecord() above has already confirmed success.
+async function runPreferenceAcknowledgmentFinalizationEngine(pipelineContext, terminalDecision, confirmedRecord, sessionGeneration) {
+  return EngineRegistry.run({
+    trigger: 'USER_MESSAGE_SUBMITTED',
+    actions: { coachDecisionSystem: 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE' },
+    payloads: { coachDecisionSystem: { pipelineContext: pipelineContext, terminalDecision: terminalDecision, confirmedRecord: confirmedRecord } },
+    context: { userId: currentUser && currentUser.uid, sessionGeneration: sessionGeneration, now: Date.now() }
+  });
+}
+
 // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §15) — the Coach Conversation Surface's own submit
 // handler (index.html's #coach-conversation-submit onclick / Enter-key handler). Constructs a new
 // CurrentUserTurn (§02), dispatches it via runUserMessageEngine() above, and renders the eventual,
 // correlated result through CoachConversationPresenter's own render function — NEVER
 // TriggerController.presentDeliveryIntent(), which remains exclusively APP_READY's own target,
 // unmodified by this addition.
+//
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14) — when the governed pipeline returns an
+// authorized Preference Intake Authorization (preferenceIntakeAuthorization.authorized===true),
+// this function's own control flow branches into the Single Turn Outcome Resolution /
+// persistence-boundary / Unified Finalization sequence (§14 steps 6-15) INSTEAD of the pre-
+// existing rendering/CCC-001 logic below — which itself remains byte-identical, unmodified, for
+// every turn where authorized!==true (Product Decision "C. authorization false → existing
+// ordinary CCC lifecycle remains unchanged").
 async function submitCoachConversationTurn() {
   var text = (CoachConversationPresenter.getInputValue() || '').trim();
   if (!text) return; // §17 — empty submission rejected client-side, runUserMessageEngine() never called
@@ -2364,11 +2463,22 @@ async function submitCoachConversationTurn() {
     var summary = await runUserMessageEngine(turn);
     var cdsResult = summary && summary.results && summary.results.coachDecisionSystem;
     var expression = cdsResult && cdsResult.output && cdsResult.output.expression;
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 5) — additive; undefined for every
+    // pre-CPI-001 engine result shape.
+    var preferenceIntakeAuthorization = cdsResult && cdsResult.output && cdsResult.output.preferenceIntakeAuthorization;
 
     // §15 step 6 — re-checked immediately before rendering, mirroring
     // TriggerController.presentDeliveryIntent()'s own existing guard verbatim
     // (triggerController.js:273). A stale result is silently discarded, never rendered.
     if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15) — the ENTIRE authorized branch is
+    // handled separately, below; the pre-existing rendering/CCC-001 logic in this function
+    // (everything from here through the matching `}` below) remains byte-identical, reached only
+    // when authorized !== true (Product Decision "C").
+    var cpiAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
+
+    if (!cpiAuthorized) {
 
     if (expression && expression.status === 'DISPATCHED' && expression.deliveryIntent) {
       CoachConversationPresenter.renderResponse(expression.deliveryIntent, turn.turnId);
@@ -2422,6 +2532,59 @@ async function submitCoachConversationTurn() {
       }
       // else: a technical/engine-level failure — the persisted turn remains PENDING, truthfully,
       // exactly as CCC_001_SPEC_v1.0.md §5.2 requires; no FAILED/ERROR status is fabricated.
+    }
+
+    return;
+    } // end: if (!cpiAuthorized) — pre-existing, unmodified DUC-001 rendering/CCC-001 logic above.
+
+    // ══════════════════════════════════════════════════════════════════
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15) — cpiAuthorized === true.
+    // No rendering, no CCC-001 write yet: the record stays PENDING (§14 step 8) until persistence
+    // and Unified Finalization have both resolved (§14's own required invariant, verbatim).
+    // ══════════════════════════════════════════════════════════════════
+    var cpiPipelineContext = cdsResult.output.pipelineContext;
+    var cpiBaseTerminalDecision = cdsResult.output.terminalDecision || null;
+
+    var cpiPersistResult = await persistCpiPreferenceRecord(preferenceIntakeAuthorization.candidateRecord);
+
+    if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+
+    if (!cpiPersistResult.success) {
+      // §14 step 10 / §16 Scenario 4 — the entire turn is treated as a technical failure, exactly
+      // like the outer catch block below: PENDING remains, no completeTurn() call at all, even
+      // when Pass 1 had separately computed a real primary decision this cycle (disclosed,
+      // Product-directed tradeoff — Unified Finalization is never dispatched on a write failure).
+      CoachConversationPresenter.renderNoResponse(turn.turnId);
+      CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');
+      return;
+    }
+
+    // §14 steps 11-13 — Unified Finalization, dispatched unconditionally on a successful write,
+    // regardless of whether cpiBaseTerminalDecision is SILENCE-kind, absent, or real content
+    // (the shape decision itself is made inside runPreferenceAcknowledgmentFinalization()).
+    var cpiFinalizationSummary = await runPreferenceAcknowledgmentFinalizationEngine(
+      cpiPipelineContext, cpiBaseTerminalDecision, cpiPersistResult.record, turn.sessionGeneration);
+    var cpiFinalizationResult = cpiFinalizationSummary && cpiFinalizationSummary.results && cpiFinalizationSummary.results.coachDecisionSystem;
+    var cpiFinalExpression = cpiFinalizationResult && cpiFinalizationResult.output && cpiFinalizationResult.output.expression;
+
+    if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+
+    // §14 step 14 — exactly one, single, deferred CCC-001 terminal write, only now that every
+    // input (including the persistence outcome) is fully known.
+    if (cpiFinalExpression && cpiFinalExpression.status === 'DISPATCHED' && cpiFinalExpression.deliveryIntent) {
+      CoachConversationPresenter.renderResponse(cpiFinalExpression.deliveryIntent, turn.turnId);
+      if (pendingPersisted) {
+        ConversationRepository.completeTurn(currentUser.uid, turn.turnId, { status: 'COMPLETED', assistantText: cpiFinalExpression.deliveryIntent.renderedLanguage })
+          .catch(function (e) { ErrorTelemetry.report({ code: (e && e.code) || 'PERSIST_TURN_COMPLETE_FAILED', module: 'COACH', operation: 'PERSIST_TURN_COMPLETE' }); });
+      }
+    } else {
+      // Defensive only (e.g. EXPRESSION_PORT_UNAVAILABLE/EXPRESSION_RENDER_THREW) — a genuine,
+      // honestly-timed Silence, decided only now, never a stale/incorrect one.
+      CoachConversationPresenter.renderNoResponse(turn.turnId);
+      if (pendingPersisted) {
+        ConversationRepository.completeTurn(currentUser.uid, turn.turnId, { status: 'SILENCE', assistantText: null })
+          .catch(function (e) { ErrorTelemetry.report({ code: (e && e.code) || 'PERSIST_TURN_COMPLETE_FAILED', module: 'COACH', operation: 'PERSIST_TURN_COMPLETE' }); });
+      }
     }
   } catch (e) {
     CoachConversationPresenter.renderNoResponse(turn.turnId);

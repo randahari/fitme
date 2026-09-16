@@ -319,3 +319,101 @@ test('SINGLE_WINNER: a distinct Candidate per call is forwarded correctly (no st
   await DecisionFormation.form({ selection: singleWinnerSelection(c2), pipelineContext: {}, safetyPort: port, opportunitiesConsidered: [], candidatePoolSize: 1 });
   assert.equal(port.calls.lastFinalReviewCandidate, c2);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B) — formAcknowledgedPreferenceOutcome() (B.1,
+// standalone) and attachSecondaryAcknowledgment() (B.2, attached) additive tests.
+// ══════════════════════════════════════════════════════════════════
+
+const ExpressionInputGate = require('../js/coachDecisionSystem/expressionInputGate.js');
+
+function ackParams(overrides) {
+  return Object.assign({ preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: false }, overrides || {});
+}
+
+test('CPI-1. formAcknowledgedPreferenceOutcome(): produces a FORMED, kind:ACKNOWLEDGED_PREFERENCE decision with no boundaryType/confidence/hierarchyTier/safetyDisposition', () => {
+  const result = DecisionFormation.formAcknowledgedPreferenceOutcome(ackParams());
+  assert.equal(result.status, 'FORMED');
+  const d = result.decision;
+  assert.equal(d.kind, 'ACKNOWLEDGED_PREFERENCE');
+  assert.equal(d.immutable, true);
+  assert.equal('boundaryType' in d, false);
+  assert.equal('confidence' in d, false);
+  assert.equal('hierarchyTier' in d, false);
+  assert.equal('safetyDisposition' in d, false);
+  assert.deepEqual(d.candidateProvenance, []);
+});
+
+test('CPI-2. formAcknowledgedPreferenceOutcome(): the standard rationale shape is present (isValidRationale-compatible) — never replaced by the closed preferenceAcknowledgment fields', () => {
+  const result = DecisionFormation.formAcknowledgedPreferenceOutcome(ackParams());
+  const r = result.decision.rationale;
+  assert.equal(typeof r.rationale, 'string');
+  assert.equal(typeof r.evidenceBasis, 'string');
+  assert.equal(typeof r.expectedValue, 'string');
+  assert.equal(typeof r.uncertainty, 'string');
+});
+
+test('CPI-3. formAcknowledgedPreferenceOutcome(): preferenceAcknowledgment carries the closed, non-free-text fields Expression renders from (Product Decision 16)', () => {
+  const result = DecisionFormation.formAcknowledgedPreferenceOutcome(ackParams({ preferenceClass: 'TRAINING_TIME_PREFERENCE', polarity: 'POSITIVE', target: 'EVENING', wasReactivatedFromRejected: true }));
+  assert.deepEqual(result.decision.preferenceAcknowledgment, { preferenceClass: 'TRAINING_TIME_PREFERENCE', polarity: 'POSITIVE', target: 'EVENING', wasReactivatedFromRejected: true });
+});
+
+test('CPI-4. formAcknowledgedPreferenceOutcome(): the resulting decision passes ExpressionInputGate.isValidTerminalDecision()', () => {
+  const result = DecisionFormation.formAcknowledgedPreferenceOutcome(ackParams());
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(result.decision), true);
+});
+
+test('CPI-5. formAcknowledgedPreferenceOutcome(): never invokes any Safety/Eligibility/Evidence/Winner-Selection collaborator (pure, deterministic construction)', () => {
+  // No safetyPort/pipelineContext/collaborator of any kind is accepted as a parameter at all —
+  // the function signature itself is the proof; this test additionally confirms it never throws
+  // or awaits anything despite being called synchronously with only the closed ack fields.
+  assert.doesNotThrow(() => DecisionFormation.formAcknowledgedPreferenceOutcome(ackParams()));
+});
+
+test('CPI-6. attachSecondaryAcknowledgment(): a pure copy-plus-one-field operation — every existing field of a RECOMMENDATION decision is preserved byte-identical', () => {
+  const primary = Object.freeze({
+    kind: 'RECOMMENDATION',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    confidence: 0.8,
+    hierarchyTier: 3,
+    candidateProvenance: [{ opportunityId: 'x' }],
+    decisionPassTrace: { opportunitiesConsidered: [], candidatePoolSize: 1, disqualifiedCandidates: [] },
+    safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' },
+    immutable: true
+  });
+  const result = DecisionFormation.attachSecondaryAcknowledgment(primary, ackParams());
+  assert.equal(result.kind, 'RECOMMENDATION');
+  assert.equal(result.confidence, 0.8);
+  assert.equal(result.hierarchyTier, 3);
+  assert.deepEqual(result.safetyDisposition, { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' });
+  assert.deepEqual(result.candidateProvenance, [{ opportunityId: 'x' }]);
+  assert.deepEqual(result.rationale, primary.rationale);
+});
+
+test('CPI-7. attachSecondaryAcknowledgment(): adds exactly one new field, secondaryAcknowledgment, with the closed shape', () => {
+  const primary = Object.freeze({ kind: 'UNSUPPORTED', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, decisionPassTrace: {}, candidateProvenance: [], immutable: true });
+  const result = DecisionFormation.attachSecondaryAcknowledgment(primary, ackParams({ wasReactivatedFromRejected: true }));
+  assert.deepEqual(result.secondaryAcknowledgment, { preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'NEGATIVE', target: 'running', wasReactivatedFromRejected: true });
+  assert.equal('secondaryAcknowledgment' in primary, false); // the input itself is never mutated
+});
+
+test('CPI-8. attachSecondaryAcknowledgment(): a BOUNDARY/REFUSAL decision\'s own safetyDisposition/boundaryType are never altered or weakened', () => {
+  const primary = Object.freeze({
+    kind: 'BOUNDARY', boundaryType: 'REFUSAL',
+    rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    candidateProvenance: [], decisionPassTrace: {},
+    safetyDisposition: { disposition: 'BLOCKED', originalKind: 'RECOMMENDATION' },
+    immutable: true
+  });
+  const result = DecisionFormation.attachSecondaryAcknowledgment(primary, ackParams());
+  assert.equal(result.boundaryType, 'REFUSAL');
+  assert.deepEqual(result.safetyDisposition, { disposition: 'BLOCKED', originalKind: 'RECOMMENDATION' });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(result), true);
+});
+
+test('CPI-9. attachSecondaryAcknowledgment(): the resulting decision still passes ExpressionInputGate.isValidTerminalDecision() for RECOMMENDATION/UNSUPPORTED shapes', () => {
+  const rec = Object.freeze({ kind: 'RECOMMENDATION', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, confidence: 0.5, hierarchyTier: 2, candidateProvenance: [], decisionPassTrace: {}, safetyDisposition: { disposition: 'UNMODIFIED', originalKind: 'RECOMMENDATION' }, immutable: true });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(DecisionFormation.attachSecondaryAcknowledgment(rec, ackParams())), true);
+  const unsupported = Object.freeze({ kind: 'UNSUPPORTED', rationale: { rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, candidateProvenance: [], decisionPassTrace: {}, immutable: true });
+  assert.equal(ExpressionInputGate.isValidTerminalDecision(DecisionFormation.attachSecondaryAcknowledgment(unsupported, ackParams())), true);
+});

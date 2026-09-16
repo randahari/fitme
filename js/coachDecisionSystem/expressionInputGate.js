@@ -44,15 +44,39 @@
   // authorized kind for a recognized-but-unsupported direct user request. Never Safety-reviewed
   // (no Candidate ever existed), so it carries no safetyDisposition/boundaryType/confidence/
   // hierarchyTier/modification — see the dedicated exclusion below.
-  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED'];
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) — a sixth canonical, Product/Architecture-
+  // authorized kind for a durably-captured, non-actionable explicit preference. Never Safety-
+  // reviewed (no Candidate ever existed), exactly like UNSUPPORTED — see the dedicated exclusion
+  // below (mirrors UNSUPPORTED's own established treatment byte-for-byte).
+  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE'];
   var BOUNDARY_TYPES = ['REFUSAL', 'ESCALATION'];
   var SAFETY_DISPOSITIONS = ['UNMODIFIED', 'MODIFIED', 'DEFERRED', 'BLOCKED', 'ESCALATED'];
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §8) — this module's own, independently-authored copy
+  // of the closed preference vocabulary ExplicitPreferenceStatementInterpreter/
+  // preferenceIntakeGate.js already declare (reused BY PATTERN, never by import — matching every
+  // other closed-vocabulary-by-pattern convention already established in this codebase, e.g.
+  // turnUnderstandingInterpreter.js's own DUC_VALID_DOMAIN_TOPIC_PAIRS).
+  var PREFERENCE_CLASSES = ['ACTIVITY_SENTIMENT', 'TRAINING_TIME_PREFERENCE', 'TRAINING_FORMAT_PREFERENCE'];
+  var PREFERENCE_POLARITIES = ['POSITIVE', 'NEGATIVE'];
 
   function isValidRationale(rationale) {
     if (!isPlainObject(rationale)) return false;
     return ['rationale', 'evidenceBasis', 'expectedValue', 'uncertainty'].every(function (key) {
       return Object.prototype.hasOwnProperty.call(rationale, key);
     });
+  }
+
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13) — shared closed-shape check reused for both
+  // `preferenceAcknowledgment` (kind:'ACKNOWLEDGED_PREFERENCE' only, required) and
+  // `secondaryAcknowledgment` (any kind, optional) — identical field/vocabulary requirements,
+  // just different presence rules at the two call sites below.
+  function isValidAcknowledgmentShape(ack) {
+    if (!isPlainObject(ack)) return false;
+    if (PREFERENCE_CLASSES.indexOf(ack.preferenceClass) === -1) return false;
+    if (PREFERENCE_POLARITIES.indexOf(ack.polarity) === -1) return false;
+    if (typeof ack.target !== 'string' || ack.target.length === 0) return false;
+    if (typeof ack.wasReactivatedFromRejected !== 'boolean') return false;
+    return true;
   }
 
   // TASK_006_SPEC_v1.0.md §25.1 (Required Fields) and §25.4 (Invariants) — every check that is
@@ -94,11 +118,12 @@
       if (sd.disposition === 'DEFERRED' && candidate.kind !== 'SILENCE') return false;
       if (sd.disposition === 'BLOCKED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'REFUSAL')) return false;
       if (sd.disposition === 'ESCALATED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'ESCALATION')) return false;
-    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED') {
+    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED' && candidate.kind !== 'ACKNOWLEDGED_PREFERENCE') {
       // Absent only for a Decision-Pass-level Silence formed from zero surviving Candidates
-      // (§23.4), or a DUC-001 UNSUPPORTED outcome (docs/specs/DUC_001_SPEC_v1.0.md §12 — no
-      // Candidate ever existed, so Safety was never invoked) — required for every other kind,
-      // including a Safety-DEFERRED Silence.
+      // (§23.4), a DUC-001 UNSUPPORTED outcome (docs/specs/DUC_001_SPEC_v1.0.md §12 — no
+      // Candidate ever existed, so Safety was never invoked), or a CPI-001 ACKNOWLEDGED_PREFERENCE
+      // outcome (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1 — same reason, no Candidate ever existed)
+      // — required for every other kind, including a Safety-DEFERRED Silence.
       return false;
     }
 
@@ -107,6 +132,24 @@
     var isModifiedDisposition = hasSafetyDisposition && candidate.safetyDisposition.disposition === 'MODIFIED';
     if (hasModification !== isModifiedDisposition) return false;
     if (hasModification && !isPlainObject(candidate.modification)) return false;
+
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) — preferenceAcknowledgment present iff
+    // kind === 'ACKNOWLEDGED_PREFERENCE' (mirrors boundaryType's own "present iff kind==='BOUNDARY'"
+    // discipline immediately above). Never present on any other kind.
+    var hasPreferenceAcknowledgment = Object.prototype.hasOwnProperty.call(candidate, 'preferenceAcknowledgment');
+    if (candidate.kind === 'ACKNOWLEDGED_PREFERENCE') {
+      if (!hasPreferenceAcknowledgment || !isValidAcknowledgmentShape(candidate.preferenceAcknowledgment)) return false;
+    } else if (hasPreferenceAcknowledgment) {
+      return false;
+    }
+
+    // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.2) — secondaryAcknowledgment is a purely
+    // ADDITIVE, OPTIONAL field on ANY kind (never required, never narrowing any existing
+    // invariant above) — absent on every pre-CPI-001 TerminalDecision, exactly as before this
+    // addition; when present, must conform to the same closed shape.
+    if (Object.prototype.hasOwnProperty.call(candidate, 'secondaryAcknowledgment')) {
+      if (!isValidAcknowledgmentShape(candidate.secondaryAcknowledgment)) return false;
+    }
 
     return true;
   }
@@ -119,7 +162,9 @@
 
   var API = {
     isValidTerminalDecision: isValidTerminalDecision,
-    isSilenceKind: isSilenceKind
+    isSilenceKind: isSilenceKind,
+    isValidAcknowledgmentShape: isValidAcknowledgmentShape,
+    KINDS: KINDS
   };
 
   if (typeof window !== 'undefined') { window.ExpressionInputGate = API; }

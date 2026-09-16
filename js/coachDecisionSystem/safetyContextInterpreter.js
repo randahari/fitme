@@ -301,9 +301,101 @@
     return results;
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §10 point 5, Safety fail-closed clarification) —
+  // classifyWithStatus() is a small, PURELY ADDITIVE sibling export. classify() above (its exact
+  // behavior, return shape, and its existing sole caller, memoryLayer.js's own userSafetyContext
+  // step) is completely untouched by everything below — this section reuses buildPrompt()/
+  // withTimeout()/parseAndValidate()/partitionIntoBatches() unchanged, adding only a second
+  // transport-call path that SURFACES the CLASSIFIED/FAILED signal classifyBatch() above already
+  // computes internally (timeout/thrown/malformed) but discards before returning.
+  //
+  // Rationale (why classify() itself cannot serve this need): a thrown error, a timeout, or
+  // malformed/unparseable model output all degrade, inside classifyBatch()/parseAndValidate()
+  // above, to the SAME empty/partial result a genuine, confident "no restriction found"
+  // classification would also produce — there is no way for a caller of classify() alone to tell
+  // the two apart. That collapse is a correct, accepted, disclosed design choice for
+  // userSafetyContext's own non-authoritative, advisory Reasoning-Context role (graceful
+  // degradation, D3 §12.3) — but is not acceptable as the sole signal gating CPI-001's
+  // authoritative Typed Memory write (preferenceIntakeGate.js). This is the exact, already-
+  // approved precedent TurnUnderstandingInterpreter itself established for the identical class of
+  // problem (its own interpretationStatus: 'CLASSIFIED'|'FAILED', DUC-001 Blocker 7) — reused by
+  // pattern here, never merged or imported.
+  // ══════════════════════════════════════════════════════════════════
+
+  // One batch, one attempt, no retry — identical shape to classifyBatch() above, except every
+  // failure mode (no callClaude configured, thrown transport error, timeout, malformed/
+  // unparseable response, OR any submitted id absent from the final validated result — the same
+  // "fails closed by omission" cases parseAndValidate() already applies per-id) is surfaced as
+  // status:'FAILED' for the WHOLE batch, rather than silently collapsed to an empty accepted map.
+  async function classifyBatchWithStatus(batchRecords) {
+    if (!batchRecords.length) return { status: 'CLASSIFIED', accepted: {} };
+    if (typeof deps.callClaude !== 'function') return { status: 'FAILED', accepted: {} };
+    var submittedIds = batchRecords.map(function (r) { return r.sourceMemoryId; });
+    var idToStatementText = {};
+    batchRecords.forEach(function (r) { idToStatementText[r.sourceMemoryId] = r.statementText; });
+    var prompt = buildPrompt(batchRecords);
+    var call;
+    try {
+      call = deps.callClaude({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+    } catch (e) {
+      return { status: 'FAILED', accepted: {} };
+    }
+    var timeoutMs = (typeof deps.timeoutMs === 'number' && deps.timeoutMs > 0) ? deps.timeoutMs : TIMEOUT_MS;
+    var result = await withTimeout(call, timeoutMs);
+    if (!result || result.__usc_timed_out || result.__usc_failed) return { status: 'FAILED', accepted: {} };
+    var accepted = parseAndValidate(result, submittedIds, idToStatementText);
+    // Every submitted id must have validly resolved (§9's own literal-substring/gating-consistency
+    // enforcement already applied inside parseAndValidate()) — any id missing here means the model
+    // either omitted it, duplicated it, or answered it inconsistently/malformed; that turn's own
+    // Safety classification cannot be trusted, so the WHOLE batch fails closed rather than being
+    // silently treated as "no restriction" for the missing id.
+    var allResolved = submittedIds.every(function (id) { return Object.prototype.hasOwnProperty.call(accepted, id); });
+    if (!allResolved) return { status: 'FAILED', accepted: {} };
+    return { status: 'CLASSIFIED', accepted: accepted };
+  }
+
+  // classifyWithStatus(records) — §10 point 5. Same {id,text} input shape as classify() above;
+  // returns {status:'CLASSIFIED'|'FAILED', restrictions:[...]}. status:'FAILED' on ANY batch
+  // failure aborts the whole call (never partially trusts a mixed batch sequence) — the caller
+  // (preferenceIntakeGate.js) treats 'FAILED' as an unconditional veto, never as "zero
+  // restrictions found." Never throws.
+  async function classifyWithStatus(records) {
+    records = Array.isArray(records) ? records : [];
+    if (!records.length) return { status: 'CLASSIFIED', restrictions: [] };
+    var maxRecordsPerBatch = (typeof deps.maxRecordsPerBatch === 'number' && deps.maxRecordsPerBatch > 0)
+      ? deps.maxRecordsPerBatch : DEFAULT_MAX_RECORDS_PER_BATCH;
+    var batches = partitionIntoBatches(records, maxRecordsPerBatch, DEFAULT_MAX_CHARS_PER_RECORD, DEFAULT_MAX_CHARS_PER_BATCH);
+    var restrictions = [];
+    for (var i = 0; i < batches.length; i++) {
+      var batch = batches[i];
+      var batchResult;
+      try { batchResult = await classifyBatchWithStatus(batch); }
+      catch (e) { batchResult = { status: 'FAILED', accepted: {} }; }
+      if (batchResult.status !== 'CLASSIFIED') return { status: 'FAILED', restrictions: [] };
+      batch.forEach(function (entry) {
+        var r = batchResult.accepted[entry.sourceMemoryId];
+        if (r && r.restrictionClassification === RESTRICTION_STATED) {
+          restrictions.push({
+            sourceMemoryId: entry.sourceMemoryId,
+            restrictionClassification: r.restrictionClassification,
+            restrictedActivityText: r.restrictedActivityText,
+            statedDurationText: r.statedDurationText
+          });
+        }
+      });
+    }
+    return { status: 'CLASSIFIED', restrictions: restrictions };
+  }
+
   var API = {
     configure: configure,
     classify: classify,
+    classifyWithStatus: classifyWithStatus,
     RESTRICTION_STATED: RESTRICTION_STATED,
     NOT_RESTRICTION_OR_NOT_CLASSIFIED: NOT_RESTRICTION_OR_NOT_CLASSIFIED,
     DEFAULT_MAX_RECORDS_PER_BATCH: DEFAULT_MAX_RECORDS_PER_BATCH,
@@ -316,6 +408,7 @@
       buildPrompt: buildPrompt,
       parseAndValidate: parseAndValidate,
       classifyBatch: classifyBatch,
+      classifyBatchWithStatus: classifyBatchWithStatus,
       normalizeLiteral: normalizeLiteral,
       isLiteralSubstringOf: isLiteralSubstringOf
     }

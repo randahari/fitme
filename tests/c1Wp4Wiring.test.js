@@ -33,12 +33,12 @@ test('all three WP4 modules are registered in index.html, loaded after the WP3 r
 test('all three WP4 modules are in the sw.js SHELL cache list, and VERSION was bumped', () => {
   WP4_FILES.forEach((f) => assert.notEqual(swJs.indexOf('/fitme/' + f), -1, f + ' must be in the SHELL cache list'));
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.47.2');
+  assert.equal(versionMatch[1], '2.47.3');
 });
 
 test('APP_VERSION matches the service worker cache version', () => {
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.47.2');
+  assert.equal(appVersionMatch[1], '2.47.3');
 });
 
 test('the authentication lifecycle routes through AuthSessionController — no direct AuthAdapter.onAuthStateChanged call remains in app.js', () => {

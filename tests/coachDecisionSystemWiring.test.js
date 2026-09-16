@@ -308,7 +308,12 @@ test('16c. decisionFormation.js exposes no Expression/Delivery-Intent-production
   // TerminalDecision construction function, formUnsupportedCapabilityOutcome() — structurally
   // identical in status to the other two (a decision-construction function, never Expression/
   // Delivery-Intent production or wording generation, which this test's own name guards against).
-  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['form', 'formDecisionPassSilence', 'formUnsupportedCapabilityOutcome']);
+  // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B) authorized a fourth and fifth:
+  // formAcknowledgedPreferenceOutcome() (the same kind of decision-construction function as
+  // formUnsupportedCapabilityOutcome() above) and attachSecondaryAcknowledgment() (a PURE,
+  // additive copy-plus-one-field structural operation — never Expression/wording generation,
+  // never a second decision-forming act; see its own header comment).
+  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['attachSecondaryAcknowledgment', 'form', 'formAcknowledgedPreferenceOutcome', 'formDecisionPassSilence', 'formUnsupportedCapabilityOutcome']);
 });
 
 // ── TASK-006 — Native / Platform-Neutral Contract tests (§35.19, D3 §5.5/§14) ──
