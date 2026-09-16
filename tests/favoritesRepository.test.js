@@ -57,3 +57,22 @@ test('save writes users/{uid}/data/favorites with exactly { meals }', async () =
   assert.deepEqual(setCall.payload, { meals });
   assert.equal(Object.keys(setCall.payload).length, 1);
 });
+
+// Friends Alpha Blocker B3 (Reset Integrity)
+test('deleteForUser deletes users/{uid}/data/favorites (single document, no batching needed)', async () => {
+  const calls = [];
+  const db = {
+    collection: (name) => ({
+      doc: (id) => {
+        calls.push({ collection: name, id });
+        return { collection: (sub) => ({ doc: (subId) => ({ delete: () => { calls.push({ collection: sub, id: subId, op: 'delete' }); return Promise.resolve(); } }) }) };
+      }
+    })
+  };
+  FavoritesRepository.configure({ db });
+  await FavoritesRepository.deleteForUser('u1');
+  assert.deepEqual(calls, [
+    { collection: 'users', id: 'u1' },
+    { collection: 'data', id: 'favorites', op: 'delete' }
+  ]);
+});

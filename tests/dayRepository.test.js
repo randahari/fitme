@@ -98,3 +98,59 @@ test('fetchHistory returns {} and does not throw when the query rejects', async 
   const history = await DayRepository.fetchHistory('u1');
   assert.deepEqual(history, {});
 });
+
+// Friends Alpha Blocker B3 (Reset Integrity) — deleteAllForUser() mirrors
+// tests/errorLogRepository.test.js's own established deleteAllForUser() batching-test shape.
+
+test('deleteAllForUser() queries users/{uid}/days and batch-deletes every returned document', async () => {
+  const deletedRefs = [];
+  const committedBatches = [];
+  const docRefs = [{ id: '2026-01-01' }, { id: '2026-01-02' }, { id: '2026-01-03' }];
+  const db = {
+    collection: () => ({
+      doc: () => ({
+        collection: () => ({
+          get: () => Promise.resolve({ forEach: (cb) => docRefs.forEach((r) => cb({ ref: r })) })
+        })
+      })
+    }),
+    batch: () => {
+      const thisBatchDeletes = [];
+      committedBatches.push(thisBatchDeletes);
+      return {
+        delete: (ref) => { thisBatchDeletes.push(ref); deletedRefs.push(ref); },
+        commit: () => Promise.resolve()
+      };
+    }
+  };
+  DayRepository.configure({ db });
+  await DayRepository.deleteAllForUser('u1');
+  assert.deepEqual(deletedRefs, docRefs);
+  assert.equal(committedBatches.length, 1);
+});
+
+test('deleteAllForUser() chunks deletes into multiple batches when the document count exceeds the batch size', async () => {
+  const docRefs = [];
+  for (let i = 0; i < 850; i++) docRefs.push({ id: 'day' + i });
+  const committedBatches = [];
+  const db = {
+    collection: () => ({
+      doc: () => ({
+        collection: () => ({
+          get: () => Promise.resolve({ forEach: (cb) => docRefs.forEach((r) => cb({ ref: r })) })
+        })
+      })
+    }),
+    batch: () => {
+      const thisBatchDeletes = [];
+      committedBatches.push(thisBatchDeletes);
+      return { delete: (ref) => thisBatchDeletes.push(ref), commit: () => Promise.resolve() };
+    }
+  };
+  DayRepository.configure({ db });
+  await DayRepository.deleteAllForUser('u1');
+  assert.equal(committedBatches.length, 3); // 850 / 400 => 400 + 400 + 50
+  assert.equal(committedBatches[0].length, 400);
+  assert.equal(committedBatches[1].length, 400);
+  assert.equal(committedBatches[2].length, 50);
+});

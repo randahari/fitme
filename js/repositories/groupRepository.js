@@ -53,11 +53,20 @@
     return deps.db.collection('groups').doc(groupId).collection('members').doc(uid).set({ joinedAt: deps.serverTimestamp() });
   }
 
+  // Friends Alpha Blocker B3 (Reset Integrity) — explicit account-reset cleanup only
+  // (js/app.js resetApp()), called only when the resetting user currently has a groupId. Deletes
+  // only the user's own membership reference — never the shared groups/{groupId} document itself
+  // (firestore.rules forbids any client write to it) and never another member's document.
+  function removeMember(groupId, uid) {
+    return deps.db.collection('groups').doc(groupId).collection('members').doc(uid).delete();
+  }
+
   var API = {
     configure: configure,
     getMembers: getMembers,
     groupExists: groupExists,
-    addMember: addMember
+    addMember: addMember,
+    removeMember: removeMember
   };
 
   if (typeof window !== 'undefined') { window.GroupRepository = API; }

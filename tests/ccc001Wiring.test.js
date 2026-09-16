@@ -99,10 +99,17 @@ test('X: loadCoachConversationHistory() and resetApp()\'s conversation cleanup a
   const loadBody = appJs.slice(loadIdx, appJs.indexOf('\n}', loadIdx));
   assert.match(loadBody, /try \{[\s\S]*?\} catch \(e\) \{/);
 
-  const resetCleanupIdx = appJs.indexOf('ConversationRepository.deleteAllForUser(currentUser.uid)');
+  // B3 (Reset Integrity): resetApp() now composes every delete through a shared attempt() helper
+  // (itself try/catch-wrapped) rather than a separate inline try/catch per call — the defensive
+  // guarantee is unchanged (a failure here can never throw uncaught), only the expression shape.
+  const resetIdx = appJs.indexOf('async function resetApp()');
+  assert.notEqual(resetIdx, -1);
+  const resetBody = appJs.slice(resetIdx, appJs.indexOf('\n}', resetIdx));
+  assert.match(resetBody, /async function attempt\(fn\) \{ try \{ await fn\(\); \} catch \(e\) \{ allOk = false; \} \}/);
+  const resetCleanupIdx = resetBody.indexOf('ConversationRepository.deleteAllForUser(currentUser.uid)');
   assert.notEqual(resetCleanupIdx, -1);
-  const resetLine = appJs.slice(appJs.lastIndexOf('try {', resetCleanupIdx), appJs.indexOf('\n', resetCleanupIdx) + 1);
-  assert.match(resetLine, /try \{ await ConversationRepository\.deleteAllForUser\(currentUser\.uid\); \} catch\(e\) \{\}/);
+  const resetLine = resetBody.slice(resetBody.lastIndexOf('await attempt(', resetCleanupIdx), resetBody.indexOf('\n', resetCleanupIdx) + 1);
+  assert.match(resetLine, /await attempt\(function \(\) \{ return ConversationRepository\.deleteAllForUser\(currentUser\.uid\); \}\);/);
 });
 
 // ── Y: stale session/user cannot persist to the wrong uid ──────────────────

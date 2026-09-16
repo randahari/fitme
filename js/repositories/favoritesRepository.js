@@ -19,7 +19,14 @@
     return deps.db.collection('users').doc(uid).collection('data').doc('favorites').set({ meals: meals });
   }
 
-  var API = { configure: configure, load: load, save: save };
+  // Friends Alpha Blocker B3 (Reset Integrity) — explicit account-reset cleanup only
+  // (js/app.js resetApp()); never called by load()/save(). A single document, so no batching is
+  // needed (contrast js/repositories/dayRepository.js's own deleteAllForUser()).
+  function deleteForUser(uid) {
+    return deps.db.collection('users').doc(uid).collection('data').doc('favorites').delete();
+  }
+
+  var API = { configure: configure, load: load, save: save, deleteForUser: deleteForUser };
 
   if (typeof window !== 'undefined') { window.FavoritesRepository = API; }
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }

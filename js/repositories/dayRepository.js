@@ -40,11 +40,28 @@
     return history;
   }
 
+  // Friends Alpha Blocker B3 (Reset Integrity) — explicit account-reset cleanup only
+  // (js/app.js resetApp()); never called by loadDay()/saveLegacyDay()/fetchHistory(). Batches
+  // deletes to stay safely under Firestore's 500-write batch limit — identical shape to
+  // js/repositories/errorLogRepository.js's/conversationRepository.js's own deleteAllForUser().
+  async function deleteAllForUser(uid) {
+    var snap = await deps.db.collection('users').doc(uid).collection('days').get();
+    var refs = [];
+    snap.forEach(function (d) { refs.push(d.ref); });
+    var BATCH_SIZE = 400;
+    for (var i = 0; i < refs.length; i += BATCH_SIZE) {
+      var batch = deps.db.batch();
+      refs.slice(i, i + BATCH_SIZE).forEach(function (ref) { batch.delete(ref); });
+      await batch.commit();
+    }
+  }
+
   var API = {
     configure: configure,
     loadDay: loadDay,
     saveLegacyDay: saveLegacyDay,
-    fetchHistory: fetchHistory
+    fetchHistory: fetchHistory,
+    deleteAllForUser: deleteAllForUser
   };
 
   if (typeof window !== 'undefined') { window.DayRepository = API; }

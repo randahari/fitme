@@ -90,6 +90,7 @@ let pendingBarcode = null; // הברקוד שצילום התווית הבא יש
 let obData = { gender: 'male', days: '2', goal: null, coachStyle: 'mixed', coachChatter: 'balanced' };
 let quickItems = [];        // מנה 3 — רישום מהיר חכם
 let coachCardShown = false; // כדי לא לייצר הודעת מאמן פעמיים באותה פתיחה
+let _resetFailedPending = false; // B3: איפוס הנתונים נכשל בניסיון הקודם — הבא הוא ניסיון-חוזר, בלי confirm() נוסף
 let foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
 let favoriteMeals = [];
 
@@ -117,6 +118,10 @@ function _resetAppCoreState() {
   obData = { gender: 'male', days: '2', goal: null, coachStyle: 'mixed', coachChatter: 'balanced' };
   quickItems = [];
   coachCardShown = false;
+  // B3: כל מעבר auth (כולל 'data-reset' עצמו בהצלחה) מבטל ניסיון-חוזר תלוי — התחלה נקייה.
+  _resetFailedPending = false;
+  var resetBtn = document.getElementById('reset-data-btn');
+  if (resetBtn) resetBtn.textContent = 'איפוס נתונים';
   foodSession = { originalInput: '', answers: [], questions: [], currentQ: 0 };
   favoriteMeals = [];
   editingItemIdx = null;
@@ -1781,22 +1786,73 @@ async function toggleDark() {
   if (userProfile) { userProfile.darkMode = darkMode; await saveProfile(); }
 }
 
+// Friends Alpha Blocker B3 (Reset Integrity) — a user-visible "Reset data" action must have
+// truthful, deterministic semantics: if FITME tells the user their data was reset, personal
+// FITME product data must not silently survive and reappear after re-onboarding. Every durable,
+// user-owned location is targeted (errorLog, coachConversation, days, Typed Memory, favorites,
+// the user's own group-membership reference when present, then the profile document itself,
+// always last — Firestore never cascade-deletes subcollections on parent-document delete, so
+// deleting the profile first would leave every subcollection above permanently orphaned).
+// Deliberately out of scope (Product-approved): the shared groups/{gid} document itself (no
+// client can ever write it — firestore.rules), other members' data, the shared groupBarcodes
+// cache (not attributable to a single user), usage/{uid} (server-only write), and the Firebase
+// Auth account itself (the user stays signed in to immediately re-onboard).
+//
+// Every delete below is independently idempotent (a Firestore delete on an already-deleted or
+// never-existent document is a harmless no-op), so attempting every step even after an earlier
+// one fails is safe — no double-delete or duplicate-side-effect risk exists. But a failure must
+// never be presented as success: if ANY required deletion fails, the user is kept out of
+// onboarding, shown an honest failure message, and the reset button becomes a retry action that
+// re-runs this exact same sequence (skipping the confirmation dialog, since it was already given)
+// — deletes that already succeeded are simply re-attempted harmlessly.
 async function resetApp() {
-  if (confirm('למחוק את כל הנתונים שלך?')) {
-    // Friends Alpha Item 7 — Firestore subcollection deletion is not automatic on parent-
-    // document delete (below); without this explicit step, error-log entries would silently
-    // survive a "delete all my data" action, a real privacy regression this item must not
-    // introduce. Never called by the telemetry reporting path itself — reset-only.
-    try { await ErrorLogRepository.deleteAllForUser(currentUser.uid); } catch(e) {}
-    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §12) — same rationale as ErrorLogRepository's own
-    // cleanup immediately above: Firestore subcollection deletion is not automatic on parent-
-    // document delete (below), so without this explicit step conversation transcript would
-    // silently survive a "delete all my data" action.
-    try { await ConversationRepository.deleteAllForUser(currentUser.uid); } catch(e) {}
-    try { await db.collection('users').doc(currentUser.uid).delete(); } catch(e) {}
-    userProfile = null; todayData = { meals:[], burned:0, steps:0 }; waterCount = 0;
-    showOnboarding();
+  if (!_resetFailedPending && !confirm('לאפס את נתוני FitMe שלך?')) return;
+
+  // Captured before any deletion or local-state reset, per the ordering requirement below.
+  var userAtReset = currentUser;
+  var groupIdAtReset = userProfile && userProfile.groupId;
+
+  var allOk = true;
+  async function attempt(fn) { try { await fn(); } catch (e) { allOk = false; } }
+
+  // Friends Alpha Item 7 — Firestore subcollection deletion is not automatic on parent-
+  // document delete (below); without this explicit step, error-log entries would silently
+  // survive a "delete all my data" action, a real privacy regression this item must not
+  // introduce. Never called by the telemetry reporting path itself — reset-only.
+  await attempt(function () { return ErrorLogRepository.deleteAllForUser(currentUser.uid); });
+  // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §12) — same rationale as ErrorLogRepository's own
+  // cleanup immediately above: Firestore subcollection deletion is not automatic on parent-
+  // document delete (below), so without this explicit step conversation transcript would
+  // silently survive a "delete all my data" action.
+  await attempt(function () { return ConversationRepository.deleteAllForUser(currentUser.uid); });
+  // B3 — same subcollection-deletion rationale as errorLog/coachConversation above.
+  await attempt(function () { return DayRepository.deleteAllForUser(currentUser.uid); });
+  await attempt(function () { return FitMeMemory.deleteAllMemories(); });
+  await attempt(function () { return FavoritesRepository.deleteForUser(currentUser.uid); });
+  // Only when the user actually has a group — removes only their own membership reference,
+  // never the shared group document or any other member's data (Product-approved scope, §3).
+  if (groupIdAtReset) {
+    await attempt(function () { return GroupRepository.removeMember(groupIdAtReset, currentUser.uid); });
   }
+  await attempt(function () { return db.collection('users').doc(currentUser.uid).delete(); });
+
+  if (!allOk) {
+    _resetFailedPending = true;
+    var resetBtn = document.getElementById('reset-data-btn');
+    if (resetBtn) resetBtn.textContent = 'נסה שוב';
+    alert('לא הצלחנו להשלים את איפוס הנתונים.\nחלק מהנתונים שלך עדיין עשויים להישאר. נסה שוב.');
+    return;
+  }
+
+  // Full durable success only, from here on. SessionLifecycle.reset() runs every registered
+  // cleanup (js/app.js's own _resetAppCoreState, js/memory.js's, js/errorTelemetry.js's) — the
+  // same comprehensive in-memory reset sign-out already gets, instead of hand-maintaining a
+  // second local-state cleanup list here. It also clears currentUser (correct for sign-out, its
+  // original purpose) — a data reset is not a sign-out, so identity is restored immediately
+  // after, letting the user re-onboard under the same account without signing in again.
+  SessionLifecycle.reset('data-reset');
+  currentUser = userAtReset;
+  showOnboarding();
 }
 
 // ── FOOD TABS ──

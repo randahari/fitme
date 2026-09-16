@@ -111,3 +111,22 @@ test('addMember writes groups/{id}/members/{uid} with { joinedAt: serverTimestam
     { collection: 'members', id: 'u9', payload: { joinedAt: 'TS' } }
   ]);
 });
+
+// Friends Alpha Blocker B3 (Reset Integrity)
+test('removeMember deletes only groups/{groupId}/members/{uid} — never the shared group document or any other member', async () => {
+  const calls = [];
+  const db = {
+    collection: (name) => ({
+      doc: (id) => {
+        calls.push({ collection: name, id });
+        return { collection: (sub) => ({ doc: (subId) => ({ delete: () => { calls.push({ collection: sub, id: subId, op: 'delete' }); return Promise.resolve(); } }) }) };
+      }
+    })
+  };
+  GroupRepository.configure({ db });
+  await GroupRepository.removeMember('G1', 'u9');
+  assert.deepEqual(calls, [
+    { collection: 'groups', id: 'G1' },
+    { collection: 'members', id: 'u9', op: 'delete' }
+  ]);
+});

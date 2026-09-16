@@ -130,6 +130,29 @@
     await memCol().doc(id).delete();
   }
 
+  // Friends Alpha Blocker B3 (Reset Integrity) — explicit account-reset cleanup only
+  // (js/app.js resetApp()); never called by createMemory()/updateMemory()/deleteMemory(). Mirrors
+  // js/repositories/errorLogRepository.js's/conversationRepository.js's own deleteAllForUser()
+  // batched-delete shape exactly. firestore.rules permits client deletion only for
+  // source ∈ CLIENT_WRITABLE_SOURCES (user_stated/migrated) — records are filtered accordingly
+  // before being added to a delete batch, so a hypothetical server-sourced record
+  // (inferred_event/inferred_pattern/coach_generated) is silently skipped rather than attempted
+  // (and rejected by the rules). Does not redesign Typed Memory's schema or CRUD contract.
+  async function deleteAllMemories() {
+    var snap = await memCol().get();
+    var refs = [];
+    snap.forEach(function (d) {
+      var v = d.data();
+      if (CLIENT_WRITABLE_SOURCES.indexOf(v.source) >= 0) refs.push(d.ref);
+    });
+    var BATCH_SIZE = 400;
+    for (var i = 0; i < refs.length; i += BATCH_SIZE) {
+      var batch = db.batch();
+      refs.slice(i, i + BATCH_SIZE).forEach(function (ref) { batch.delete(ref); });
+      await batch.commit();
+    }
+  }
+
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §12) — a single, narrow, additive existence-and-
   // status read on the exact same CRUD surface createMemory()/updateMemory() already use.
   // Reused by the persistence boundary (js/app.js) to decide CREATE / UPDATE-active / REACTIVATE-
@@ -233,6 +256,7 @@
     create: createMemory,
     update: updateMemory,
     remove: deleteMemory,
+    deleteAllMemories: deleteAllMemories,
     get: getMemory,
     list: listMemories,
     migrateIfNeeded: migrateIfNeeded,
