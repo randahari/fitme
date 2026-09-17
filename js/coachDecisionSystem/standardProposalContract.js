@@ -20,9 +20,22 @@
 // imposing that closed vocabulary on a domain-agnostic capability like General Reasoning. Forcing
 // every future capability's action classification into TRR's own two-value vocabulary would be
 // exactly the kind of hidden taxonomy WP0's own binding Invariant (§10) forbids.
+//
+// WP0 Phase D.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §10.1, Revision 2,
+// Product+Architecture APPROVED): isValidRiskCharacteristicTags() below now checks real
+// closed-vocabulary membership via RiskCharacteristicValidator, replacing Phase C's own
+// placeholder {dimension,value} shape check ("the closed dimension set itself is Phase D, not yet
+// defined" — capabilityRegistry.js's own contemporaneous comment). This is a shape-only check
+// (RiskCharacteristicValidator.isValidRiskCharacteristicTagShape()) — no source text is available
+// at this call site, so literal-anchor re-verification is out of scope here by design (it is
+// riskCharacteristicIntakeGate.js's own concern, Phase D.3, where source text exists).
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
+
+  var RiskCharacteristicValidator = (typeof module !== 'undefined' && module.exports)
+    ? require('./riskCharacteristicValidator.js')
+    : window.RiskCharacteristicValidator;
 
   var OUTCOMES = Object.freeze(['ACTION_PROPOSED', 'CLARIFICATION_NEEDED', 'NO_VIABLE_PROPOSAL']);
 
@@ -30,12 +43,13 @@
   function isNonEmptyString(s) { return typeof s === 'string' && s.length > 0; }
 
   // §19/§27 — riskCharacteristicTags is a PROPOSAL/INPUT SIGNAL only, never Safety authority in
-  // itself (Round 2 correction 3, binding). This validator checks only that the field, when
-  // present, is shaped correctly — it asserts nothing about Safety's own consumption of it.
+  // itself (Round 2 correction 3, binding). Phase D.1 (see header): checks real closed-vocabulary
+  // membership for each tag, shape-only (no literal-anchor re-verification at this call site) —
+  // still asserts nothing about Safety's own consumption of it.
   function isValidRiskCharacteristicTags(tags) {
     if (tags === undefined) return true; // optional
     if (!Array.isArray(tags)) return false;
-    return tags.every(function (t) { return isPlainObject(t) && isNonEmptyString(t.dimension) && ('value' in t); });
+    return tags.every(function (t) { return RiskCharacteristicValidator.isValidRiskCharacteristicTagShape(t); });
   }
 
   // §28 — mutationProposal is optional; when present it must be a plain object carrying a

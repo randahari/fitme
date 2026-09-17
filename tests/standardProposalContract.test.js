@@ -58,12 +58,16 @@ test('actionCategory/activityReference are optional and unconstrained by this sh
   assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { activityReference: 'קרלינג' })), true); // open-world text, still valid
 });
 
-test('riskCharacteristicTags, when present, must be an array of {dimension,value} objects', () => {
+test('riskCharacteristicTags, when present, must be an array of real, closed-taxonomy RiskCharacteristicTag objects (WP0 Phase D.1, docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §10.1) — supersedes Phase C\'s own placeholder {dimension,value} shape, which no longer exists now that Phase D defines the real taxonomy', () => {
   const base = { outcome: 'NO_VIABLE_PROPOSAL' };
+  const noKnownConflictTag = { domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null };
+  const realTag = { domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', relation: 'ACUTE_STATE_INDICATED_THIS_TURN', severity: 'ADVISORY', evidenceSource: 'CURRENT_TURN_USER_STATEMENT', anchorText: 'peanut allergy' };
   assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [] })), true);
-  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [{ dimension: 'x', value: 'y' }] })), true);
+  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [noKnownConflictTag] })), true);
+  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [realTag] })), true);
   assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: 'not-an-array' })), false);
-  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [{ value: 'y' }] })), false); // missing dimension
+  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [{ dimension: 'x', value: 'y' }] })), false); // Phase C's own old placeholder shape is now rejected — the closed taxonomy is defined
+  assert.equal(StandardProposalContract.isValidStandardProposal(Object.assign({}, base, { riskCharacteristicTags: [{ domain: 'NOT_A_REAL_DOMAIN', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null }] })), false); // out-of-vocabulary domain
 });
 
 test('mutationProposal, when present, must carry a non-empty mutationKind', () => {

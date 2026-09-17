@@ -746,6 +746,12 @@
   <script src="js/coachDecisionSystem/contextComposer.js"></script>
   <script src="js/coachDecisionSystem/capabilityRegistry.js"></script>
   <script src="js/coachDecisionSystem/trrCapabilityAdapter.js"></script>
+  <!-- WP0 Phase D.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §08/§10, Revision
+       2, Product+Architecture APPROVED / READY FOR IMPLEMENTATION) — the closed Risk
+       Characteristic taxonomy and its deterministic shape/anchor validator. Loaded before
+       standardProposalContract.js, which now requires it (see that file's own header). Pure,
+       synchronous, no AI call — not wired into any live routing/orchestration seam in Phase D.1. -->
+  <script src="js/coachDecisionSystem/riskCharacteristicValidator.js"></script>
   <!-- WP0 Phase C (docs/specs/WP0_SPEC_v1.0.md §21/§22) — the Registry's mandatory FALLBACK
        entry plus its shared output contract and its (default-OFF) activation gate. Registered
        in production (CapabilityRegistry state only) but NOT wired into any live routing seam

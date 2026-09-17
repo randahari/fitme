@@ -82,6 +82,9 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/contextComposer.js',
   '/fitme/js/coachDecisionSystem/capabilityRegistry.js',
   '/fitme/js/coachDecisionSystem/trrCapabilityAdapter.js',
+  // WP0 Phase D.1 — closed Risk Characteristic taxonomy + validator, same disclosure as
+  // index.html: pure/synchronous, not wired into any live routing seam.
+  '/fitme/js/coachDecisionSystem/riskCharacteristicValidator.js',
   // WP0 Phase C — same disclosure as index.html: registered, not live-wired, not configured.
   '/fitme/js/coachDecisionSystem/standardProposalContract.js',
   '/fitme/js/coachDecisionSystem/generalReasoningActivationGate.js',
