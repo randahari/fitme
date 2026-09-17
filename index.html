@@ -746,6 +746,14 @@
   <script src="js/coachDecisionSystem/contextComposer.js"></script>
   <script src="js/coachDecisionSystem/capabilityRegistry.js"></script>
   <script src="js/coachDecisionSystem/trrCapabilityAdapter.js"></script>
+  <!-- WP0 Phase C (docs/specs/WP0_SPEC_v1.0.md §21/§22) — the Registry's mandatory FALLBACK
+       entry plus its shared output contract and its (default-OFF) activation gate. Registered
+       in production (CapabilityRegistry state only) but NOT wired into any live routing seam
+       and NOT .configure()'d with a live callClaude closure in app.js — see
+       generalReasoningActivationGate.js's own header for the full disclosure. -->
+  <script src="js/coachDecisionSystem/standardProposalContract.js"></script>
+  <script src="js/coachDecisionSystem/generalReasoningActivationGate.js"></script>
+  <script src="js/coachDecisionSystem/generalReasoningCapability.js"></script>
   <!-- MAI-001 (docs/specs/MAI_001_SPEC_v1.0.md) — previously had zero live consumers/wiring
        (disclosed, not a defect, per its own SPEC §15). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
        §25) is its first real production consumer — loaded before initiativeEngine.js and

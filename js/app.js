@@ -2848,3 +2848,19 @@ RegisterCoachDecisionSystem.registerAll();
 // needed — TRR's own reasoning component keeps its existing callClaude configuration, above,
 // unchanged).
 TrrCapabilityAdapter.registerAll();
+
+// WP0 Phase C (docs/specs/WP0_SPEC_v1.0.md §21/§22, §31) — registers GeneralReasoningCapability
+// as the Registry's mandatory FALLBACK entry. Registration only touches CapabilityRegistry/
+// ContextComposer state — it does NOT make this capability reachable from any live routing seam:
+// conversationalNeedCreator.js's own Step B only ever constructs a real Opportunity for a
+// capability whose id === 'TRR' (verified directly against that file's source); a FALLBACK
+// match falls through to its existing, unmodified UNSUPPORTED path regardless of registration
+// or configuration state. Configured with the same production callClaude closure as every other
+// bounded reasoning component above (mirrors TrainingReadinessReasoningComponent.configure()
+// exactly, per this codebase's own established coachDecisionSystemWiring.test.js invariant that
+// every callClaude:null-default component ships wired) — reachability safety here rests
+// entirely on the routing-seam exclusion just described, not on withholding configuration.
+GeneralReasoningCapability.registerAll();
+GeneralReasoningCapability.configure({
+  callClaude: function (body) { return callClaude(body); }
+});

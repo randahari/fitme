@@ -1,0 +1,168 @@
+// WP0 Phase C — Open-World Architectural Proof (docs/specs/WP0_SPEC_v1.0.md §22/§31 Phase C;
+// §37 "Unknown Future Capability Acceptance Test", narrowed to this Phase's own scope per the
+// Product/Architecture instruction: "This is NOT yet the final WP0 Unknown Future production
+// acceptance test because Safety/activation/retrieval are not complete. It is the Phase-C
+// architectural proof.").
+//
+// Demonstrates, for a genuinely never-enumerated concept (curling — verified absent from the
+// entire repository before this file was written: `grep -ril "curling|קרלינג" js/ docs/specs/`
+// returns zero matches):
+//   valid OpenUnderstanding/Need -> no specialized capability match -> FALLBACK
+//   GeneralReasoningCapability selected -> bounded relevant context assembled -> General
+//   Reasoning invoked (mocked callClaude, controlled test conditions only, per §22/§31's own
+//   "Phase-C tests may explicitly enable/invoke the gated capability" allowance) -> validated
+//   STANDARD_PROPOSAL produced.
+//
+// SCOPE BOUNDARY, disclosed precisely: this test constructs its Need object directly, as a
+// fixture representing what an eventually-extended OpenUnderstanding step (§13) would produce —
+// it does NOT exercise turnUnderstandingInterpreter.js/explicitRequestInterpreter.js's own live
+// extraction of openScopeDescription/openEntityMentions from raw user text, since that upstream
+// NLU extension was not authorized or built in any WP0 phase to date (Phase A/B's own scope was
+// CapabilityRegistry/ContextComposer/TRR migration only). This test proves the Registry-onward
+// architecture (resolution, context composition, reasoning, proposal validation) is genuinely
+// open-world-capable; the full production Unknown Future Capability test (§37) additionally
+// requires that upstream extension, Phase D Safety, and live activation — none of which this
+// Phase claims to complete.
+// Run with: node --test tests/wp0PhaseCOpenWorldProof.test.js
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const CapabilityRegistry = require('../js/coachDecisionSystem/capabilityRegistry.js');
+const ContextComposer = require('../js/coachDecisionSystem/contextComposer.js');
+const StandardProposalContract = require('../js/coachDecisionSystem/standardProposalContract.js');
+const GeneralReasoningActivationGate = require('../js/coachDecisionSystem/generalReasoningActivationGate.js');
+const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
+const GeneralReasoningCapability = require('../js/coachDecisionSystem/generalReasoningCapability.js');
+
+const NOVEL_CONCEPT_HE = 'קרלינג'; // curling — verified absent from the entire repository, see header
+const NOVEL_CONCEPT_EN = 'curling';
+
+test.beforeEach(() => {
+  CapabilityRegistry.__resetForTests__();
+  ContextComposer.__resetForTests__();
+  TrrCapabilityAdapter.registerAll();       // both real capabilities registered, mirroring production
+  GeneralReasoningCapability.registerAll();
+});
+test.afterEach(() => {
+  GeneralReasoningCapability.configure({ callClaude: null, timeoutMs: undefined });
+  GeneralReasoningActivationGate.__setLiveFallbackApprovedForTests__(false); // never leak a gate-ON state across test files
+});
+
+function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
+
+// A Need fixture for a message like "שיחקתי קרלינג היום, יש לי טכניקה גרועה, מה כדאי לתקן?"
+// (I played curling today, my technique is poor, what should I fix?) — representative of the
+// class of request the future OpenUnderstanding extension (§13) is designed to produce.
+function novelConceptNeed() {
+  return {
+    shape: 'RECOMMENDATION_REQUEST',
+    legacyScopeMatch: null, // no closed-vocabulary pair names this concept — honestly null, never guessed (§13)
+    openScopeDescription: 'the user played ' + NOVEL_CONCEPT_EN + ' today and is asking what to improve about their technique',
+    openEntityMentions: [{ text: NOVEL_CONCEPT_HE, roughKind: 'training' }],
+    constraints: []
+  };
+}
+
+test('STEP 1 — no specialized (non-FALLBACK) capability matches this Need', () => {
+  const matched = CapabilityRegistry.resolveCapability({ legacyScopeMatch: novelConceptNeed().legacyScopeMatch, shape: novelConceptNeed().shape });
+  // Only TRR is registered as a non-FALLBACK capability; its scopeMatch is a specific
+  // {domain,topic} pair this Need's legacyScopeMatch (null) can never satisfy.
+  assert.equal(matched.id, 'GENERAL_REASONING'); // resolveCapability() itself already falls through to FALLBACK
+  assert.notEqual(matched.id, 'TRR');
+});
+
+test('STEP 2 — full resolve() selects FALLBACK (GeneralReasoningCapability), never TRR, never a rejection', async () => {
+  const resolution = await CapabilityRegistry.resolve(novelConceptNeed(), { recentConversationContext: null, availability: {} });
+  assert.equal(resolution.status, 'RESOLVED');
+  assert.equal(resolution.capability.id, 'GENERAL_REASONING');
+});
+
+test('STEP 3 — bounded, relevance-selected context is assembled (training-tagged fragments included, nutrition-tagged fragments excluded — the "not a full dump" proof for a real scenario)', async () => {
+  const pipelineContext = {
+    readinessStateContext: { slept: 6 },
+    userSafetyContext: null,
+    userSafetyProvenance: null,
+    explicitRequestControls: null,
+    activityPreference: { likes: ['padel'] },
+    currentStateContext: { consumed: 1200 },       // nutrition-tagged — should NOT be selected
+    goalObjectiveContext: { goal: 'maintain' },     // nutrition-tagged — should NOT be selected
+    recentConversationContext: 'user: hi',
+    availability: {
+      readinessStateContext: 'AVAILABLE', userSafetyContext: 'UNAVAILABLE', userSafetyProvenance: 'UNAVAILABLE',
+      explicitRequestControls: 'UNAVAILABLE', activityPreference: 'AVAILABLE',
+      currentStateContext: 'AVAILABLE', goalObjectiveContext: 'AVAILABLE', recentConversationContext: 'AVAILABLE'
+    }
+  };
+  const resolution = await CapabilityRegistry.resolve(novelConceptNeed(), pipelineContext);
+  assert.equal(resolution.status, 'RESOLVED');
+  const contextKeys = Object.keys(resolution.context);
+  assert.ok(contextKeys.includes('recentConversationContext')); // baseline, always included
+  assert.ok(contextKeys.includes('readinessStateContext'));     // training-tagged, matches roughKind:'training'
+  assert.ok(contextKeys.includes('activityPreference'));        // training-tagged, matches roughKind:'training'
+  assert.ok(!contextKeys.includes('currentStateContext'));      // nutrition-tagged — correctly excluded
+  assert.ok(!contextKeys.includes('goalObjectiveContext'));     // nutrition-tagged — correctly excluded
+});
+
+test('STEP 4/5 — General Reasoning is invoked (mocked callClaude, controlled test only) and produces a validated STANDARD_PROPOSAL, entirely from the composed context — no concept-specific code anywhere', async () => {
+  let promptSeen = null;
+  GeneralReasoningCapability.configure({
+    callClaude: async (body) => {
+      promptSeen = body.messages[0].content;
+      return fakeResponse({
+        outcome: 'ACTION_PROPOSED',
+        action: 'focus on your release and follow-through technique',
+        rationale: 'the user asked specifically about technique improvement',
+        evidenceBasis: 'the user\'s own stated request',
+        expectedValue: 'more consistent shots',
+        uncertainty: 'general guidance without seeing the actual delivery'
+      });
+    }
+  });
+
+  const need = novelConceptNeed();
+  const { resolution, proposal } = await GeneralReasoningCapability.resolveAndReason(
+    need,
+    { recentConversationContext: 'user: hi', availability: { recentConversationContext: 'AVAILABLE' } }
+  );
+
+  assert.equal(resolution.status, 'RESOLVED');
+  assert.equal(resolution.capability.id, 'GENERAL_REASONING');
+  assert.ok(proposal, 'a real STANDARD_PROPOSAL was produced');
+  assert.equal(StandardProposalContract.isValidStandardProposal(proposal), true);
+  assert.equal(proposal.outcome, 'ACTION_PROPOSED');
+  assert.equal(proposal.mutationProposal, null);
+  assert.deepEqual(proposal.riskCharacteristicTags, []);
+
+  // The novel concept genuinely reached the model call — proving the chain actually carried it,
+  // not merely that some unrelated default proposal was produced.
+  assert.ok(promptSeen.indexOf(NOVEL_CONCEPT_HE) !== -1 || promptSeen.indexOf(NOVEL_CONCEPT_EN) !== -1);
+});
+
+test('ZERO CONCEPT-SPECIFIC CODE — "curling"/"קרלינג" appears nowhere in js/ outside this test file\'s own fixture', () => {
+  const jsDir = path.join(__dirname, '../js');
+  function walk(dir) {
+    let hits = [];
+    fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) hits = hits.concat(walk(full));
+      else if (entry.name.endsWith('.js')) {
+        const src = fs.readFileSync(full, 'utf8');
+        if (new RegExp(NOVEL_CONCEPT_EN, 'i').test(src) || src.indexOf(NOVEL_CONCEPT_HE) !== -1) { hits.push(full); }
+      }
+    });
+    return hits;
+  }
+  assert.deepEqual(walk(jsDir), [], 'no production file references the novel concept — it exists only as this test\'s own fixture data');
+});
+
+test('CONTROL — during this entire proof, the activation gate remains OFF (Phase C never flips it as a side effect of the proof itself)', () => {
+  assert.equal(GeneralReasoningActivationGate.isLiveFallbackApproved(), false);
+});
+
+test('CONTROL — TRR is completely unaffected: it still matches its own exact pair and General Reasoning never intercepts it', async () => {
+  const trrNeed = { shape: 'RECOMMENDATION_REQUEST', legacyScopeMatch: { domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY' } };
+  const resolution = await CapabilityRegistry.resolve(trrNeed, { availability: {} });
+  assert.equal(resolution.capability.id, 'TRR');
+});

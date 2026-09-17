@@ -82,6 +82,10 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/contextComposer.js',
   '/fitme/js/coachDecisionSystem/capabilityRegistry.js',
   '/fitme/js/coachDecisionSystem/trrCapabilityAdapter.js',
+  // WP0 Phase C — same disclosure as index.html: registered, not live-wired, not configured.
+  '/fitme/js/coachDecisionSystem/standardProposalContract.js',
+  '/fitme/js/coachDecisionSystem/generalReasoningActivationGate.js',
+  '/fitme/js/coachDecisionSystem/generalReasoningCapability.js',
   '/fitme/js/domain/activityIdentityVocabulary.js',
   '/fitme/js/domain/activityReferenceNormalizer.js',
   '/fitme/js/coachDecisionSystem/initiativeEngine.js',

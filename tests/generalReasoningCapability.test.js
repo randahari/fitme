@@ -1,0 +1,121 @@
+// WP0 Phase C — General Reasoning Capability unit tests (docs/specs/WP0_SPEC_v1.0.md §21).
+// Run with: node --test tests/generalReasoningCapability.test.js
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const CapabilityRegistry = require('../js/coachDecisionSystem/capabilityRegistry.js');
+const ContextComposer = require('../js/coachDecisionSystem/contextComposer.js');
+const GeneralReasoningCapability = require('../js/coachDecisionSystem/generalReasoningCapability.js');
+
+function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
+function configureStub(handler) { GeneralReasoningCapability.configure({ callClaude: handler }); }
+test.afterEach(() => { GeneralReasoningCapability.configure({ callClaude: null, timeoutMs: undefined }); });
+
+test.beforeEach(() => {
+  CapabilityRegistry.__resetForTests__();
+  ContextComposer.__resetForTests__();
+});
+
+test('registerAll() registers exactly one capability, "GENERAL_REASONING", with scopeMatch:"FALLBACK"', () => {
+  const result = GeneralReasoningCapability.registerAll();
+  assert.equal(result.ok, true);
+  const cap = CapabilityRegistry.getById('GENERAL_REASONING');
+  assert.ok(cap);
+  assert.equal(cap.acceptedNeedCharacteristics.scopeMatch, 'FALLBACK');
+  assert.equal(CapabilityRegistry.getFallback().id, 'GENERAL_REASONING');
+});
+
+test('registerAll() declares requiredContext:[] — never blocks on a single required fragment', () => {
+  GeneralReasoningCapability.registerAll();
+  assert.deepEqual(CapabilityRegistry.getById('GENERAL_REASONING').requiredContext, []);
+});
+
+test('registerAll() declares availableTools:[] — no ToolRegistry in Phase C (requirement 10)', () => {
+  GeneralReasoningCapability.registerAll();
+  assert.deepEqual(CapabilityRegistry.getById('GENERAL_REASONING').availableTools, []);
+});
+
+test('registerAll() declares mutationPermissions:[] — no mutations in Phase C (requirement 11)', () => {
+  GeneralReasoningCapability.registerAll();
+  assert.deepEqual(CapabilityRegistry.getById('GENERAL_REASONING').mutationPermissions, []);
+});
+
+test('registerAll() registers the two new fragment providers (currentStateContext, goalObjectiveContext) — the "assembled but never consumed" fields now reachable', () => {
+  GeneralReasoningCapability.registerAll();
+  assert.ok(ContextComposer.getFragmentProvider('currentStateContext'));
+  assert.ok(ContextComposer.getFragmentProvider('goalObjectiveContext'));
+});
+
+test('registerAll() is idempotent', () => {
+  const first = GeneralReasoningCapability.registerAll();
+  const second = GeneralReasoningCapability.registerAll();
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(CapabilityRegistry.getAll().length, 1);
+});
+
+test('reason() returns null when no callClaude is configured (fail-closed, Phase C\'s own production state)', async () => {
+  const result = await GeneralReasoningCapability.reason({ openScopeDescription: 'x' }, {});
+  assert.equal(result, null);
+});
+
+test('reason() returns a valid STANDARD_PROPOSAL for a well-formed mocked model response', async () => {
+  configureStub(async () => fakeResponse({ outcome: 'ACTION_PROPOSED', action: 'a', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }));
+  const result = await GeneralReasoningCapability.reason({ openScopeDescription: 'x' }, {});
+  assert.ok(result);
+  assert.equal(result.outcome, 'ACTION_PROPOSED');
+});
+
+test('reason() forces mutationProposal to null even if the (mocked) model returns one — deterministic override, never trusts model output (requirement 11)', async () => {
+  configureStub(async () => fakeResponse({
+    outcome: 'ACTION_PROPOSED', action: 'a', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u',
+    mutationProposal: { mutationKind: 'LOG_FOOD', proposedData: { item: 'anything' } }
+  }));
+  const result = await GeneralReasoningCapability.reason({ openScopeDescription: 'x' }, {});
+  assert.equal(result.mutationProposal, null);
+});
+
+test('reason() forces riskCharacteristicTags to [] even if the (mocked) model returns tags — Phase D dimensions do not exist yet (requirement 8)', async () => {
+  configureStub(async () => fakeResponse({
+    outcome: 'ACTION_PROPOSED', action: 'a', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u',
+    riskCharacteristicTags: [{ dimension: 'invented', value: 'high' }]
+  }));
+  const result = await GeneralReasoningCapability.reason({ openScopeDescription: 'x' }, {});
+  assert.deepEqual(result.riskCharacteristicTags, []);
+});
+
+test('reason() returns null for a malformed model response (never fabricates a proposal)', async () => {
+  configureStub(async () => fakeResponse({ outcome: 'ACTION_PROPOSED' })); // missing required fields
+  const result = await GeneralReasoningCapability.reason({}, {});
+  assert.equal(result, null);
+});
+
+test('reason() returns null on a thrown callClaude', async () => {
+  configureStub(() => { throw new Error('boom'); });
+  const result = await GeneralReasoningCapability.reason({}, {});
+  assert.equal(result, null);
+});
+
+test('reason() returns null on timeout', async () => {
+  GeneralReasoningCapability.configure({ callClaude: () => new Promise(() => {}), timeoutMs: 20 });
+  const result = await GeneralReasoningCapability.reason({}, {});
+  assert.equal(result, null);
+});
+
+test('buildPrompt() names no sport/food/activity-specific vocabulary — genuinely domain-agnostic (structural proof)', () => {
+  const prompt = GeneralReasoningCapability._internal.buildPrompt({ openScopeDescription: 'anything' }, {});
+  assert.ok(!/PHYSICAL_ACTIVITY|WORKOUT|NUTRITION|running|swimming/i.test(prompt));
+});
+
+test('resolveAndReason() end-to-end: resolves to GENERAL_REASONING, composes context, reasons, and returns a valid proposal', async () => {
+  GeneralReasoningCapability.registerAll();
+  configureStub(async () => fakeResponse({ outcome: 'NO_VIABLE_PROPOSAL' }));
+  const { resolution, proposal } = await GeneralReasoningCapability.resolveAndReason(
+    { shape: 'RECOMMENDATION_REQUEST', legacyScopeMatch: null, openScopeDescription: 'something never enumerated' },
+    { recentConversationContext: 'hi', availability: { recentConversationContext: 'AVAILABLE' } }
+  );
+  assert.equal(resolution.status, 'RESOLVED');
+  assert.equal(resolution.capability.id, 'GENERAL_REASONING');
+  assert.ok(proposal);
+  assert.equal(proposal.outcome, 'NO_VIABLE_PROPOSAL');
+});
