@@ -734,6 +734,18 @@
   <script src="js/coachDecisionSystem/recommendationEngine.js"></script>
   <!-- G-2 (docs/specs/G2_SPEC_v1.0.md §19-21, CSF-08) — loaded before initiativeEngine.js, its sole consumer -->
   <script src="js/coachDecisionSystem/contextualMeaningPolicy.js"></script>
+  <!-- WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §11/§20/§31) — CapabilityRegistry/ContextComposer
+       foundation (Phase A) plus the TRR Capability Adapter (Phase B), loaded before
+       conversationalNeedCreator.js and internalPipelineOrchestrator.js below, both of which now
+       require them. Load order matches each module's own require chain:
+       contextRelevancePlanner.js (no dependencies) -> contextComposer.js (requires it) ->
+       capabilityRegistry.js (requires contextComposer.js) -> trrCapabilityAdapter.js (requires
+       both). Not yet wired into the live pipeline until this commit — Phase A shipped these
+       files unit-tested in isolation only (§31 Phase A). -->
+  <script src="js/coachDecisionSystem/contextRelevancePlanner.js"></script>
+  <script src="js/coachDecisionSystem/contextComposer.js"></script>
+  <script src="js/coachDecisionSystem/capabilityRegistry.js"></script>
+  <script src="js/coachDecisionSystem/trrCapabilityAdapter.js"></script>
   <!-- MAI-001 (docs/specs/MAI_001_SPEC_v1.0.md) — previously had zero live consumers/wiring
        (disclosed, not a defect, per its own SPEC §15). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
        §25) is its first real production consumer — loaded before initiativeEngine.js and

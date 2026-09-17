@@ -108,6 +108,15 @@
   var ActivityReferenceNormalizer = (typeof module !== 'undefined' && module.exports)
     ? require('../domain/activityReferenceNormalizer.js')
     : window.ActivityReferenceNormalizer;
+  // WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §20) — TRR's reasoning-context acquisition now
+  // routes through CapabilityRegistry/ContextComposer via this adapter instead of calling
+  // MemoryLayer.buildTrainingReadinessReasoningContext() directly. The reasoning-invocation
+  // gate itself (validReasonCategory === 'ADAPT_TO_CURRENT_STATE', below) is unchanged — this
+  // is a context-acquisition migration only, never a change to when reasoning is invoked, per
+  // WP0's own binding scope for this Phase.
+  var TrrCapabilityAdapter = (typeof module !== 'undefined' && module.exports)
+    ? require('./trrCapabilityAdapter.js')
+    : window.TrrCapabilityAdapter;
   // DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §04) — bounded Turn Understanding, invoked only on
   // the new DIRECT_TURN_PASS action path (runDirectTurnPass() below); never reached from the
   // existing APP_READY/DECISION_PASS path above, which supplies no CurrentUserTurn at all.
@@ -802,7 +811,11 @@
       // Reasoning Context -> AI Reasoning -> strict validation, all BETWEEN Stage 5 (already
       // ELIGIBLE, above) and Stage 6 (dispatchStage6, below) — never before, never after.
       if (eligibilityInput && eligibilityInput.validReasonCategory === 'ADAPT_TO_CURRENT_STATE') {
-        var reasoningContext = MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext, eligibleOpportunity);
+        // WP0 Phase B — was MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext,
+        // eligibleOpportunity); now routes through CapabilityRegistry/ContextComposer via the
+        // adapter, producing a byte-identical reasoning-context shape (verified: golden-master
+        // regression, tests/trrCapabilityAdapter.test.js).
+        var reasoningContext = await TrrCapabilityAdapter.buildReasoningContext(pipelineContext, eligibleOpportunity);
         var proposal;
         try { proposal = await TrainingReadinessReasoningComponent.propose(reasoningContext); }
         catch (e) { proposal = null; } // defensive — propose() itself never throws, kept for safety

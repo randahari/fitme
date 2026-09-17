@@ -16,18 +16,22 @@
 //   while determining no currently-authorized professional capability exists for that Need."
 //
 //   Step B — Professional-capability resolution (§09), performed on an already-recognized need,
-//   NEVER gating its existence: the narrowest V1 mechanism is a single, deterministic equality
-//   check (WORKOUT/WORKOUT_FREQUENCY — the one pair TRR-001 owns), structurally identical to
-//   contextualMeaningPolicy.js's own isTrainingReadinessObservation()
-//   [contextualMeaningPolicy.js:63-67] — not a registry, not a growing if/else chain. A match
-//   returns a real DetectedOpportunity for the existing, unmodified TRR reasoning-invocation
-//   branch (§10); a non-match returns kind: 'UNSUPPORTED', consumed by
+//   NEVER gating its existence: routed through CapabilityRegistry.resolveCapability()
+//   (WP0_SPEC_v1.0.md §16, Phase B) — a pure, synchronous, matching-only lookup against
+//   registered CapabilityDeclarations. In Phase B exactly one capability is registered (TRR,
+//   trrCapabilityAdapter.js), declared with scopeMatch:{domain:'WORKOUT',
+//   topic:'WORKOUT_FREQUENCY'} — the identical literal pair this equality check always used —
+//   so the routing DECISION is unchanged by construction; only the MECHANISM producing it moved
+//   from a hardcoded `if` to a data-driven registry lookup. A match returns a real
+//   DetectedOpportunity for the existing, unmodified TRR reasoning-invocation branch (§10); a
+//   non-match returns kind: 'UNSUPPORTED', consumed by
 //   DecisionFormation.formUnsupportedCapabilityOutcome() (§12) — never silence, never
 //   misrouting.
 //
 // Explicit non-behavior (Package Ch.13, verbatim): never answers the user; never calls
-// Expression; never owns Safety; performs no free-form routing (Step B is the entire routing
-// logic — one equality check, not a table); never reinterprets EUR-001 (a negative-control turn
+// Expression; never owns Safety; performs no free-form routing (Step B's own opportunity-
+// construction logic below is unchanged — still exactly one capability's own shape, not a
+// table of many); never reinterprets EUR-001 (a negative-control turn
 // still produces a DirectUserNeed at Step A if an affirmative request also exists in the same
 // turn, per Decision 11/Blocker 6/§12a — EUR-001's own machinery is untouched and independently
 // still applies its own suppression check downstream at Stage 6, unaffected by this contributor's
@@ -41,6 +45,18 @@
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
+
+  // WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §11 row 4, §16) — the single hardcoded equality
+  // check below is now routed through CapabilityRegistry.resolveCapability(), a pure,
+  // synchronous, matching-only lookup (no context acquisition — that remains a separate,
+  // later step, unchanged, at internalPipelineOrchestrator.js's own existing reasoning-
+  // invocation gate). For the one capability registered in Phase B (TRR), this produces the
+  // identical routing decision the previous hardcoded `if` did, by construction: TRR's own
+  // CapabilityDeclaration (trrCapabilityAdapter.js) declares scopeMatch:{domain:'WORKOUT',
+  // topic:'WORKOUT_FREQUENCY'} — the same literal pair this file always checked directly.
+  var CapabilityRegistry = (typeof module !== 'undefined' && module.exports)
+    ? require('./capabilityRegistry.js')
+    : window.CapabilityRegistry;
 
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
@@ -75,16 +91,22 @@
     return resolveProfessionalCapability(need, turn, pipelineContext);
   }
 
-  // §06 Step B / §09 — the ONE pair TRR-001 owns: a single, deterministic, non-AI-owned equality
-  // check, structurally identical to contextualMeaningPolicy.js's own
-  // isTrainingReadinessObservation() [contextualMeaningPolicy.js:63-67]. This is the entire
-  // routing logic for V1 — not a registry, not a growing if/else chain distinguishing many
-  // verticals (Decision 17's own recorded architecture trigger, §09, applies only once a SECOND
-  // (domain, topic) pair needs its own validReasonCategory mapping — not before, and not as part
-  // of this SPEC).
+  // §06 Step B / §09, WP0 Phase B — CapabilityRegistry-routed (see file header). Opportunity
+  // construction below remains TRR's own, unmodified shape — the Registry lookup only replaces
+  // how the MATCH is decided, never what happens once matched.
   function resolveProfessionalCapability(need, turn, pipelineContext) {
     var detectedAt = (pipelineContext && pipelineContext.assembledAt !== undefined) ? pipelineContext.assembledAt : null;
-    if (need.domain === 'WORKOUT' && need.topic === 'WORKOUT_FREQUENCY') {
+
+    // WP0 Phase B — the routing decision itself, via CapabilityRegistry (matching-only, §16).
+    // registryNeed is a minimal adapter object; this file's own `need` shape (needRef/turnId/
+    // domain/topic/recognizedAt) is unchanged and still returned/used exactly as before.
+    var registryNeed = { legacyScopeMatch: (need.domain != null && need.topic != null) ? { domain: need.domain, topic: need.topic } : null };
+    var matchedCapability = CapabilityRegistry ? CapabilityRegistry.resolveCapability(registryNeed) : null;
+    var isTrrMatch = !!matchedCapability
+      && matchedCapability.acceptedNeedCharacteristics.scopeMatch !== 'FALLBACK'
+      && matchedCapability.id === 'TRR';
+
+    if (isTrrMatch) {
       return freezeShallow({
         kind: 'DETECTED_OPPORTUNITY',
         opportunity: freezeShallow({

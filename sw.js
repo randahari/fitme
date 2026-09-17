@@ -76,6 +76,12 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/evidenceEvaluator.js',
   '/fitme/js/coachDecisionSystem/recommendationEngine.js',
   '/fitme/js/coachDecisionSystem/contextualMeaningPolicy.js',
+  // WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §31) — CapabilityRegistry/ContextComposer
+  // foundation (Phase A) + TRR Capability Adapter (Phase B), same load-order note as index.html.
+  '/fitme/js/coachDecisionSystem/contextRelevancePlanner.js',
+  '/fitme/js/coachDecisionSystem/contextComposer.js',
+  '/fitme/js/coachDecisionSystem/capabilityRegistry.js',
+  '/fitme/js/coachDecisionSystem/trrCapabilityAdapter.js',
   '/fitme/js/domain/activityIdentityVocabulary.js',
   '/fitme/js/domain/activityReferenceNormalizer.js',
   '/fitme/js/coachDecisionSystem/initiativeEngine.js',

@@ -2839,3 +2839,12 @@ RegisterEngines.registerAll();
 // ב-configure() משלו — internalPipelineOrchestrator/memoryLayer נשענים אך ורק על
 // StateAccess/DerivedIntelligenceConsumer הקיימים, שכבר קונפגו לעיל.
 RegisterCoachDecisionSystem.registerAll();
+
+// WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §31, §11) — registers TRR as the first real
+// CapabilityDeclaration in CapabilityRegistry plus the ContextFragmentProviders its reasoning
+// context needs (trrCapabilityAdapter.js). Same registerAll()-once-at-composition-time pattern
+// as RegisterEngines/RegisterCoachDecisionSystem immediately above; does not depend on its own
+// configure() (CapabilityRegistry/ContextComposer are pure, no callClaude/StateAccess injection
+// needed — TRR's own reasoning component keeps its existing callClaude configuration, above,
+// unchanged).
+TrrCapabilityAdapter.registerAll();

@@ -24,6 +24,15 @@ const SafetyLayer = require('../js/coachDecisionSystem/safetyLayer.js');
 const Orchestrator = require('../js/coachDecisionSystem/internalPipelineOrchestrator.js');
 const { makeSafetyIntegrationPortTestDouble } = require('./fixtures/safetyIntegrationPortTestDouble.js');
 
+// WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §16) — ConversationalNeedCreator's Step B now routes
+// through CapabilityRegistry.resolveCapability() instead of a hardcoded equality check.
+// Production registers TRR exactly once at bootstrap (app.js); this file's own end-to-end
+// exercise of the real DIRECT_TURN_PASS chain needs the identical one-time registration to see
+// the same registered capability set production will. Test-harness setup only — no existing
+// assertion below is altered.
+const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
+test.before(() => { TrrCapabilityAdapter.registerAll(); });
+
 const TODAY_DATE_KEY = DateUtils.getTodayKey();
 
 // §20 — "No Habit signal required": every fixture below configures DerivedIntelligenceConsumer

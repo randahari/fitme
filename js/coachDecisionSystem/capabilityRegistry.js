@@ -242,10 +242,15 @@
     return !!lsm && lsm.domain === scopeMatch.domain && lsm.topic === scopeMatch.topic;
   }
 
-  // §16 — resolution algorithm. Synchronous candidate selection, then an async viability check
-  // via ContextComposer.assemble() (fragment providers may be asynchronous, §18). Never throws;
-  // every failure mode resolves to a defined, honest status.
-  async function resolve(need) {
+  // §16 — pure, synchronous MATCHING-ONLY resolution: which capability would be selected for
+  // this Need, with NO context acquisition and NO side effects. Split out from resolve() during
+  // Phase B (disclosed): conversationalNeedCreator.js's Step B needs a capability-routing
+  // decision at Need-recognition time, before Stage 4/5 eligibility has even run — invoking
+  // full context assembly that early would be a genuine timing/behavior change (context
+  // acquisition happens once, later, at the existing TRR reasoning-invocation step), not a
+  // pure routing migration. resolve() below is unchanged in its own external contract; it is
+  // now implemented in terms of this function plus ContextComposer.assemble().
+  function resolveCapability(need) {
     need = need || {};
     var candidates = _order
       .map(function (id) { return _capabilities[id]; })
@@ -255,24 +260,31 @@
           && scopeMatches(cap.acceptedNeedCharacteristics.scopeMatch, need);
       });
 
-    var resolvedCapability;
-    if (candidates.length === 0) {
-      resolvedCapability = getFallback();
-      if (!resolvedCapability) {
-        // No FALLBACK registered at all — a configuration error, not a runtime Need failure.
-        return { status: 'NO_FALLBACK_REGISTERED', capability: null, context: null, reason: 'NO_FALLBACK_REGISTERED', missingContextId: null };
-      }
-    } else {
-      // Highest priority wins; ties broken by registration order (first-registered-wins,
-      // §39's resolved Engineering recommendation — no canonical-contract impact).
-      resolvedCapability = candidates.reduce(function (best, cap) {
-        if (!best) return cap;
-        if (cap.acceptedNeedCharacteristics.priority > best.acceptedNeedCharacteristics.priority) return cap;
-        return best;
-      }, null);
+    if (candidates.length === 0) { return getFallback(); } // null if none registered
+
+    // Highest priority wins; ties broken by registration order (first-registered-wins, §39's
+    // resolved Engineering recommendation — no canonical-contract impact).
+    return candidates.reduce(function (best, cap) {
+      if (!best) return cap;
+      if (cap.acceptedNeedCharacteristics.priority > best.acceptedNeedCharacteristics.priority) return cap;
+      return best;
+    }, null);
+  }
+
+  // §16 — full resolution algorithm: resolveCapability() above, then an async viability check
+  // via ContextComposer.assemble() (fragment providers may be asynchronous, §18). Never throws;
+  // every failure mode resolves to a defined, honest status. `pipelineContext` (Phase B
+  // addition, disclosed — see contextComposer.js's own header) is threaded through to
+  // ContextComposer.assemble() so real, per-turn fragment providers can read it.
+  async function resolve(need, pipelineContext) {
+    need = need || {};
+    var resolvedCapability = resolveCapability(need);
+    if (!resolvedCapability) {
+      // No FALLBACK registered at all — a configuration error, not a runtime Need failure.
+      return { status: 'NO_FALLBACK_REGISTERED', capability: null, context: null, reason: 'NO_FALLBACK_REGISTERED', missingContextId: null };
     }
 
-    var composed = await ContextComposer.assemble(need, resolvedCapability);
+    var composed = await ContextComposer.assemble(need, resolvedCapability, pipelineContext);
     if (!composed.viable) {
       // §16 Round 3 item 3, binding: terminate here — never re-resolve against FALLBACK, even
       // when resolvedCapability !== FALLBACK. Translating this into a real TerminalDecision
@@ -299,6 +311,7 @@
     getById: getById,
     getAll: getAll,
     getFallback: getFallback,
+    resolveCapability: resolveCapability,
     resolve: resolve,
     __resetForTests__: __resetForTests__
   };

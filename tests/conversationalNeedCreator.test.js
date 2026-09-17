@@ -7,6 +7,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const NeedCreator = require('../js/coachDecisionSystem/conversationalNeedCreator.js');
 
+// WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §16) — resolveProfessionalCapability() now routes
+// through CapabilityRegistry.resolveCapability() instead of a hardcoded equality check.
+// Production registers TRR exactly once at bootstrap (app.js, mirroring
+// RegisterCoachDecisionSystem.registerAll()'s own established pattern); this test file mirrors
+// that same one-time registration so the module under test sees the identical registered
+// capability set it will see in production. This is test-harness setup only — no existing
+// assertion below is altered.
+const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
+test.before(() => { TrrCapabilityAdapter.registerAll(); });
+
 function turn(turnId) { return { turnId: turnId, text: 'x', submittedAt: 1000, sessionGeneration: 1 }; }
 function pipelineContext(assembledAt) { return { assembledAt: assembledAt !== undefined ? assembledAt : 5000 }; }
 

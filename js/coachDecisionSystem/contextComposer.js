@@ -8,11 +8,20 @@
 // required fragment reporting UNAVAILABLE makes the capability non-viable for this turn
 // (REQUIRED_CONTEXT_UNAVAILABLE), handled by capabilityRegistry.js's resolve() (§16).
 //
-// Phase A registers NO real fragment providers pointing at memoryLayer.js/stateAccess.js — this
-// module is "built and unit-tested in isolation, not yet wired into the live pipeline"
-// (WP0_SPEC_v1.0.md §31 Phase A). Re-registering memoryLayer.js's existing 7 inline context
-// blocks as catalogued providers is TRR migration work (Phase B) — memoryLayer.js is not
-// imported, read, or modified by this file.
+// Phase A registered NO real fragment providers pointing at memoryLayer.js/stateAccess.js —
+// this module was "built and unit-tested in isolation, not yet wired into the live pipeline"
+// (WP0_SPEC_v1.0.md §31 Phase A). memoryLayer.js is still not imported, read, or modified by
+// this file.
+//
+// PHASE B ADDITION (disclosed, an Engineering-level realization of the already-approved §17/§18
+// contract, discovered while migrating TRR's real fragments — mirrors the Phase A precedent
+// already accepted for contextBaseline/needShapeDefaults): assemble() and invoke() now
+// additionally thread an optional `pipelineContext` argument through to each
+// ContextFragmentProvider.invoke(pipelineContext). Real fragment providers read from the
+// already-assembled, per-turn Pipeline Context (memoryLayer.js's assembleContext() output) —
+// they are not independently re-invokable global reads, so invoke() needed a way to receive
+// that per-turn object. This is purely additive: a zero-arg provider (every Phase A test
+// fixture) still works unchanged, since JS ignores an unused extra argument.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -76,14 +85,14 @@
     return isPlainObject(r) && AVAILABILITY_VALUES.indexOf(r.availability) !== -1 && ('value' in r);
   }
 
-  async function invokeProvider(id) {
+  async function invokeProvider(id, pipelineContext) {
     var provider = _providers[id];
     if (!provider) {
       // Not registered — honestly UNAVAILABLE, never a thrown error and never fabricated.
       return { value: null, availability: 'UNAVAILABLE' };
     }
     var raw;
-    try { raw = await Promise.resolve(provider.invoke()); }
+    try { raw = await Promise.resolve(provider.invoke(pipelineContext)); }
     catch (e) { raw = null; }
     if (!isValidResult(raw)) { return { value: null, availability: 'UNAVAILABLE' }; }
     return raw;
@@ -95,13 +104,13 @@
   // Optional fragments are the ContextRelevancePlanner-selected subset only — never the full
   // ceiling — satisfying the binding "must never receive unrestricted access to all FITME
   // state" constraint at the composition boundary.
-  async function assemble(need, capability) {
+  async function assemble(need, capability, pipelineContext) {
     capability = capability || {};
     var requiredContext = Array.isArray(capability.requiredContext) ? capability.requiredContext : [];
     var requiredResults = {};
     for (var i = 0; i < requiredContext.length; i++) {
       var id = requiredContext[i];
-      var result = await invokeProvider(id);
+      var result = await invokeProvider(id, pipelineContext);
       requiredResults[id] = result;
       if (result.availability === 'UNAVAILABLE') {
         return { viable: false, reason: 'REQUIRED_CONTEXT_UNAVAILABLE', missingId: id };
@@ -113,7 +122,7 @@
     for (var j = 0; j < relevantFragmentIds.length; j++) {
       var oid = relevantFragmentIds[j];
       if (oid in requiredResults) continue; // already assembled above; never double-invoked
-      optionalResults[oid] = await invokeProvider(oid);
+      optionalResults[oid] = await invokeProvider(oid, pipelineContext);
     }
 
     var context = {};
