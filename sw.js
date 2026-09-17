@@ -89,6 +89,9 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/standardProposalContract.js',
   '/fitme/js/coachDecisionSystem/generalReasoningActivationGate.js',
   '/fitme/js/coachDecisionSystem/generalReasoningCapability.js',
+  // WP0 Phase D.2 — independent extraction interpreter, configured (production callClaude) but
+  // with zero callers in the live routing/orchestration seam — same disclosure as index.html.
+  '/fitme/js/coachDecisionSystem/riskCharacteristicInterpreter.js',
   '/fitme/js/domain/activityIdentityVocabulary.js',
   '/fitme/js/domain/activityReferenceNormalizer.js',
   '/fitme/js/coachDecisionSystem/initiativeEngine.js',

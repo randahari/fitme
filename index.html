@@ -760,6 +760,16 @@
   <script src="js/coachDecisionSystem/standardProposalContract.js"></script>
   <script src="js/coachDecisionSystem/generalReasoningActivationGate.js"></script>
   <script src="js/coachDecisionSystem/generalReasoningCapability.js"></script>
+  <!-- WP0 Phase D.2 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09/§22, Revision
+       2, Product+Architecture APPROVED) — the independent Risk Characteristic extraction
+       interpreter. Loaded after riskCharacteristicValidator.js (requires it for the closed
+       domain/severity vocabulary). app.js configures it with the production callClaude closure
+       (matching this codebase's own coachDecisionSystemWiring.test.js invariant that no
+       callClaude:null-default component ships unconfigured — see app.js's own comment there for
+       the full disclosure), but classifyCandidateContent()/classifyTurnForDurableConstraint()
+       have zero callers anywhere in the live routing/orchestration seam — configuration only,
+       never orchestration wiring. Wiring this interpreter into the Stage 5/6 seam is Phase D.6. -->
+  <script src="js/coachDecisionSystem/riskCharacteristicInterpreter.js"></script>
   <!-- MAI-001 (docs/specs/MAI_001_SPEC_v1.0.md) — previously had zero live consumers/wiring
        (disclosed, not a defect, per its own SPEC §15). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
        §25) is its first real production consumer — loaded before initiativeEngine.js and

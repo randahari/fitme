@@ -178,7 +178,7 @@ test('riskCharacteristicValidator.js is not referenced from any live routing/orc
   });
 });
 
-test('standardProposalContract.js is the only production file requiring riskCharacteristicValidator.js in Phase D.1', () => {
+test('only standardProposalContract.js (Phase D.1) and riskCharacteristicInterpreter.js (Phase D.2, added as its own legitimate closed-vocabulary consumer) require riskCharacteristicValidator.js — no other production file does', () => {
   const jsDir = path.join(__dirname, '..', 'js');
   function walk(dir) {
     let matches = [];
@@ -194,6 +194,6 @@ test('standardProposalContract.js is the only production file requiring riskChar
     });
     return matches;
   }
-  const requirers = walk(jsDir).map((p) => path.basename(p));
-  assert.deepEqual(requirers, ['standardProposalContract.js']);
+  const requirers = walk(jsDir).map((p) => path.basename(p)).sort();
+  assert.deepEqual(requirers, ['riskCharacteristicInterpreter.js', 'standardProposalContract.js']);
 });

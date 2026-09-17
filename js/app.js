@@ -2864,3 +2864,20 @@ GeneralReasoningCapability.registerAll();
 GeneralReasoningCapability.configure({
   callClaude: function (body) { return callClaude(body); }
 });
+
+// WP0 Phase D.2 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09/§22, Revision 2,
+// Product+Architecture APPROVED) — RiskCharacteristicInterpreter has no CapabilityRegistry
+// declaration of its own (it is not a capability; it is the independent classifier Product
+// decision 1 requires GeneralReasoningCapability's own proposals be checked by), so only
+// .configure() applies here, no .registerAll(). Configured with the same production callClaude
+// closure as every other bounded interpreter above, per this codebase's own established
+// coachDecisionSystemWiring.test.js invariant (test #37) that no callClaude:null-default
+// component ships unconfigured — the exact precedent GeneralReasoningCapability's own Phase C
+// self-correction established immediately above. This is configuration only, never orchestration
+// wiring: classifyCandidateContent()/classifyTurnForDurableConstraint() have zero callers in
+// conversationalNeedCreator.js, internalPipelineOrchestrator.js, or memoryLayer.js (verified by
+// tests/riskCharacteristicInterpreter.test.js's own structural proofs) — wiring this interpreter
+// into the live Stage 5/6 seam remains Phase D.6's job, not introduced here.
+RiskCharacteristicInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
