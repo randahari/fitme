@@ -41,21 +41,50 @@
 // whenever no candidate is supplied (the TIED_SET case, explicitly out of scope for that Canonical
 // Decision, and any direct call omitting the argument) — see matchCanonicalSafetyRules() below.
 //
-// A second, narrower, currently-unreachable gap: RCD-13.D requires a
-// MODIFIED SafetyReviewResult's modifiedContent to be non-null, but no
-// canonical source (D1, D2, D3, T006, SLDP, or the SL-001 SPEC) defines a
-// bounded-modification content-generation algorithm — deciding HOW to alter
-// a Candidate's content is Product/coaching-content-authoring work, not an
-// Engineering detail (D1-CDO-03/SPEC Ch.19's Expression-boundary principle:
-// "a generative layer SHALL express a decision already reached; it SHALL
-// NOT originate the underlying decision"). Since Correctability can only
-// ever derive BOUNDED_MODIFICATION from a positively-matched Rule, and no
-// Rule can ever match given the gap above, this path is unreachable in the
-// current repository state; finalReview() below honestly returns
-// modifiedContent: null rather than fabricating content, which
-// decisionFormation.js's own pre-existing, unmodified invariant check
-// (`if (!isPlainObject(reviewResult.modifiedContent)) return ABORTED`)
-// already, correctly, Pipeline-Aborts on — no new abort path is invented.
+// A second, narrower gap: RCD-13.D requires a MODIFIED SafetyReviewResult's modifiedContent to be
+// non-null, but no canonical source (D1, D2, D3, T006, SLDP, or the SL-001 SPEC) defines a
+// bounded-modification content-generation algorithm — deciding HOW to alter a Candidate's content
+// is Product/coaching-content-authoring work, not an Engineering detail (D1-CDO-03/SPEC Ch.19's
+// Expression-boundary principle: "a generative layer SHALL express a decision already reached; it
+// SHALL NOT originate the underlying decision"). finalReview() below honestly returns
+// modifiedContent: null rather than fabricating content, which decisionFormation.js's own
+// pre-existing, unmodified invariant check (`if (!isPlainObject(reviewResult.modifiedContent))
+// return ABORTED`) already, correctly, Pipeline-Aborts on — no new abort path is invented. WP0
+// Phase D.4's matchGovernedRiskCharacteristicRule (below) does NOT make MODIFIED reachable: its own
+// governedCorrectabilityWithSafeAlternativeGate() always selects REQUIRES_INTENT_CHANGE, by design
+// (Product/Architecture authority correction, this round — a model-proposed safeAlternative's bare
+// presence is never sufficient evidence of safety; see that function's own header for the full
+// invariant and the Phase D.6 extension point it leaves open). MODIFIED remains, in practice, as
+// unreachable today as it was before this Rule existed — disclosed precisely, not silently left
+// ambiguous.
+//
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase D.4 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §12/§13/§14, Revision 2,
+// Product+Architecture APPROVED) — matchGovernedRiskCharacteristicRule() below is the approved
+// Canonical Safety Rule for governed risk-characteristic evidence (§13: "exactly one new Rule
+// function is required... the taxonomy's own generality is precisely what avoids needing a rule
+// per domain"). It is additive to CANONICAL_SAFETY_RULES exactly like TRR-001's own two prior
+// extensions (matchWalkingMedicalRestrictionRule/matchUnresolvedActivitySafetyCoverageRule) — same
+// array, same evaluateRulePredicate()/reasonCodeForRule()/selectWinningDisposition()/
+// selectPrimaryAndSecondary() machinery, zero new enum values (RISK_TYPES/EVIDENCE_CONFIDENCE/
+// CORRECTABILITY/URGENCY all reused, unmodified), zero new predicate branches in
+// evaluateRulePredicate() (already written generically enough to include the ESCALATED/MODIFIED
+// branches this Rule activates for the first time, per the file's own pre-existing header note
+// two paragraphs above).
+//
+// Runs UNCONDITIONALLY for every Candidate reaching Stage 8/9 (Round-2 binding decision,
+// §09.3/§11/§13/§26 item 2 of the Sub-Spec): it reads only candidate.riskCharacteristicTags,
+// never any capability's own registered riskCharacteristicDimensions declaration — an incorrect,
+// stale, or empty declaration has zero bearing on whether this Rule executes or what it finds.
+//
+// TRR zero-drift (golden-master OUTCOME equivalence, not code-path exemption — the Sub-Spec's own
+// Round-2 reconciliation): this Rule executes against TRR-produced Candidates the same as any
+// other, but contributes nothing to them today, PROVABLY BY CONSTRUCTION rather than merely by
+// test observation — no code anywhere in this repository (verified by grep across js/) ever sets
+// riskCharacteristicTags on a real Candidate object (that threading is Phase D.6's own job, not
+// built yet), so candidate.riskCharacteristicTags is undefined for every real Candidate today,
+// meaning this Rule always returns [] for every real Candidate today, always, structurally,
+// regardless of which capability produced it.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -63,6 +92,12 @@
   var SafetyIntegrationPort = (typeof module !== 'undefined' && module.exports)
     ? require('./safetyIntegrationPort.js')
     : window.SafetyIntegrationPort;
+  // WP0 Phase D.4 — the single source of the closed Risk Characteristic taxonomy (Phase D.1),
+  // reused here for shape validation only (binding requirement 2: this Rule consumes validated
+  // evidence, it does not itself decide what counts as valid vocabulary).
+  var RiskCharacteristicValidator = (typeof module !== 'undefined' && module.exports)
+    ? require('./riskCharacteristicValidator.js')
+    : window.RiskCharacteristicValidator;
 
   var DISPOSITION_PRECEDENCE = SafetyIntegrationPort.DISPOSITION_PRECEDENCE;
 
@@ -396,14 +431,198 @@
     }];
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  // WP0 Phase D.4 — matchGovernedRiskCharacteristicRule(), §12/§13/§14 of the Sub-Spec. See the
+  // file header for the full disclosure (unconditional execution, TRR zero-drift-by-construction,
+  // zero new enums).
+  // ══════════════════════════════════════════════════════════════════
+
+  // §12 — evidenceSource='AI_CANDIDATE_CHARACTERIZATION' always maps to evidenceConfidence=
+  // 'INFERENCE', never 'EXPLICIT_USER_STATEMENT' — the one general rule the mapping table states
+  // once, applied uniformly regardless of domain. Both 'CURRENT_TURN_USER_STATEMENT' and
+  // 'DURABLE_GOVERNED_USER_FACT' are user-stated evidence (§08.4) and map to EXPLICIT_USER_STATEMENT.
+  function evidenceConfidenceForTag(tag) {
+    return (tag && tag.evidenceSource === 'AI_CANDIDATE_CHARACTERIZATION') ? 'INFERENCE' : 'EXPLICIT_USER_STATEMENT';
+  }
+
+  // §11/§12 — the conservative, uniform "cannot confidently determine" dims tuple: riskType/
+  // evidenceConfidence/correctability/urgency all INSUFFICIENT (unless the sole issue is
+  // low-confidence AI characterization, in which case evidenceConfidence is INFERENCE — §12's own
+  // stated exception) — the existing, unmodified evaluateRulePredicate() branch 3 maps this
+  // unconditionally to DEFERRED, never UNMODIFIED (binding requirement 4: unknown/malformed/
+  // unresolved characterization must never collapse to "safe").
+  function governedRiskCharacteristicInsufficientDims(tag) {
+    var ec = (tag && tag.evidenceSource === 'AI_CANDIDATE_CHARACTERIZATION') ? 'INFERENCE' : 'INSUFFICIENT';
+    return { riskType: 'INSUFFICIENT', evidenceConfidence: ec, correctability: 'INSUFFICIENT', urgency: 'INSUFFICIENT' };
+  }
+
+  // §14 MODIFIED content-sourcing gate (binding requirement 7, CORRECTED — Product/Architecture
+  // review, this round).
+  //
+  // AUTHORITY CORRECTION: an earlier version of this function treated the bare PRESENCE of
+  // candidate.safeAlternative as sufficient to select BOUNDED_MODIFICATION. Product/Architecture
+  // has ruled this insufficient, for exactly the same reason the Phase D.3 intake-gate correction
+  // applied: a model-proposed safeAlternative is non-authoritative AI output; its mere existence
+  // must never make Safety consider a candidate "safely modifiable." That is the classifier
+  // proposing its own safety verdict and Safety accepting it uncritically — precisely the
+  // authority inversion this Sub-Spec's every other mechanism is built to prevent.
+  //
+  // Canonical invariant (§14, already approved, not yet implementable): safeAlternative proposed
+  // -> independently re-characterized via the SAME classifyCandidateContent() mechanism (§09.1(a))
+  // -> must itself resolve to relation='NO_KNOWN_CONFLICT' for the same domain -> ONLY THEN may
+  // BOUNDED_MODIFICATION become eligible. That independent re-characterization step, and the
+  // governed, validated evidence object it would produce on the Candidate, is Phase D.6's own job.
+  // It does not exist anywhere in this repository today (verified: candidate.safeAlternative is
+  // never set anywhere in production Candidate-construction code, and no governed
+  // re-characterization evidence field exists at all).
+  //
+  // Per explicit Product/Architecture instruction, this function does NOT invent a self-asserted
+  // "verified" flag (e.g. a hypothetical candidate.safeAlternativeVerified:true) as a substitute —
+  // that would only relocate the same self-certification problem, since nothing yet independently
+  // polices such a flag; GeneralReasoningCapability could set it on its own output exactly as
+  // easily as it sets safeAlternative itself, defeating the entire point.
+  //
+  // Until Phase D.6 defines and provides that real, governed, independently-DERIVED (never
+  // self-asserted) evidence contract, this function always returns the conservative
+  // REQUIRES_INTENT_CHANGE — regardless of whether candidate.safeAlternative is present, and
+  // regardless of anything that proposal's own content claims about itself (including a
+  // self-asserted claim to already be "verified" or "safe"). This never causes finalReview() to
+  // fabricate modifiedContent either way — that remains this file's own pre-existing, unmodified,
+  // honest null (file header).
+  //
+  // DESIGN NOTE for Phase D.6 (keeps this architecture ready without a SafetyLayer redesign): once
+  // a governed, independently-derived safeAlternative-characterization evidence object exists on
+  // the Candidate — e.g. a validated RiskCharacteristicTag-shaped result, produced by the SAME
+  // classifyCandidateContent() + RiskCharacteristicValidator pipeline this file already reuses for
+  // the Candidate's own riskCharacteristicTags, never a bare boolean the proposing capability can
+  // set itself — this is the single, intended place to consult it: check that evidence object's
+  // own `relation === 'NO_KNOWN_CONFLICT'` for the matching domain, and select BOUNDED_MODIFICATION
+  // only then. No other change to this Rule, to CANONICAL_SAFETY_RULES, or to SafetyLayer's own
+  // architecture is anticipated to be required when that lands.
+  function governedCorrectabilityWithSafeAlternativeGate(candidate) {
+    return 'REQUIRES_INTENT_CHANGE';
+  }
+
+  // §12 — the approved mapping table, reused verbatim. Every branch targets an existing, closed
+  // RiskType member (RISK_TYPES above) — no new enum value anywhere. A domain/severity/relation
+  // combination the approved table does not explicitly populate (§08's own "most combinations are
+  // never populated in practice — the mapping table is the actual governing artifact") is never
+  // silently invented here; it falls through to the same conservative INSUFFICIENT/DEFERRED
+  // default as UNRESOLVED_RELEVANCE (binding requirement 4).
+  //
+  // Engineering resolution of one genuine taxonomy ambiguity, disclosed: the approved table
+  // distinguishes a PHYSICAL_EXERTION_OR_MOVEMENT/PROHIBITIVE/DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT
+  // durable conflict that is "explicitly medical-instruction-shaped" (-> ACTIVE_MEDICAL_INSTRUCTION_
+  // CONFLICT, an ABSOLUTE_OVERRIDE_RISK_TYPE) from one that is not (-> SIGNIFICANT_INJURY_OR_
+  // RECOVERY_CONFLICT). The closed RiskCharacteristicTag shape (§08) carries no field capturing
+  // "medical-instruction-shaped" — that determination is owned exclusively by
+  // matchRunningMedicalRestrictionRule/matchWalkingMedicalRestrictionRule's own userSafetyProvenance
+  // join (a stated medical SOURCE — "doctor"/"physician" — this Rule has no access to at all).
+  // This Rule therefore never produces ACTIVE_MEDICAL_INSTRUCTION_CONFLICT — only the broader,
+  // non-absolute-override SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT — for this row; the narrower,
+  // stronger RiskType remains exclusively reachable through the existing, provenance-joined Rules.
+  function mapGovernedRiskCharacteristicTagToDims(tag, candidate) {
+    var domain = tag.domain, severity = tag.severity, relation = tag.relation;
+    var ec = evidenceConfidenceForTag(tag);
+
+    // §11/§12 — checked first, before any row match, so it can never accidentally satisfy a row
+    // that does not itself constrain `relation`.
+    if (relation === 'UNRESOLVED_RELEVANCE') return governedRiskCharacteristicInsufficientDims(tag);
+
+    if (domain === 'PHYSICAL_EXERTION_OR_MOVEMENT' && severity === 'LIFE_CRITICAL' && relation === 'ACUTE_STATE_INDICATED_THIS_TURN') {
+      return { riskType: 'ACTIVE_HIGH_RISK_SYMPTOM', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'IMMEDIATE_PROTECTIVE' };
+    }
+    if (domain === 'PHYSICAL_EXERTION_OR_MOVEMENT' && severity === 'PROHIBITIVE' && relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT') {
+      return { riskType: 'SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+    }
+    if (domain === 'INGESTION_OR_SUBSTANCE_EXPOSURE' && (severity === 'LIFE_CRITICAL' || severity === 'PROHIBITIVE') && relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT') {
+      return { riskType: 'KNOWN_ALLERGY_CONFLICT', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'ROUTINE_PROTECTIVE' };
+    }
+    if (domain === 'EATING_PATTERN_OR_BODY_IMAGE' && (severity === 'PROHIBITIVE' || severity === 'ADVISORY')
+      && (relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' || relation === 'ACUTE_STATE_INDICATED_THIS_TURN')) {
+      return { riskType: 'DISORDERED_EATING_OR_BODY_IMAGE_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+    }
+    if (domain === 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE' && severity === 'REQUIRES_PROFESSIONAL_JUDGMENT' && relation === 'ACUTE_STATE_INDICATED_THIS_TURN') {
+      return {
+        riskType: 'PSYCHOLOGICAL_DISTRESS_CONCERN', evidenceConfidence: ec, correctability: 'NOT_APPLICABLE',
+        urgency: 'IMMEDIATE_PROTECTIVE', immediateProtectiveOrProfessionalSupportRequired: true
+      };
+    }
+    if (domain === 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE' && severity === 'ADVISORY') {
+      // The approved §12 table phrases this row's correctability as an unconditional
+      // BOUNDED_MODIFICATION (no explicit "or REQUIRES_INTENT_CHANGE" alternative given, unlike
+      // the other BOUNDED_MODIFICATION-eligible rows). Product/Architecture's own authority
+      // correction (this round) applies uniformly, not only to rows originally phrased with an
+      // explicit "or": MODIFIED content has to come from somewhere, and safeAlternative is the
+      // only content-sourcing mechanism §14 ever names — so this row is equally subject to the
+      // same independent-verification requirement, routed through the same gate as every other
+      // BOUNDED_MODIFICATION-eligible row.
+      return { riskType: 'PSYCHOLOGICAL_DISTRESS_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+    }
+    if (domain === 'STANDING_OR_IRREVERSIBLE_COMMITMENT' && severity === 'LIFE_CRITICAL') {
+      return { riskType: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'ROUTINE_PROTECTIVE' };
+    }
+    if (domain === 'MEDICAL_OR_CLINICAL_JUDGMENT_REQUIRED' && severity === 'REQUIRES_PROFESSIONAL_JUDGMENT') {
+      return {
+        riskType: 'OUTSIDE_COACHING_SCOPE', evidenceConfidence: ec, correctability: 'NOT_APPLICABLE',
+        urgency: 'ROUTINE_PROTECTIVE', outsideCoachingAuthorityRequiringProfessionalSupport: true
+      };
+    }
+    if (domain === 'EXTREME_OR_UNBOUNDED_INTENSITY' && (severity === 'PROHIBITIVE' || severity === 'LIFE_CRITICAL')) {
+      // §12.1 — no universal deterministic threshold exists; the EvidenceSource->EvidenceConfidence
+      // mapping above already, unconditionally, sends an AI-characterized instance to INFERENCE,
+      // which evaluateRulePredicate()'s own existing branch 3 catches before BLOCKED can ever be
+      // reached from inference-confidence evidence alone — reusing the existing precedence
+      // unmodified, no special-case branch required here.
+      return { riskType: 'DANGEROUS_OR_EXTREME_REQUEST', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'ROUTINE_PROTECTIVE' };
+    }
+
+    // Not one of the approved, explicitly-populated §12 rows — the honest, conservative default,
+    // never silently cleared (binding requirement 4).
+    return governedRiskCharacteristicInsufficientDims(tag);
+  }
+
+  // §13 — matchGovernedRiskCharacteristicRule(candidate, pipelineContext): the exact 2-argument
+  // signature every Canonical Safety Rule function actually receives from
+  // matchCanonicalSafetyRules() below (`rule(candidate, pipelineContext)`) — pipelineContext is
+  // accepted for structural consistency with every sibling Rule but not read (this Rule's only
+  // input is the Candidate's own already-validated riskCharacteristicTags, per §13's own "Reads
+  // candidate.riskCharacteristicTags — the independently re-derived and validated tags").
+  //
+  // Reads candidate.riskCharacteristicTags (binding requirement 2 — consumes validated evidence
+  // only; the AI interpreter/classifier itself is never Safety authority): each tag is
+  // independently re-verified for closed-vocabulary shape here (never trusted merely because it is
+  // present on the Candidate) using the same RiskCharacteristicValidator every earlier Phase
+  // already uses — a malformed entry actually present in the array is never silently dropped
+  // (binding requirement 4); it reports INSUFFICIENT for that tag instead. For each valid tag with
+  // relation !== 'NO_KNOWN_CONFLICT', applies the §12 mapping table deterministically (pure lookup,
+  // no further AI call) to produce a dims-tuple, concatenated exactly as the existing Rules already
+  // do — this function's return shape is byte-identical to every sibling Rule's own return
+  // contract, consumed by the same, unmodified evaluateCanonicalSafetyRules()/
+  // selectWinningDisposition()/selectPrimaryAndSecondary() machinery.
+  function matchGovernedRiskCharacteristicRule(candidate, pipelineContext) {
+    var tags = (candidate && Array.isArray(candidate.riskCharacteristicTags)) ? candidate.riskCharacteristicTags : [];
+    var matchedDims = [];
+    tags.forEach(function (tag) {
+      if (!RiskCharacteristicValidator || !RiskCharacteristicValidator.isValidRiskCharacteristicTagShape(tag)) {
+        matchedDims.push(governedRiskCharacteristicInsufficientDims(tag));
+        return;
+      }
+      if (tag.relation === 'NO_KNOWN_CONFLICT') return; // no dims tuple produced — the honest, common case (§12)
+      matchedDims.push(mapGovernedRiskCharacteristicTagToDims(tag, candidate));
+    });
+    return matchedDims;
+  }
+
   // §16 — the internal, explicit list of Canonical Safety Rules. TRR-001 adds two additive
-  // entries, ordered specific-to-general (no behavioral effect from ordering, since each Rule's
-  // own precondition is disjoint, but kept readable) — no dynamic loading, no external
-  // rule-content file, no registry.
+  // entries, WP0 Phase D.4 adds one more, ordered specific-to-general (no behavioral effect from
+  // ordering, since each Rule's own precondition is disjoint, but kept readable) — no dynamic
+  // loading, no external rule-content file, no registry.
   var CANONICAL_SAFETY_RULES = [
     matchRunningMedicalRestrictionRule,
     matchWalkingMedicalRestrictionRule,
-    matchUnresolvedActivitySafetyCoverageRule
+    matchUnresolvedActivitySafetyCoverageRule,
+    matchGovernedRiskCharacteristicRule
   ];
 
   // ══════════════════════════════════════════════════════════════════
@@ -687,6 +906,14 @@
     matchUnresolvedActivitySafetyCoverageRule: matchUnresolvedActivitySafetyCoverageRule,
     restrictionIsElsewhereIdentified: restrictionIsElsewhereIdentified,
     candidateOwnReferenceMatchesElsewhereVocabulary: candidateOwnReferenceMatchesElsewhereVocabulary,
+
+    // WP0 Phase D.4 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §12/§13/§14) —
+    // exposed for direct unit testing, structurally parallel to the internals above.
+    matchGovernedRiskCharacteristicRule: matchGovernedRiskCharacteristicRule,
+    mapGovernedRiskCharacteristicTagToDims: mapGovernedRiskCharacteristicTagToDims,
+    governedRiskCharacteristicInsufficientDims: governedRiskCharacteristicInsufficientDims,
+    governedCorrectabilityWithSafeAlternativeGate: governedCorrectabilityWithSafeAlternativeGate,
+    evidenceConfidenceForTag: evidenceConfidenceForTag,
 
     // SafetyIntegrationPort implementation (Stage 8 / Stage 9)
     disqualify: disqualify,
