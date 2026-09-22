@@ -89,9 +89,11 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/standardProposalContract.js',
   '/fitme/js/coachDecisionSystem/generalReasoningActivationGate.js',
   '/fitme/js/coachDecisionSystem/generalReasoningCapability.js',
-  // WP0 Phase D.2 — independent extraction interpreter, configured (production callClaude) but
-  // with zero callers in the live routing/orchestration seam — same disclosure as index.html.
+  // WP0 Phase D.2/D.5 — extraction interpreter; classifyTurnForDurableConstraint() is now called
+  // live by internalPipelineOrchestrator.js (Phase D.5) — see index.html's own disclosure.
   '/fitme/js/coachDecisionSystem/riskCharacteristicInterpreter.js',
+  // WP0 Phase D.5 — durable-fact intake gate, now live-wired — see index.html's own disclosure.
+  '/fitme/js/coachDecisionSystem/riskCharacteristicIntakeGate.js',
   '/fitme/js/domain/activityIdentityVocabulary.js',
   '/fitme/js/domain/activityReferenceNormalizer.js',
   '/fitme/js/coachDecisionSystem/initiativeEngine.js',

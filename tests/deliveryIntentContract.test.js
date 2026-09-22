@@ -169,8 +169,10 @@ test('KINDS excludes SILENCE; SAFETY_DISPOSITIONS excludes DEFERRED', () => {
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1) authorized a sixth, by the identical
   // precedent: 'ACKNOWLEDGED_PREFERENCE' — a durably-captured preference acknowledgment is
   // itself a real Delivery Intent, never Silence's own zero-output case. Friends Alpha Item 6
-  // authorized a seventh, by the identical precedent: 'ACKNOWLEDGED_DISCLOSURE'.
-  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
+  // authorized a seventh, by the identical precedent: 'ACKNOWLEDGED_DISCLOSURE'. WP0 Phase D.5
+  // (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) authorized an eighth, by the
+  // identical precedent: 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT'.
+  assert.deepEqual(DeliveryIntentContract.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE', 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT']);
   assert.equal(DeliveryIntentContract.SAFETY_DISPOSITIONS.indexOf('DEFERRED'), -1);
   assert.deepEqual(DeliveryIntentContract.SAFETY_DISPOSITIONS, ['UNMODIFIED', 'MODIFIED', 'BLOCKED', 'ESCALATED']);
   assert.deepEqual(DeliveryIntentContract.BOUNDARY_TYPES, ['REFUSAL', 'ESCALATION']);

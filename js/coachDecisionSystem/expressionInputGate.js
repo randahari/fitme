@@ -52,7 +52,12 @@
   // authorized kind for a bounded acknowledgment of a recognized, non-request user disclosure.
   // Never Safety-reviewed (no Candidate ever existed), exactly like UNSUPPORTED/
   // ACKNOWLEDGED_PREFERENCE — see the dedicated exclusion below.
-  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE'];
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15, Revision 2,
+  // Product+Architecture APPROVED) — an eighth canonical kind for a bounded acknowledgment of a
+  // durably-captured, explicit, governed risk-characteristic fact. Never Safety-reviewed (no
+  // Candidate ever existed), exactly like ACKNOWLEDGED_DISCLOSURE — see the dedicated exclusion
+  // below.
+  var KINDS = ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE', 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT'];
   var BOUNDARY_TYPES = ['REFUSAL', 'ESCALATION'];
   var SAFETY_DISPOSITIONS = ['UNMODIFIED', 'MODIFIED', 'DEFERRED', 'BLOCKED', 'ESCALATED'];
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §8) — this module's own, independently-authored copy
@@ -67,6 +72,15 @@
   // (reused BY PATTERN, never by import — matching PREFERENCE_CLASSES's own established
   // convention immediately above).
   var DISCLOSURE_CATEGORIES = ['STATE', 'DESIRE', 'CAPACITY_OR_CONSTRAINT', 'COACHING_RELEVANT_EXPERIENCE'];
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §08.1) — this
+  // module's own, independently-authored copy of the closed RiskDomain vocabulary
+  // riskCharacteristicValidator.js already declares (reused BY PATTERN, never by import — matching
+  // PREFERENCE_CLASSES/DISCLOSURE_CATEGORIES's own established convention immediately above).
+  var RISK_DOMAINS = [
+    'PHYSICAL_EXERTION_OR_MOVEMENT', 'INGESTION_OR_SUBSTANCE_EXPOSURE', 'EATING_PATTERN_OR_BODY_IMAGE',
+    'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', 'STANDING_OR_IRREVERSIBLE_COMMITMENT',
+    'MEDICAL_OR_CLINICAL_JUDGMENT_REQUIRED', 'EXTREME_OR_UNBOUNDED_INTENSITY'
+  ];
 
   function isValidRationale(rationale) {
     if (!isPlainObject(rationale)) return false;
@@ -98,6 +112,20 @@
     if (DISCLOSURE_CATEGORIES.indexOf(ack.category) === -1) return false;
     if (typeof ack.capturedToMemory !== 'boolean') return false;
     if (typeof ack.safetyRelevant !== 'boolean') return false;
+    return true;
+  }
+
+  // WP0 Phase D.5 — the risk-characteristic-fact-acknowledgment analogue of
+  // isValidDisclosureAcknowledgmentShape() above, required only for
+  // kind:'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT'. No `safetyRelevant` field (unlike disclosure,
+  // every risk-characteristic fact is inherently Safety-relevant by construction — the flag would
+  // be redundant) and no literal statement text (Phase D.3's own binding authority correction:
+  // never let the generative rendering layer see the user's raw literal words, to prevent
+  // paraphrasing/amplification into anything diagnosis-shaped).
+  function isValidRiskCharacteristicFactAcknowledgmentShape(ack) {
+    if (!isPlainObject(ack)) return false;
+    if (RISK_DOMAINS.indexOf(ack.riskDomain) === -1) return false;
+    if (typeof ack.capturedToMemory !== 'boolean') return false;
     return true;
   }
 
@@ -140,13 +168,14 @@
       if (sd.disposition === 'DEFERRED' && candidate.kind !== 'SILENCE') return false;
       if (sd.disposition === 'BLOCKED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'REFUSAL')) return false;
       if (sd.disposition === 'ESCALATED' && !(candidate.kind === 'BOUNDARY' && candidate.boundaryType === 'ESCALATION')) return false;
-    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED' && candidate.kind !== 'ACKNOWLEDGED_PREFERENCE' && candidate.kind !== 'ACKNOWLEDGED_DISCLOSURE') {
+    } else if (candidate.kind !== 'SILENCE' && candidate.kind !== 'UNSUPPORTED' && candidate.kind !== 'ACKNOWLEDGED_PREFERENCE' && candidate.kind !== 'ACKNOWLEDGED_DISCLOSURE' && candidate.kind !== 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT') {
       // Absent only for a Decision-Pass-level Silence formed from zero surviving Candidates
       // (§23.4), a DUC-001 UNSUPPORTED outcome (docs/specs/DUC_001_SPEC_v1.0.md §12 — no
       // Candidate ever existed, so Safety was never invoked), a CPI-001 ACKNOWLEDGED_PREFERENCE
-      // outcome (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1 — same reason), or a Friends Alpha Item 6
-      // ACKNOWLEDGED_DISCLOSURE outcome (same reason — no Candidate ever existed) — required for
-      // every other kind, including a Safety-DEFERRED Silence.
+      // outcome (docs/specs/CPI_001_SPEC_v1.0.md §13.B.1 — same reason), a Friends Alpha Item 6
+      // ACKNOWLEDGED_DISCLOSURE outcome (same reason — no Candidate ever existed), or a WP0
+      // ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT outcome (same reason) — required for every other
+      // kind, including a Safety-DEFERRED Silence.
       return false;
     }
 
@@ -192,6 +221,19 @@
       if (!isValidDisclosureAcknowledgmentShape(candidate.secondaryDisclosureAcknowledgment)) return false;
     }
 
+    // WP0 Phase D.5 — riskCharacteristicFactAcknowledgment present iff
+    // kind === 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT' (mirrors disclosureAcknowledgment's own
+    // "present iff kind===..." discipline immediately above). Never present on any other kind —
+    // this phase deliberately does not add a composable "secondary" variant (see
+    // decisionFormation.js's own formAcknowledgedRiskCharacteristicFactOutcome() header for the
+    // disclosed scope decision).
+    var hasRiskCharacteristicFactAcknowledgment = Object.prototype.hasOwnProperty.call(candidate, 'riskCharacteristicFactAcknowledgment');
+    if (candidate.kind === 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT') {
+      if (!hasRiskCharacteristicFactAcknowledgment || !isValidRiskCharacteristicFactAcknowledgmentShape(candidate.riskCharacteristicFactAcknowledgment)) return false;
+    } else if (hasRiskCharacteristicFactAcknowledgment) {
+      return false;
+    }
+
     return true;
   }
 
@@ -206,6 +248,7 @@
     isSilenceKind: isSilenceKind,
     isValidAcknowledgmentShape: isValidAcknowledgmentShape,
     isValidDisclosureAcknowledgmentShape: isValidDisclosureAcknowledgmentShape,
+    isValidRiskCharacteristicFactAcknowledgmentShape: isValidRiskCharacteristicFactAcknowledgmentShape,
     KINDS: KINDS
   };
 

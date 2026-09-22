@@ -514,6 +514,56 @@
       userSafetyProvenanceAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
     }
 
+    // ── WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§20,
+    // Revision 2, Product+Architecture APPROVED) — Risk Characteristic Fact Context: a bounded,
+    // recompute-from-source, non-persisted-here projection of the user's own already-durable,
+    // already-governed risk-characteristic facts (js/memory.js, type==='risk_characteristic_fact'),
+    // structurally parallel to userSafetyContext above but simpler: these records are ALREADY
+    // governed/validated (captured only via riskCharacteristicIntakeGate.js's own consent+literal-
+    // anchor authorization, Phase D.3), so this step performs NO classification/interpretation call
+    // of its own — it only decides whether/how to read and places the already-governed result.
+    // Reuses the NEW, narrow memoryLayer/RISK_CHARACTERISTIC_FACT_READ capability-holder identity
+    // (js/stateAccess.js) — deliberately NOT the existing USER_STATED_MEMORY_READ identity
+    // userSafetyContext/userSafetyProvenance/explicitRequestControls above use (that identity's own
+    // closed {fact,preference,safety_disclosure} filter, and USC-001's own downstream consumption
+    // of it, remains completely untouched — binding requirement: do not broaden USC-001). Available
+    // for a future Safety Rule/context-composition consumer (Phase D.6, not built here) exactly as
+    // userSafetyContext is already available for TRR's own Rules today. NO mechanical pre-check
+    // gate, mirroring userSafetyContext's own discipline — a governed Safety fact must never be
+    // silently skipped behind a cost-optimization pre-check.
+    var riskCharacteristicFactContext = null;
+    var riskCharacteristicFactContextAvailable = false;
+    try {
+      var rcfAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer',
+        action: 'RISK_CHARACTERISTIC_FACT_READ',
+        userId: identity.userId,
+        sessionGeneration: identity.sessionGeneration,
+        runId: identity.runId
+      });
+      var rcfRaw = await rcfAccess.read.riskCharacteristicFacts();
+      var rcfRecords = Array.isArray(rcfRaw) ? rcfRaw : [];
+      if (rcfRecords.length) {
+        riskCharacteristicFactContext = freezeShallow({
+          items: freezeShallow(rcfRecords.map(function (m) {
+            var p = m.payload || {};
+            return freezeShallow({
+              memoryId: m.id,
+              riskDomain: p.riskDomain,
+              literalStatementText: p.literalStatementText,
+              sourceTurnId: p.sourceTurnId
+            });
+          }))
+        });
+        riskCharacteristicFactContextAvailable = true;
+      }
+      // else: no eligible source records exist — riskCharacteristicFactContext stays
+      // null/UNAVAILABLE (mirrors userSafetyContext's own contract above).
+    } catch (e) {
+      riskCharacteristicFactContext = null;
+      riskCharacteristicFactContextAvailable = false; // graceful degradation, D3 §12.3 — never blocks the Decision Pass
+    }
+
     // ── TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §15/§16) — Readiness State Context: a bounded,
     // recompute-from-source, non-persisted set of the user's own manually-stated ordinary
     // current-state statements (fatigue/energy/sleep/time/prior-activity only — health/symptom
@@ -754,6 +804,7 @@
       explicitRequestControls: explicitRequestControls,
       userSafetyContext: userSafetyContext,
       userSafetyProvenance: userSafetyProvenance,
+      riskCharacteristicFactContext: riskCharacteristicFactContext,
       readinessStateContext: readinessStateContext,
       activityPreference: activityPreference,
       activityOppositionControls: activityOppositionControls,
@@ -775,6 +826,7 @@
         explicitRequestControls: explicitRequestControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         userSafetyContext: userSafetyContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         userSafetyProvenance: userSafetyProvenanceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+        riskCharacteristicFactContext: riskCharacteristicFactContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         readinessStateContext: readinessStateContextAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         activityPreference: activityPreferenceAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
         activityOppositionControls: activityOppositionControlsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',

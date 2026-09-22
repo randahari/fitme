@@ -223,22 +223,24 @@ test('21. this gate never imports, requires, or CALLS safetyDisclosureIntakeGate
   assert.equal(/type\s*[:=]\s*['"]safety_disclosure['"]/.test(src), false);
 });
 
-test('22. this gate is not CALLED from any live routing/orchestration seam (conversationalNeedCreator.js, internalPipelineOrchestrator.js, memoryLayer.js, app.js) — Phase D.3 is gate+interpreter-addition only, zero pipeline wiring; a disclosure comment merely naming this file is expected and excluded from this check', () => {
+test('22. WP0 Phase D.5 — this gate IS now called, live, from internalPipelineOrchestrator.js\'s own runDirectTurnPass() (both authorizeNewFact() and authorizeCorrection()) — conversationalNeedCreator.js/memoryLayer.js still never call it directly (app.js references the gate only in a disclosure comment inside persistRiskCharacteristicFactRecord() explaining where its candidateRecord input comes from — legitimate documentation, excluded from this check; test 23 already proves app.js does not require() it)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const seams = [
+  const orchestratorSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'coachDecisionSystem', 'internalPipelineOrchestrator.js'), 'utf8');
+  assert.match(orchestratorSrc, /RiskCharacteristicIntakeGate\.authorizeNewFact\(/);
+  assert.match(orchestratorSrc, /RiskCharacteristicIntakeGate\.authorizeCorrection\(/);
+
+  const otherSeams = [
     path.join('coachDecisionSystem', 'conversationalNeedCreator.js'),
-    path.join('coachDecisionSystem', 'internalPipelineOrchestrator.js'),
-    path.join('coachDecisionSystem', 'memoryLayer.js'),
-    'app.js'
+    path.join('coachDecisionSystem', 'memoryLayer.js')
   ];
-  seams.forEach((rel) => {
+  otherSeams.forEach((rel) => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'js', rel), 'utf8');
-    assert.equal(/\bRiskCharacteristicIntakeGate\./.test(src), false, rel + ' must not yet call RiskCharacteristicIntakeGate');
+    assert.equal(/\bRiskCharacteristicIntakeGate\./.test(src), false, rel + ' must not directly call RiskCharacteristicIntakeGate');
   });
 });
 
-test('23. no production file anywhere in js/ requires riskCharacteristicIntakeGate.js yet (zero callers)', () => {
+test('23. WP0 Phase D.5 — exactly one production file, internalPipelineOrchestrator.js, requires riskCharacteristicIntakeGate.js (its own live collaborator) — no other production file does', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const jsDir = path.join(__dirname, '..', 'js');
@@ -254,7 +256,8 @@ test('23. no production file anywhere in js/ requires riskCharacteristicIntakeGa
     });
     return matches;
   }
-  assert.deepEqual(walk(jsDir), []);
+  const requirers = walk(jsDir).map((p) => path.basename(p));
+  assert.deepEqual(requirers, ['internalPipelineOrchestrator.js']);
 });
 
 test('24. the corroboration mechanism removed by this correction is gone from the module surface — no _internal.corroborateCandidate export, no NOT_INDEPENDENTLY_CORROBORATED reason code anywhere in the file', () => {

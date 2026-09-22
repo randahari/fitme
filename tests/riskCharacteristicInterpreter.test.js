@@ -315,26 +315,29 @@ test('41. generalReasoningCapability.js does not reference this interpreter — 
   assert.equal(/riskCharacteristicInterpreter|RiskCharacteristicInterpreter/.test(src), false);
 });
 
-// ── Phase D.2 scope-purity structural proof: configured, but zero orchestration wiring ───────
+// ── Phase D.2/D.5 scope-purity structural proof ───────────────────────────────────────────────
 //
 // app.js DOES reference RiskCharacteristicInterpreter — one single .configure({callClaude}) call,
 // added to satisfy this codebase's own established coachDecisionSystemWiring.test.js invariant
 // (test #37: no callClaude:null-default bounded-interpreter component ships unconfigured), the
 // exact same precedent GeneralReasoningCapability's own Phase C self-correction established. This
-// is configuration only — supplying the transport closure — never orchestration wiring. The tests
-// below prove the real, binding property: classifyCandidateContent()/
-// classifyTurnForDurableConstraint() have zero callers anywhere in the live routing/decision-path
-// seam (conversationalNeedCreator.js, internalPipelineOrchestrator.js, memoryLayer.js).
+// is configuration only — supplying the transport closure — never orchestration wiring itself.
+// classifyCandidateContent() still has zero callers anywhere in the live routing/decision-path
+// seam (Phase D.6's own job). classifyTurnForDurableConstraint() IS now called live, by
+// internalPipelineOrchestrator.js's own runDirectTurnPass() (WP0 Phase D.5) — conversationalNeedCreator.js
+// and memoryLayer.js still never reference this module directly.
 
-test('42. riskCharacteristicInterpreter.js is not referenced from any live ROUTING/DECISION-PATH seam (conversationalNeedCreator.js, internalPipelineOrchestrator.js, memoryLayer.js) — app.js is deliberately excluded from this check (see block comment above: one disclosed .configure() call only, not orchestration wiring)', () => {
-  const seams = [
+test('42. WP0 Phase D.5 — internalPipelineOrchestrator.js DOES call RiskCharacteristicInterpreter.classifyTurnForDurableConstraint() live, from runDirectTurnPass(); conversationalNeedCreator.js/memoryLayer.js still never reference this module directly', () => {
+  const orchestratorSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'coachDecisionSystem', 'internalPipelineOrchestrator.js'), 'utf8');
+  assert.match(orchestratorSrc, /RiskCharacteristicInterpreter\.classifyTurnForDurableConstraint\(/);
+
+  const otherSeams = [
     path.join('coachDecisionSystem', 'conversationalNeedCreator.js'),
-    path.join('coachDecisionSystem', 'internalPipelineOrchestrator.js'),
     path.join('coachDecisionSystem', 'memoryLayer.js')
   ];
-  seams.forEach((rel) => {
+  otherSeams.forEach((rel) => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'js', rel), 'utf8');
-    assert.equal(/riskCharacteristicInterpreter|RiskCharacteristicInterpreter/.test(src), false, rel + ' must not yet reference RiskCharacteristicInterpreter');
+    assert.equal(/riskCharacteristicInterpreter|RiskCharacteristicInterpreter/.test(src), false, rel + ' must not reference RiskCharacteristicInterpreter');
   });
 });
 
@@ -351,7 +354,7 @@ test('44. riskCharacteristicInterpreter.js IS registered in index.html and sw.js
   assert.match(swJs, /\/fitme\/js\/coachDecisionSystem\/riskCharacteristicInterpreter\.js/);
 });
 
-test('45. only riskCharacteristicIntakeGate.js (Phase D.3, added as its own legitimate consumer for the correction-detection call) requires riskCharacteristicInterpreter.js via CommonJS require() — app.js references it only as a browser global, not require(), and no other production file does either', () => {
+test('45. only riskCharacteristicIntakeGate.js (Phase D.3) and internalPipelineOrchestrator.js (Phase D.5, added as its own legitimate consumer for the live durable-fact classification call) require riskCharacteristicInterpreter.js via CommonJS require() — app.js references it only as a browser global, not require(), and no other production file does either', () => {
   const jsDir = path.join(__dirname, '..', 'js');
   function walk(dir) {
     let matches = [];
@@ -365,8 +368,8 @@ test('45. only riskCharacteristicIntakeGate.js (Phase D.3, added as its own legi
     });
     return matches;
   }
-  const requirers = walk(jsDir).map((p) => path.basename(p));
-  assert.deepEqual(requirers, ['riskCharacteristicIntakeGate.js']);
+  const requirers = walk(jsDir).map((p) => path.basename(p)).sort();
+  assert.deepEqual(requirers, ['internalPipelineOrchestrator.js', 'riskCharacteristicIntakeGate.js']);
 });
 
 // ── Phase D.3 — classifyCorrectionWithStatus() additive sibling export ───────────────────────

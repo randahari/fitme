@@ -42,8 +42,8 @@ test('wiring: both new modules are in the sw.js SHELL cache list', () => {
 
 // ── js/memory.js — the new safety_disclosure Typed Memory type (additive only) ──────────────
 
-test('wiring: MEMORY_TYPES includes safety_disclosure as an additive 8th type — the seven pre-existing types are untouched', () => {
-  assert.match(memoryJsSrc, /var MEMORY_TYPES = \['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal', 'safety_disclosure'\];/);
+test('wiring: MEMORY_TYPES includes safety_disclosure as an additive 8th type — the seven pre-existing types are untouched (WP0 Phase D.5 subsequently added a 9th, additive type, risk_characteristic_fact, after it — asserted in tests/wp0PhaseD5DurableMemoryWiring.test.js; safety_disclosure\'s own position and value here remain byte-identical)', () => {
+  assert.match(memoryJsSrc, /var MEMORY_TYPES = \['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal', 'safety_disclosure', 'risk_characteristic_fact'\];/);
 });
 
 test('wiring: TYPE_LABELS carries the Hebrew label "מידע בטיחותי" for safety_disclosure (Final Binding Decision 2 — smallest additive transparency-UI treatment)', () => {

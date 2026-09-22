@@ -218,7 +218,7 @@ test('CPI: isValidAcknowledgmentShape() is directly exposed and closed to exactl
 });
 
 test('CPI: KINDS includes ACKNOWLEDGED_PREFERENCE alongside the five pre-existing kinds', () => {
-  assert.deepEqual(ExpressionInputGate.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
+  assert.deepEqual(ExpressionInputGate.KINDS, ['RECOMMENDATION', 'INITIATIVE', 'SILENCE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE', 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT']);
 });
 
 // ══════════════════════════════════════════════════════════════════

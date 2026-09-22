@@ -31,7 +31,18 @@
   // identifiable/distinguishable from a generic 'fact' (Product/Architecture binding decision) —
   // never a second memory store or authority; same collection, same CLIENT_WRITABLE_SOURCES gate,
   // same create/update/delete machinery below.
-  var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal', 'safety_disclosure'];
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15, Revision 2,
+  // Product+Architecture APPROVED) — 'risk_characteristic_fact' is a narrow, additive 9th type: a
+  // governed, durable risk-characteristic fact captured via riskCharacteristicIntakeGate.js. §15's
+  // own binding resolution requires a NEW, dedicated type rather than overloading
+  // 'safety_disclosure' — that existing type and its own intake gate
+  // (safetyDisclosureIntakeGate.js) are left completely untouched by this addition. Payload shape
+  // is exactly {riskDomain, literalStatementText, sourceTurnId} — no severity field (Phase D.3's
+  // own binding authority correction: an AI-proposed severity/diagnosis must never become durable
+  // factual authority; only the user's own literal, independently-grounded statement is
+  // persisted). Same collection, same CLIENT_WRITABLE_SOURCES gate, same create/update/delete
+  // machinery below — never a second memory store or authority.
+  var MEMORY_TYPES = ['fact', 'habit', 'pattern', 'preference', 'coach_note', 'conversation_memory', 'recurring_meal', 'safety_disclosure', 'risk_characteristic_fact'];
   var MEMORY_SOURCES = ['user_stated', 'inferred_event', 'inferred_pattern', 'coach_generated', 'migrated'];
   var MEMORY_STATUS = ['candidate', 'active', 'superseded', 'rejected', 'archived'];
   // מקורות שהלקוח רשאי לכתוב (תואם ל-firestore.rules). השאר — server-only.
@@ -287,7 +298,10 @@
     // decision): grouping by MEMORY_TYPES already renders a distinct, labeled section per type,
     // so adding this one label is sufficient to make Safety-relevant durable items visibly
     // distinguishable from ordinary generic facts — no other transparency-UI change needed.
-    safety_disclosure: 'מידע בטיחותי'
+    safety_disclosure: 'מידע בטיחותי',
+    // WP0 Phase D.5 (§15/§20 — transparency/readability preserved through this exact, existing
+    // mechanism) — same smallest-additive-label treatment as safety_disclosure above.
+    risk_characteristic_fact: 'מאפייני סיכון'
   };
   var STATUS_LABELS = {
     candidate: 'מועמד', active: 'פעיל', superseded: 'הוחלף', rejected: 'נדחה', archived: 'בארכיון'
@@ -302,6 +316,10 @@
     if (p.text) return p.text;
     if (p.key !== undefined) return p.key + ': ' + p.value;
     if (p.name) return p.name;
+    // WP0 Phase D.5 — risk_characteristic_fact's own payload shape (§15: riskDomain,
+    // literalStatementText, sourceTurnId); literalStatementText is the human-readable literal
+    // wording, matching this function's own existing per-type-branch convention exactly.
+    if (p.literalStatementText) return p.literalStatementText;
     try { return JSON.stringify(p); } catch (e) { return ''; }
   }
 

@@ -2550,6 +2550,116 @@ async function persistSafetyDisclosureRecord(candidateRecord) {
   return { success: true, record: { category: candidateRecord.category, capturedToMemory: true, safetyRelevant: true } };
 }
 
+// WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15, Revision 2,
+// Product+Architecture APPROVED) — deterministic document ID for a durable, governed
+// risk-characteristic fact: 'risk_char_' + safeKey(domain + '::' + literalStatementText). Includes
+// the domain (unlike safetyDisclosureDeterministicMemoryId()'s own subject-only key) because two
+// distinct facts sharing one RiskDomain (e.g. a peanut allergy and a shellfish allergy, both
+// INGESTION_OR_SUBSTANCE_EXPOSURE) are deliberately never deduplicated (riskCharacteristicIntakeGate.js's
+// own design) — keying on domain+text alone (not domain alone) preserves that same non-collapsing
+// guarantee at the persistence layer: same domain+text -> same record (idempotent); different
+// text -> a distinct record, never overwritten.
+function riskCharacteristicFactDeterministicMemoryId(domain, literalStatementText) {
+  return 'risk_char_' + FitMeMemory.safeKey(domain + '::' + literalStatementText);
+}
+
+// WP0 Phase D.5 — the persistence boundary for durable, governed risk-characteristic fact capture,
+// structurally mirroring persistSafetyDisclosureRecord() above exactly (same js/memory.js CRUD
+// API, same never-partially-applies-a-write discipline). Every mode is gated by
+// riskCharacteristicIntakeGate.js's own consent+shape+literal-anchor authorization (Phase D.3)
+// before this function is ever called:
+//   NEW_FACT — create-or-update-in-place an active 'risk_characteristic_fact' record (§15's own
+//     NEW, dedicated Typed Memory type — 'safety_disclosure' is never read, written, or touched by
+//     this function). Payload carries NO severity field (Phase D.3's own binding authority
+//     correction — the candidateRecord this function receives, produced by
+//     RiskCharacteristicIntakeGate.authorizeNewFact(), never carries one either).
+//   CORRECTION — mark an existing active record superseded. If no active record exists at that
+//     memoryId any more (already superseded/never existed), this is a safe no-op success —
+//     ambiguity/staleness never fabricates a change.
+//   REPLACEMENT (added post-D.5 review — Product/Architecture correction) — a genuine
+//     replacement statement ("the restriction is actually X, not Y") must supersede the old fact
+//     AND persist the new one; internalPipelineOrchestrator.js only ever produces this mode when
+//     BOTH halves have already, independently, passed the exact same gates NEW_FACT/CORRECTION
+//     each require on their own — the replacement fact is never inferred from the correction.
+//     This function never wraps the two writes in a single Firestore transaction (no sibling
+//     persistence boundary in this codebase does either); instead it fixes a deliberate, safety-
+//     critical ORDER: the NEW fact is written FIRST, and the OLD fact is superseded only AFTER
+//     that write has durably succeeded.
+//       - New-fact write fails -> returns immediately, success:false; the old fact is left
+//         completely untouched, still fully active. Safety knowledge is never weakened by a
+//         failed replacement — the turn fails honestly (caller leaves it PENDING, no false
+//         confirmation) and a retry re-attempts the identical replacement.
+//       - New-fact write succeeds but the supersede write then fails -> also success:false, but
+//         by now BOTH the old and the new fact are simultaneously active. This is the deliberate
+//         fail-safe direction: an extra, possibly-stale active constraint is an over-cautious
+//         state (a Safety consumer may still see and honor the old restriction) — never a
+//         silently-lost one. The turn still fails honestly (never a false confirmation); a later
+//         successful correction resolves the duplicate.
+//     Reuses this SAME function recursively for both halves — never a parallel, duplicated write
+//     path — so NEW_FACT/CORRECTION's own already-reviewed logic (including their own
+//     ErrorTelemetry codes) is exercised unchanged.
+// Returns { success: true, record: {riskDomain, capturedToMemory} } or { success: false } —
+// capturedToMemory is true only once the write has actually completed (binding requirement 10: a
+// persistence failure must never produce false confirmation to the user — the caller only ever
+// forms an acknowledgment from a record this function actually returned with success:true).
+async function persistRiskCharacteristicFactRecord(candidateRecord) {
+  if (candidateRecord.mode === 'REPLACEMENT') {
+    var replacementNewFactResult = await persistRiskCharacteristicFactRecord(candidateRecord.newFact);
+    if (!replacementNewFactResult.success) return { success: false };
+    var replacementCorrectionResult = await persistRiskCharacteristicFactRecord(candidateRecord.correction);
+    if (!replacementCorrectionResult.success) return { success: false };
+    return { success: true, record: replacementNewFactResult.record };
+  }
+
+  if (candidateRecord.mode === 'CORRECTION') {
+    var existingForCorrection;
+    try {
+      existingForCorrection = await FitMeMemory.get(candidateRecord.memoryId);
+    } catch (e) {
+      ErrorTelemetry.report({ code: (e && e.code) || 'RISK_CHARACTERISTIC_FACT_EXISTENCE_CHECK_FAILED', module: 'COACH', operation: 'RISK_CHARACTERISTIC_FACT_PERSIST' });
+      return { success: false };
+    }
+    if (!existingForCorrection || existingForCorrection.status !== 'active') {
+      // No-op — nothing active to correct any more; never fabricates a change. No acknowledgment
+      // record is returned (riskDomain is unknown here — the caller must not form an
+      // ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT outcome for a no-op correction).
+      return { success: true, record: null };
+    }
+    try {
+      await FitMeMemory.update(candidateRecord.memoryId, { status: 'superseded' });
+    } catch (e) {
+      ErrorTelemetry.report({ code: (e && e.code) || 'RISK_CHARACTERISTIC_FACT_PERSIST_WRITE_FAILED', module: 'COACH', operation: 'RISK_CHARACTERISTIC_FACT_PERSIST' });
+      return { success: false };
+    }
+    // A correction supersedes an existing fact; it does not itself state a NEW fact to
+    // acknowledge — no standalone ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT outcome is formed for it
+    // (mirrors persistSafetyDisclosureRecord()'s own CORRECTION-mode return exactly, adapted: this
+    // phase's own acknowledgment path is NEW_FACT-only, disclosed in decisionFormation.js).
+    return { success: true, record: null };
+  }
+
+  // mode === 'NEW_FACT'
+  var id = riskCharacteristicFactDeterministicMemoryId(candidateRecord.domain, candidateRecord.literalStatementText);
+  var payload = {
+    riskDomain: candidateRecord.domain,
+    literalStatementText: candidateRecord.literalStatementText,
+    sourceTurnId: candidateRecord.sourceTurnId
+  };
+  try {
+    var existing = await FitMeMemory.get(id);
+    if (!existing) {
+      await FitMeMemory.create({ type: 'risk_characteristic_fact', payload: payload, confidence: 1, source: 'user_stated', status: 'active' }, id);
+    } else {
+      await FitMeMemory.update(id, { payload: payload, confidence: 1, status: 'active' });
+    }
+  } catch (e) {
+    ErrorTelemetry.report({ code: (e && e.code) || 'RISK_CHARACTERISTIC_FACT_PERSIST_WRITE_FAILED', module: 'COACH', operation: 'RISK_CHARACTERISTIC_FACT_PERSIST' });
+    return { success: false };
+  }
+
+  return { success: true, record: { riskDomain: candidateRecord.domain, capturedToMemory: true } };
+}
+
 // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — dispatches Unified Finalization
 // through the SAME governed EngineRegistry.run() entry point runUserMessageEngine() already uses
 // (mirroring exactly how DIRECT_TURN_PASS itself was introduced, DUC-001 §03) — app.js never
@@ -2559,11 +2669,15 @@ async function persistSafetyDisclosureRecord(candidateRecord) {
 // 5th parameter (null for every pre-Item-6 call site, i.e. byte-identical behavior there): the
 // SAME single Unified Finalization action now carries both CPI's own confirmedRecord and this
 // module's confirmedDisclosureRecord, never a second finalization action/pipeline.
-async function runPreferenceAcknowledgmentFinalizationEngine(pipelineContext, terminalDecision, confirmedRecord, sessionGeneration, confirmedDisclosureRecord) {
+// WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) —
+// confirmedRiskCharacteristicFactRecord is an additive, optional 6th parameter (null for every
+// pre-D.5 call site, i.e. byte-identical behavior there): the SAME single Unified Finalization
+// action now carries all three confirmed records, still never a second finalization pipeline.
+async function runPreferenceAcknowledgmentFinalizationEngine(pipelineContext, terminalDecision, confirmedRecord, sessionGeneration, confirmedDisclosureRecord, confirmedRiskCharacteristicFactRecord) {
   return EngineRegistry.run({
     trigger: 'USER_MESSAGE_SUBMITTED',
     actions: { coachDecisionSystem: 'PREFERENCE_ACKNOWLEDGMENT_FINALIZE' },
-    payloads: { coachDecisionSystem: { pipelineContext: pipelineContext, terminalDecision: terminalDecision, confirmedRecord: confirmedRecord, confirmedDisclosureRecord: confirmedDisclosureRecord || null } },
+    payloads: { coachDecisionSystem: { pipelineContext: pipelineContext, terminalDecision: terminalDecision, confirmedRecord: confirmedRecord, confirmedDisclosureRecord: confirmedDisclosureRecord || null, confirmedRiskCharacteristicFactRecord: confirmedRiskCharacteristicFactRecord || null } },
     context: { userId: currentUser && currentUser.uid, sessionGeneration: sessionGeneration, now: Date.now() }
   });
 }
@@ -2627,6 +2741,11 @@ async function submitCoachConversationTurn() {
     // capture already rendered synchronously inside Pass 1 itself, never reaching this branch at
     // all; see internalPipelineOrchestrator.js's own applyDisclosureAcknowledgmentIfNeeded()).
     var disclosureCaptureAuthorization = cdsResult && cdsResult.output && cdsResult.output.disclosureCaptureAuthorization;
+    // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§22) —
+    // additive; undefined for every pre-D.5 engine result shape, and authorized:false whenever no
+    // durable risk-characteristic fact was recognized/eligible/consented (the overwhelmingly
+    // common case).
+    var riskCharacteristicFactCaptureAuthorization = cdsResult && cdsResult.output && cdsResult.output.riskCharacteristicFactCaptureAuthorization;
 
     // §15 step 6 — re-checked immediately before rendering, mirroring
     // TriggerController.presentDeliveryIntent()'s own existing guard verbatim
@@ -2640,7 +2759,8 @@ async function submitCoachConversationTurn() {
     // parallel authorizations — CPI-only turns are completely unaffected by this generalization).
     var cpiAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
     var disclosureCaptureAuthorized = !!(disclosureCaptureAuthorization && disclosureCaptureAuthorization.authorized === true);
-    var deferAuthorized = cpiAuthorized || disclosureCaptureAuthorized;
+    var riskCharacteristicFactCaptureAuthorized = !!(riskCharacteristicFactCaptureAuthorization && riskCharacteristicFactCaptureAuthorization.authorized === true);
+    var deferAuthorized = cpiAuthorized || disclosureCaptureAuthorized || riskCharacteristicFactCaptureAuthorized;
 
     if (!deferAuthorized) {
 
@@ -2703,14 +2823,14 @@ async function submitCoachConversationTurn() {
 
     // ══════════════════════════════════════════════════════════════════
     // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 6-15), generalized for Friends Alpha
-    // Item 6 (USER_DISCLOSURE V1) — deferAuthorized === true (cpiAuthorized and/or
-    // disclosureCaptureAuthorized). No rendering, no CCC-001 write yet: the record stays PENDING
-    // (§14 step 8) until every attempted, authorized persistence write AND Unified Finalization
-    // have both resolved (§14's own required invariant, generalized to cover either or both
-    // records). If ANY authorized write fails, the entire turn is treated as a technical failure
-    // — the same all-or-nothing discipline CPI-001 already established for its own single write,
-    // extended rather than redesigned for the rare turn where two independent writes are both
-    // authorized.
+    // Item 6 (USER_DISCLOSURE V1) and WP0 Phase D.5 — deferAuthorized === true (cpiAuthorized
+    // and/or disclosureCaptureAuthorized and/or riskCharacteristicFactCaptureAuthorized). No
+    // rendering, no CCC-001 write yet: the record stays PENDING (§14 step 8) until every
+    // attempted, authorized persistence write AND Unified Finalization have both resolved (§14's
+    // own required invariant, generalized to cover any/all of up to three records). If ANY
+    // authorized write fails, the entire turn is treated as a technical failure — the same
+    // all-or-nothing discipline CPI-001 already established for its own single write, extended
+    // rather than redesigned for the rare turn where multiple independent writes are authorized.
     // ══════════════════════════════════════════════════════════════════
     var cpiPipelineContext = cdsResult.output.pipelineContext;
     var cpiBaseTerminalDecision = cdsResult.output.terminalDecision || null;
@@ -2738,13 +2858,28 @@ async function submitCoachConversationTurn() {
       return;
     }
 
+    // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) — the same
+    // all-or-nothing discipline, extended to a third, independent record. binding requirement 10:
+    // a persistence failure must not produce false confirmation to the user — exactly like the two
+    // writes above, ANY failure here leaves the turn PENDING with an honest error, never a
+    // false-positive Unified Finalization.
+    var riskCharacteristicFactPersistResult = riskCharacteristicFactCaptureAuthorized
+      ? await persistRiskCharacteristicFactRecord(riskCharacteristicFactCaptureAuthorization.candidateRecord) : null;
+    if (!SessionLifecycle.isCurrent(turn.sessionGeneration)) return;
+    if (riskCharacteristicFactCaptureAuthorized && !riskCharacteristicFactPersistResult.success) {
+      CoachConversationPresenter.renderNoResponse(turn.turnId);
+      CoachConversationPresenter.showError('לא הצלחנו לקבל תשובה מהמאמן. נסה שוב.');
+      return;
+    }
+
     // §14 steps 11-13 — Unified Finalization, dispatched unconditionally once every authorized
     // write above has succeeded, regardless of whether cpiBaseTerminalDecision is SILENCE-kind,
     // absent, or real content (the shape decision itself is made inside
     // runPreferenceAcknowledgmentFinalization()).
     var cpiFinalizationSummary = await runPreferenceAcknowledgmentFinalizationEngine(
       cpiPipelineContext, cpiBaseTerminalDecision, cpiPersistResult && cpiPersistResult.record,
-      turn.sessionGeneration, disclosurePersistResult && disclosurePersistResult.record);
+      turn.sessionGeneration, disclosurePersistResult && disclosurePersistResult.record,
+      riskCharacteristicFactPersistResult && riskCharacteristicFactPersistResult.record);
     var cpiFinalizationResult = cpiFinalizationSummary && cpiFinalizationSummary.results && cpiFinalizationSummary.results.coachDecisionSystem;
     var cpiFinalExpression = cpiFinalizationResult && cpiFinalizationResult.output && cpiFinalizationResult.output.expression;
 

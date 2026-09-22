@@ -78,7 +78,11 @@
   // Friends Alpha Item 6 (USER_DISCLOSURE V1) adds 'ACKNOWLEDGED_DISCLOSURE' by the identical
   // precedent — a bounded acknowledgment of a recognized, non-request user disclosure is itself a
   // real Delivery Intent, never Silence's own zero-output case.
-  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE']);
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) adds
+  // 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT' by the identical precedent — a bounded acknowledgment
+  // of a durably-captured, explicit, governed risk-characteristic fact is itself a real Delivery
+  // Intent, never Silence's own zero-output case.
+  var KINDS = freezeShallow(['RECOMMENDATION', 'INITIATIVE', 'BOUNDARY', 'UNSUPPORTED', 'ACKNOWLEDGED_PREFERENCE', 'ACKNOWLEDGED_DISCLOSURE', 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT']);
   var BOUNDARY_TYPES = freezeShallow(['REFUSAL', 'ESCALATION']);
   // Never 'DEFERRED' — always co-occurs with kind: 'SILENCE' (TASK_006_SPEC_v1.0.md §25.4), which
   // never reaches this builder.

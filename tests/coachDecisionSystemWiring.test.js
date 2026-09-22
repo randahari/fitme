@@ -315,8 +315,12 @@ test('16c. decisionFormation.js exposes no Expression/Delivery-Intent-production
   // never a second decision-forming act; see its own header comment). Friends Alpha Item 6
   // (USER_DISCLOSURE V1) authorized a sixth and seventh, by the identical precedent:
   // formAcknowledgedDisclosureOutcome() and attachSecondaryDisclosureAcknowledgment() — the same
-  // two shapes again, for the disclosure track, never Expression/wording generation.
-  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['attachSecondaryAcknowledgment', 'attachSecondaryDisclosureAcknowledgment', 'form', 'formAcknowledgedDisclosureOutcome', 'formAcknowledgedPreferenceOutcome', 'formDecisionPassSilence', 'formUnsupportedCapabilityOutcome']);
+  // two shapes again, for the disclosure track, never Expression/wording generation. WP0 Phase D.5
+  // (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) authorized an eighth, by the
+  // identical precedent: formAcknowledgedRiskCharacteristicFactOutcome() — the same
+  // decision-construction shape, standalone-only in this phase (no attach-variant sibling), never
+  // Expression/wording generation.
+  assert.deepEqual(Object.keys(DecisionFormation).sort(), ['attachSecondaryAcknowledgment', 'attachSecondaryDisclosureAcknowledgment', 'form', 'formAcknowledgedDisclosureOutcome', 'formAcknowledgedPreferenceOutcome', 'formAcknowledgedRiskCharacteristicFactOutcome', 'formDecisionPassSilence', 'formUnsupportedCapabilityOutcome']);
 });
 
 // ── TASK-006 — Native / Platform-Neutral Contract tests (§35.19, D3 §5.5/§14) ──

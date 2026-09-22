@@ -766,10 +766,20 @@
        domain/severity vocabulary). app.js configures it with the production callClaude closure
        (matching this codebase's own coachDecisionSystemWiring.test.js invariant that no
        callClaude:null-default component ships unconfigured — see app.js's own comment there for
-       the full disclosure), but classifyCandidateContent()/classifyTurnForDurableConstraint()
-       have zero callers anywhere in the live routing/orchestration seam — configuration only,
-       never orchestration wiring. Wiring this interpreter into the Stage 5/6 seam is Phase D.6. -->
+       the full disclosure). classifyCandidateContent() still has zero callers anywhere in the live
+       routing/orchestration seam — wiring it in is Phase D.6's job. classifyTurnForDurableConstraint()
+       IS now called live, by internalPipelineOrchestrator.js's own runDirectTurnPass() (WP0 Phase
+       D.5, docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§22) — durable
+       risk-characteristic fact capture, gated by riskCharacteristicIntakeGate.js's own
+       consent+literal-anchor authorization, below. -->
   <script src="js/coachDecisionSystem/riskCharacteristicInterpreter.js"></script>
+  <!-- WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §10.2/§15/§22,
+       Revision 2, Product+Architecture APPROVED) — the deterministic intake gate for durable
+       risk-characteristic fact capture (Phase D.3), now live-wired: internalPipelineOrchestrator.js
+       calls authorizeNewFact()/authorizeCorrection() from runDirectTurnPass(), gating the
+       persistence boundary in app.js. No configure() of its own (no callClaude dependency — it
+       delegates classification to RiskCharacteristicInterpreter above). -->
+  <script src="js/coachDecisionSystem/riskCharacteristicIntakeGate.js"></script>
   <!-- MAI-001 (docs/specs/MAI_001_SPEC_v1.0.md) — previously had zero live consumers/wiring
        (disclosed, not a defect, per its own SPEC §15). TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md
        §25) is its first real production consumer — loaded before initiativeEngine.js and

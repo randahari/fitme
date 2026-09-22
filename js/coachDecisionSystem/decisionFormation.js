@@ -257,6 +257,59 @@
     return freezeShallow(resolved);
   }
 
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15, Revision 2,
+  // Product+Architecture APPROVED) — an eighth, narrow, non-Safety-reviewed Terminal Decision
+  // construction path, structurally identical in status/shape discipline to
+  // formAcknowledgedDisclosureOutcome() above: no Candidate ever existed, so safetyPort.
+  // finalReview() is never invoked, and no safetyDisposition/boundaryType/confidence/
+  // hierarchyTier/modification is ever attached.
+  //
+  // Standalone construction ONLY in this phase — deliberately, disclosed scope decision: unlike
+  // preferenceAcknowledgment/disclosureAcknowledgment, this phase does NOT add an
+  // attachSecondaryRiskCharacteristicFactAcknowledgment() composition function. In the rare case a
+  // turn both produces a real primary decision (recommendation/refusal/etc.) AND authorizes a new
+  // durable risk-characteristic fact capture, the fact is still captured and persisted (the
+  // Safety-critical guarantee) but no in-turn acknowledgment text is composed for it this cycle —
+  // it remains visible via the existing transparency sheet. Composing it onto every other
+  // TerminalDecision kind's own rendering (mirroring secondaryDisclosureAcknowledgment's own
+  // ~7-call-site reach across expressionRenderer.js) is left to a future, narrowly-scoped
+  // follow-up, not required by this phase's own binding scope.
+  //
+  // riskCharacteristicFactAcknowledgment carries only closed fields (Product Decision 16 — never
+  // raw interpreter/model text, and — per Phase D.3's own binding authority correction — never the
+  // user's own literal statement text either, to prevent the generative rendering layer from
+  // paraphrasing/amplifying it into anything diagnosis-shaped): riskDomain is the closed RiskDomain
+  // vocabulary (§08.1, reused by pattern); capturedToMemory reflects the ACTUAL post-write outcome
+  // (this function is only ever called with capturedToMemory:true after a real, confirmed Typed
+  // Memory write — never a pre-write intent, satisfying binding requirement 10: a persistence
+  // failure must never produce false confirmation).
+  function formAcknowledgedRiskCharacteristicFactOutcome(params) {
+    params = params || {};
+    return freezeShallow({
+      status: 'FORMED',
+      decision: freezeShallow({
+        kind: 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT',
+        rationale: freezeShallow({
+          rationale: 'The user explicitly, literally stated a durable Safety-relevant fact about themselves, which was independently verified and durably captured.',
+          evidenceBasis: 'RiskCharacteristicInterpreter (WP0 §09.1(b)) + the deterministic Risk Characteristic Intake Gate (§10.2/D.3) — a literally-anchored, consented, explicit statement, already persisted to Typed Memory before this outcome was formed. No AI-proposed severity or interpretation is ever part of this record (Phase D.3 authority correction).',
+          expectedValue: 'An honest, brief acknowledgment that FITME understood and remembered what the user said, without inventing professional advice, a diagnosis, or a severity judgment.',
+          uncertainty: 'None — deterministic given the already-confirmed successful Typed Memory write.'
+        }),
+        riskCharacteristicFactAcknowledgment: freezeShallow({
+          riskDomain: params.riskDomain,
+          capturedToMemory: !!params.capturedToMemory
+        }),
+        decisionPassTrace: freezeShallow({
+          opportunitiesConsidered: freezeShallow([]),
+          candidatePoolSize: 0,
+          disqualifiedCandidates: freezeShallow([])
+        }),
+        candidateProvenance: freezeShallow([]),
+        immutable: true
+      })
+    });
+  }
+
   // §22.1/22.2/22.4/23.5, Canonical Decision CD-T006-06 — assembles the Terminal Decision from
   // Stage 8's SINGLE_WINNER, TIED_SET, or ALL_DISQUALIFIED selection result.
   async function form(params) {
@@ -398,6 +451,7 @@
     attachSecondaryAcknowledgment: attachSecondaryAcknowledgment,
     formAcknowledgedDisclosureOutcome: formAcknowledgedDisclosureOutcome,
     attachSecondaryDisclosureAcknowledgment: attachSecondaryDisclosureAcknowledgment,
+    formAcknowledgedRiskCharacteristicFactOutcome: formAcknowledgedRiskCharacteristicFactOutcome,
     form: form
   };
 

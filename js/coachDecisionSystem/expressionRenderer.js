@@ -362,6 +362,51 @@
     ].join(' ');
   }
 
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) — the
+  // standalone-case boundary for ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT, mirroring
+  // isAcknowledgedDisclosureCase() above byte-for-byte.
+  function isAcknowledgedRiskCharacteristicFactCase(terminalDecision) {
+    if (!isPlainObject(terminalDecision)) return false;
+    if (terminalDecision.kind !== 'ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT') return false;
+    if (Object.prototype.hasOwnProperty.call(terminalDecision, 'safetyDisposition')) return false;
+    return true;
+  }
+
+  // WP0 Phase D.5 — the generative-call system instruction for standalone
+  // ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT rendering: an honest, brief, first-person acknowledgment
+  // that FITME understood and remembered a durable Safety-relevant fact the user explicitly
+  // stated — never professional advice, never a diagnosis, never a severity/danger judgment, never
+  // implying an intervention beyond noting what was said and that it was remembered. Derived
+  // exclusively from the closed riskDomain field (Product Decision 16 / Phase D.3's own binding
+  // authority correction — never the user's own literal statement text, never any AI-proposed
+  // severity, both deliberately excluded from this function's own input).
+  function buildAcknowledgedRiskCharacteristicFactSystemInstruction(terminalDecision, expressionRenderingContext) {
+    var maturityGuidance = RELATIONSHIP_MATURITY_GUIDANCE[expressionRenderingContext.relationshipMaturityStage];
+    var lines = [
+      VOICE_IDENTITY_LINE,
+      'ההחלטה היא שהמשתמש ציין זה עתה, במפורש ובמילים שלו, עובדה בטיחותית קבועה ומשמעותית ' +
+        'עליו (כגון מגבלה, רגישות, או מחויבות קבועה). אמור בקצרה, בכנות, ובגוף ראשון: שהבנת מה ' +
+        'שנאמר וששמרת את זה כדי לקחת בחשבון בהמשך הליווי. לעולם אל תיתן המלצה מקצועית, אבחנה, ' +
+        'הערכת חומרה, או תחזית — אין כאן החלטה מקצועית, רק אישור שמיעה/הבנה וזכירה.',
+      maturityGuidance, NO_MOTIVATIONAL_PRESSURE_LINE, HEBREW_ONLY_LINE
+    ];
+    return lines.join(' ');
+  }
+
+  // WP0 Phase D.5 — the generative layer's user-turn content for standalone
+  // ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT rendering. Derived exclusively from the closed,
+  // non-free-text riskCharacteristicFactAcknowledgment field — no severity, no literal statement
+  // text, matching this file's own "never raw interpreter/model text" discipline exactly.
+  function buildAcknowledgedRiskCharacteristicFactUserContent(terminalDecision) {
+    var ack = terminalDecision.riskCharacteristicFactAcknowledgment || {};
+    return [
+      'ההחלטה: עובדה בטיחותית נקלטה (ACKNOWLEDGED_RISK_CHARACTERISTIC_FACT).',
+      'תחום: ' + ack.riskDomain + '.',
+      'נשמר במאגר: ' + (ack.capturedToMemory ? 'כן' : 'לא') + '.',
+      'נסח הודעת מאמן אחת, קצרה וכנה, שמאשרת קליטה וזכירה בלבד, בהתאם להנחיות.'
+    ].join(' ');
+  }
+
   // Friends Alpha Item 6 — shared, additive instruction fragment reused across EVERY existing
   // rendering path below, added only when terminalDecision.secondaryDisclosureAcknowledgment is
   // present (absent on every pre-Item-6 TerminalDecision — those paths remain byte-identical).
@@ -811,6 +856,10 @@
     } else if (isAcknowledgedDisclosureCase(terminalDecision)) {
       system = buildAcknowledgedDisclosureSystemInstruction(terminalDecision, expressionRenderingContext);
       userContent = buildAcknowledgedDisclosureUserContent(terminalDecision);
+      semanticSignal = { kind: terminalDecision.kind };
+    } else if (isAcknowledgedRiskCharacteristicFactCase(terminalDecision)) {
+      system = buildAcknowledgedRiskCharacteristicFactSystemInstruction(terminalDecision, expressionRenderingContext);
+      userContent = buildAcknowledgedRiskCharacteristicFactUserContent(terminalDecision);
       semanticSignal = { kind: terminalDecision.kind };
     } else {
       // No TerminalDecision shape matches any of the five rendering paths above (each of the first

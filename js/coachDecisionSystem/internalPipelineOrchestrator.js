@@ -148,6 +148,16 @@
   var SafetyDisclosureIntakeGate = (typeof module !== 'undefined' && module.exports)
     ? require('./safetyDisclosureIntakeGate.js')
     : window.SafetyDisclosureIntakeGate;
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§22) — two new,
+  // narrow collaborators, dispatched only from runDirectTurnPass() below, in parallel with
+  // UserDisclosureRecognizer/SafetyDisclosureIntakeGate above — never gated on, and never gating,
+  // Need recognition, CPI's own preference intake, or Item 6's own disclosure track.
+  var RiskCharacteristicInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./riskCharacteristicInterpreter.js')
+    : window.RiskCharacteristicInterpreter;
+  var RiskCharacteristicIntakeGate = (typeof module !== 'undefined' && module.exports)
+    ? require('./riskCharacteristicIntakeGate.js')
+    : window.RiskCharacteristicIntakeGate;
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 3) — the new memoryLayer/
   // PREFERENCE_CONSENT_READ StateAccess capability-holder identity, a sibling to the existing
   // memoryLayer identities (user-stated-memory / recent-conversation) MemoryLayer.js itself
@@ -373,14 +383,138 @@
     var disclosureRecognizedOnly = !!(userDisclosureResolution && userDisclosureResolution.recognized === true) && !disclosureCaptureAuthorized;
     var disclosureCategory = userDisclosureResolution && userDisclosureResolution.category;
 
+    // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§22, Revision 2,
+    // Product+Architecture APPROVED) — a fourth, independent, parallel track: never gated on, and
+    // never gating, Need recognition, CPI's own preference intake, or Item 6's own disclosure
+    // track (a durable risk-characteristic fact is never a request, and is entirely orthogonal to
+    // whether a preference or disclosure was also stated this turn). Unlike Item 6's own
+    // recognition (reused from turnUnderstanding's own already-computed dimensions), this
+    // mechanism requires its own dedicated AI classification call (RiskCharacteristicInterpreter
+    // has never been integrated with TurnUnderstandingInterpreter's own dimensions — Phase D.2's
+    // own, unmodified contract).
+    //
+    // D.5 POST-REVIEW CORRECTION (Product/Architecture review, this round) — read before editing.
+    // The original D.5 wiring treated "a NEW fact was authorized" and "a CORRECTION was
+    // confirmed" as mutually exclusive (try NEW_FACT; only on failure, try CORRECTION). Review
+    // found this loses Safety knowledge on a genuine REPLACEMENT statement ("the restriction is
+    // actually X, not Y"): if the turn's OWN new-fact candidate (X) happened to be authorized,
+    // the correction half was never even attempted, so the stale fact Y was left durably active
+    // forever alongside X. Worse, if the classifier did NOT surface a new-fact candidate for X
+    // (or it failed its own literal-anchor check) but DID confirm the correction against Y, Y was
+    // superseded with NO replacement ever captured — Safety knowledge silently lost.
+    //
+    // Fixed by running BOTH checks unconditionally, independently, then combining:
+    //   - NEW_FACT check: the interpreter's own first candidate is used (D.5's own disclosed
+    //     scoping decision: a turn stating multiple distinct new facts captures the first this
+    //     cycle; a later turn may capture the rest) — authorized via
+    //     RiskCharacteristicIntakeGate.authorizeNewFact(), completely unmodified (Phase D.3,
+    //     closed/approved). Never told about, and never influenced by, the correction check below
+    //     — the replacement proposition must independently satisfy the SAME explicit,
+    //     literal-user-grounding and consent requirements as any standalone NEW_FACT; it is never
+    //     inferred FROM the correction.
+    //   - CORRECTION check: against each existing active fact
+    //     (pipelineContext.riskCharacteristicFactContext.items, Phase D.5's own context field) —
+    //     exactly one confirmed match required (safetyDisclosureIntakeGate.js's own proven
+    //     single-match-required discipline, reused BY PATTERN here since
+    //     riskCharacteristicIntakeGate.js itself, Phase D.3, is not modified by this correction
+    //     either); any single classifier failure among the existing facts fails the WHOLE
+    //     correction check closed, never a partial evaluation. This now runs even when a NEW_FACT
+    //     was already authorized (a disclosed, accepted efficiency cost — only paid on turns
+    //     where the user already has at least one existing durable fact — mirroring
+    //     memoryLayer.js's own EUR-001/situationalContext precedent of two sub-tracks each
+    //     reading Typed Memory in the same pass).
+    //   - Both confirmed -> mode:'REPLACEMENT' (supersede the old fact AND persist the new one,
+    //     both durably, gated by the SAME two independent authorizations — see
+    //     persistRiskCharacteristicFactRecord() in app.js for the failure-safe write ORDER this
+    //     requires). Only correction confirmed -> mode:'CORRECTION' (pure retraction, unchanged
+    //     from the original D.5 behavior — no replacement was independently authorized, so none is
+    //     fabricated). Only new-fact authorized -> mode:'NEW_FACT' (unchanged). Neither -> not
+    //     authorized (unchanged).
+    var riskCharacteristicFactCaptureAuthorization = { authorized: false, reason: 'NOT_RECOGNIZED', candidateRecord: null };
+    try {
+      var rcfConsentAccess = StateAccess.createEngineAccess({
+        engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
+        userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+      });
+      var rcfConsentGranted = rcfConsentAccess.read.memoryConsentGranted() === true;
+
+      var rcfNewFactAuth = null;
+      var rcfClassification = await RiskCharacteristicInterpreter.classifyTurnForDurableConstraint(turn.text);
+      if (rcfClassification && rcfClassification.status === 'CLASSIFIED'
+        && Array.isArray(rcfClassification.candidates) && rcfClassification.candidates.length > 0) {
+        rcfNewFactAuth = await RiskCharacteristicIntakeGate.authorizeNewFact({
+          turn: turn, candidate: rcfClassification.candidates[0], memoryConsent: { granted: rcfConsentGranted }
+        });
+      }
+      var rcfNewFactAuthorized = !!(rcfNewFactAuth && rcfNewFactAuth.authorized === true);
+
+      var rcfCorrectionAuth = null;
+      var existingRiskCharacteristicFacts = (pipelineContext.riskCharacteristicFactContext
+        && Array.isArray(pipelineContext.riskCharacteristicFactContext.items))
+        ? pipelineContext.riskCharacteristicFactContext.items : [];
+      if (existingRiskCharacteristicFacts.length > 0) {
+        var rcfCorrectionCheckFailed = false;
+        var rcfConfirmedMatches = [];
+        for (var rcfi = 0; rcfi < existingRiskCharacteristicFacts.length; rcfi++) {
+          var rcfExistingFact = existingRiskCharacteristicFacts[rcfi];
+          var rcfOneCorrectionAuth = await RiskCharacteristicIntakeGate.authorizeCorrection({
+            turn: turn,
+            existingFact: { memoryId: rcfExistingFact.memoryId, literalStatementText: rcfExistingFact.literalStatementText },
+            memoryConsent: { granted: rcfConsentGranted }
+          });
+          if (rcfOneCorrectionAuth.reason === 'SAFETY_CLASSIFIER_UNAVAILABLE') { rcfCorrectionCheckFailed = true; break; }
+          if (rcfOneCorrectionAuth.authorized === true) rcfConfirmedMatches.push(rcfOneCorrectionAuth);
+        }
+        // Exactly one confirmed match required — 0 (nothing addressed), >1 (ambiguous), or any
+        // single classifier failure all preserve every existing fact untouched, never a
+        // fabricated change (mirrors safetyDisclosureIntakeGate.js's own detectCorrection()
+        // discipline).
+        if (!rcfCorrectionCheckFailed && rcfConfirmedMatches.length === 1) {
+          rcfCorrectionAuth = rcfConfirmedMatches[0];
+        }
+      }
+      var rcfCorrectionAuthorized = !!(rcfCorrectionAuth && rcfCorrectionAuth.authorized === true);
+
+      if (rcfNewFactAuthorized && rcfCorrectionAuthorized) {
+        riskCharacteristicFactCaptureAuthorization = Object.freeze({
+          authorized: true, reason: 'OK',
+          candidateRecord: Object.freeze({
+            mode: 'REPLACEMENT',
+            newFact: rcfNewFactAuth.candidateRecord,
+            correction: rcfCorrectionAuth.candidateRecord
+          })
+        });
+      } else if (rcfNewFactAuthorized) {
+        riskCharacteristicFactCaptureAuthorization = rcfNewFactAuth;
+      } else if (rcfCorrectionAuthorized) {
+        riskCharacteristicFactCaptureAuthorization = rcfCorrectionAuth;
+      } else if (rcfNewFactAuth) {
+        // Neither half was authorized this turn — preserve the new-fact attempt's OWN, more
+        // specific failure reason (e.g. CONSENT_ABSENT/LITERAL_ANCHOR_FAILED/INVALID_CANDIDATE_
+        // SHAPE) rather than collapsing to the generic NOT_RECOGNIZED default, exactly as the
+        // pre-correction D.5 wiring already did when a new-fact candidate existed but failed its
+        // own gate. The correction attempt's own internal failure reason (NOT_CAPTURE_ELIGIBLE /
+        // SAFETY_CLASSIFIER_UNAVAILABLE) is deliberately never surfaced here either — unchanged
+        // from the original D.5 behavior, where an unconfirmed correction never overwrote
+        // whatever authorization state already existed.
+        riskCharacteristicFactCaptureAuthorization = rcfNewFactAuth;
+      }
+      // else: no new-fact candidate was ever produced and no correction was confirmed — stays at
+      // the initial NOT_RECOGNIZED default, unchanged.
+    } catch (e) {
+      riskCharacteristicFactCaptureAuthorization = { authorized: false, reason: 'GATE_THREW', candidateRecord: null };
+    }
+    var riskCharacteristicFactCaptureAuthorized = !!(riskCharacteristicFactCaptureAuthorization && riskCharacteristicFactCaptureAuthorization.authorized === true);
+
     // §14 step 5 — the deferred-Expression-dispatch sentinel, used identically across every
-    // branch below whenever preferenceAuthorized OR disclosureCaptureAuthorized is true: this
-    // turn's own primary decision is returned fully formed (Stage 1-9 complete) but deliberately
-    // unrendered, for the caller (app.js) to hand to Unified Finalization only after persistence
-    // resolves. A single, shared sentinel and a single, shared Unified Finalization step (never a
-    // second finalization pipeline) — generalized to accept either or both confirmed records.
+    // branch below whenever preferenceAuthorized OR disclosureCaptureAuthorized OR
+    // riskCharacteristicFactCaptureAuthorized is true: this turn's own primary decision is
+    // returned fully formed (Stage 1-9 complete) but deliberately unrendered, for the caller
+    // (app.js) to hand to Unified Finalization only after persistence resolves. A single, shared
+    // sentinel and a single, shared Unified Finalization step (never a second finalization
+    // pipeline) — generalized to accept any/all of the three confirmed records.
     var DEFERRED_EXPRESSION = Object.freeze({ status: 'DEFERRED', reason: 'PREFERENCE_FINALIZATION_PENDING' });
-    var deferForFinalization = preferenceAuthorized || disclosureCaptureAuthorized;
+    var deferForFinalization = preferenceAuthorized || disclosureCaptureAuthorized || riskCharacteristicFactCaptureAuthorized;
 
     if (needCreatorResult && needCreatorResult.kind === 'UNSUPPORTED') {
       // §12 — bypasses Stage 4 (Evidence)/Stage 5 (Eligibility)/Stage 6 (Candidate)/Stage 8-9's
@@ -390,14 +524,14 @@
       // ever attached.
       var unsupportedDecision = DecisionFormation.formUnsupportedCapabilityOutcome({ need: needCreatorResult.need });
       if (deferForFinalization) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
       }
       var unsupportedFinalDecision = applyDisclosureAcknowledgmentIfNeeded(unsupportedDecision.decision, disclosureRecognizedOnly, disclosureCategory);
       var unsupportedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
       var unsupportedExpressionResult = (unsupportedRenderingContextResult && unsupportedRenderingContextResult.status === 'BUILT')
         ? await runExpressionStage(unsupportedFinalDecision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
         : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedFinalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: unsupportedExpressionResult } };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedFinalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: unsupportedExpressionResult } };
     }
 
     // §06/§07 — a real DETECTED_OPPORTUNITY (or nothing, for Case A/C/UNSUPPORTED-already-handled)
@@ -420,7 +554,7 @@
       // ACKNOWLEDGED_PREFERENCE/ACKNOWLEDGED_DISCLOSURE shape, never an attach attempt against a
       // nonexistent object.
       if (deferForFinalization) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
       }
       if (disclosureRecognizedOnly) {
         var standaloneDisclosureDecision = applyDisclosureAcknowledgmentIfNeeded(null, disclosureRecognizedOnly, disclosureCategory);
@@ -428,14 +562,14 @@
         var passNotFormedExpressionResult = (passNotFormedRenderingContextResult && passNotFormedRenderingContextResult.status === 'BUILT')
           ? await runExpressionStage(standaloneDisclosureDecision, passNotFormedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
           : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: standaloneDisclosureDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: passNotFormedExpressionResult } };
+        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: standaloneDisclosureDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: passNotFormedExpressionResult } };
       }
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
     }
 
     var terminalDecision = passResult.decision;
     if (deferForFinalization) {
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
     }
     var finalTerminalDecision = applyDisclosureAcknowledgmentIfNeeded(terminalDecision, disclosureRecognizedOnly, disclosureCategory);
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
@@ -443,7 +577,7 @@
       ? await runExpressionStage(finalTerminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
       : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
 
-    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: finalTerminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, expression: expressionResult } };
+    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: finalTerminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: expressionResult } };
   }
 
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — Unified Finalization: dispatched
@@ -472,15 +606,27 @@
   // as the standalone base (matching the existing, already-tested precedent) with the disclosure
   // attached onto it as a secondary — an arbitrary but harmless ordering choice, since both are
   // equally bounded, non-advice acknowledgments.
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15) — generalized to
+  // accept a THIRD, independent, optional confirmed record (confirmedRiskCharacteristicFactRecord)
+  // alongside CPI's own confirmedRecord and Item 6's own confirmedDisclosureRecord — still the SAME
+  // single Unified Finalization step. Disclosed scope decision (see decisionFormation.js's own
+  // formAcknowledgedRiskCharacteristicFactOutcome() header): this record is standalone-ONLY in this
+  // phase — when hasRealBase is true, it is deliberately not attached (the fact is already
+  // persisted regardless; only the in-turn acknowledgment text is narrower in scope this phase). It
+  // participates in the standalone else-if chain after confirmedRecord/confirmedDisclosureRecord,
+  // matching their own established "arbitrary but harmless ordering" precedent when multiple are
+  // present without a real base.
   // ctx.payload: { pipelineContext, terminalDecision (Pass 1's own, or null/undefined),
   // confirmedRecord: {preferenceClass, polarity, target, sourceTurnId, wasReactivatedFromRejected}
-  // | null, confirmedDisclosureRecord: {category, capturedToMemory, safetyRelevant} | null }.
+  // | null, confirmedDisclosureRecord: {category, capturedToMemory, safetyRelevant} | null,
+  // confirmedRiskCharacteristicFactRecord: {riskDomain, capturedToMemory} | null }.
   async function runPreferenceAcknowledgmentFinalization(ctx, identity) {
     var payload = ctx.payload || {};
     var pipelineContext = payload.pipelineContext;
     var baseTerminalDecision = payload.terminalDecision || null;
     var confirmedRecord = payload.confirmedRecord || null;
     var confirmedDisclosureRecord = payload.confirmedDisclosureRecord || null;
+    var confirmedRiskCharacteristicFactRecord = payload.confirmedRiskCharacteristicFactRecord || null;
 
     var finalTerminalDecision;
     var hasRealBase = !!(baseTerminalDecision && baseTerminalDecision.kind !== 'SILENCE');
@@ -489,16 +635,27 @@
       finalTerminalDecision = baseTerminalDecision;
       if (confirmedRecord) finalTerminalDecision = DecisionFormation.attachSecondaryAcknowledgment(finalTerminalDecision, confirmedRecord);
       if (confirmedDisclosureRecord) finalTerminalDecision = DecisionFormation.attachSecondaryDisclosureAcknowledgment(finalTerminalDecision, confirmedDisclosureRecord);
+      // confirmedRiskCharacteristicFactRecord is deliberately NOT attached here in this phase —
+      // see the header disclosure above. The fact is already durably persisted regardless.
     } else if (confirmedRecord) {
       finalTerminalDecision = DecisionFormation.formAcknowledgedPreferenceOutcome(confirmedRecord).decision;
       if (confirmedDisclosureRecord) finalTerminalDecision = DecisionFormation.attachSecondaryDisclosureAcknowledgment(finalTerminalDecision, confirmedDisclosureRecord);
     } else if (confirmedDisclosureRecord) {
       finalTerminalDecision = DecisionFormation.formAcknowledgedDisclosureOutcome(confirmedDisclosureRecord).decision;
+    } else if (confirmedRiskCharacteristicFactRecord) {
+      finalTerminalDecision = DecisionFormation.formAcknowledgedRiskCharacteristicFactOutcome(confirmedRiskCharacteristicFactRecord).decision;
     } else {
-      // Defensive only — app.js never dispatches this action without at least one confirmed
-      // record (mirrors the pre-existing standalone-preference path's own defensive shape rather
-      // than throwing; should not occur in practice).
-      finalTerminalDecision = DecisionFormation.formAcknowledgedPreferenceOutcome({}).decision;
+      // WP0 Phase D.5 — this branch IS now genuinely reachable (not merely defensive): a
+      // CORRECTION-mode risk-characteristic fact authorization defers for finalization (its
+      // persistence write must still resolve before the turn completes, per binding requirement
+      // 10) but deliberately produces no acknowledgment record at all (candidateRecord for
+      // CORRECTION mode is superseding an existing fact, never stating a new one to acknowledge —
+      // see persistRiskCharacteristicFactRecord()'s own header in app.js). A pure
+      // correction-only turn therefore reaches here with every confirmed record null and no real
+      // base: the honest outcome is Decision-Pass-level Silence — nothing new to say this turn —
+      // never the previous, genuinely-unreachable-before-this-phase, broken empty-preference
+      // fallback.
+      finalTerminalDecision = DecisionFormation.formDecisionPassSilence({ opportunitiesConsidered: [] }).decision;
     }
 
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);

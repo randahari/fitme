@@ -83,14 +83,15 @@ test('wiring: js/memory.js exports get() and safeKey() on its main, browser-reac
 // cpiAuthorized alone to deferAuthorized (cpiAuthorized || disclosureCaptureAuthorized) — CPI-001
 // turns (disclosureCaptureAuthorized always false for them) behave byte-identically; these tests
 // are updated to the new guard name while verifying the exact same invariants.
-test('wiring: submitCoachConversationTurn() branches on deferAuthorized (cpiAuthorized || disclosureCaptureAuthorized) BEFORE any rendering/completeTurn() call, and the pre-existing (neither authorized) branch is otherwise untouched', () => {
+test('wiring: submitCoachConversationTurn() branches on deferAuthorized (cpiAuthorized || disclosureCaptureAuthorized || riskCharacteristicFactCaptureAuthorized) BEFORE any rendering/completeTurn() call, and the pre-existing (neither authorized) branch is otherwise untouched', () => {
   const idx = appJs.indexOf('async function submitCoachConversationTurn()');
   assert.notEqual(idx, -1);
   const endIdx = appJs.indexOf('\n// CCC-001', appJs.indexOf('async function loadCoachConversationHistory()'));
   const body = appJs.slice(idx, endIdx);
   assert.match(body, /var cpiAuthorized = !!\(preferenceIntakeAuthorization && preferenceIntakeAuthorization\.authorized === true\);/);
   assert.match(body, /var disclosureCaptureAuthorized = !!\(disclosureCaptureAuthorization && disclosureCaptureAuthorization\.authorized === true\);/);
-  assert.match(body, /var deferAuthorized = cpiAuthorized \|\| disclosureCaptureAuthorized;/);
+  assert.match(body, /var riskCharacteristicFactCaptureAuthorized = !!\(riskCharacteristicFactCaptureAuthorization && riskCharacteristicFactCaptureAuthorization\.authorized === true\);/);
+  assert.match(body, /var deferAuthorized = cpiAuthorized \|\| disclosureCaptureAuthorized \|\| riskCharacteristicFactCaptureAuthorized;/);
   const branchIdx = body.indexOf('if (!deferAuthorized) {');
   assert.notEqual(branchIdx, -1);
   // The existing DUC-001 rendering logic (renderResponse for a DISPATCHED expression) occurs

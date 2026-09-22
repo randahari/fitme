@@ -300,6 +300,41 @@
     return !!(profile.memoryConsent && profile.memoryConsent.granted === true);
   }
 
+  // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§20, Revision 2,
+  // Product+Architecture APPROVED): bounded, consent-gated, filtered read of durable, governed
+  // risk-characteristic facts (js/memory.js, type==='risk_characteristic_fact') — a NEW, narrow
+  // sibling capability-holder identity (memoryLayer/RISK_CHARACTERISTIC_FACT_READ), mirroring
+  // readUserStatedMemory()'s own established shape and consent discipline exactly, but deliberately
+  // NOT a widening of USER_STATED_MEMORY_READ's own closed {fact,preference,safety_disclosure}
+  // filter (that filter, and USC-001's own downstream consumption of it, remains completely
+  // untouched — binding requirement: do not broaden USC-001). Reuses the SAME
+  // deps.fetchUserStatedMemory() dependency (already an unfiltered full-list fetch, per
+  // readUserStatedMemory()'s own established pattern of filtering client-side after a shared raw
+  // fetch) — no new Firestore query, no new injected dependency. Consent
+  // (userProfile.memoryConsent.granted) is checked BEFORE any fetch is attempted, identical to
+  // readUserStatedMemory()'s own fail-closed discipline.
+  async function readRiskCharacteristicFacts(identity) {
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError();
+    var profile = deps.getUserProfile() || {};
+    var consentGranted = !!(profile.memoryConsent && profile.memoryConsent.granted === true);
+    if (!consentGranted) return freezeShallow([]); // fail closed, fetch never attempted
+    var raw = await deps.fetchUserStatedMemory();
+    if (!isCurrent(identity.sessionGeneration)) throw staleSessionError(); // B3 §9 כלל 8
+    var list = Array.isArray(raw) ? raw : [];
+    var filtered = list.filter(function (m) {
+      return m && m.type === 'risk_characteristic_fact' && m.source === 'user_stated' && m.status === 'active';
+    }).map(function (m) {
+      return { id: m._id || m.id || null, type: m.type, payload: m.payload, confidence: m.confidence, source: 'user_stated', updatedAt: m.updated_at };
+    });
+    filtered.sort(function (a, b) {
+      var au = a.updatedAt || 0, bu = b.updatedAt || 0;
+      if (bu !== au) return bu - au;
+      var aid = a.id || '', bid = b.id || '';
+      return aid < bid ? -1 : (aid > bid ? 1 : 0);
+    });
+    return copyArrayOfObjects(filtered);
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // ── Write operations (owner commands, B3 SPEC §10/§11) ──
   // ══════════════════════════════════════════════════════════════════
@@ -438,7 +473,8 @@
     recommendationFeedbackHistory: readRecommendationFeedbackHistory,
     userStatedMemory: readUserStatedMemory,
     recentConversation: readRecentConversation,
-    memoryConsentGranted: readMemoryConsentGranted
+    memoryConsentGranted: readMemoryConsentGranted,
+    riskCharacteristicFacts: readRiskCharacteristicFacts
   };
 
   var WRITE_OPS = {
@@ -542,6 +578,14 @@
       // alias for coachDecisionSystem.DECISION_PASS.
       PREFERENCE_CONSENT_READ: {
         reads: ['memoryConsentGranted'],
+        writes: []
+      },
+      // WP0 Phase D.5 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §15/§20): a
+      // fourth sibling capability-holder identity under the same engine, mirroring
+      // PREFERENCE_CONSENT_READ's own established precedent exactly — not a widening of
+      // USER_STATED_MEMORY_READ, not a new engine, not an alias for coachDecisionSystem.DECISION_PASS.
+      RISK_CHARACTERISTIC_FACT_READ: {
+        reads: ['riskCharacteristicFacts'],
         writes: []
       }
     }
