@@ -351,7 +351,7 @@ test('44. riskCharacteristicInterpreter.js IS registered in index.html and sw.js
   assert.match(swJs, /\/fitme\/js\/coachDecisionSystem\/riskCharacteristicInterpreter\.js/);
 });
 
-test('45. no production file anywhere in js/ requires riskCharacteristicInterpreter.js via CommonJS require() (app.js references it only as a browser global, not require() — this codebase\'s own established pattern for every coachDecisionSystem module app.js configures)', () => {
+test('45. only riskCharacteristicIntakeGate.js (Phase D.3, added as its own legitimate consumer for the correction-detection call) requires riskCharacteristicInterpreter.js via CommonJS require() — app.js references it only as a browser global, not require(), and no other production file does either', () => {
   const jsDir = path.join(__dirname, '..', 'js');
   function walk(dir) {
     let matches = [];
@@ -365,5 +365,74 @@ test('45. no production file anywhere in js/ requires riskCharacteristicInterpre
     });
     return matches;
   }
-  assert.deepEqual(walk(jsDir), []);
+  const requirers = walk(jsDir).map((p) => path.basename(p));
+  assert.deepEqual(requirers, ['riskCharacteristicIntakeGate.js']);
+});
+
+// ── Phase D.3 — classifyCorrectionWithStatus() additive sibling export ───────────────────────
+
+test('46. buildCorrectionPrompt wraps the existing fact text and the turn as inert DATA, instructs unambiguous-only confirmation', () => {
+  const prompt = Interpreter._internal.buildCorrectionPrompt({ id: 'turn:1', text: 'the doctor confirmed I never actually had that allergy' }, 'peanut allergy');
+  assert.ok(prompt.includes('"peanut allergy"'));
+  assert.ok(prompt.includes('<statement id="turn:1">the doctor confirmed I never actually had that allergy</statement>'));
+  assert.match(prompt, /EXPLICITLY and UNAMBIGUOUSLY/);
+  assert.match(prompt, /never infer that a durable fact no longer applies from an ordinary state change alone/i);
+});
+
+test('47. parseCorrectionResponse accepts a well-formed, matching-id boolean result', () => {
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: true }] }), 'turn:1'), true);
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: false }] }), 'turn:1'), false);
+});
+
+test('48. parseCorrectionResponse returns null on id mismatch, wrong arity, non-boolean, or malformed JSON', () => {
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponse({ results: [{ id: 'turn:OTHER', correctionConfirmed: true }] }), 'turn:1'), null);
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponse({ results: [] }), 'turn:1'), null);
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: 'yes' }] }), 'turn:1'), null);
+  assert.equal(Interpreter._internal.parseCorrectionResponse(fakeResponseFromRawText('not json'), 'turn:1'), null);
+});
+
+test('49. classifyCorrectionWithStatus: CLASSIFIED true on an explicit, unambiguous correction', async () => {
+  configureStub(async () => fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: true }] }));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'the doctor confirmed I never had that allergy' }, 'peanut allergy');
+  assert.deepEqual(result, { status: 'CLASSIFIED', correctionConfirmed: true });
+});
+
+test('50. classifyCorrectionWithStatus: CLASSIFIED false on an ordinary, non-explicit statement (never infers correction)', async () => {
+  configureStub(async () => fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: false }] }));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'I feel a bit better today' }, 'peanut allergy');
+  assert.deepEqual(result, { status: 'CLASSIFIED', correctionConfirmed: false });
+});
+
+test('51. classifyCorrectionWithStatus: FAILED on invalid input (bad turnRecord or empty existingFactText)', async () => {
+  configureStub(async () => fakeResponse({ results: [{ id: 'turn:1', correctionConfirmed: true }] }));
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus(null, 'peanut allergy'), { status: 'FAILED' });
+  assert.deepEqual(await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'x' }, ''), { status: 'FAILED' });
+});
+
+test('52. classifyCorrectionWithStatus: FAILED when no callClaude is configured', async () => {
+  Interpreter.configure({ callClaude: null });
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'x' }, 'peanut allergy');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('53. classifyCorrectionWithStatus: FAILED on timeout, never hangs, never throws', async () => {
+  Interpreter.configure({ callClaude: () => new Promise(() => {}), timeoutMs: 20 });
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'x' }, 'peanut allergy');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('54. classifyCorrectionWithStatus: FAILED on malformed/unparseable model output', async () => {
+  configureStub(async () => fakeResponseFromRawText('not valid json'));
+  const result = await Interpreter.classifyCorrectionWithStatus({ id: 'turn:1', text: 'x' }, 'peanut allergy');
+  assert.deepEqual(result, { status: 'FAILED' });
+});
+
+test('55. classifyCandidateContent/classifyTurnForDurableConstraint remain byte-unchanged by the classifyCorrectionWithStatus addition (still correct for a representative case each)', async () => {
+  configureStub(async () => fakeResponse({ tags: [{ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', anchorText: 'long run' }] }));
+  const r1 = await Interpreter.classifyCandidateContent('go for a long run today');
+  assert.deepEqual(r1, { status: 'CLASSIFIED', tags: [{ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', anchorText: 'long run' }] });
+
+  configureStub(async () => fakeResponse({ candidates: [{ domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', severity: 'LIFE_CRITICAL', anchorText: 'peanut allergy' }] }));
+  const r2 = await Interpreter.classifyTurnForDurableConstraint('I have a peanut allergy');
+  assert.deepEqual(r2, { status: 'CLASSIFIED', candidates: [{ domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', severity: 'LIFE_CRITICAL', anchorText: 'peanut allergy' }] });
 });

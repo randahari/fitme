@@ -178,7 +178,7 @@ test('riskCharacteristicValidator.js is not referenced from any live routing/orc
   });
 });
 
-test('only standardProposalContract.js (Phase D.1) and riskCharacteristicInterpreter.js (Phase D.2, added as its own legitimate closed-vocabulary consumer) require riskCharacteristicValidator.js — no other production file does', () => {
+test('only standardProposalContract.js (Phase D.1), riskCharacteristicInterpreter.js (Phase D.2), and riskCharacteristicIntakeGate.js (Phase D.3, added as its own legitimate closed-vocabulary consumer for shape validation) require riskCharacteristicValidator.js — no other production file does', () => {
   const jsDir = path.join(__dirname, '..', 'js');
   function walk(dir) {
     let matches = [];
@@ -195,5 +195,5 @@ test('only standardProposalContract.js (Phase D.1) and riskCharacteristicInterpr
     return matches;
   }
   const requirers = walk(jsDir).map((p) => path.basename(p)).sort();
-  assert.deepEqual(requirers, ['riskCharacteristicInterpreter.js', 'standardProposalContract.js']);
+  assert.deepEqual(requirers, ['riskCharacteristicIntakeGate.js', 'riskCharacteristicInterpreter.js', 'standardProposalContract.js']);
 });
