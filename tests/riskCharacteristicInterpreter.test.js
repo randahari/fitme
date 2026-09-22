@@ -39,10 +39,13 @@ test('3. buildCandidateContentPrompt never asks for severity or relation — tha
   assert.match(prompt, /never a severity, never a relation/i);
 });
 
-test('4. buildDurableConstraintPrompt lists all 7 RiskDomains and all 4 ConstraintSeverity values', () => {
+test('4. buildDurableConstraintPrompt lists all 7 RiskDomains and all 4 model-proposable ConstraintSeverity values — NOT_ESTABLISHED (WP0 Phase D.6.1) is deliberately excluded: it is a Safety-governance-only state, never a value the model is ever asked or permitted to propose', () => {
   const prompt = Interpreter._internal.buildDurableConstraintPrompt('I have a peanut allergy');
   RiskCharacteristicValidator.RISK_DOMAINS.forEach((d) => assert.ok(prompt.includes(d), d + ' missing'));
-  RiskCharacteristicValidator.CONSTRAINT_SEVERITY.forEach((s) => assert.ok(prompt.includes(s), s + ' missing'));
+  const modelProposableSeverities = RiskCharacteristicValidator.CONSTRAINT_SEVERITY.filter((s) => s !== 'NOT_ESTABLISHED');
+  assert.equal(modelProposableSeverities.length, 4);
+  modelProposableSeverities.forEach((s) => assert.ok(prompt.includes(s), s + ' missing'));
+  assert.equal(prompt.includes('NOT_ESTABLISHED'), false);
 });
 
 test('5. buildDurableConstraintPrompt instructs unconditional abstention for a one-time symptom (mirrors USC-001\'s own discipline, independently)', () => {

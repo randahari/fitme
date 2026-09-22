@@ -17,6 +17,12 @@ const DateUtils = require('../js/core/dateUtils.js');
 const TurnUnderstandingInterpreter = require('../js/coachDecisionSystem/turnUnderstandingInterpreter.js');
 const ReadinessStateInterpreter = require('../js/coachDecisionSystem/readinessStateInterpreter.js');
 const TrainingReadinessReasoningComponent = require('../js/coachDecisionSystem/trainingReadinessReasoningComponent.js');
+// WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.3/§13/§17) — the
+// new, unconditional independent Candidate-content characterization step now runs against every
+// real Candidate the TRR branch produces in this file's own tests too. Stubbed with an honest
+// "touches nothing" CLASSIFIED response, the same way every other bounded-interpreter seam here
+// already is.
+const RiskCharacteristicInterpreter = require('../js/coachDecisionSystem/riskCharacteristicInterpreter.js');
 const ExpressionRenderer = require('../js/coachDecisionSystem/expressionRenderer.js');
 const WinnerSelection = require('../js/coachDecisionSystem/winnerSelection.js');
 const DecisionFormation = require('../js/coachDecisionSystem/decisionFormation.js');
@@ -104,6 +110,13 @@ function stubTrainingReadinessActionProposed() {
   });
 }
 
+// WP0 Phase D.6 — see the require() comment above.
+function stubRiskCharacteristicInterpreterNoSignal() {
+  RiskCharacteristicInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] })
+  });
+}
+
 function stubExpressionRendererEchoes() {
   ExpressionRenderer.configure({ generateFn: async () => 'תגובת מאמן לדוגמה (stub, לא מודל אמיתי).' });
 }
@@ -116,6 +129,7 @@ test.afterEach(() => {
   TurnUnderstandingInterpreter.configure({ callClaude: null });
   ReadinessStateInterpreter.configure({ callClaude: null });
   TrainingReadinessReasoningComponent.configure({ callClaude: null });
+  RiskCharacteristicInterpreter.configure({ callClaude: null });
   ExpressionRenderer.configure({ generateFn: null });
 });
 
@@ -133,6 +147,7 @@ test('DUC-DOGFOOD-1. the canonical dogfood turn reaches a FORMED, DISPATCHED Exp
   });
   stubReadinessStateInterpreterClassifiesAll();
   stubTrainingReadinessActionProposed();
+  stubRiskCharacteristicInterpreterNoSignal();
   stubExpressionRendererEchoes();
 
   const turn = makeTurn('t-dogfood-1', 'ישנתי 5 שעות, כדאי לי להתאמן היום?');
@@ -173,6 +188,7 @@ test('DUC-DOGFOOD-2. the same request succeeds from a freshly-configured OBSERVE
   });
   stubReadinessStateInterpreterClassifiesAll();
   stubTrainingReadinessActionProposed();
+  stubRiskCharacteristicInterpreterNoSignal();
   stubExpressionRendererEchoes();
 
   const turn = makeTurn('t-dogfood-2', 'כדאי לי להתאמן היום?');
@@ -360,6 +376,7 @@ test('DUC-CLARIFICATION-1. a CLARIFICATION_NEEDED-producing reasoning outcome fo
       }]
     })
   });
+  stubRiskCharacteristicInterpreterNoSignal();
   stubExpressionRendererEchoes();
 
   const turn = makeTurn('t-clarify-1', 'כדאי לי להתאמן היום?');
@@ -433,6 +450,7 @@ test('DUC-NEGCONTROL-2. "אל תציע לי ריצה, אבל מה עם אימו�
     }
   });
   stubTrainingReadinessActionProposed();
+  stubRiskCharacteristicInterpreterNoSignal();
   stubExpressionRendererEchoes();
 
   const turn = makeTurn('t-negcontrol-2', 'אל תציע לי ריצה, אבל מה עם אימון היום?');
@@ -562,6 +580,7 @@ test('DUC-COLLISION-2 (CRITICAL — proves the Turn-Serving defect is corrected)
       expectedValue: 'התאמת העצימות עשויה למנוע פציעה מיותרת.', uncertainty: 'לא ידוע אם חוסר השינה משמעותי דיו.'
     }) }] })
   });
+  stubRiskCharacteristicInterpreterNoSignal();
 
   const turn = { turnId: 't-collision-2', text: 'ישנתי 5 שעות, כדאי לי להתאמן היום?', submittedAt: Date.now(), sessionGeneration: 1 };
   const turnUnderstanding = {

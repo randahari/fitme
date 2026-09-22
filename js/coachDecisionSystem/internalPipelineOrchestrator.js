@@ -158,6 +158,14 @@
   var RiskCharacteristicIntakeGate = (typeof module !== 'undefined' && module.exports)
     ? require('./riskCharacteristicIntakeGate.js')
     : window.RiskCharacteristicIntakeGate;
+  // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.1(a)/§10.1/§16/
+  // §17) — reused here for the independent Candidate-content characterization step
+  // (characterizeActionTextForSafety() below): the same closed-vocabulary shape validator D.1-D.5
+  // already use, applied now to candidate.riskCharacteristicTags/safeAlternativeCharacterization
+  // construction, never trusting RiskCharacteristicInterpreter's own output without re-validation.
+  var RiskCharacteristicValidator = (typeof module !== 'undefined' && module.exports)
+    ? require('./riskCharacteristicValidator.js')
+    : window.RiskCharacteristicValidator;
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 step 3) — the new memoryLayer/
   // PREFERENCE_CONSENT_READ StateAccess capability-holder identity, a sibling to the existing
   // memoryLayer identities (user-stated-memory / recent-conversation) MemoryLayer.js itself
@@ -876,6 +884,220 @@
   // as a direct dispatch function for a future Stage 3/4 caller with real Opportunities, or
   // tests, structurally parallel to runForOpportunity/runForInitiativeOpportunity (§28.10).
   //
+  // ══════════════════════════════════════════════════════════════════
+  // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.1(a)/§10.1/§13/
+  // §16/§17, Product+Architecture APPROVED) — the independent candidate-content characterization
+  // step. Reuses the exact Stage 5/6 seam TRR-001's own reasoning step already established
+  // (immediately below, resolveTrainingReadinessProposal()'s own caller in runDecisionPass()) —
+  // never a new orchestration seam, per §17's own binding requirement.
+  //
+  // Scope, disclosed precisely against the Sub-Spec's own literal text (§16: "sourced from the
+  // orchestrator's post-processing step, not from the raw StandardProposal" — machinery tied to a
+  // StandardProposal-shaped reasoning OUTPUT): this step runs only where a reasoning capability's
+  // own proposal exists to characterize — today, only TRR's branch (the sole LIVE StandardProposal-
+  // shaped Candidate producer; recommendationEngine.js's own DECISION_WINDOW source is a
+  // permanently-empty detector, RG-1, and its own CC-03 contract is separately, explicitly closed
+  // to new fields — "בדיוק שבעת השדות הללו, ללא הוספה/גריעה," never touched by this phase). A
+  // future general-reasoning fallback capability's own branch would gain this identical step the
+  // same way, once Phase E ever wires one live (§17's own disclosed implication, restated; this
+  // file deliberately never spells out that capability's own module/export name anywhere in its
+  // own source — tests/generalReasoningActivationGate.test.js structurally proves this file still
+  // never references it at all, unaffected by this phase) — this function is
+  // capability-agnostic by construction, operating only on already-produced action text, never on
+  // which capability produced it.
+  //
+  // Binding requirement (Round-2, §09.3/§11/§26 item 2, restated for this implementation): runs
+  // UNCONDITIONALLY whenever a reasoning branch is taken — never gated on, or skipped because of,
+  // any capability's own declared riskCharacteristicDimensions (this function never reads that
+  // declaration at all — structurally cannot consult what it never receives).
+  //
+  // Durable-fact domain matching + WP0 Phase D.6.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_
+  // SUBSPEC_v1.0.md, D.6.1 canonical addition, Product+Architecture APPROVED) — Governed
+  // Durable-Constraint Relation Matching. classifyCandidateContent() produces only
+  // {domain,anchorText} — never severity/relation (§09.1(a): "those require durable-fact matching,
+  // which this function has no access to and must not guess at"). This function performs that
+  // matching in two strictly separate steps, per D.6.1's own binding canonical decision
+  // ("RELATION AUTHORITY != SEVERITY AUTHORITY"):
+  //
+  //   1. Domain co-occurrence with an active durable governed fact
+  //      (pipelineContext.riskCharacteristicFactContext.items, Phase D.5) is ONLY the TRIGGER for
+  //      a further relation comparison — never itself the answer. A shared RiskDomain alone must
+  //      NEVER establish a direct conflict (D.6.1's own explicit binding requirement).
+  //   2. resolveDurableFactRelation() (below) invokes the new, bounded, D.3-patterned
+  //      RiskCharacteristicInterpreter.classifyCandidateConflictWithFact() against each active fact
+  //      in the matched domain — a narrow relation-only comparison between two ALREADY-EXISTING,
+  //      already-governed pieces of content (the candidate's own independently-characterized
+  //      action text; the fact's own literal, already-durable statement text). This call's
+  //      authority is limited strictly to CONFIRMED_CONFLICT / CONFIRMED_NO_CONFLICT / AMBIGUOUS —
+  //      it never proposes severity, diagnosis, or a broader proposition than the fact's own
+  //      literal text; nothing it produces is ever persisted (transient Safety governance state
+  //      only, exactly like every other candidate-content characterization output).
+  //
+  // CONFIRMED_CONFLICT -> relation:'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT',
+  // severity:'NOT_ESTABLISHED' (D.6.1's own new, closed ConstraintSeverity member — never
+  // model-proposed, never inferred from RiskDomain, never persisted as part of the user's durable
+  // fact). D.5's own earlier, binding authority correction (Phase D.3/D.5) means the durable record
+  // itself never carries a severity value, and this mechanism does not reintroduce one — relation
+  // (is there a conflict) and severity (how consequential) are deliberately, permanently kept as
+  // separate authority questions; safetyLayer.js's own new, dedicated dims branch (D.6.1) resolves
+  // this combination to the conservative INSUFFICIENT/DEFERRED path, never BLOCKED/MODIFIED, until
+  // some future, separately-approved mechanism can supply real severity authority.
+  //
+  // CONFIRMED_NO_CONFLICT -> relation:'NO_KNOWN_CONFLICT' — never a false conflict.
+  // AMBIGUOUS, or any classifier failure/timeout/malformed output -> relation:'UNRESOLVED_RELEVANCE'
+  // (fail-closed; matchGovernedRiskCharacteristicRule()'s own unmodified handling maps this to
+  // INSUFFICIENT -> DEFERRED, never BLOCKED, exactly matching binding requirement 6). `severity` is
+  // still required by RiskCharacteristicValidator's own shape check for any non-NO_KNOWN_CONFLICT
+  // relation; the ADVISORY value supplied for UNRESOLVED_RELEVANCE is an inert placeholder —
+  // mapGovernedRiskCharacteristicTagToDims() checks relation==='UNRESOLVED_RELEVANCE' FIRST, before
+  // any severity-dependent branch, so this placeholder never influences the resulting disposition.
+  //
+  // No touched domain matches any durable fact -> relation:'NO_KNOWN_CONFLICT' (§12's own "the
+  // honest, common case") — anchorText/severity both null, per §08's own shape requirement.
+  //
+  // Failure/timeout/malformed extraction (binding requirement 6 — must never collapse to safe):
+  // returns a single, deliberately shape-INVALID sentinel tag ({evidenceSource:
+  // 'AI_CANDIDATE_CHARACTERIZATION'}, missing domain/relation/anchorText) rather than an empty
+  // array. matchGovernedRiskCharacteristicRule() (safetyLayer.js, completely unmodified by this
+  // phase) already, structurally, routes any shape-invalid tag actually present in the array to
+  // governedRiskCharacteristicInsufficientDims() -> INSUFFICIENT/INFERENCE -> DEFERRED (its own
+  // pre-existing, tested "malformed tag is never silently dropped" discipline, binding requirement
+  // 4) — reused here verbatim, never reimplemented. An empty array would instead be
+  // indistinguishable from "ran, found nothing" (the honest NO_KNOWN_CONFLICT case) and would
+  // silently collapse a genuine extraction failure to UNMODIFIED — exactly what binding
+  // requirement 6 forbids.
+  async function characterizeActionTextForSafety(actionText, pipelineContext) {
+    var classification;
+    try {
+      classification = await RiskCharacteristicInterpreter.classifyCandidateContent(actionText);
+    } catch (e) {
+      classification = { status: 'FAILED' };
+    }
+    if (!classification || classification.status !== 'CLASSIFIED' || !Array.isArray(classification.tags)) {
+      return Object.freeze([Object.freeze({ evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION' })]);
+    }
+
+    var rcfItems = (pipelineContext && pipelineContext.riskCharacteristicFactContext
+      && Array.isArray(pipelineContext.riskCharacteristicFactContext.items))
+      ? pipelineContext.riskCharacteristicFactContext.items : [];
+    var durableFactsByDomain = {};
+    rcfItems.forEach(function (item) {
+      if (!item || typeof item.riskDomain !== 'string') return;
+      if (!durableFactsByDomain[item.riskDomain]) durableFactsByDomain[item.riskDomain] = [];
+      durableFactsByDomain[item.riskDomain].push(item);
+    });
+
+    var tags = [];
+    for (var i = 0; i < classification.tags.length; i++) {
+      var t = classification.tags[i];
+      var domain = t && t.domain;
+      var matchingFacts = durableFactsByDomain[domain] || [];
+      var built = (matchingFacts.length === 0)
+        ? { domain: domain, relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null }
+        : await resolveDurableFactRelation(domain, actionText, matchingFacts, t);
+      // Defense-in-depth — never trust this function's own construction blindly; an entry that
+      // somehow fails shape validation (e.g. an out-of-vocabulary domain the interpreter itself
+      // should already have dropped) is replaced with the same fail-closed sentinel above, never
+      // silently included as if it were a genuine tag.
+      if (!RiskCharacteristicValidator.isValidRiskCharacteristicTagShape(built)) {
+        built = { evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION' };
+      }
+      tags.push(Object.freeze(built));
+    }
+    return Object.freeze(tags);
+  }
+
+  // WP0 Phase D.6.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md, D.6.1 canonical
+  // addition, Product+Architecture APPROVED) — Governed Durable-Constraint Relation Matching.
+  // Relates the candidate's own action text against EACH active durable fact already filed under
+  // the matched domain, via RiskCharacteristicInterpreter.classifyCandidateConflictWithFact() — the
+  // SAME bounded, fail-closed, D.3-patterned mechanism classifyCorrectionWithStatus() already
+  // established (§10.2's own precedent), applied to a different, narrower question ("does this
+  // candidate conflict with this fact," never "does this fact still apply").
+  //
+  // Aggregation across multiple facts in the SAME domain (e.g. two distinct allergies): a single
+  // CONFIRMED_CONFLICT against ANY one fact wins outright and short-circuits — the safety-protective
+  // direction, never diluted by other, unrelated facts in the same domain also being checked.
+  // Absent any confirmed conflict, a single classifier failure or AMBIGUOUS result on ANY checked
+  // fact forces the whole domain check to UNRESOLVED_RELEVANCE — fail-closed, never a partial or
+  // silent conclusion. Only a clean sweep of CONFIRMED_NO_CONFLICT across every active fact in the
+  // domain resolves NO_KNOWN_CONFLICT.
+  //
+  // A confirmed conflict NEVER carries a severity from this function — severity:'NOT_ESTABLISHED'
+  // is used unconditionally (D.6.1's own binding canonical decision: relation authority and
+  // severity authority are strictly separate). evidenceSource:'DURABLE_GOVERNED_USER_FACT' reflects
+  // that the CONFLICTING EVIDENCE (the fact itself) is durable/governed — not that the relation
+  // JUDGMENT was AI-free; evidenceConfidenceForTag()'s own unmodified mapping then honestly assigns
+  // EXPLICIT_USER_STATEMENT tier, preserving the real distinction between "a well-evidenced,
+  // confirmed relation with an unresolved severity" and a genuinely low-confidence/ambiguous case.
+  async function resolveDurableFactRelation(domain, actionText, matchingFacts, originalTag) {
+    var anyFailed = false;
+    var anyAmbiguous = false;
+    for (var i = 0; i < matchingFacts.length; i++) {
+      var fact = matchingFacts[i];
+      var result;
+      try {
+        result = await RiskCharacteristicInterpreter.classifyCandidateConflictWithFact(actionText, fact.literalStatementText);
+      } catch (e) {
+        result = { status: 'FAILED' };
+      }
+      if (!result || result.status !== 'CLASSIFIED') { anyFailed = true; continue; }
+      if (result.relation === 'CONFIRMED_CONFLICT') {
+        return {
+          domain: domain, relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT', severity: 'NOT_ESTABLISHED',
+          evidenceSource: 'DURABLE_GOVERNED_USER_FACT', anchorText: (originalTag && originalTag.anchorText) || null
+        };
+      }
+      if (result.relation === 'AMBIGUOUS') { anyAmbiguous = true; continue; }
+      // CONFIRMED_NO_CONFLICT — keep checking any remaining facts in this domain.
+    }
+    if (anyFailed || anyAmbiguous) {
+      return {
+        domain: domain, relation: 'UNRESOLVED_RELEVANCE', severity: 'ADVISORY',
+        evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: (originalTag && originalTag.anchorText) || null
+      };
+    }
+    return { domain: domain, relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null };
+  }
+
+  // WP0 Phase D.6 (§16) — combines the primary proposal's own characterization (always run) with
+  // the optional safeAlternative's own, SEPARATE characterization (only when a shape-valid
+  // safeAlternative was actually proposed) — the identical classifyCandidateContent() mechanism,
+  // reused twice, never a second, different mechanism. safeAlternativeCharacterization is `null`
+  // (never `[]`) when no safeAlternative was proposed at all — distinct from "characterized, found
+  // nothing" — so safetyLayer.js's own gate can tell "nothing to check" from "checked, clear."
+  async function characterizeCandidateForSafety(proposalActionText, safeAlternative, pipelineContext) {
+    var riskCharacteristicTags = await characterizeActionTextForSafety(proposalActionText, pipelineContext);
+    var safeAlternativeCharacterization = null;
+    if (safeAlternative && typeof safeAlternative.action === 'string' && safeAlternative.action.length > 0) {
+      safeAlternativeCharacterization = await characterizeActionTextForSafety(safeAlternative.action, pipelineContext);
+    }
+    return { riskCharacteristicTags: riskCharacteristicTags, safeAlternativeCharacterization: safeAlternativeCharacterization };
+  }
+
+  // WP0 Phase D.6 (§16) — attaches the independently-derived characterization onto the
+  // already-resolved TRR opportunity, additively, the SAME undefined-safe threading pattern
+  // actionCategory/activityReference/actionIdentity already established (resolveTrainingReadiness
+  // Proposal() below) — riskCharacteristicTags is ALWAYS attached (never undefined; unconditional
+  // per binding requirement 6/§09.3), safeAlternative/safeAlternativeCharacterization are attached
+  // together, only when a real, characterized alternative exists (both present or both absent —
+  // never one without the other, so safetyLayer.js's MODIFIED content-sourcing gate never sees a
+  // characterization with no content to source, or content with no independent evidence for it).
+  async function attachSafetyCharacterization(resolvedOpportunity, proposal, pipelineContext) {
+    if (!resolvedOpportunity) return resolvedOpportunity;
+    var characterization = await characterizeCandidateForSafety(
+      resolvedOpportunity.proposedAction, proposal && proposal.safeAlternative, pipelineContext);
+    var out = {};
+    for (var k in resolvedOpportunity) { if (Object.prototype.hasOwnProperty.call(resolvedOpportunity, k)) out[k] = resolvedOpportunity[k]; }
+    out.riskCharacteristicTags = characterization.riskCharacteristicTags;
+    if (characterization.safeAlternativeCharacterization !== null) {
+      out.safeAlternative = proposal.safeAlternative;
+      out.safeAlternativeCharacterization = characterization.safeAlternativeCharacterization;
+    }
+    try { return Object.freeze(out); } catch (e) { return out; }
+  }
+  // ══════════════════════════════════════════════════════════════════
+
   // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21) — resolves the bounded reasoning component's
   // own structured output into a real EligibleOpportunity carrying the actual proposedAction, or
   // returns null (NO_VIABLE_PROPOSAL / any failure mode) — in which case the originating
@@ -978,6 +1200,11 @@
         catch (e) { proposal = null; } // defensive — propose() itself never throws, kept for safety
         var resolvedOpportunity = resolveTrainingReadinessProposal(eligibleOpportunity, proposal);
         if (!resolvedOpportunity) continue; // NO_VIABLE_PROPOSAL / any failure — contributes nothing this pass
+        // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.3/§13/§17,
+        // Round-2 binding decision) — unconditional independent Safety characterization, for this
+        // (today, the sole live) reasoning branch — never gated on TRR's own
+        // riskCharacteristicDimensions:[] declaration, never skipped for any reason.
+        resolvedOpportunity = await attachSafetyCharacterization(resolvedOpportunity, proposal, pipelineContext);
         candidateLists.push(dispatchStage6(pipelineContext, resolvedOpportunity));
         continue;
       }
@@ -1120,7 +1347,14 @@
     // DUC-001 Post-Implementation Turn-Serving Correction — exposed for direct unit testing.
     isAdmittedForTurnServingPass: isAdmittedForTurnServingPass,
     // TRR-001 (docs/specs/TRR_001_SPEC_v1.0.md §19-21) — exposed for direct unit testing.
-    resolveTrainingReadinessProposal: resolveTrainingReadinessProposal
+    resolveTrainingReadinessProposal: resolveTrainingReadinessProposal,
+    // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.1(a)/§16) —
+    // exposed for direct unit testing, structurally parallel to the exports above.
+    characterizeActionTextForSafety: characterizeActionTextForSafety,
+    // WP0 Phase D.6.1 — exposed for direct unit testing.
+    resolveDurableFactRelation: resolveDurableFactRelation,
+    characterizeCandidateForSafety: characterizeCandidateForSafety,
+    attachSafetyCharacterization: attachSafetyCharacterization
   };
 
   if (typeof window !== 'undefined') { window.CoachDecisionSystemOrchestrator = API; }

@@ -51,13 +51,30 @@
     'NO_KNOWN_CONFLICT'
   ]);
 
-  // §08.3 — ConstraintSeverity (closed, 4 values): how consequential a match is, independent of
+  // §08.3 — ConstraintSeverity (closed, 5 values): how consequential a match is, independent of
   // domain — the axis that drives disposition selection (Sub-Spec §14, not this file's concern).
+  //
+  // WP0 Phase D.6.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md, D.6.1 canonical
+  // addition, Product+Architecture APPROVED) — NOT_ESTABLISHED is a closed, additive member
+  // representing a genuine, first-class governance state: a relation has been authoritatively
+  // confirmed (e.g. DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT), but no closed-taxonomy mechanism can
+  // yet determine HOW consequential that confirmed relation is, without either (a) deriving
+  // severity from RiskDomain alone (rejected — a food intolerance and a life-threatening allergy
+  // can share the same domain) or (b) trusting an AI-proposed severity as authority (rejected by
+  // D.3/D.4's own binding corrections). RELATION AUTHORITY != SEVERITY AUTHORITY (D.6.1's own
+  // binding canonical decision) — this value is how that distinction is represented in the closed
+  // taxonomy, brings ConstraintSeverity into consistency with every OTHER axis in this system
+  // (EVIDENCE_CONFIDENCE/CORRECTABILITY/URGENCY/RISK_TYPES in safetyLayer.js all already have their
+  // own "not yet determined" closed member), and is NEVER model-proposed, NEVER inferred from
+  // RiskDomain, and NEVER persisted as part of a user's durable risk_characteristic_fact record
+  // (transient Safety governance state only, exactly like every other candidate-content
+  // characterization output — see internalPipelineOrchestrator.js's own resolveDurableFactRelation()).
   var CONSTRAINT_SEVERITY = Object.freeze([
     'ADVISORY',
     'PROHIBITIVE',
     'LIFE_CRITICAL',
-    'REQUIRES_PROFESSIONAL_JUDGMENT'
+    'REQUIRES_PROFESSIONAL_JUDGMENT',
+    'NOT_ESTABLISHED'
   ]);
 
   // §08.4 — EvidenceSource (closed, 3 values): where a tag's evidence came from.

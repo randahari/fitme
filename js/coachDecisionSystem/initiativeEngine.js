@@ -513,7 +513,18 @@
       // are only included at all when the opportunity itself carries the field).
       opportunity.actionCategory !== undefined ? { actionCategory: opportunity.actionCategory } : {},
       opportunity.activityReference !== undefined ? { activityReference: opportunity.activityReference } : {},
-      opportunity.actionIdentity !== undefined ? { actionIdentity: opportunity.actionIdentity } : {}
+      opportunity.actionIdentity !== undefined ? { actionIdentity: opportunity.actionIdentity } : {},
+      // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §16) —
+      // riskCharacteristicTags/safeAlternative/safeAlternativeCharacterization, additive, the SAME
+      // undefined-safe threading pattern as the three TRR fields immediately above — sourced
+      // exclusively from internalPipelineOrchestrator.js's own independent characterization step
+      // (attachSafetyCharacterization()), never from this engine's own logic, and never from the
+      // raw StandardProposal a reasoning capability returned. Undefined-safe for every existing,
+      // non-D.6 caller (every Opportunity's own opportunity.riskCharacteristicTags is undefined,
+      // exactly as it is today).
+      opportunity.riskCharacteristicTags !== undefined ? { riskCharacteristicTags: opportunity.riskCharacteristicTags } : {},
+      opportunity.safeAlternative !== undefined ? { safeAlternative: opportunity.safeAlternative } : {},
+      opportunity.safeAlternativeCharacterization !== undefined ? { safeAlternativeCharacterization: opportunity.safeAlternativeCharacterization } : {}
     ));
 
     // step 8: candidate validation — a Candidate that fails its own shape is discarded, not

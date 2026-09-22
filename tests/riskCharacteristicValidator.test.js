@@ -53,9 +53,9 @@ test('RISK_RELATION_KINDS is the exact, exhaustive, frozen 4-value closed taxono
   assert.ok(Object.isFrozen(RiskCharacteristicValidator.RISK_RELATION_KINDS));
 });
 
-test('CONSTRAINT_SEVERITY is the exact, exhaustive, frozen 4-value closed taxonomy (§08.3)', () => {
+test('CONSTRAINT_SEVERITY is the exact, exhaustive, frozen 5-value closed taxonomy (§08.3 + WP0 Phase D.6.1\'s own NOT_ESTABLISHED addition, Product+Architecture APPROVED)', () => {
   assert.deepEqual(RiskCharacteristicValidator.CONSTRAINT_SEVERITY, [
-    'ADVISORY', 'PROHIBITIVE', 'LIFE_CRITICAL', 'REQUIRES_PROFESSIONAL_JUDGMENT'
+    'ADVISORY', 'PROHIBITIVE', 'LIFE_CRITICAL', 'REQUIRES_PROFESSIONAL_JUDGMENT', 'NOT_ESTABLISHED'
   ]);
   assert.ok(Object.isFrozen(RiskCharacteristicValidator.CONSTRAINT_SEVERITY));
 });
@@ -162,23 +162,22 @@ test('a genuinely novel, never-enumerated activity concept is correctly validate
   assert.equal(RiskCharacteristicValidator.isLiteralAnchorValid(noveltyTag, 'אני רוצה לנסות קרלינג היום'), true);
 });
 
-// ── Phase D.1 scope-purity structural proof: zero pipeline wiring ───────────
+// ── Phase D.1 scope-purity structural proof: zero pipeline wiring AT D.1 ────
 
-test('riskCharacteristicValidator.js is not referenced from any live routing/orchestration seam (Phase D.1 is taxonomy+validator only, zero pipeline wiring per §22)', () => {
+test('riskCharacteristicValidator.js is not referenced from conversationalNeedCreator.js/memoryLayer.js/app.js (Phase D.1 is taxonomy+validator only, zero pipeline wiring per §22; internalPipelineOrchestrator.js IS a legitimate D.6 consumer, per §09.1(a)\'s own defense-in-depth re-validation — proven separately below, never widened beyond that one file)', () => {
   const seams = [
     'conversationalNeedCreator.js',
-    'internalPipelineOrchestrator.js',
     'memoryLayer.js',
     'app.js'
   ];
   seams.forEach((fileName) => {
     const filePath = path.join(__dirname, '..', 'js', fileName === 'app.js' ? 'app.js' : path.join('coachDecisionSystem', fileName));
     const src = fs.readFileSync(filePath, 'utf8');
-    assert.equal(/riskCharacteristicValidator|RiskCharacteristicValidator/.test(src), false, fileName + ' must not yet reference RiskCharacteristicValidator');
+    assert.equal(/riskCharacteristicValidator|RiskCharacteristicValidator/.test(src), false, fileName + ' must not reference RiskCharacteristicValidator');
   });
 });
 
-test('only standardProposalContract.js (Phase D.1), riskCharacteristicInterpreter.js (Phase D.2), riskCharacteristicIntakeGate.js (Phase D.3), and safetyLayer.js (Phase D.4, added as its own legitimate closed-vocabulary consumer for shape validation of riskCharacteristicTags) require riskCharacteristicValidator.js — no other production file does', () => {
+test('only standardProposalContract.js (Phase D.1), riskCharacteristicInterpreter.js (Phase D.2), riskCharacteristicIntakeGate.js (Phase D.3), safetyLayer.js (Phase D.4, its own legitimate closed-vocabulary consumer for shape validation of riskCharacteristicTags), and internalPipelineOrchestrator.js (Phase D.6, characterizeActionTextForSafety()\'s own defense-in-depth re-validation of its own constructed tags before ever including them on a Candidate) require riskCharacteristicValidator.js — no other production file does', () => {
   const jsDir = path.join(__dirname, '..', 'js');
   function walk(dir) {
     let matches = [];
@@ -195,5 +194,5 @@ test('only standardProposalContract.js (Phase D.1), riskCharacteristicInterprete
     return matches;
   }
   const requirers = walk(jsDir).map((p) => path.basename(p)).sort();
-  assert.deepEqual(requirers, ['riskCharacteristicIntakeGate.js', 'riskCharacteristicInterpreter.js', 'safetyLayer.js', 'standardProposalContract.js']);
+  assert.deepEqual(requirers, ['internalPipelineOrchestrator.js', 'riskCharacteristicIntakeGate.js', 'riskCharacteristicInterpreter.js', 'safetyLayer.js', 'standardProposalContract.js']);
 });

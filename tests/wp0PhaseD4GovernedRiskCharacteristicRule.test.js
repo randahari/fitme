@@ -238,14 +238,17 @@ test('no new predicate branch was added to evaluateRulePredicate() — every ESC
   assert.equal(escalatedChecks, 4); // dims.escalationRequired, ACTIVE_HIGH_RISK_SYMPTOM+IMMEDIATE_PROTECTIVE, PSYCHOLOGICAL_DISTRESS_CONCERN+immediateProtective..., outsideCoachingAuthority... — unchanged from before this phase
 });
 
-// ── MODIFIED / safeAlternative — CORRECTED (Product/Architecture authority correction, this
-//    round): bare presence of a model-proposed safeAlternative is NEVER sufficient to authorize
-//    BOUNDED_MODIFICATION. A safeAlternative is non-authoritative AI output exactly like any other
-//    model-proposed content; only independently-derived, governed evidence (Phase D.6, not built)
-//    may ever make BOUNDED_MODIFICATION eligible. Until then, this Rule can never reach MODIFIED
-//    at all (binding requirement 7).
+// ── MODIFIED / safeAlternative — Phase D.4's authority correction PRESERVED, Phase D.6 closes the
+//    extension point it deliberately left open: bare presence/self-certification of a
+//    model-proposed safeAlternative is STILL never sufficient to authorize BOUNDED_MODIFICATION —
+//    every test below that exercises the ungoverned case is UNCHANGED from D.4 (same assertions,
+//    same protection). What changed: genuinely independently-derived evidence
+//    (candidate.safeAlternativeCharacterization, produced only by
+//    internalPipelineOrchestrator.js's own re-characterization step, never settable by the
+//    proposing capability) now CAN authorize it — tests 4/5/6 below are extended, not weakened, to
+//    also prove the newly-reachable governed path.
 
-test('1. bare safeAlternative PRESENCE cannot authorize BOUNDED_MODIFICATION — every row that used to be gated on presence alone now always resolves to REQUIRES_INTENT_CHANGE, with a safeAlternative present or not', () => {
+test('1. bare safeAlternative PRESENCE (with no independently-derived safeAlternativeCharacterization) cannot authorize BOUNDED_MODIFICATION — every row that used to be gated on presence alone still always resolves to REQUIRES_INTENT_CHANGE, with a safeAlternative present or not', () => {
   const rows = [
     { domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' },
     { domain: 'EATING_PATTERN_OR_BODY_IMAGE', severity: 'ADVISORY', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' },
@@ -255,12 +258,12 @@ test('1. bare safeAlternative PRESENCE cannot authorize BOUNDED_MODIFICATION —
     const withoutAlt = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(tag(row), {});
     const withAlt = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(tag(row), { safeAlternative: { action: 'a proposed alternative' } });
     assert.equal(withoutAlt.correctability, 'REQUIRES_INTENT_CHANGE', JSON.stringify(row) + ' without safeAlternative');
-    assert.equal(withAlt.correctability, 'REQUIRES_INTENT_CHANGE', JSON.stringify(row) + ' with safeAlternative present');
-    assert.equal(SafetyLayer.evaluateRulePredicate(withAlt), 'BLOCKED', JSON.stringify(row) + ' must resolve BLOCKED, never MODIFIED');
+    assert.equal(withAlt.correctability, 'REQUIRES_INTENT_CHANGE', JSON.stringify(row) + ' with safeAlternative present but uncharacterized');
+    assert.equal(SafetyLayer.evaluateRulePredicate(withAlt), 'BLOCKED', JSON.stringify(row) + ' must resolve BLOCKED, never MODIFIED, without governed evidence');
   });
 });
 
-test('2. AI/model output cannot SELF-CERTIFY its own alternative as safe — a safeAlternative object that itself CLAIMS to be verified/safe/cleared is treated identically to any other proposal, because this Rule never even inspects the field\'s content, only whether Phase D.6\'s own (not-yet-existing) governed evidence object is present', () => {
+test('2. AI/model output cannot SELF-CERTIFY its own alternative as safe — a safeAlternative object that itself CLAIMS to be verified/safe/cleared is treated identically to any other proposal, because this Rule never inspects .safeAlternative\'s own content at all, only the SEPARATE, independently-derived .safeAlternativeCharacterization field, which a self-certifying claim never populates', () => {
   const selfCertifyingClaims = [
     { verified: true, safe: true, action: 'do this instead' },
     { riskCharacterization: { relation: 'NO_KNOWN_CONFLICT' } }, // a fabricated, self-asserted "clearance"
@@ -276,13 +279,13 @@ test('2. AI/model output cannot SELF-CERTIFY its own alternative as safe — a s
   });
 });
 
-test('3. absent verified alternative evidence follows the conservative REQUIRES_INTENT_CHANGE/BLOCKED path — the governed default when no independently-derived evidence exists in the canonical contract', () => {
+test('3. absent verified alternative evidence follows the conservative REQUIRES_INTENT_CHANGE/BLOCKED path — the governed default when no independently-derived evidence exists', () => {
   const dims = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(
     tag({ domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' }), {});
   assert.equal(dims.correctability, 'REQUIRES_INTENT_CHANGE');
 });
 
-test('4. MODIFIED is entirely unreachable via this Rule today — no combination of domain/severity/relation/safeAlternative content can produce correctability=BOUNDED_MODIFICATION', () => {
+test('4. MODIFIED is unreachable from ungoverned safeAlternative content — no combination of domain/severity/relation/bare-safeAlternative content can produce correctability=BOUNDED_MODIFICATION without a matching, independently-derived safeAlternativeCharacterization entry', () => {
   const domains = RiskCharacteristicValidator.RISK_DOMAINS;
   const severities = RiskCharacteristicValidator.CONSTRAINT_SEVERITY;
   const relations = ['DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT', 'ACUTE_STATE_INDICATED_THIS_TURN', 'UNRESOLVED_RELEVANCE'];
@@ -300,26 +303,83 @@ test('4. MODIFIED is entirely unreachable via this Rule today — no combination
   });
 });
 
-test('5. finalReview() cannot reach MODIFIED via this Rule regardless of safeAlternative — disposition resolves BLOCKED, and modifiedContent remains honestly null as it always has', async () => {
+test('4b (WP0 Phase D.6, new). MODIFIED IS reachable once genuinely independently-derived evidence clears the SAME domain — a safeAlternativeCharacterization entry with relation=NO_KNOWN_CONFLICT for the matching domain authorizes BOUNDED_MODIFICATION; a mismatched domain, or one still showing UNRESOLVED_RELEVANCE, does not', () => {
+  const cleared = { domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null };
+  const clearedDims = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(
+    tag({ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' }),
+    { safeAlternativeCharacterization: [cleared] });
+  assert.equal(clearedDims.correctability, 'BOUNDED_MODIFICATION');
+  assert.equal(SafetyLayer.evaluateRulePredicate(clearedDims), 'MODIFIED');
+
+  const wrongDomain = { domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null };
+  const wrongDomainDims = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(
+    tag({ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' }),
+    { safeAlternativeCharacterization: [wrongDomain] });
+  assert.equal(wrongDomainDims.correctability, 'REQUIRES_INTENT_CHANGE', 'a clearance for a DIFFERENT domain must never authorize this one');
+
+  const stillUnresolved = { domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', relation: 'UNRESOLVED_RELEVANCE', severity: 'ADVISORY', evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: 'x' };
+  const stillUnresolvedDims = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(
+    tag({ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' }),
+    { safeAlternativeCharacterization: [stillUnresolved] });
+  assert.equal(stillUnresolvedDims.correctability, 'REQUIRES_INTENT_CHANGE', 'the alternative itself still showing a domain-level conflict must never authorize MODIFIED');
+
+  // A shape-invalid (e.g. failure-sentinel) entry is never trusted as clearance either.
+  const sentinelDims = SafetyLayer.mapGovernedRiskCharacteristicTagToDims(
+    tag({ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', severity: 'PROHIBITIVE', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' }),
+    { safeAlternativeCharacterization: [{ evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION' }] });
+  assert.equal(sentinelDims.correctability, 'REQUIRES_INTENT_CHANGE');
+});
+
+test('5. finalReview() cannot reach MODIFIED via bare safeAlternative — disposition resolves BLOCKED, and modifiedContent remains honestly null, exactly as before Phase D.6', async () => {
   const candidate = { riskCharacteristicTags: [tag({ domain: 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', severity: 'ADVISORY', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' })], safeAlternative: { action: 'try this instead', verified: true } };
   const result = await SafetyLayer.finalReview({}, {}, candidate);
   assert.equal(result.disposition, 'BLOCKED');
   assert.equal(result.modifiedContent, null);
 });
 
-test('6. governedCorrectabilityWithSafeAlternativeGate is a constant REQUIRES_INTENT_CHANGE today, for every input shape, including malformed/absent candidates', () => {
-  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternative: { anything: 'at all, even garbage' } }), 'REQUIRES_INTENT_CHANGE');
-  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternative: null }), 'REQUIRES_INTENT_CHANGE');
-  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({}), 'REQUIRES_INTENT_CHANGE');
-  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate(null), 'REQUIRES_INTENT_CHANGE');
-  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate(undefined), 'REQUIRES_INTENT_CHANGE');
+test('5b (WP0 Phase D.6, new). finalReview() DOES reach MODIFIED, with modifiedContent sourced from candidate.safeAlternative.action, once governed evidence clears the matching domain', async () => {
+  const candidate = {
+    riskCharacteristicTags: [tag({ domain: 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', severity: 'ADVISORY', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' })],
+    safeAlternative: { action: 'try a gentler approach instead', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' },
+    safeAlternativeCharacterization: [{ domain: 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null }]
+  };
+  const result = await SafetyLayer.finalReview({}, {}, candidate);
+  assert.equal(result.disposition, 'MODIFIED');
+  assert.deepEqual(result.modifiedContent, { action: 'try a gentler approach instead' });
+});
+
+test('5c (WP0 Phase D.6, new). finalReview() never fabricates modifiedContent when the winning MODIFIED tuple\'s own candidate carries no usable safeAlternative.action, even if disposition still resolves MODIFIED by construction', async () => {
+  // Constructed directly (not via a real pipeline) to exercise finalReview()'s own defensive
+  // honest-null path — a real orchestrator never produces safeAlternativeCharacterization without
+  // an accompanying safeAlternative (attachSafetyCharacterization() always sets both together).
+  const candidate = {
+    riskCharacteristicTags: [tag({ domain: 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', severity: 'ADVISORY', relation: 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' })],
+    safeAlternativeCharacterization: [{ domain: 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE', relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null }]
+  };
+  const result = await SafetyLayer.finalReview({}, {}, candidate);
+  assert.equal(result.disposition, 'MODIFIED');
+  assert.equal(result.modifiedContent, null, 'never fabricate content — the ABORTED path this feeds into (decisionFormation.js) is the correct, honest failure mode here');
+});
+
+test('6. governedCorrectabilityWithSafeAlternativeGate is REQUIRES_INTENT_CHANGE for every ungoverned input shape (no safeAlternativeCharacterization, or one that does not clear the given domain), and BOUNDED_MODIFICATION only for a genuinely matching, shape-valid, NO_KNOWN_CONFLICT entry', () => {
+  const domain = 'PHYSICAL_EXERTION_OR_MOVEMENT';
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternative: { anything: 'at all, even garbage' } }, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternative: null }, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({}, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate(null, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate(undefined, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternativeCharacterization: 'not-an-array' }, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate({ safeAlternativeCharacterization: [] }, domain), 'REQUIRES_INTENT_CHANGE');
+  assert.equal(SafetyLayer.governedCorrectabilityWithSafeAlternativeGate(
+    { safeAlternativeCharacterization: [{ domain: domain, relation: 'NO_KNOWN_CONFLICT', severity: null, evidenceSource: 'AI_CANDIDATE_CHARACTERIZATION', anchorText: null }] }, domain
+  ), 'BOUNDED_MODIFICATION');
 });
 
 // ── TRR outcome equivalence — proved by construction, not merely by test observation ─────────
 
-test('riskCharacteristicTags is never set anywhere in production Candidate-construction code outside the WP0 Phase D.1-D.4 modules themselves — structurally guarantees this Rule contributes nothing to any real Candidate today', () => {
+test('riskCharacteristicTags is never set anywhere in production Candidate-construction code outside the WP0 Phase D.1-D.6 modules themselves — structurally confirms the ONLY production writer is internalPipelineOrchestrator.js\'s own D.6 characterization step (tests/wp0PhaseD6CandidateSafetyThreading.test.js proves that writer\'s own behavior directly)', () => {
   const jsDir = path.join(__dirname, '..', 'js');
-  const exemptFiles = ['riskCharacteristicValidator.js', 'riskCharacteristicInterpreter.js', 'riskCharacteristicIntakeGate.js', 'standardProposalContract.js', 'generalReasoningCapability.js', 'safetyLayer.js'];
+  const exemptFiles = ['riskCharacteristicValidator.js', 'riskCharacteristicInterpreter.js', 'riskCharacteristicIntakeGate.js', 'standardProposalContract.js', 'generalReasoningCapability.js', 'safetyLayer.js', 'internalPipelineOrchestrator.js', 'initiativeEngine.js'];
   function walk(dir) {
     let matches = [];
     fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
@@ -335,9 +395,9 @@ test('riskCharacteristicTags is never set anywhere in production Candidate-const
   assert.deepEqual(walk(jsDir), []);
 });
 
-test('safeAlternative is never set anywhere in production Candidate-construction code — the same structural guarantee for the MODIFIED content-sourcing gate', () => {
+test('safeAlternative is never set anywhere in production Candidate-construction code outside the WP0 Phase D.6-authorized writers — the same structural guarantee for the MODIFIED content-sourcing gate, narrowed to exactly the files this phase authorized to touch it', () => {
   const jsDir = path.join(__dirname, '..', 'js');
-  const exemptFiles = ['safetyLayer.js'];
+  const exemptFiles = ['safetyLayer.js', 'standardProposalContract.js', 'generalReasoningCapability.js', 'internalPipelineOrchestrator.js', 'initiativeEngine.js'];
   function walk(dir) {
     let matches = [];
     fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {

@@ -18,6 +18,15 @@ const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const DateUtils = require('../js/core/dateUtils.js');
 const ReadinessStateInterpreter = require('../js/coachDecisionSystem/readinessStateInterpreter.js');
 const TrainingReadinessReasoningComponent = require('../js/coachDecisionSystem/trainingReadinessReasoningComponent.js');
+// WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §09.3/§13/§17) — the
+// new, unconditional independent Candidate-content characterization step now runs against every
+// real Candidate this TRR branch produces, including this file's own. Stubbed here the same way
+// every other bounded-interpreter seam already is — an honest "touches nothing" CLASSIFIED
+// response — so TRR's own golden-master proof (a real Candidate is produced) is not obscured by
+// this Sub-Spec's own separate, deliberate fail-closed-on-unconfigured behavior (binding
+// requirement 6: an unconfigured/failed characterization must defer, never silently pass through
+// as if it never ran — proven directly by tests/wp0PhaseD6CandidateSafetyThreading.test.js).
+const RiskCharacteristicInterpreter = require('../js/coachDecisionSystem/riskCharacteristicInterpreter.js');
 const ExpressionRenderer = require('../js/coachDecisionSystem/expressionRenderer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const Orchestrator = require('../js/coachDecisionSystem/internalPipelineOrchestrator.js');
@@ -54,9 +63,16 @@ function configureFixture(habitRecord, fetchUserStatedMemoryFn) {
   });
 }
 
+function stubRiskCharacteristicInterpreterNoSignal() {
+  RiskCharacteristicInterpreter.configure({
+    callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] })
+  });
+}
+
 test.afterEach(() => {
   ReadinessStateInterpreter.configure({ callClaude: null });
   TrainingReadinessReasoningComponent.configure({ callClaude: null });
+  RiskCharacteristicInterpreter.configure({ callClaude: null });
   ExpressionRenderer.configure({ generateFn: null });
 });
 
@@ -139,6 +155,8 @@ test('TRR-TEMPORAL-3. SAME-DAY, extended: a same-day WORKOUT_FREQUENCY Habit + a
   ExpressionRenderer.configure({
     generateFn: async () => 'תגובת מאמן לדוגמה (stub, לא מודל אמיתי) — התאמת אימון היום.'
   });
+
+  stubRiskCharacteristicInterpreterNoSignal();
 
   const result = await Orchestrator.run({
     userId: 'trr-temporal-user', sessionGeneration: 1, runId: 'trr-temporal-3',

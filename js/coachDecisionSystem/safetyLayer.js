@@ -49,14 +49,25 @@
 // SHALL NOT originate the underlying decision"). finalReview() below honestly returns
 // modifiedContent: null rather than fabricating content, which decisionFormation.js's own
 // pre-existing, unmodified invariant check (`if (!isPlainObject(reviewResult.modifiedContent))
-// return ABORTED`) already, correctly, Pipeline-Aborts on — no new abort path is invented. WP0
-// Phase D.4's matchGovernedRiskCharacteristicRule (below) does NOT make MODIFIED reachable: its own
-// governedCorrectabilityWithSafeAlternativeGate() always selects REQUIRES_INTENT_CHANGE, by design
-// (Product/Architecture authority correction, this round — a model-proposed safeAlternative's bare
-// presence is never sufficient evidence of safety; see that function's own header for the full
-// invariant and the Phase D.6 extension point it leaves open). MODIFIED remains, in practice, as
-// unreachable today as it was before this Rule existed — disclosed precisely, not silently left
-// ambiguous.
+// return ABORTED`) already, correctly, Pipeline-Aborts on — no new abort path is invented.
+//
+// WP0 Phase D.6 UPDATE (supersedes the D.4-era disclosure below, kept for its own historical
+// record): matchGovernedRiskCharacteristicRule() now CAN reach MODIFIED, but only through
+// governedCorrectabilityWithSafeAlternativeGate() consulting genuinely independently-derived
+// evidence (candidate.safeAlternativeCharacterization, produced exclusively by
+// internalPipelineOrchestrator.js's own re-characterization step, Phase D.6) — never from a
+// proposing capability's own bare safeAlternative presence or any self-asserted claim. When
+// MODIFIED is reached, finalReview() below sources modifiedContent from the SAME
+// candidate.safeAlternative content that gate already verified was cleared, never fabricated,
+// never re-derived a second, different way.
+//
+// D.4-era disclosure (historical, superseded by the paragraph above): "matchGovernedRiskCharacteristicRule
+// does NOT make MODIFIED reachable: its own governedCorrectabilityWithSafeAlternativeGate() always
+// selects REQUIRES_INTENT_CHANGE, by design (a model-proposed safeAlternative's bare presence is
+// never sufficient evidence of safety)... MODIFIED remains, in practice, as unreachable today as it
+// was before this Rule existed." — the bare-presence protection this paragraph describes is fully
+// preserved by Phase D.6 (see the gate's own current header); only the previously-nonexistent
+// governed evidence contract needed to exist for MODIFIED to become reachable.
 //
 // ══════════════════════════════════════════════════════════════════
 // WP0 Phase D.4 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §12/§13/§14, Revision 2,
@@ -79,12 +90,19 @@
 //
 // TRR zero-drift (golden-master OUTCOME equivalence, not code-path exemption — the Sub-Spec's own
 // Round-2 reconciliation): this Rule executes against TRR-produced Candidates the same as any
-// other, but contributes nothing to them today, PROVABLY BY CONSTRUCTION rather than merely by
-// test observation — no code anywhere in this repository (verified by grep across js/) ever sets
-// riskCharacteristicTags on a real Candidate object (that threading is Phase D.6's own job, not
-// built yet), so candidate.riskCharacteristicTags is undefined for every real Candidate today,
-// meaning this Rule always returns [] for every real Candidate today, always, structurally,
-// regardless of which capability produced it.
+// other. As of Phase D.4 (this paragraph's original writing), it contributed nothing to them
+// PROVABLY BY CONSTRUCTION — no code anywhere in this repository ever set riskCharacteristicTags
+// on a real Candidate object.
+//
+// WP0 Phase D.6 UPDATE: internalPipelineOrchestrator.js now DOES set riskCharacteristicTags on
+// every real Candidate produced by the (today, sole live) TRR reasoning branch — unconditionally,
+// per §09.3's own binding decision, never gated on TRR's own riskCharacteristicDimensions:[]
+// declaration. TRR zero-drift is now proven the way §13/§17/§19/§25.1 of the Sub-Spec always said
+// it would be once this phase landed: golden-master OUTCOME equivalence (tests/
+// wp0PhaseD6CandidateSafetyThreading.test.js), not structural non-execution — TRR's own real
+// request/response corpus is acceptance-tested to independently resolve NO_KNOWN_CONFLICT for
+// every domain classifyCandidateContent() ever touches, contributing zero dims tuples, exactly as
+// this Sub-Spec always required.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -102,6 +120,8 @@
   var DISPOSITION_PRECEDENCE = SafetyIntegrationPort.DISPOSITION_PRECEDENCE;
 
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
+  // WP0 Phase D.6 — used only by finalReview()'s own modifiedContent-sourcing check below.
+  function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
 
   // ── RCD-12.A — RiskType: closed 11-value enum. Engineering SHALL NOT extend. ──
   var RISK_TYPES = Object.freeze([
@@ -456,51 +476,45 @@
     return { riskType: 'INSUFFICIENT', evidenceConfidence: ec, correctability: 'INSUFFICIENT', urgency: 'INSUFFICIENT' };
   }
 
-  // §14 MODIFIED content-sourcing gate (binding requirement 7, CORRECTED — Product/Architecture
-  // review, this round).
+  // §14 MODIFIED content-sourcing gate (binding requirement 7).
   //
-  // AUTHORITY CORRECTION: an earlier version of this function treated the bare PRESENCE of
-  // candidate.safeAlternative as sufficient to select BOUNDED_MODIFICATION. Product/Architecture
-  // has ruled this insufficient, for exactly the same reason the Phase D.3 intake-gate correction
-  // applied: a model-proposed safeAlternative is non-authoritative AI output; its mere existence
-  // must never make Safety consider a candidate "safely modifiable." That is the classifier
-  // proposing its own safety verdict and Safety accepting it uncritically — precisely the
-  // authority inversion this Sub-Spec's every other mechanism is built to prevent.
+  // AUTHORITY CORRECTION (Phase D.4, preserved unchanged): the bare PRESENCE of
+  // candidate.safeAlternative is NEVER sufficient to select BOUNDED_MODIFICATION — a
+  // model-proposed safeAlternative is non-authoritative AI output; its mere existence must never
+  // make Safety consider a candidate "safely modifiable." This function still never reads
+  // candidate.safeAlternative's own content, and never invents or trusts any self-asserted
+  // "verified"/"safe"/similar flag a proposing capability could set on its own output — that would
+  // only relocate the same self-certification problem (Phase D.4's own header, preserved above in
+  // spirit).
   //
-  // Canonical invariant (§14, already approved, not yet implementable): safeAlternative proposed
-  // -> independently re-characterized via the SAME classifyCandidateContent() mechanism (§09.1(a))
-  // -> must itself resolve to relation='NO_KNOWN_CONFLICT' for the same domain -> ONLY THEN may
-  // BOUNDED_MODIFICATION become eligible. That independent re-characterization step, and the
-  // governed, validated evidence object it would produce on the Candidate, is Phase D.6's own job.
-  // It does not exist anywhere in this repository today (verified: candidate.safeAlternative is
-  // never set anywhere in production Candidate-construction code, and no governed
-  // re-characterization evidence field exists at all).
-  //
-  // Per explicit Product/Architecture instruction, this function does NOT invent a self-asserted
-  // "verified" flag (e.g. a hypothetical candidate.safeAlternativeVerified:true) as a substitute —
-  // that would only relocate the same self-certification problem, since nothing yet independently
-  // polices such a flag; GeneralReasoningCapability could set it on its own output exactly as
-  // easily as it sets safeAlternative itself, defeating the entire point.
-  //
-  // Until Phase D.6 defines and provides that real, governed, independently-DERIVED (never
-  // self-asserted) evidence contract, this function always returns the conservative
-  // REQUIRES_INTENT_CHANGE — regardless of whether candidate.safeAlternative is present, and
-  // regardless of anything that proposal's own content claims about itself (including a
-  // self-asserted claim to already be "verified" or "safe"). This never causes finalReview() to
-  // fabricate modifiedContent either way — that remains this file's own pre-existing, unmodified,
-  // honest null (file header).
-  //
-  // DESIGN NOTE for Phase D.6 (keeps this architecture ready without a SafetyLayer redesign): once
-  // a governed, independently-derived safeAlternative-characterization evidence object exists on
-  // the Candidate — e.g. a validated RiskCharacteristicTag-shaped result, produced by the SAME
+  // WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §14/§16, Product+
+  // Architecture APPROVED) — implements the design note this function's D.4 version left open.
+  // candidate.safeAlternativeCharacterization is the governed, independently-DERIVED evidence
+  // this gate consults: an array of RiskCharacteristicTag-shaped entries, produced ONLY by
+  // internalPipelineOrchestrator.js's own characterizeActionTextForSafety() (the SAME
   // classifyCandidateContent() + RiskCharacteristicValidator pipeline this file already reuses for
-  // the Candidate's own riskCharacteristicTags, never a bare boolean the proposing capability can
-  // set itself — this is the single, intended place to consult it: check that evidence object's
-  // own `relation === 'NO_KNOWN_CONFLICT'` for the matching domain, and select BOUNDED_MODIFICATION
-  // only then. No other change to this Rule, to CANONICAL_SAFETY_RULES, or to SafetyLayer's own
-  // architecture is anticipated to be required when that lands.
-  function governedCorrectabilityWithSafeAlternativeGate(candidate) {
-    return 'REQUIRES_INTENT_CHANGE';
+  // the Candidate's own riskCharacteristicTags) — never settable by the proposing capability
+  // itself (structurally verified: safeAlternativeCharacterization never appears anywhere in
+  // generalReasoningCapability.js or any reasoning capability's own output-construction code).
+  //
+  // BOUNDED_MODIFICATION is selected only when that independently-derived evidence contains a
+  // shape-valid entry for the SAME `domain` as the tag currently being mapped, with
+  // `relation === 'NO_KNOWN_CONFLICT'` — i.e. the alternative's own content was independently
+  // re-characterized and found to touch that domain with no known conflict. Absent evidence
+  // (safeAlternativeCharacterization is null/not an array — no safeAlternative was ever proposed,
+  // or this Candidate predates Phase D.6's own wiring), a still-conflicting characterization for
+  // that domain, or a malformed/failure-sentinel entry (which never validates as shape-valid) all
+  // fall through to the same conservative REQUIRES_INTENT_CHANGE default — never a fabricated
+  // clearance (binding requirement 6).
+  function governedCorrectabilityWithSafeAlternativeGate(candidate, domain) {
+    var altTags = (candidate && Array.isArray(candidate.safeAlternativeCharacterization))
+      ? candidate.safeAlternativeCharacterization : null;
+    if (!altTags) return 'REQUIRES_INTENT_CHANGE';
+    var cleared = altTags.some(function (t) {
+      return RiskCharacteristicValidator && RiskCharacteristicValidator.isValidRiskCharacteristicTagShape(t)
+        && t.domain === domain && t.relation === 'NO_KNOWN_CONFLICT';
+    });
+    return cleared ? 'BOUNDED_MODIFICATION' : 'REQUIRES_INTENT_CHANGE';
   }
 
   // §12 — the approved mapping table, reused verbatim. Every branch targets an existing, closed
@@ -529,18 +543,46 @@
     // that does not itself constrain `relation`.
     if (relation === 'UNRESOLVED_RELEVANCE') return governedRiskCharacteristicInsufficientDims(tag);
 
+    // WP0 Phase D.6.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md, D.6.1 canonical
+    // addition, Product+Architecture APPROVED) — checked second, immediately after the
+    // UNRESOLVED_RELEVANCE short-circuit and before any per-domain row, for the identical reason:
+    // it must never accidentally satisfy a row that does not itself constrain `severity`. Binding
+    // canonical decision: "RELATION AUTHORITY != SEVERITY AUTHORITY" — a relation can be
+    // authoritatively DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT (internalPipelineOrchestrator.js's
+    // own resolveDurableFactRelation(), via the independent, bounded
+    // classifyCandidateConflictWithFact() classifier) while severity remains genuinely unknown to
+    // any closed-taxonomy or deterministic mechanism (D.6.1's own read-only investigation found no
+    // sufficient authority to derive severity from RiskDomain alone — a food intolerance and a
+    // life-threatening allergy can share one domain — and restoring AI-proposed severity as
+    // authority was explicitly rejected). `evidenceConfidence` is preserved HONESTLY via the same,
+    // unmodified evidenceConfidenceForTag() every other row uses — the RELATION itself is
+    // well-evidenced (EXPLICIT_USER_STATEMENT tier for a DURABLE_GOVERNED_USER_FACT-sourced tag);
+    // only `correctability`/`urgency`/`riskType` are conservatively INSUFFICIENT, which is what
+    // forces evaluateRulePredicate()'s own unmodified branch 3 to DEFERRED — reusing the existing,
+    // approved INSUFFICIENT/DEFERRED/INSUFFICIENT_SAFETY_CONTEXT path verbatim, never a new
+    // disposition or reasonCode. governedCorrectabilityWithSafeAlternativeGate() is deliberately
+    // NEVER invoked here: correctability is fixed to INSUFFICIENT directly, so MODIFIED is
+    // structurally unreachable regardless of any safeAlternative — a cleared alternative cannot
+    // override an unresolved primary severity (LIFE_CRITICAL-tier severity, if it turned out to be
+    // the true, unknown value, must never be silently modified rather than absolutely blocked; see
+    // §14's own LIFE_CRITICAL definition). BLOCKED is equally unreachable (correctability isn't
+    // REQUIRES_INTENT_CHANGE either) — nothing is fabricated in either direction.
+    if (relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' && severity === 'NOT_ESTABLISHED') {
+      return { riskType: 'INSUFFICIENT', evidenceConfidence: ec, correctability: 'INSUFFICIENT', urgency: 'INSUFFICIENT', domain: domain };
+    }
+
     if (domain === 'PHYSICAL_EXERTION_OR_MOVEMENT' && severity === 'LIFE_CRITICAL' && relation === 'ACUTE_STATE_INDICATED_THIS_TURN') {
       return { riskType: 'ACTIVE_HIGH_RISK_SYMPTOM', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'IMMEDIATE_PROTECTIVE' };
     }
     if (domain === 'PHYSICAL_EXERTION_OR_MOVEMENT' && severity === 'PROHIBITIVE' && relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT') {
-      return { riskType: 'SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+      return { riskType: 'SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate, domain), urgency: 'ROUTINE_PROTECTIVE', domain: domain };
     }
     if (domain === 'INGESTION_OR_SUBSTANCE_EXPOSURE' && (severity === 'LIFE_CRITICAL' || severity === 'PROHIBITIVE') && relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT') {
       return { riskType: 'KNOWN_ALLERGY_CONFLICT', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'ROUTINE_PROTECTIVE' };
     }
     if (domain === 'EATING_PATTERN_OR_BODY_IMAGE' && (severity === 'PROHIBITIVE' || severity === 'ADVISORY')
       && (relation === 'DIRECT_CONFLICT_WITH_DURABLE_CONSTRAINT' || relation === 'ACUTE_STATE_INDICATED_THIS_TURN')) {
-      return { riskType: 'DISORDERED_EATING_OR_BODY_IMAGE_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+      return { riskType: 'DISORDERED_EATING_OR_BODY_IMAGE_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate, domain), urgency: 'ROUTINE_PROTECTIVE', domain: domain };
     }
     if (domain === 'PSYCHOLOGICAL_OR_EMOTIONAL_STATE' && severity === 'REQUIRES_PROFESSIONAL_JUDGMENT' && relation === 'ACUTE_STATE_INDICATED_THIS_TURN') {
       return {
@@ -557,7 +599,7 @@
       // only content-sourcing mechanism §14 ever names — so this row is equally subject to the
       // same independent-verification requirement, routed through the same gate as every other
       // BOUNDED_MODIFICATION-eligible row.
-      return { riskType: 'PSYCHOLOGICAL_DISTRESS_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate), urgency: 'ROUTINE_PROTECTIVE' };
+      return { riskType: 'PSYCHOLOGICAL_DISTRESS_CONCERN', evidenceConfidence: ec, correctability: governedCorrectabilityWithSafeAlternativeGate(candidate, domain), urgency: 'ROUTINE_PROTECTIVE', domain: domain };
     }
     if (domain === 'STANDING_OR_IRREVERSIBLE_COMMITMENT' && severity === 'LIFE_CRITICAL') {
       return { riskType: 'PERMANENT_SAFETY_COMMITMENT_CONFLICT', evidenceConfidence: ec, correctability: 'REQUIRES_INTENT_CHANGE', urgency: 'ROUTINE_PROTECTIVE' };
@@ -802,6 +844,30 @@
     };
   }
 
+  // WP0 Phase D.6 (§14) — a small, additive, pure helper: re-derives which matched dims tuple is
+  // the PRIMARY result for a given winning disposition, so finalReview() can read that tuple's own
+  // `domain` (needed to source modifiedContent from the correct safeAlternativeCharacterization
+  // entry). Deliberately NOT folded into evaluateCanonicalSafetyRules() itself — that function's
+  // own return shape ({disposition,reasonCode,reasonDetail}) is exact-matched by existing tests
+  // across this file's own test corpus; this helper duplicates its small ruleResults-construction
+  // step rather than risk widening that shared, heavily-tested contract. Returns null when no
+  // matched rule contributed the winning disposition, or when the primary tuple carries no domain
+  // (every non-risk-characteristic Rule's own dims — CSR-001/TRR-001's three — never do).
+  function findPrimaryDomainForDisposition(matchedRules, winningDisposition) {
+    if (!matchedRules || matchedRules.length === 0) return null;
+    var ruleResults = matchedRules.map(function (dims) {
+      var disposition = evaluateRulePredicate(dims);
+      var out = {};
+      for (var k in dims) { if (Object.prototype.hasOwnProperty.call(dims, k)) out[k] = dims[k]; }
+      out.disposition = disposition;
+      out.reasonCode = reasonCodeForRule(dims, disposition);
+      return out;
+    });
+    var filtered = ruleResults.filter(function (r) { return r.disposition === winningDisposition; });
+    var picked = selectPrimaryAndSecondary(filtered);
+    return (picked.primary && typeof picked.primary.domain === 'string') ? picked.primary.domain : null;
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // SafetyIntegrationPort implementation — Stage 8 (D1-AH-02 binary absolute-override check,
   // SPEC Ch.14, narrower than the full Matrix) and Stage 9 (the full Safety Decision Matrix,
@@ -862,11 +928,22 @@
     var matchedRules = matchCanonicalSafetyRules(candidate, preReviewTerminalDecision, pipelineContext);
     var evaluation = evaluateCanonicalSafetyRules(matchedRules);
 
-    // RCD-13.D requires non-null modifiedContent for MODIFIED; see file header — no canonical
-    // content-generation algorithm exists, so this is honestly left null rather than fabricated.
-    // Unreachable at this baseline (Correctability can only be BOUNDED_MODIFICATION following a
-    // positively-matched Rule, and matchCanonicalSafetyRules() never matches one, see above).
+    // RCD-13.D requires non-null modifiedContent for MODIFIED. WP0 Phase D.6 (§14) — MODIFIED is
+    // now genuinely reachable via matchGovernedRiskCharacteristicRule()'s own governed
+    // BOUNDED_MODIFICATION path; when it is the winning disposition, source modifiedContent from
+    // the SAME candidate.safeAlternative content that governedCorrectabilityWithSafeAlternativeGate()
+    // already independently verified was cleared for the matching domain — never re-verified here
+    // a second, different way, and never fabricated when that content is absent/malformed (honest
+    // null, exactly as this file has always done — no canonical content-generation algorithm
+    // exists, per this file's own header). No other disposition ever sources modifiedContent.
     var modifiedContent = null;
+    if (evaluation.disposition === 'MODIFIED') {
+      var primaryDomain = findPrimaryDomainForDisposition(matchedRules, 'MODIFIED');
+      if (primaryDomain && candidate && isPlainObject(candidate.safeAlternative)
+        && typeof candidate.safeAlternative.action === 'string' && candidate.safeAlternative.action.length > 0) {
+        modifiedContent = freezeShallow({ action: candidate.safeAlternative.action });
+      }
+    }
 
     return freezeShallow({
       disposition: evaluation.disposition,
@@ -893,6 +970,8 @@
     selectPrimaryAndSecondary: selectPrimaryAndSecondary,
     buildReasonDetail: buildReasonDetail,
     evaluateCanonicalSafetyRules: evaluateCanonicalSafetyRules,
+    // WP0 Phase D.6 — exposed for direct unit testing, structurally parallel to the internals above.
+    findPrimaryDomainForDisposition: findPrimaryDomainForDisposition,
 
     // Repository-evidence-bound matching — CSR-001's RUNNING Rule plus TRR-001's WALKING Rule and
     // Unresolved Activity Safety Coverage Rule (see file header)

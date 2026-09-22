@@ -29,6 +29,16 @@
 // (RiskCharacteristicValidator.isValidRiskCharacteristicTagShape()) — no source text is available
 // at this call site, so literal-anchor re-verification is out of scope here by design (it is
 // riskCharacteristicIntakeGate.js's own concern, Phase D.3, where source text exists).
+//
+// WP0 Phase D.6 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §16, Product+
+// Architecture APPROVED): isValidSafeAlternative() below adds shape-only validation for the new,
+// optional safeAlternative field a reasoning capability MAY propose alongside its primary
+// proposal (§14's MODIFIED content-sourcing mechanism). This validates SHAPE only — that the
+// object, if present, carries the same five required prose fields the primary proposal itself
+// requires. It asserts nothing about whether the alternative is actually safe: that determination
+// is made later, independently, by internalPipelineOrchestrator.js's own re-characterization step
+// (§09.1(a)) + safetyLayer.js's own governedCorrectabilityWithSafeAlternativeGate() — this module
+// never trusts, and never marks, a safeAlternative as cleared.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -52,6 +62,19 @@
     return tags.every(function (t) { return RiskCharacteristicValidator.isValidRiskCharacteristicTagShape(t); });
   }
 
+  // WP0 Phase D.6 (§16) — safeAlternative is optional; when present it must carry the same five
+  // required prose fields the primary proposal itself requires (action/rationale/evidenceBasis/
+  // expectedValue/uncertainty) — shape-only, mirroring isValidStandardProposal()'s own
+  // non-NO_VIABLE_PROPOSAL field requirements exactly. Never authoritative on its own (see header).
+  function isValidSafeAlternative(sa) {
+    if (sa === undefined || sa === null) return true; // optional, absent is the common case
+    if (!isPlainObject(sa)) return false;
+    if (!isNonEmptyString(sa.action)) return false;
+    if (!isNonEmptyString(sa.rationale) || !isNonEmptyString(sa.evidenceBasis)
+      || !isNonEmptyString(sa.expectedValue) || sa.uncertainty == null || sa.uncertainty === '') return false;
+    return true;
+  }
+
   // §28 — mutationProposal is optional; when present it must be a plain object carrying a
   // non-empty mutationKind. This module validates SHAPE only — whether a given capability is
   // actually PERMITTED to emit one is CapabilityDeclaration.mutationPermissions' own concern
@@ -68,6 +91,7 @@
     if (!isPlainObject(p)) return false;
     if (OUTCOMES.indexOf(p.outcome) === -1) return false;
     if (!isValidRiskCharacteristicTags(p.riskCharacteristicTags)) return false;
+    if (!isValidSafeAlternative(p.safeAlternative)) return false;
     if (!isValidMutationProposal(p.mutationProposal)) return false;
 
     if (p.outcome === 'NO_VIABLE_PROPOSAL') return true; // no other field required, matching TRR's own precedent
@@ -84,7 +108,8 @@
 
   var API = {
     OUTCOMES: OUTCOMES,
-    isValidStandardProposal: isValidStandardProposal
+    isValidStandardProposal: isValidStandardProposal,
+    isValidSafeAlternative: isValidSafeAlternative
   };
 
   if (typeof window !== 'undefined') { window.StandardProposalContract = API; }
