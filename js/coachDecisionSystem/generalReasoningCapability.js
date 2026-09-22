@@ -105,10 +105,12 @@
   }
 
   function registerAll() {
-    // currentStateContext/goalObjectiveContext — nutrition/goal-tagged, distinct from TRR's own
-    // training/readiness-tagged fragments (trrCapabilityAdapter.js), so ContextRelevancePlanner
-    // can genuinely distinguish which fragments are relevant to which kind of Need.
-    var fieldTags = { currentStateContext: ['nutrition', 'food', 'diet'], goalObjectiveContext: ['nutrition', 'goal', 'food'] };
+    // currentStateContext/goalObjectiveContext — WP0 Phase E.0.1 (Product/Architecture-approved
+    // canonical mapping): each field's functional role per the closed CONTEXT_RELEVANCE_KINDS
+    // taxonomy (contextComposer.js), distinct from TRR's own readiness/safety-tagged fragments
+    // (trrCapabilityAdapter.js), so ContextRelevancePlanner can genuinely distinguish which
+    // fragments are relevant to which kind of Need.
+    var fieldTags = { currentStateContext: ['CURRENT_PHYSICAL_STATE'], goalObjectiveContext: ['GOALS_AND_INTENT'] };
     for (var i = 0; i < NEW_FRAGMENT_FIELD_IDS.length; i++) {
       var fieldId = NEW_FRAGMENT_FIELD_IDS[i];
       var providerResult = ContextComposer.registerFragmentProvider(makePipelineContextFragmentProvider(fieldId, fieldTags[fieldId]));

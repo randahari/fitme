@@ -53,6 +53,21 @@
     'recentConversationContext'
   ];
 
+  // WP0 Phase E.0.1 (Product/Architecture-approved canonical mapping) — each field's functional
+  // role per the closed CONTEXT_RELEVANCE_KINDS taxonomy (contextComposer.js). Advisory only,
+  // non-gating for TRR itself (§17) — TRR never relies on tag-matching since all six fields are
+  // in contextBaseline (always included); this mapping exists so OTHER capabilities (e.g.
+  // GeneralReasoning, which reuses these same catalogued providers) get correct relevance
+  // matching when their own contextBaseline does not already force inclusion.
+  var FIELD_RELEVANCE_TAGS = {
+    readinessStateContext: ['CURRENT_PHYSICAL_STATE'],
+    userSafetyContext: ['SAFETY_AND_MEDICAL'],
+    userSafetyProvenance: ['SAFETY_AND_MEDICAL'],
+    explicitRequestControls: ['PREFERENCES_AND_BOUNDARIES'],
+    activityPreference: ['PREFERENCES_AND_BOUNDARIES'],
+    recentConversationContext: ['RECENT_INTERACTION']
+  };
+
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
   // §17 — one ContextFragmentProvider per field, each a thin, direct pass-through of
@@ -62,9 +77,7 @@
   function makePipelineContextFragmentProvider(fieldId) {
     return {
       id: fieldId,
-      relevanceTags: ['training', 'readiness'], // advisory only, non-gating (§17) — TRR itself
-                                                  // never relies on tag-matching since all six
-                                                  // fields are in contextBaseline (always included)
+      relevanceTags: FIELD_RELEVANCE_TAGS[fieldId] || [],
       invoke: function (pipelineContext) {
         pipelineContext = pipelineContext || {};
         var availability = (pipelineContext.availability && pipelineContext.availability[fieldId]);

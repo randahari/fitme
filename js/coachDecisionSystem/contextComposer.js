@@ -22,6 +22,16 @@
 // they are not independently re-invokable global reads, so invoke() needed a way to receive
 // that per-turn object. This is purely additive: a zero-arg provider (every Phase A test
 // fixture) still works unchanged, since JS ignores an unused extra argument.
+//
+// WP0 PHASE E.0.1 ADDITION (Product/Architecture-approved, Governed Context Need Planning
+// Foundation) — introduces CONTEXT_RELEVANCE_KINDS, the closed taxonomy of functional roles a
+// ContextFragmentProvider's relevanceTags may declare (§17), and tightens validateProvider() to
+// reject any relevanceTags entry outside it. This is validation-only: ContextRelevancePlanner's
+// tag-overlap matching mechanism (contextRelevancePlanner.js §18) is unchanged — it still simply
+// intersects whatever tags a provider declares against a Need's openEntityMentions roughKinds,
+// with no awareness of this taxonomy itself. Existing provider registrations (trrCapabilityAdapter.js,
+// generalReasoningCapability.js) were migrated onto the canonical kinds in the same change so
+// registration continues to succeed.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -30,15 +40,37 @@
     ? require('./contextRelevancePlanner.js')
     : window.ContextRelevancePlanner;
 
-  var CONTEXT_COMPOSER_VERSION = '1.0.0'; // WP0 Phase A
+  var CONTEXT_COMPOSER_VERSION = '1.1.0'; // WP0 Phase E.0.1
 
   var AVAILABILITY_VALUES = Object.freeze(['AVAILABLE', 'UNAVAILABLE', 'PARTIAL']);
+
+  // WP0 Phase E.0.1 (Product/Architecture-approved) — the closed, canonical vocabulary of
+  // FUNCTIONAL ROLES personal context can play when reasoning about the user. These describe
+  // *why* a ContextFragmentProvider is relevant (its structural role), never a world concept, a
+  // product vertical, a professional capability, or a concrete provider/data source — mirroring
+  // capabilityRegistry.js's own NEED_SHAPES precedent exactly (a closed governance enum owned by
+  // the module whose contract it constrains, never extended per-domain/per-topic, §10 Invariant).
+  // Closed-by-default: a new provider/domain/food/sport/data-source never justifies a new kind —
+  // it maps itself onto one or more of these eight. Adding a ninth requires an explicit
+  // Product/Architecture canonical decision proving a genuinely new structural role.
+  var CONTEXT_RELEVANCE_KINDS = Object.freeze([
+    'CURRENT_PHYSICAL_STATE',
+    'BEHAVIORAL_HISTORY',
+    'GOALS_AND_INTENT',
+    'PREFERENCES_AND_BOUNDARIES',
+    'SAFETY_AND_MEDICAL',
+    'SITUATIONAL_CONTEXT',
+    'RELATIONSHIP_CONTEXT',
+    'RECENT_INTERACTION'
+  ]);
 
   var _providers = {}; // id -> ContextFragmentProvider
 
   function isNonEmptyString(s) { return typeof s === 'string' && s.length > 0; }
   function isPlainObject(o) { return !!o && typeof o === 'object' && !Array.isArray(o); }
   function isStringArray(a) { return Array.isArray(a) && a.every(isNonEmptyString); }
+  function isValidRelevanceKind(tag) { return isNonEmptyString(tag) && CONTEXT_RELEVANCE_KINDS.indexOf(tag) !== -1; }
+  function isValidRelevanceTags(tags) { return isStringArray(tags) && tags.every(isValidRelevanceKind); }
 
   // §17 — ContextFragmentProvider shape validation. `invoke` may return either a plain
   // {value, availability} object or a Promise resolving to one — real fragment providers
@@ -58,8 +90,15 @@
     if (typeof def.invoke !== 'function') {
       return { ok: false, error: { code: 'INVALID_INVOKE', message: 'ContextFragmentProvider.invoke must be a function' } };
     }
-    if ('relevanceTags' in def && !isStringArray(def.relevanceTags)) {
-      return { ok: false, error: { code: 'INVALID_RELEVANCE_TAGS', message: 'ContextFragmentProvider.relevanceTags, if present, must be an array of strings' } };
+    if ('relevanceTags' in def) {
+      if (!isStringArray(def.relevanceTags)) {
+        return { ok: false, error: { code: 'INVALID_RELEVANCE_TAGS', message: 'ContextFragmentProvider.relevanceTags, if present, must be an array of strings' } };
+      }
+      // WP0 Phase E.0.1 — relevanceTags may declare one or more canonical CONTEXT_RELEVANCE_KINDS
+      // (a provider MAY span multiple functional roles), never an arbitrary/world-concept tag.
+      if (!def.relevanceTags.every(isValidRelevanceKind)) {
+        return { ok: false, error: { code: 'INVALID_RELEVANCE_TAG', message: 'ContextFragmentProvider.relevanceTags must contain only canonical CONTEXT_RELEVANCE_KINDS values, got: ' + JSON.stringify(def.relevanceTags) } };
+      }
     }
     return { ok: true };
   }
@@ -135,6 +174,9 @@
   var API = {
     VERSION: CONTEXT_COMPOSER_VERSION,
     AVAILABILITY_VALUES: AVAILABILITY_VALUES,
+    CONTEXT_RELEVANCE_KINDS: CONTEXT_RELEVANCE_KINDS,
+    isValidRelevanceKind: isValidRelevanceKind,
+    isValidRelevanceTags: isValidRelevanceTags,
     validateProvider: validateProvider,
     registerFragmentProvider: registerFragmentProvider,
     getFragmentProvider: getFragmentProvider,

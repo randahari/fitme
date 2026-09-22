@@ -79,15 +79,33 @@ test('STEP 2 — full resolve() selects FALLBACK (GeneralReasoningCapability), n
   assert.equal(resolution.capability.id, 'GENERAL_REASONING');
 });
 
-test('STEP 3 — bounded, relevance-selected context is assembled (training-tagged fragments included, nutrition-tagged fragments excluded — the "not a full dump" proof for a real scenario)', async () => {
+// WP0 Phase E.0.1 NOTE (disclosed): before this Phase, ContextFragmentProvider.relevanceTags held
+// free-form, world-concept-flavored strings (e.g. 'training', 'nutrition') that happened to
+// string-match this fixture's own free-form roughKind:'training' value via
+// ContextRelevancePlanner's tag-overlap mechanism (mechanism (b), contextRelevancePlanner.js's own
+// header) — so readinessStateContext/activityPreference were proactively selected for this Need
+// even though neither is in GENERAL_REASONING's own contextBaseline. Phase E.0.1 closes
+// relevanceTags to the canonical CONTEXT_RELEVANCE_KINDS functional-role vocabulary (a genuinely
+// different vocabulary from a Need's own open-world roughKind values, by design — see
+// WP0_SPEC_v1.0.md's Phase E.0 canonical principle: "context planning determines what the coach
+// should focus on... not what FITME is allowed to know"). Bridging roughKind -> a
+// CONTEXT_RELEVANCE_KINDS-shaped need is explicitly Phase E.0.2's job (the bounded AI Context Need
+// Planner), not yet built. Until then, tag-overlap mechanism (b) correctly no-ops for every
+// provider against this fixture's roughKind — ContextRelevancePlanner.select() itself is
+// UNCHANGED (still a pure, deterministic tag-overlap check); only the provider tags fed into it
+// changed vocabulary. This is the accurate, honest, un-papered-over post-migration behavior: only
+// GENERAL_REASONING's own contextBaseline (recentConversationContext) is proactively included.
+// GeneralReasoning remains non-user-reachable (generalReasoningActivationGate.js), so this has no
+// live production effect.
+test('STEP 3 — bounded context assembly: only contextBaseline (recentConversationContext) is proactively included for a Need whose roughKind vocabulary is disjoint from the canonical CONTEXT_RELEVANCE_KINDS taxonomy — the "not a full dump" proof still holds (see WP0 Phase E.0.1 note above)', async () => {
   const pipelineContext = {
     readinessStateContext: { slept: 6 },
     userSafetyContext: null,
     userSafetyProvenance: null,
     explicitRequestControls: null,
     activityPreference: { likes: ['padel'] },
-    currentStateContext: { consumed: 1200 },       // nutrition-tagged — should NOT be selected
-    goalObjectiveContext: { goal: 'maintain' },     // nutrition-tagged — should NOT be selected
+    currentStateContext: { consumed: 1200 },
+    goalObjectiveContext: { goal: 'maintain' },
     recentConversationContext: 'user: hi',
     availability: {
       readinessStateContext: 'AVAILABLE', userSafetyContext: 'UNAVAILABLE', userSafetyProvenance: 'UNAVAILABLE',
@@ -98,11 +116,7 @@ test('STEP 3 — bounded, relevance-selected context is assembled (training-tagg
   const resolution = await CapabilityRegistry.resolve(novelConceptNeed(), pipelineContext);
   assert.equal(resolution.status, 'RESOLVED');
   const contextKeys = Object.keys(resolution.context);
-  assert.ok(contextKeys.includes('recentConversationContext')); // baseline, always included
-  assert.ok(contextKeys.includes('readinessStateContext'));     // training-tagged, matches roughKind:'training'
-  assert.ok(contextKeys.includes('activityPreference'));        // training-tagged, matches roughKind:'training'
-  assert.ok(!contextKeys.includes('currentStateContext'));      // nutrition-tagged — correctly excluded
-  assert.ok(!contextKeys.includes('goalObjectiveContext'));     // nutrition-tagged — correctly excluded
+  assert.deepEqual(contextKeys, ['recentConversationContext']); // baseline, always included — nothing else proactively selected (see note above)
 });
 
 test('STEP 4/5 — General Reasoning is invoked (mocked callClaude, controlled test only) and produces a validated STANDARD_PROPOSAL, entirely from the composed context — no concept-specific code anywhere', async () => {
