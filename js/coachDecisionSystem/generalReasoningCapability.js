@@ -89,10 +89,15 @@
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
+  // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+  // §17 migration table) — both of this capability's own-registered providers are STANDARD,
+  // consentScope null (neither is memoryConsent-gated data today).
   function makePipelineContextFragmentProvider(fieldId, relevanceTags) {
     return {
       id: fieldId,
       relevanceTags: relevanceTags,
+      sensitivityTier: 'STANDARD',
+      consentScope: null,
       invoke: function (pipelineContext) {
         pipelineContext = pipelineContext || {};
         var availability = pipelineContext.availability && pipelineContext.availability[fieldId];
@@ -122,6 +127,16 @@
       purpose: 'The Registry\'s mandatory FALLBACK — real, governed reasoning for any Need no specialized capability claims (§21)',
       acceptedNeedCharacteristics: { needShapes: 'ANY', scopeMatch: 'FALLBACK', priority: 0 },
       requiredContext: [], // never blocks on a single required fragment — degrades gracefully, §21
+      // WP0 Phase E.0.2a §16 (GeneralReasoning Non-Live Requirements) — capabilityRiskTier:
+      // 'ELEVATED' reflects this capability's own open-ended, FALLBACK-shaped, needShapes:'ANY'
+      // scope (unchanged by this Phase). sensitiveContextAccessPolicy:'NOT_AUTHORIZED' is a
+      // distinct, explicit governance declaration — NOT a consequence of capabilityRiskTier —
+      // recording that this capability has not undergone the Safety review that would justify
+      // open-ended reasoning over SAFETY_AND_MEDICAL context. Independent of
+      // GeneralReasoningActivationGate: even if a future, separately-approved decision flips
+      // activation to live, this field requires its own separate governed change.
+      capabilityRiskTier: 'ELEVATED',
+      sensitiveContextAccessPolicy: 'NOT_AUTHORIZED',
       contextCeiling: CONTEXT_CEILING.slice(),
       contextBaseline: CONTEXT_BASELINE.slice(),
       availableTools: [], // Phase C: no ToolRegistry yet (Phase F) — requirement 10
@@ -273,7 +288,7 @@
   }
 
   var API = {
-    VERSION: '1.0.0', // WP0 Phase C
+    VERSION: '1.1.0', // WP0 Phase C, extended additively at WP0 Phase E.0.2a
     GENERAL_REASONING_CAPABILITY_ID: GENERAL_REASONING_CAPABILITY_ID,
     CONTEXT_CEILING: CONTEXT_CEILING,
     configure: configure,

@@ -35,7 +35,7 @@
     ? require('./contextComposer.js')
     : window.ContextComposer;
 
-  var CAPABILITY_REGISTRY_VERSION = '1.0.0'; // WP0 Phase A
+  var CAPABILITY_REGISTRY_VERSION = '1.1.0'; // WP0 Phase A, extended additively at WP0 Phase E.0.2a
 
   // §14 — the exact, exhaustive, closed NEED_SHAPES vocabulary. Describes conversational
   // shape, never topic; never extended per-domain/per-topic (§10 Invariant).
@@ -51,6 +51,21 @@
   ]);
 
   var OUTPUT_CONTRACT = 'STANDARD_PROPOSAL'; // §19 — the only legal value in WP0
+
+  // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+  // §05.2) — governance/access-risk only, classifying a capability's own reasoning BREADTH.
+  // Orthogonal to, and never consulted for, sensitive-context access authorization (§09/§10/§11
+  // of the same SPEC — a binding Product/Architecture correction: capability risk classification
+  // != sensitive-context access authorization).
+  var CAPABILITY_RISK_TIERS = Object.freeze(['STANDARD', 'ELEVATED']);
+
+  // WP0 Phase E.0.2a (§09) — the dedicated, independent sensitive-context-access authority.
+  // Required, no implicit default: a CapabilityDeclaration omitting this field, or supplying a
+  // value outside this closed pair, fails registration entirely (§12) — the strongest possible
+  // fail-closed posture, since an unreviewed capability can never even enter the registry.
+  // Never derived from capabilityRiskTier or any other field; always an independent, one-time,
+  // Architecture-reviewed declaration about THIS capability alone.
+  var SENSITIVE_CONTEXT_ACCESS_POLICIES = Object.freeze(['AUTHORIZED', 'NOT_AUTHORIZED']);
 
   var _capabilities = {}; // id -> CapabilityDeclaration
   var _order = [];        // registration order, used only for deterministic tie-break (§39)
@@ -150,6 +165,17 @@
       return { ok: false, error: { code: 'INVALID_OUTPUT_CONTRACT', message: 'outputContract must be exactly "' + OUTPUT_CONTRACT + '"' } };
     }
 
+    // WP0 Phase E.0.2a §05.2 — required, closed, no implicit default.
+    if (CAPABILITY_RISK_TIERS.indexOf(def.capabilityRiskTier) === -1) {
+      return { ok: false, error: { code: 'INVALID_CAPABILITY_RISK_TIER', message: 'capabilityRiskTier must be exactly one of ' + CAPABILITY_RISK_TIERS.join('/') } };
+    }
+    // WP0 Phase E.0.2a §09 — required, closed, no implicit default; independent of
+    // capabilityRiskTier (binding Product/Architecture correction — never derive one from the
+    // other, never infer, never default).
+    if (SENSITIVE_CONTEXT_ACCESS_POLICIES.indexOf(def.sensitiveContextAccessPolicy) === -1) {
+      return { ok: false, error: { code: 'INVALID_SENSITIVE_CONTEXT_ACCESS_POLICY', message: 'sensitiveContextAccessPolicy must be exactly one of ' + SENSITIVE_CONTEXT_ACCESS_POLICIES.join('/') + ', with no implicit default' } };
+    }
+
     var sr = def.safetyRequirements;
     if (!isPlainObject(sr)) {
       return { ok: false, error: { code: 'INVALID_SAFETY_REQUIREMENTS', message: 'safetyRequirements must be an object' } };
@@ -189,6 +215,8 @@
         priority: def.acceptedNeedCharacteristics.priority
       },
       requiredContext: def.requiredContext.slice(),
+      capabilityRiskTier: def.capabilityRiskTier,
+      sensitiveContextAccessPolicy: def.sensitiveContextAccessPolicy,
       contextCeiling: def.contextCeiling.slice(),
       contextBaseline: (Array.isArray(def.contextBaseline) ? def.contextBaseline : []).slice(),
       needShapeDefaults: isPlainObject(def.needShapeDefaults) ? JSON.parse(JSON.stringify(def.needShapeDefaults)) : {},
@@ -306,6 +334,8 @@
     VERSION: CAPABILITY_REGISTRY_VERSION,
     NEED_SHAPES: NEED_SHAPES,
     OUTPUT_CONTRACT: OUTPUT_CONTRACT,
+    CAPABILITY_RISK_TIERS: CAPABILITY_RISK_TIERS,
+    SENSITIVE_CONTEXT_ACCESS_POLICIES: SENSITIVE_CONTEXT_ACCESS_POLICIES,
     validateDeclaration: validateDeclaration,
     register: register,
     getById: getById,

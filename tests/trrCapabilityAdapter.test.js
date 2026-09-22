@@ -159,6 +159,34 @@ test('GOLDEN MASTER — need.observation/validReasonCategory are correctly sourc
   assert.deepEqual(JSON.parse(JSON.stringify(migrated.need)), JSON.parse(JSON.stringify(original.need)));
 });
 
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+// §15/§17) — TRR's own declared eligibility metadata. Shadow-only: none of this participates in
+// any live routing path yet (contextRelevancePlanner.js is unmodified).
+// ══════════════════════════════════════════════════════════════════
+
+test('registerAll() declares capabilityRiskTier:STANDARD and sensitiveContextAccessPolicy:AUTHORIZED as two independent fields (WP0 Phase E.0.2a §15/§17)', () => {
+  const cap = CapabilityRegistry.getById('TRR');
+  assert.equal(cap.capabilityRiskTier, 'STANDARD');
+  assert.equal(cap.sensitiveContextAccessPolicy, 'AUTHORIZED');
+});
+
+test('registerAll() declares each provider\'s sensitivityTier/consentScope per the approved migration table (WP0 Phase E.0.2a §17)', () => {
+  const expected = {
+    readinessStateContext: 'STANDARD',
+    userSafetyContext: 'SAFETY_ADJACENT',
+    userSafetyProvenance: 'SAFETY_ADJACENT',
+    explicitRequestControls: 'STANDARD',
+    activityPreference: 'STANDARD',
+    recentConversationContext: 'STANDARD'
+  };
+  Object.keys(expected).forEach((id) => {
+    const provider = ContextComposer.getFragmentProvider(id);
+    assert.equal(provider.sensitivityTier, expected[id], id + ' sensitivityTier');
+    assert.equal(provider.consentScope, null, id + ' consentScope');
+  });
+});
+
 test('buildReasoningContext() degrades gracefully (never throws) if TRR was never registered', async () => {
   CapabilityRegistry.__resetForTests__();
   ContextComposer.__resetForTests__();

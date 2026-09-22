@@ -16,6 +16,8 @@ function validDeclaration(overrides) {
     purpose: 'a test capability',
     acceptedNeedCharacteristics: { needShapes: 'ANY', scopeMatch: { domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY' }, priority: 10 },
     requiredContext: [],
+    capabilityRiskTier: 'STANDARD',
+    sensitiveContextAccessPolicy: 'NOT_AUTHORIZED',
     contextCeiling: [],
     availableTools: [],
     outputContract: 'STANDARD_PROPOSAL',
@@ -82,6 +84,56 @@ test('register() rejects safetyRequirements.riskTagsAreAdvisoryOnly !== true (§
   }));
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'INVALID_RISK_TAGS_ADVISORY_FLAG');
+});
+
+test('register() rejects a missing/invalid capabilityRiskTier (WP0 Phase E.0.2a §05.2)', () => {
+  const result = CapabilityRegistry.register(validDeclaration({ capabilityRiskTier: 'NOT_A_REAL_TIER' }));
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'INVALID_CAPABILITY_RISK_TIER');
+});
+
+test('register() rejects capabilityRiskTier entirely omitted — no implicit default (WP0 Phase E.0.2a §05.2)', () => {
+  const decl = validDeclaration();
+  delete decl.capabilityRiskTier;
+  const result = CapabilityRegistry.register(decl);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'INVALID_CAPABILITY_RISK_TIER');
+});
+
+test('register() accepts both closed capabilityRiskTier values', () => {
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'STD', capabilityRiskTier: 'STANDARD' })).ok, true);
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'ELEV', capabilityRiskTier: 'ELEVATED' })).ok, true);
+});
+
+test('register() rejects a missing/invalid sensitiveContextAccessPolicy — registration fails closed entirely (WP0 Phase E.0.2a §09/§12, binding Product/Architecture correction)', () => {
+  const result = CapabilityRegistry.register(validDeclaration({ sensitiveContextAccessPolicy: 'MAYBE' }));
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'INVALID_SENSITIVE_CONTEXT_ACCESS_POLICY');
+});
+
+test('register() rejects sensitiveContextAccessPolicy entirely omitted — no implicit default, the strongest fail-closed posture (WP0 Phase E.0.2a §09)', () => {
+  const decl = validDeclaration();
+  delete decl.sensitiveContextAccessPolicy;
+  const result = CapabilityRegistry.register(decl);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'INVALID_SENSITIVE_CONTEXT_ACCESS_POLICY');
+  assert.equal(CapabilityRegistry.getById('TEST_CAP'), null, 'an unreviewed capability must never enter the registry');
+});
+
+test('register() accepts both closed sensitiveContextAccessPolicy values, independently of capabilityRiskTier (root-cause regression proof, WP0 Phase E.0.2a §09/§10/§11)', () => {
+  // Every one of the four combinations must be independently accepted — sensitiveContextAccessPolicy
+  // must never be inferred from, or rejected because of, capabilityRiskTier's own value.
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'C1', capabilityRiskTier: 'STANDARD', sensitiveContextAccessPolicy: 'AUTHORIZED' })).ok, true);
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'C2', capabilityRiskTier: 'STANDARD', sensitiveContextAccessPolicy: 'NOT_AUTHORIZED' })).ok, true);
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'C3', capabilityRiskTier: 'ELEVATED', sensitiveContextAccessPolicy: 'AUTHORIZED' })).ok, true);
+  assert.equal(CapabilityRegistry.register(validDeclaration({ id: 'C4', capabilityRiskTier: 'ELEVATED', sensitiveContextAccessPolicy: 'NOT_AUTHORIZED' })).ok, true);
+});
+
+test('CAPABILITY_RISK_TIERS and SENSITIVE_CONTEXT_ACCESS_POLICIES are the exact, frozen closed vocabularies (WP0 Phase E.0.2a §05.2/§09)', () => {
+  assert.deepEqual(CapabilityRegistry.CAPABILITY_RISK_TIERS, ['STANDARD', 'ELEVATED']);
+  assert.ok(Object.isFrozen(CapabilityRegistry.CAPABILITY_RISK_TIERS));
+  assert.deepEqual(CapabilityRegistry.SENSITIVE_CONTEXT_ACCESS_POLICIES, ['AUTHORIZED', 'NOT_AUTHORIZED']);
+  assert.ok(Object.isFrozen(CapabilityRegistry.SENSITIVE_CONTEXT_ACCESS_POLICIES));
 });
 
 test('register() rejects a contextBaseline id not present in contextCeiling', () => {
@@ -241,6 +293,8 @@ test('resolve(): no FALLBACK registered and no specific match → NO_FALLBACK_RE
 test('resolve(): required-context-unavailable — terminates as REQUIRED_CONTEXT_UNAVAILABLE and NEVER re-resolves against FALLBACK (§16 Round 3 item 3, binding)', async () => {
   ContextComposer.registerFragmentProvider({
     id: 'missingFragment',
+    sensitivityTier: 'STANDARD',
+    consentScope: null,
     invoke: () => ({ value: null, availability: 'UNAVAILABLE' })
   });
   let fallbackWasInvoked = false;
@@ -264,6 +318,8 @@ test('resolve(): required-context-unavailable — terminates as REQUIRED_CONTEXT
 test('resolve(): a required fragment reported AVAILABLE is included in the resolved context', async () => {
   ContextComposer.registerFragmentProvider({
     id: 'presentFragment',
+    sensitivityTier: 'STANDARD',
+    consentScope: null,
     invoke: () => ({ value: 'hello', availability: 'AVAILABLE' })
   });
   CapabilityRegistry.register(validDeclaration({
@@ -278,7 +334,7 @@ test('resolve(): a required fragment reported AVAILABLE is included in the resol
 
 test('resolve(): optional context is bounded to the relevance-selected subset, not the full contextCeiling (the "not a full dump" proof)', async () => {
   ['fragA', 'fragB', 'fragC'].forEach((id) => {
-    ContextComposer.registerFragmentProvider({ id, invoke: () => ({ value: id, availability: 'AVAILABLE' }) });
+    ContextComposer.registerFragmentProvider({ id, sensitivityTier: 'STANDARD', consentScope: null, invoke: () => ({ value: id, availability: 'AVAILABLE' }) });
   });
   CapabilityRegistry.register(validDeclaration({
     id: 'CAP',

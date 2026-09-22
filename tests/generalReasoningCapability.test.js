@@ -46,6 +46,29 @@ test('registerAll() registers the two new fragment providers (currentStateContex
   assert.ok(ContextComposer.getFragmentProvider('goalObjectiveContext'));
 });
 
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+// §16/§17) — GeneralReasoning's own declared eligibility metadata. Shadow-only: none of this
+// participates in any live routing path (this capability remains structurally unreachable from
+// conversationalNeedCreator.js regardless — see generalReasoningActivationGate.js's own header).
+// ══════════════════════════════════════════════════════════════════
+
+test('registerAll() declares capabilityRiskTier:ELEVATED and sensitiveContextAccessPolicy:NOT_AUTHORIZED as two independent fields (WP0 Phase E.0.2a §16/§17)', () => {
+  GeneralReasoningCapability.registerAll();
+  const cap = CapabilityRegistry.getById('GENERAL_REASONING');
+  assert.equal(cap.capabilityRiskTier, 'ELEVATED');
+  assert.equal(cap.sensitiveContextAccessPolicy, 'NOT_AUTHORIZED');
+});
+
+test('registerAll() declares its own two new providers as STANDARD sensitivityTier, null consentScope (WP0 Phase E.0.2a §17)', () => {
+  GeneralReasoningCapability.registerAll();
+  ['currentStateContext', 'goalObjectiveContext'].forEach((id) => {
+    const provider = ContextComposer.getFragmentProvider(id);
+    assert.equal(provider.sensitivityTier, 'STANDARD', id + ' sensitivityTier');
+    assert.equal(provider.consentScope, null, id + ' consentScope');
+  });
+});
+
 test('registerAll() is idempotent', () => {
   const first = GeneralReasoningCapability.registerAll();
   const second = GeneralReasoningCapability.registerAll();

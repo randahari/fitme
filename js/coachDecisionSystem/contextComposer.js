@@ -39,8 +39,11 @@
   var ContextRelevancePlanner = (typeof module !== 'undefined' && module.exports)
     ? require('./contextRelevancePlanner.js')
     : window.ContextRelevancePlanner;
+  var ConsentScopeRegistry = (typeof module !== 'undefined' && module.exports)
+    ? require('./consentScopeRegistry.js')
+    : window.ConsentScopeRegistry;
 
-  var CONTEXT_COMPOSER_VERSION = '1.1.0'; // WP0 Phase E.0.1
+  var CONTEXT_COMPOSER_VERSION = '1.2.0'; // WP0 Phase E.0.1, extended additively at WP0 Phase E.0.2a
 
   var AVAILABILITY_VALUES = Object.freeze(['AVAILABLE', 'UNAVAILABLE', 'PARTIAL']);
 
@@ -63,6 +66,12 @@
     'RELATIONSHIP_CONTEXT',
     'RECENT_INTERACTION'
   ]);
+
+  // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+  // §05.1/§06) — governance sensitivity only, never semantic content classification (that remains
+  // relevanceTags/CONTEXT_RELEVANCE_KINDS's job, unchanged). Deliberately mirrors GCUK Ch.09's own
+  // frozen safetyFlag:'STANDARD'|'SAFETY_ADJACENT' for User Knowledge records.
+  var SENSITIVITY_TIERS = Object.freeze(['STANDARD', 'SAFETY_ADJACENT']);
 
   var _providers = {}; // id -> ContextFragmentProvider
 
@@ -100,6 +109,16 @@
         return { ok: false, error: { code: 'INVALID_RELEVANCE_TAG', message: 'ContextFragmentProvider.relevanceTags must contain only canonical CONTEXT_RELEVANCE_KINDS values, got: ' + JSON.stringify(def.relevanceTags) } };
       }
     }
+    // WP0 Phase E.0.2a §06 — required, closed, no implicit default.
+    if (SENSITIVITY_TIERS.indexOf(def.sensitivityTier) === -1) {
+      return { ok: false, error: { code: 'INVALID_SENSITIVITY_TIER', message: 'ContextFragmentProvider.sensitivityTier must be exactly one of ' + SENSITIVITY_TIERS.join('/') } };
+    }
+    // WP0 Phase E.0.2a §06 — required; null is an explicit, valid value (no separate consent
+    // requirement for this provider class); any other value must be a member of the Consent
+    // Scope Registry (consentScopeRegistry.js) — never an unregistered/free-text id.
+    if (!ConsentScopeRegistry.isValidConsentScope(def.consentScope)) {
+      return { ok: false, error: { code: 'INVALID_CONSENT_SCOPE', message: 'ContextFragmentProvider.consentScope must be null or a scope id registered in ConsentScopeRegistry' } };
+    }
     return { ok: true };
   }
 
@@ -109,6 +128,8 @@
     _providers[def.id] = {
       id: def.id,
       relevanceTags: Array.isArray(def.relevanceTags) ? def.relevanceTags.slice() : [],
+      sensitivityTier: def.sensitivityTier,
+      consentScope: def.consentScope,
       invoke: def.invoke
     };
     return { ok: true };
@@ -175,6 +196,7 @@
     VERSION: CONTEXT_COMPOSER_VERSION,
     AVAILABILITY_VALUES: AVAILABILITY_VALUES,
     CONTEXT_RELEVANCE_KINDS: CONTEXT_RELEVANCE_KINDS,
+    SENSITIVITY_TIERS: SENSITIVITY_TIERS,
     isValidRelevanceKind: isValidRelevanceKind,
     isValidRelevanceTags: isValidRelevanceTags,
     validateProvider: validateProvider,

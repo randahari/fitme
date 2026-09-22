@@ -68,6 +68,21 @@
     recentConversationContext: ['RECENT_INTERACTION']
   };
 
+  // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
+  // §17 migration table) — sensitivityTier per field. userSafetyContext/userSafetyProvenance are
+  // the only two SAFETY_ADJACENT providers in the entire registered catalogue (§04 evidence);
+  // every other field is STANDARD. Every field's consentScope is null: none of the 6 are backed
+  // by memoryConsent-gated data today (plain, unconditional pipelineContext reads, unchanged) —
+  // attaching a non-null scope to any of them would be a behavioral change, not a migration.
+  var FIELD_SENSITIVITY_TIERS = {
+    readinessStateContext: 'STANDARD',
+    userSafetyContext: 'SAFETY_ADJACENT',
+    userSafetyProvenance: 'SAFETY_ADJACENT',
+    explicitRequestControls: 'STANDARD',
+    activityPreference: 'STANDARD',
+    recentConversationContext: 'STANDARD'
+  };
+
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
   // §17 — one ContextFragmentProvider per field, each a thin, direct pass-through of
@@ -78,6 +93,8 @@
     return {
       id: fieldId,
       relevanceTags: FIELD_RELEVANCE_TAGS[fieldId] || [],
+      sensitivityTier: FIELD_SENSITIVITY_TIERS[fieldId], // WP0 Phase E.0.2a §17
+      consentScope: null, // WP0 Phase E.0.2a §17 — no field of TRR's is memoryConsent-gated today
       invoke: function (pipelineContext) {
         pipelineContext = pipelineContext || {};
         var availability = (pipelineContext.availability && pipelineContext.availability[fieldId]);
@@ -117,6 +134,13 @@
         priority: 100
       },
       requiredContext: [], // see header note — preserves TRR's existing non-gating behavior
+      // WP0 Phase E.0.2a §15 (TRR Zero-Drift Requirements) — capabilityRiskTier:'STANDARD'
+      // reflects TRR's own narrow, closed-{domain,topic} scope (unchanged by this Phase).
+      // sensitiveContextAccessPolicy:'AUTHORIZED' is a distinct, explicit governance declaration
+      // — NOT a consequence of capabilityRiskTier — recording that TRR has already undergone
+      // Safety review and already receives SAFETY_AND_MEDICAL context live today.
+      capabilityRiskTier: 'STANDARD',
+      sensitiveContextAccessPolicy: 'AUTHORIZED',
       contextCeiling: TRR_CONTEXT_FIELD_IDS.slice(),
       contextBaseline: TRR_CONTEXT_FIELD_IDS.slice(), // always composed, matching today's
                                                         // unconditional inclusion of all six
@@ -177,7 +201,7 @@
   }
 
   var API = {
-    VERSION: '1.0.0', // WP0 Phase B
+    VERSION: '1.1.0', // WP0 Phase B, extended additively at WP0 Phase E.0.2a
     TRR_CAPABILITY_ID: TRR_CAPABILITY_ID,
     TRR_CONTEXT_FIELD_IDS: TRR_CONTEXT_FIELD_IDS,
     registerAll: registerAll,

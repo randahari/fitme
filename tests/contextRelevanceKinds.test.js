@@ -43,6 +43,8 @@ test('registerFragmentProvider() accepts each of the 8 canonical kinds individua
     const result = ContextComposer.registerFragmentProvider({
       id: 'provider_' + i,
       relevanceTags: [kind],
+      sensitivityTier: 'STANDARD',
+      consentScope: null,
       invoke: () => ({ value: null, availability: 'UNAVAILABLE' })
     });
     assert.equal(result.ok, true, 'kind ' + kind + ' should be accepted');
@@ -53,6 +55,8 @@ test('registerFragmentProvider() rejects a relevanceTags entry that is not a can
   const result = ContextComposer.registerFragmentProvider({
     id: 'bad',
     relevanceTags: ['NOT_A_CANONICAL_KIND'],
+    sensitivityTier: 'STANDARD',
+    consentScope: null,
     invoke: () => ({})
   });
   assert.equal(result.ok, false);
@@ -64,6 +68,8 @@ test('registerFragmentProvider() rejects an arbitrary world-concept tag (e.g. a 
     const result = ContextComposer.registerFragmentProvider({
       id: 'wc_' + worldConcept,
       relevanceTags: [worldConcept],
+      sensitivityTier: 'STANDARD',
+      consentScope: null,
       invoke: () => ({})
     });
     assert.equal(result.ok, false, worldConcept + ' must be rejected as a relevance kind');
@@ -72,11 +78,11 @@ test('registerFragmentProvider() rejects an arbitrary world-concept tag (e.g. a 
 });
 
 test('registerFragmentProvider() rejects malformed relevanceTags (non-array/non-string entries) — unchanged from Phase A', () => {
-  const nonArray = ContextComposer.registerFragmentProvider({ id: 'a', relevanceTags: 'not-an-array', invoke: () => ({}) });
+  const nonArray = ContextComposer.registerFragmentProvider({ id: 'a', relevanceTags: 'not-an-array', sensitivityTier: 'STANDARD', consentScope: null, invoke: () => ({}) });
   assert.equal(nonArray.ok, false);
   assert.equal(nonArray.error.code, 'INVALID_RELEVANCE_TAGS');
 
-  const mixedArray = ContextComposer.registerFragmentProvider({ id: 'b', relevanceTags: ['SAFETY_AND_MEDICAL', 42], invoke: () => ({}) });
+  const mixedArray = ContextComposer.registerFragmentProvider({ id: 'b', relevanceTags: ['SAFETY_AND_MEDICAL', 42], sensitivityTier: 'STANDARD', consentScope: null, invoke: () => ({}) });
   assert.equal(mixedArray.ok, false);
   assert.equal(mixedArray.error.code, 'INVALID_RELEVANCE_TAGS');
 });
@@ -85,6 +91,8 @@ test('registerFragmentProvider() accepts a provider declaring multiple valid can
   const result = ContextComposer.registerFragmentProvider({
     id: 'multiKind',
     relevanceTags: ['CURRENT_PHYSICAL_STATE', 'SITUATIONAL_CONTEXT'],
+    sensitivityTier: 'STANDARD',
+    consentScope: null,
     invoke: () => ({ value: null, availability: 'UNAVAILABLE' })
   });
   assert.equal(result.ok, true);
@@ -92,7 +100,7 @@ test('registerFragmentProvider() accepts a provider declaring multiple valid can
 });
 
 test('registerFragmentProvider() still accepts a provider with no relevanceTags at all', () => {
-  const result = ContextComposer.registerFragmentProvider({ id: 'noTags', invoke: () => ({}) });
+  const result = ContextComposer.registerFragmentProvider({ id: 'noTags', sensitivityTier: 'STANDARD', consentScope: null, invoke: () => ({}) });
   assert.equal(result.ok, true);
   assert.deepEqual(ContextComposer.getFragmentProvider('noTags').relevanceTags, []);
 });
