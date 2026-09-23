@@ -699,30 +699,42 @@
     // every other Firestore-backed read in this file).
     //
     // PRODUCT CORRECTION (Product/Architecture Final Review, applied to the original §9 design):
-    // the canonical requirement is the ACTUAL latest 6 COMPLETED turns, found regardless of how
-    // many PENDING/SILENCE turns are interleaved more recently — a single bounded candidate
-    // window (the original design) is not semantically equivalent to that and was rejected.
-    // This block instead performs deterministic, cursor-based pagination — one bounded,
-    // single-field, auto-indexed page query at a time (never a composite `status ==` + orderBy
-    // query, which would require a manually configured Firestore index this repository does not
-    // have; never one unbounded whole-collection read) — continuing strictly until either 6
-    // COMPLETED turns have been found, the 6,000-character cap is reached, or the collection is
-    // exhausted (a page returning fewer documents than requested). No additional page-count
-    // ceiling is imposed — Product's own explicit instruction was that no arbitrary lookback
-    // bound may prevent finding the true latest 6 COMPLETED turns; the two real, already-
-    // approved termination conditions (found 6, or exhausted) are the only bound.
+    // the canonical requirement is the ACTUAL latest 6 eligible turns, found regardless of how
+    // many PENDING turns are interleaved more recently — a single bounded candidate window (the
+    // original design) is not semantically equivalent to that and was rejected. This block
+    // instead performs deterministic, cursor-based pagination — one bounded, single-field,
+    // auto-indexed page query at a time (never a composite `status ==` + orderBy query, which
+    // would require a manually configured Firestore index this repository does not have; never
+    // one unbounded whole-collection read) — continuing strictly until either 6 eligible turns
+    // have been found, the 6,000-character cap is reached, or the collection is exhausted (a
+    // page returning fewer documents than requested). No additional page-count ceiling is
+    // imposed — Product's own explicit instruction was that no arbitrary lookback bound may
+    // prevent finding the true latest 6 eligible turns; the two real, already-approved
+    // termination conditions (found 6, or exhausted) are the only bound.
     //
-    // Only status === 'COMPLETED' turns are ever included in the final projection (§8) — a
-    // PENDING or SILENCE turn encountered mid-walk is skipped, never included, regardless of how
-    // recent it is, but its own createdAt still advances the pagination cursor correctly (the
-    // cursor always continues from the oldest document actually returned in the page just read,
-    // across ALL statuses — never only among COMPLETED ones — so the walk never skips over or
-    // loses track of real chronological history). Whole-turn, newest-first selection under the
-    // 6,000-character cap (walking the full, potentially multi-page candidate sequence exactly
-    // as if it were one continuous list), then re-ordered chronologically (§8's own frozen,
-    // deterministic trimming algorithm) — never summarized, never embedded, never a second AI
-    // pass. Graceful degradation to UNAVAILABLE on any failure (D3 §12.3) — never blocks the
-    // Decision Pass.
+    // CANONICAL REVIEW CORRECTION (Product/Architecture, continuity-admission correction,
+    // CCC_001_SPEC_v1.0.md §8) — the durable continuity-admission invariant: a turn belongs to
+    // this projection if and only if it reached a genuine governed terminal state,
+    // status !== 'PENDING' — expressed in terms of the existing terminal-vs-PENDING primitive
+    // (§5.2), never as an enumerated {COMPLETED, SILENCE} allowlist. Only a PENDING turn
+    // encountered mid-walk is skipped, never included, regardless of how recent it is — a
+    // COMPLETED or SILENCE turn is included on equal footing, since both already represent a
+    // governed outcome that genuinely completed, differing only in whether that completion
+    // produced a response (an axis this projection does not consult: response decision ≠
+    // conversational value ≠ long-term memory decision). A skipped PENDING turn's own createdAt
+    // still advances the pagination cursor correctly (the cursor always continues from the
+    // oldest document actually returned in the page just read, across ALL statuses — never only
+    // among eligible ones — so the walk never skips over or loses track of real chronological
+    // history). Whole-turn, newest-first selection under the 6,000-character cap (walking the
+    // full, potentially multi-page candidate sequence exactly as if it were one continuous
+    // list), then re-ordered chronologically (§8's own frozen, deterministic trimming
+    // algorithm) — never summarized, never embedded, never a second AI pass. A SILENCE turn's
+    // own assistantText is always null, exactly as persisted — never fabricated, never
+    // backfilled — and already contributes 0 to the character budget below. Graceful
+    // degradation to UNAVAILABLE on any failure (D3 §12.3) — never blocks the Decision Pass.
+    // Admission into this projection grants no additional authority (CCC_001_SPEC_v1.0.md §9) —
+    // a SILENCE turn gains conversational visibility only, never reasoning/Typed-Memory/User-
+    // Knowledge/Safety authority.
     //
     // CURSOR STABILITY CORRECTION (Product/Architecture Final Review — pagination correctness):
     // `createdAt` alone is not a safe cursor — a Firestore server timestamp is not guaranteed
@@ -762,7 +774,7 @@
         cursorTurnId = lastOfPage.turnId;    // across all statuses — both halves of the pair
         for (var pi = 0; pi < pageArr.length && selected.length < CCC_CONTEXT_MAX_TURNS; pi++) {
           var candidate = pageArr[pi];
-          if (!candidate || candidate.status !== 'COMPLETED') continue; // skipped, never included — but already advanced the cursor above
+          if (!candidate || candidate.status === 'PENDING') continue; // only PENDING skipped — COMPLETED and SILENCE both admitted (terminal-state admission, §8); cursor already advanced above
           var turnChars = (candidate.userText ? candidate.userText.length : 0) + (candidate.assistantText ? candidate.assistantText.length : 0);
           if (runningChars + turnChars > CCC_CONTEXT_MAX_CHARS) { capReached = true; break; } // whole turns only — never a partial turn; stop the entire walk here
           runningChars += turnChars;

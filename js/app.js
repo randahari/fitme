@@ -2796,19 +2796,24 @@ async function submitCoachConversationTurn() {
       // an aborted/failed dispatch). Never fabricated content; the pending placeholder is removed.
       CoachConversationPresenter.renderNoResponse(turn.turnId);
 
-      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2, PRODUCT CORRECTION 2) — PENDING ->
-      // SILENCE ONLY when the governed pipeline itself genuinely completed
-      // (cdsResult.status === 'SUCCESS') with a real, recognized, non-dispatch expression
-      // outcome. NO_DELIVERY_INTENT (Silence-kind Terminal Decision) and NOT_ATTEMPTED
-      // (PASS_NOT_FORMED) are the only two statuses runDirectTurnPass() can actually produce
-      // for a genuine governed decision not to respond — ABORTED is deliberately excluded here:
+      // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §5.2, PRODUCT CORRECTION 2 + Canonical Review
+      // correction) — PENDING -> SILENCE ONLY when the governed pipeline itself genuinely
+      // completed (cdsResult.status === 'SUCCESS') with a real, recognized, non-dispatch,
+      // genuinely GOVERNED expression outcome. NO_DELIVERY_INTENT (Silence-kind Terminal
+      // Decision), NOT_ATTEMPTED (PASS_NOT_FORMED), and SUPERSEDED (D2-EF-07 pre-Expression
+      // supersession — a real decision existed but was intentionally withheld because a newer
+      // correction arrived; currently unreachable in production since no live
+      // Explicit-User-Statement/correction-input channel exists yet, but a genuine governed
+      // outcome by construction whenever it does occur, so its persistence semantics must
+      // already be correct) are the three statuses runDirectTurnPass() can actually produce for
+      // a genuine governed decision not to respond — ABORTED is deliberately excluded here:
       // every ABORTED reason (INVALID_TERMINAL_DECISION / INVALID_EXPRESSION_RENDERING_CONTEXT /
       // EXPRESSION_PORT_UNAVAILABLE / EXPRESSION_RENDER_THREW / INVALID_DELIVERY_INTENT) is a
       // defensive or technical Expression-stage failure, never a governed decision, so it is
       // treated the same as any other technical failure below: the turn stays PENDING. Any other
       // case — cdsResult.status !== 'SUCCESS' (an engine-level structural failure), or a missing/
       // malformed expression result — likewise leaves the turn PENDING: no update is attempted.
-      var CCC_GENUINE_SILENCE_STATUSES = ['NO_DELIVERY_INTENT', 'NOT_ATTEMPTED'];
+      var CCC_GENUINE_SILENCE_STATUSES = ['NO_DELIVERY_INTENT', 'NOT_ATTEMPTED', 'SUPERSEDED'];
       var isGenuineGovernedSilence = !!(cdsResult && cdsResult.status === 'SUCCESS' && expression && CCC_GENUINE_SILENCE_STATUSES.indexOf(expression.status) !== -1);
       if (isGenuineGovernedSilence && pendingPersisted) {
         ConversationRepository.completeTurn(currentUser.uid, turn.turnId, { status: 'SILENCE', assistantText: null })

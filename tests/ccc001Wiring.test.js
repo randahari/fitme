@@ -93,6 +93,22 @@ test('X: the completion update is fire-and-forget (.catch(), never awaited) — 
   });
 });
 
+// ── Canonical Review correction: CCC_GENUINE_SILENCE_STATUSES (ABORTED excluded, SUPERSEDED included) ──
+
+test('W: CCC_GENUINE_SILENCE_STATUSES is exactly [\'NO_DELIVERY_INTENT\', \'NOT_ATTEMPTED\', \'SUPERSEDED\'] — ABORTED does NOT trigger PENDING -> SILENCE', () => {
+  const idx = appJs.indexOf('var CCC_GENUINE_SILENCE_STATUSES = ');
+  assert.notEqual(idx, -1);
+  const line = appJs.slice(idx, appJs.indexOf(';', idx) + 1);
+  assert.match(line, /var CCC_GENUINE_SILENCE_STATUSES = \['NO_DELIVERY_INTENT', 'NOT_ATTEMPTED', 'SUPERSEDED'\];/);
+  assert.equal(line.indexOf('ABORTED'), -1, 'ABORTED must never be a member — it is a technical Expression-stage failure, never a governed decision');
+});
+
+test('W: SUPERSEDED is documented, immediately above CCC_GENUINE_SILENCE_STATUSES, as the D2-EF-07 genuine governed pre-Expression supersession outcome', () => {
+  const idx = appJs.indexOf('var CCC_GENUINE_SILENCE_STATUSES = ');
+  const before = appJs.slice(Math.max(0, idx - 1400), idx);
+  assert.match(before, /SUPERSEDED \(D2-EF-07 pre-Expression\s*\n?\s*\/\/ supersession/);
+});
+
 test('X: loadCoachConversationHistory() and resetApp()\'s conversation cleanup are both wrapped defensively (try/catch), never able to break app boot or the reset flow', () => {
   const loadIdx = appJs.indexOf('async function loadCoachConversationHistory()');
   assert.notEqual(loadIdx, -1);

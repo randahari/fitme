@@ -1681,11 +1681,14 @@ test('CCC-H: recentConversationContext includes at most the latest 6 COMPLETED t
   assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t3', 't4', 't5', 't6', 't7', 't8']);
 });
 
-// ── Product-required test 1: MORE THAN 20 recent non-COMPLETED turns ───────────────────────
-test('PRODUCT-1: 25 consecutive newest PENDING/SILENCE turns never prevent recovery of the actual latest 6 COMPLETED turns further back in history (proves the pagination loop, not a bounded candidate window)', async () => {
+// ── Product-required test 1: MORE THAN 20 recent PENDING turns ─────────────────────────────
+test('PRODUCT-1: 25 consecutive newest PENDING turns never prevent recovery of the actual latest 6 eligible (COMPLETED/SILENCE) turns further back in history (proves the pagination loop, not a bounded candidate window)', async () => {
   const history = [];
-  for (let i = 31; i >= 7; i--) history.push(makeConversationRecord('noise' + i, 'noise', null, i % 2 === 0 ? 'PENDING' : 'SILENCE', i)); // 25 newest, non-COMPLETED
-  for (let i = 6; i >= 1; i--) history.push(makeConversationRecord('t' + i, 'u' + i, 'a' + i, 'COMPLETED', i)); // 6 older COMPLETED turns
+  for (let i = 31; i >= 7; i--) history.push(makeConversationRecord('noise' + i, 'noise', null, 'PENDING', i)); // 25 newest, all PENDING (the sole excluded status under the corrected admission rule)
+  for (let i = 6; i >= 1; i--) {
+    const isSilence = i % 2 === 0;
+    history.push(makeConversationRecord('t' + i, 'u' + i, isSilence ? null : 'a' + i, isSilence ? 'SILENCE' : 'COMPLETED', i)); // 6 older eligible turns, mixing SILENCE/COMPLETED on equal footing
+  }
   configureWithConversationHistory(history);
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.recentConversationContext.items.length, 6);
@@ -1708,16 +1711,16 @@ test('PRODUCT-2: when only 5 COMPLETED turns occur within the first page, the 6t
 });
 
 // ── Product-required test 3: history exhaustion ─────────────────────────────────────────────
-test('PRODUCT-3: fewer than 6 COMPLETED turns exist in the ENTIRE history — returns exactly those available, without error or infinite pagination', async () => {
+test('PRODUCT-3: fewer than 6 eligible (COMPLETED/SILENCE) turns exist in the ENTIRE history — returns exactly those available, without error or infinite pagination', async () => {
   const history = [
     makeConversationRecord('noise1', 'x', null, 'PENDING', 10),
     makeConversationRecord('t2', 'u2', 'a2', 'COMPLETED', 9),
-    makeConversationRecord('noise2', 'x', null, 'SILENCE', 8),
+    makeConversationRecord('t-silence', 'silence text', null, 'SILENCE', 8),
     makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 7)
-  ]; // only 4 non-COMPLETED/COMPLETED docs total, only 2 COMPLETED — far fewer than one page (10)
+  ]; // only 1 excluded (PENDING) doc; 3 eligible (2 COMPLETED + 1 SILENCE) — far fewer than one page (10)
   configureWithConversationHistory(history);
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
-  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t1', 't2']);
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t1', 't-silence', 't2']);
   assert.equal(ctx.availability.recentConversationContext, 'AVAILABLE'); // exhaustion is a valid, honest outcome — never an error
 });
 
@@ -1743,46 +1746,77 @@ test('PRODUCT-4: the 6,000-character whole-turn cap is enforced correctly even w
   assert.equal(ctx.recentConversationContext.items[0].userText.length, 1250); // whole turn, never truncated
 });
 
+// ── Canonical Review correction: mixed COMPLETED/SILENCE history under the 6,000-char cap ──
+test('PRODUCT-4b: a mixed COMPLETED/SILENCE history obeys the same 6,000-character cap, and a SILENCE turn\'s null assistantText contributes exactly zero characters to the running budget', async () => {
+  const mk = (n) => 'x'.repeat(n);
+  const history = [
+    makeConversationRecord('t4', mk(3000), null, 'SILENCE', 4),        // 3000 chars (assistantText null -> +0), cumulative 3000
+    makeConversationRecord('t3', mk(1500), mk(1500), 'COMPLETED', 3),  // 3000 chars, cumulative 6000 — still fits exactly
+    makeConversationRecord('t2', mk(10), null, 'SILENCE', 2),          // would push cumulative to 6010 -> excluded, walk stops here
+    makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 1)           // never reached — the walk already stopped at the cap
+  ];
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t3', 't4']); // oldest -> newest of the selected set
+  assert.equal(ctx.recentConversationContext.items[1].assistantText, null); // t4 (SILENCE) — assistantText:null survives unchanged
+  const totalChars = ctx.recentConversationContext.items.reduce((sum, t) => sum + t.userText.length + (t.assistantText ? t.assistantText.length : 0), 0);
+  assert.equal(totalChars, 6000);
+});
+
+// ── Canonical Review correction: 6-turn bound is status-agnostic among eligible turns ──────
+test('CCC-ADMIT: a mixed COMPLETED/SILENCE history (no PENDING at all) still obeys the 6-turn bound exactly, keeping only the newest 6 regardless of which status each one is', async () => {
+  const history = [];
+  for (let i = 8; i >= 1; i--) {
+    const isSilence = i % 2 === 0;
+    history.push(makeConversationRecord('t' + i, 'u' + i, isSilence ? null : 'a' + i, isSilence ? 'SILENCE' : 'COMPLETED', i)); // newest (t8) first, alternating status
+  }
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  assert.equal(ctx.recentConversationContext.items.length, 6);
+  assert.deepEqual(ctx.recentConversationContext.items.map((i) => i.turnId), ['t3', 't4', 't5', 't6', 't7', 't8']); // t1/t2 (oldest 2) correctly excluded by the 6-turn cap alone, regardless of status
+});
+
 // ── Product-required test (cursor stability): a page boundary falls INSIDE a group of turns
 // that all share the exact same `createdAt` value, with eligible COMPLETED turns on BOTH sides
 // of that boundary — proving the (createdAt, turnId) compound cursor skips nothing and
 // duplicates nothing, unlike a `createdAt`-only cursor would.
-test('PRODUCT-6: a pagination boundary landing inside a group of equal-createdAt turns skips no eligible COMPLETED turn and duplicates none, on either side of the boundary', async () => {
+test('PRODUCT-6: a pagination boundary landing inside a group of equal-createdAt turns skips no eligible (COMPLETED/SILENCE) turn and duplicates none, on either side of the boundary — and PENDING exclusion still works correctly inside a tie group', async () => {
   var T_TIE = 'TIE-TIMESTAMP'; // one Firestore server-timestamp value shared by 4 documents —
                                 // the exact scenario a createdAt-only cursor cannot safely paginate.
   var history = [
-    makeConversationRecord('n00', 'x', null, 'SILENCE', 100),
+    makeConversationRecord('n00', 'x', null, 'PENDING', 100),
     makeConversationRecord('n01', 'x', null, 'PENDING', 99),
-    makeConversationRecord('n02', 'u2', 'a2', 'COMPLETED', 98),   // eligible #1
-    makeConversationRecord('n03', 'u3', 'a3', 'COMPLETED', 97),   // eligible #2
-    makeConversationRecord('n04', 'x', null, 'SILENCE', 96),
-    makeConversationRecord('n05', 'u5', 'a5', 'COMPLETED', 95),   // eligible #3
+    makeConversationRecord('n02', 'u2', 'a2', 'COMPLETED', 98),               // eligible #1
+    makeConversationRecord('n03', 'silence text', null, 'SILENCE', 97),      // eligible #2
+    makeConversationRecord('n04', 'x', null, 'PENDING', 96),
+    makeConversationRecord('n05', 'u5', 'a5', 'COMPLETED', 95),               // eligible #3
     makeConversationRecord('n06', 'x', null, 'PENDING', 94),
     // Tie group: 4 documents, ALL sharing createdAt = T_TIE, distinguished only by turnId — the
     // true Firestore order among ties is (createdAt desc, turnId desc), so this array is already
     // arranged tie_d > tie_c > tie_b > tie_a, exactly as a correctly tie-broken index would sort them.
-    makeConversationRecord('tie_d', 'ud', 'ad', 'COMPLETED', 93, T_TIE),  // eligible #4 (page 1 side of the tie group)
-    makeConversationRecord('tie_c', 'x', null, 'SILENCE', 92, T_TIE),     // not eligible (page 1 side)
-    makeConversationRecord('tie_b', 'ub', 'ab', 'COMPLETED', 91, T_TIE),  // eligible #5 — LAST item of page 1: becomes the cursor (T_TIE, 'tie_b')
-    makeConversationRecord('tie_a', 'ua', 'aa', 'COMPLETED', 90, T_TIE),  // eligible #6 — FIRST item of page 2: must NOT be skipped by the boundary
-    makeConversationRecord('n11', 'u11', 'a11', 'COMPLETED', 89)          // older still — must NOT be reached; the walk stops once 6 are found
+    makeConversationRecord('tie_d', 'ud', 'ad', 'COMPLETED', 93, T_TIE),           // eligible #4 (page 1 side of the tie group)
+    makeConversationRecord('tie_c', 'x', null, 'PENDING', 92, T_TIE),              // excluded (page 1 side) — proves PENDING exclusion still works inside a tie group
+    makeConversationRecord('tie_b', 'silence text 2', null, 'SILENCE', 91, T_TIE), // eligible #5 — LAST item of page 1: becomes the cursor (T_TIE, 'tie_b')
+    makeConversationRecord('tie_a', 'ua', 'aa', 'COMPLETED', 90, T_TIE),           // eligible #6 — FIRST item of page 2: must NOT be skipped by the boundary
+    makeConversationRecord('n11', 'u11', 'a11', 'COMPLETED', 89)                   // older still — must NOT be reached; the walk stops once 6 are found
   ]; // page size 10 -> page 1 = indices 0-9 (n00..n06, tie_d, tie_c, tie_b); page 2 begins at tie_a
   configureWithConversationHistory(history);
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
-  assert.equal(ids.length, 6, 'exactly the latest 6 COMPLETED turns — none skipped by the tie, none duplicated');
+  assert.equal(ids.length, 6, 'exactly the latest 6 eligible turns — none skipped by the tie, none duplicated');
   assert.equal(new Set(ids).size, 6, 'no turnId appears twice');
   // Chronological (oldest -> newest) order: within the tie group, turnId desc means tie_d is
-  // newest and tie_a is oldest of the four — tie_a/tie_b (both COMPLETED) must appear BEFORE
+  // newest and tie_a is oldest of the four — tie_a/tie_b (both eligible) must appear BEFORE
   // tie_d, exactly reflecting that deterministic tie-break, never an arbitrary/skipped order.
   assert.deepEqual(ids, ['tie_a', 'tie_b', 'tie_d', 'n05', 'n03', 'n02']);
-  assert.equal(ids.includes('tie_c'), false, 'SILENCE turn inside the tie group correctly excluded');
+  assert.equal(ids.includes('tie_c'), false, 'PENDING turn inside the tie group correctly excluded');
   assert.equal(ids.includes('n11'), false, 'older turn beyond the 6th eligible one correctly never reached');
   // 6,000-character whole-turn cap: unaffected by the tie-break correction — all 6 short turns
   // fit comfortably under the cap, so none is excluded by it (the cap's own boundary-crossing
-  // math is covered in full by PRODUCT-4, above; this assertion only proves the cap gate still
-  // runs normally, undisturbed, in a tie-break scenario).
-  const totalChars = ctx.recentConversationContext.items.reduce((sum, t) => sum + t.userText.length + t.assistantText.length, 0);
+  // math is covered in full by PRODUCT-4/PRODUCT-4b, above; this assertion only proves the cap
+  // gate still runs normally, undisturbed, in a tie-break scenario, and correctly handles the
+  // SILENCE items' null assistantText).
+  const totalChars = ctx.recentConversationContext.items.reduce((sum, t) => sum + t.userText.length + (t.assistantText ? t.assistantText.length : 0), 0);
   assert.ok(totalChars < 6000);
 });
 
@@ -1807,10 +1841,9 @@ test('CCC-I: the 6,000-character cap is a hard ceiling even for a single very la
   assert.equal(ctx.recentConversationContext.items.length, 0); // exceeds the cap even alone -> excluded entirely, never truncated
 });
 
-test('CCC-L/M: PENDING and SILENCE turns are walked past (advancing the pagination cursor) but never included in the assembled context', async () => {
+test('CCC-L: PENDING turns are walked past (advancing the pagination cursor) but never included in the assembled context', async () => {
   const history = [
     makeConversationRecord('t4', 'pending text', null, 'PENDING', 4),
-    makeConversationRecord('t3', 'silence text', null, 'SILENCE', 3),
     makeConversationRecord('t2', 'u2', 'a2', 'COMPLETED', 2),
     makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 1)
   ];
@@ -1818,8 +1851,22 @@ test('CCC-L/M: PENDING and SILENCE turns are walked past (advancing the paginati
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
   assert.equal(ids.includes('t4'), false);
-  assert.equal(ids.includes('t3'), false);
   assert.deepEqual(ids, ['t1', 't2']);
+});
+
+test('CCC-M: SILENCE turns are now INCLUDED in the assembled context, on equal footing with COMPLETED (Canonical Review correction, §8) — the turn\'s own assistantText:null survives into items[] unchanged', async () => {
+  const history = [
+    makeConversationRecord('t3', 'silence text', null, 'SILENCE', 3),
+    makeConversationRecord('t2', 'u2', 'a2', 'COMPLETED', 2),
+    makeConversationRecord('t1', 'u1', 'a1', 'COMPLETED', 1)
+  ];
+  configureWithConversationHistory(history);
+  const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
+  const ids = ctx.recentConversationContext.items.map((i) => i.turnId);
+  assert.deepEqual(ids, ['t1', 't2', 't3']);
+  const silenceItem = ctx.recentConversationContext.items.find((i) => i.turnId === 't3');
+  assert.equal(silenceItem.userText, 'silence text');
+  assert.equal(silenceItem.assistantText, null); // never fabricated, never backfilled — exactly as persisted
 });
 
 test('CCC-N: recentConversationContext carries provenance: \'CONVERSATION_CONTEXT\'', async () => {
