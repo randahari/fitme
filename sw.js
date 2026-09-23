@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.4';
+const VERSION = 'v2.47.5';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -85,6 +85,10 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/contextRelevancePlanner.js',
   '/fitme/js/coachDecisionSystem/contextComposer.js',
   '/fitme/js/coachDecisionSystem/capabilityRegistry.js',
+  // WP0 Phase E.0.2a Activation Amendment — REPAIR: eligibilityPolicy.js is now a live,
+  // unconditional dependency of trrCapabilityAdapter.js (every buildReasoningContext() call) —
+  // added here to match index.html's own identical fix.
+  '/fitme/js/coachDecisionSystem/eligibilityPolicy.js',
   '/fitme/js/coachDecisionSystem/trrCapabilityAdapter.js',
   // WP0 Phase D.1 — closed Risk Characteristic taxonomy + validator, same disclosure as
   // index.html: pure/synchronous, not wired into any live routing seam.

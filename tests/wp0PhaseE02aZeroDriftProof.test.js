@@ -1,14 +1,22 @@
 // WP0 Phase E.0.2a — Policy-Based Provider Eligibility Zero-Drift Proof
-// (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md §13/§15/§21 item 3).
+// (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md §13/§15/§21 item 3;
+// updated for docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md).
 //
-// SHADOW-MODE PROOF, not production code: contextRelevancePlanner.js is not modified by this
-// Phase and continues to read capability.contextCeiling exactly as it does today, unchanged.
-// This suite proves — for the real, currently-registered TRR and GENERAL_REASONING capabilities
-// and their real, currently-registered providers — that eligibilityPolicy.computeEligibility()
-// would authorize (eligible:true) exactly the same providers contextCeiling already authorizes,
-// and that reasoningAccessAuthorized resolves to the values consistent with each capability's own
-// declared sensitiveContextAccessPolicy, BEFORE any future, separately-approved SPEC ever
-// re-points contextRelevancePlanner.select()'s own universe at this module's output.
+// ORIGINALLY a shadow-mode-only proof (E.0.2a itself, 359d7d9): this suite's first five tests
+// proved — for the real, currently-registered TRR and GENERAL_REASONING capabilities and their
+// real, currently-registered providers — that eligibilityPolicy.computeEligibility() would
+// authorize (eligible:true) exactly the same providers contextCeiling already authorized, and that
+// reasoningAccessAuthorized resolves to the values consistent with each capability's own declared
+// sensitiveContextAccessPolicy. Those five equivalence proofs remain byte-identical and still pass
+// unmodified — the Activation Amendment's own §11 acceptance requirement rests on them continuing
+// to hold, not on the shadow/no-caller framing below (now superseded).
+//
+// ACTIVATED (this revision, per the Activation Amendment): the last two tests below are rewritten
+// to prove the CURRENT, intentional state — contextRelevancePlanner.js's select() now enforces
+// reasoningAccessAuthorized via an injected closure (never by requiring eligibilityPolicy.js
+// directly, which would be circular — see contextRelevancePlanner.js's own header), and exactly
+// trrCapabilityAdapter.js / generalReasoningCapability.js require eligibilityPolicy.js directly,
+// no other production file.
 // Run with: node --test tests/wp0PhaseE02aZeroDriftProof.test.js
 
 const test = require('node:test');
@@ -84,22 +92,29 @@ test('every STANDARD-sensitivity provider is reasoningAccessAuthorized:true for 
   });
 });
 
-test('contextRelevancePlanner.js is untouched by this Phase — select() still reads capability.contextCeiling directly, never eligibilityPolicy (structural proof of shadow-mode-only integration, §13/§14)', () => {
+test('Activation Amendment §08: contextRelevancePlanner.js still never requires eligibilityPolicy.js directly (avoids the circular require this file\'s own header explains — eligibilityPolicy.js already requires contextComposer.js, which requires this file) — select() still reads capability.contextCeiling directly, AND now also enforces the injected isReasoningAccessAuthorized closure', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const plannerSource = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/contextRelevancePlanner.js'), 'utf8');
-  assert.ok(!/eligibilityPolicy/i.test(plannerSource), 'contextRelevancePlanner.js must not reference eligibilityPolicy in E.0.2a');
+  assert.ok(!/require\(['"]\.\/eligibilityPolicy\.js['"]\)/.test(plannerSource), 'contextRelevancePlanner.js must never require eligibilityPolicy.js directly — would be circular');
   assert.ok(/capability\.contextCeiling/.test(plannerSource), 'contextRelevancePlanner.js must still read capability.contextCeiling directly');
+  assert.ok(/isReasoningAccessAuthorized/.test(plannerSource), 'select() must now enforce the injected isReasoningAccessAuthorized closure (Activation Amendment §08)');
 });
 
-test('no production file requires eligibilityPolicy.js in E.0.2a (structural proof nothing production-facing calls it yet)', () => {
+test('Activation Amendment §08/§15: exactly trrCapabilityAdapter.js and generalReasoningCapability.js require eligibilityPolicy.js in production — no other coachDecisionSystem file (contextComposer.js/contextRelevancePlanner.js themselves deliberately never require it, per the test above)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const dir = path.join(__dirname, '../js/coachDecisionSystem');
+  const EXPECTED_REQUIRERS = ['trrCapabilityAdapter.js', 'generalReasoningCapability.js'];
   const productionFilesExcludingEligibilityPolicyItself = fs.readdirSync(dir)
     .filter((f) => f.endsWith('.js') && f !== 'eligibilityPolicy.js');
   productionFilesExcludingEligibilityPolicyItself.forEach((f) => {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    assert.ok(!/require\(['"]\.\/eligibilityPolicy\.js['"]\)/.test(src), f + ' must not require eligibilityPolicy.js in E.0.2a');
+    const requiresIt = /require\(['"]\.\/eligibilityPolicy\.js['"]\)/.test(src);
+    if (EXPECTED_REQUIRERS.indexOf(f) !== -1) {
+      assert.ok(requiresIt, f + ' must require eligibilityPolicy.js (Activation Amendment §08)');
+    } else {
+      assert.ok(!requiresIt, f + ' must NOT require eligibilityPolicy.js — only the two capability adapters may');
+    }
   });
 });

@@ -24,6 +24,23 @@
 // the governed, observable, on-demand tool-mediated path (§17/§24, WP0 Phase F — not built in
 // Phase A, since ToolRegistry does not exist yet; Phase A's contract here is unaffected by that
 // later addition).
+//
+// WP0 PHASE E.0.2a ACTIVATION AMENDMENT (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §06/§08) — the deterministic eligibility/authorization policy (eligibilityPolicy.js, E.0.2a,
+// shadow-mode since 359d7d9) becomes AUTHORITATIVE at this exact seam: select()'s own final
+// return line is now the single, non-bypassable point every candidate — however it was selected
+// (baseline, needShapeDefaults, tag-overlap) — must additionally satisfy
+// `reasoningAccessAuthorized === true` to survive. contextCeiling remains the outer bound,
+// unchanged, retained per GCUK Ch.06's own transitional "override/cap" framing — authorization is
+// a narrower, ADDITIONAL requirement layered on top of it, never a replacement. This module still
+// never requires eligibilityPolicy.js directly (would reintroduce the exact circular-require this
+// file's own header already explains getFragmentProvider avoids: eligibilityPolicy.js itself
+// requires contextComposer.js, which requires this file) — the caller (contextComposer.js, itself
+// injected from trrCapabilityAdapter.js/generalReasoningCapability.js) supplies a plain
+// (provider) => boolean closure instead, the same injection pattern getFragmentProvider already
+// established. Fail-closed, by construction: if isReasoningAccessAuthorized is not a real
+// function, or returns anything other than true for a given provider, that provider does not
+// survive — no permissive fallback, no semantic mechanism may compensate (Amendment §10).
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -52,13 +69,16 @@
     return false;
   }
 
-  // select(need, capability, getFragmentProvider) → array of ContextFragmentProvider ids,
-  // always a subset of capability.contextCeiling. `getFragmentProvider` is injected (rather
-  // than requiring contextComposer.js directly) to avoid a circular module dependency —
-  // contextComposer.js is the natural caller and already owns the fragment-provider catalogue.
-  // Synchronous, throws never, has no async/Promise return — a direct, structural signal (in
-  // addition to containing no callClaude reference at all) that no AI round-trip can occur here.
-  function select(need, capability, getFragmentProvider) {
+  // select(need, capability, getFragmentProvider, isReasoningAccessAuthorized) → array of
+  // ContextFragmentProvider ids, always a subset of capability.contextCeiling AND always a
+  // subset of the isReasoningAccessAuthorized-approved set (Activation Amendment §08). Both
+  // `getFragmentProvider` and `isReasoningAccessAuthorized` are injected (rather than requiring
+  // contextComposer.js/eligibilityPolicy.js directly) to avoid a circular module dependency —
+  // contextComposer.js is the natural caller and already owns the fragment-provider catalogue;
+  // eligibilityPolicy.js is never required here for the same reason (see file header). Synchronous,
+  // throws never, has no async/Promise return — a direct, structural signal (in addition to
+  // containing no callClaude reference at all) that no AI round-trip can occur here.
+  function select(need, capability, getFragmentProvider, isReasoningAccessAuthorized) {
     need = need || {};
     capability = capability || {};
     var ceiling = Array.isArray(capability.contextCeiling) ? capability.contextCeiling : [];
@@ -86,11 +106,25 @@
 
     // Defensive, independent re-enforcement of the ceiling bound (see header) — never trust
     // upstream validation alone for the one invariant this whole correction exists to guarantee.
-    return Object.keys(selected).filter(function (id) { return ceiling.indexOf(id) !== -1; });
+    //
+    // WP0 Phase E.0.2a Activation Amendment §08/§10 — the SAME final filter additionally
+    // enforces reasoningAccessAuthorized, covering every candidate regardless of which mechanism
+    // above selected it (baseline, needShapeDefaults, tag-overlap) — the one, non-bypassable
+    // chokepoint every selection path and every future one (a future E.0.2b discovery proposal)
+    // already funnels through. Fail-closed: a missing getFragmentProvider, a missing/non-function
+    // isReasoningAccessAuthorized, an unresolvable provider, or an authorization check that
+    // returns anything other than exactly `true` all resolve the SAME way — the candidate does
+    // not survive. No permissive fallback exists for any of these cases.
+    return Object.keys(selected).filter(function (id) {
+      if (ceiling.indexOf(id) === -1) return false;
+      if (typeof getFragmentProvider !== 'function' || typeof isReasoningAccessAuthorized !== 'function') return false;
+      var provider = getFragmentProvider(id);
+      return !!provider && isReasoningAccessAuthorized(provider) === true;
+    });
   }
 
   var API = {
-    VERSION: '1.0.0', // WP0 Phase A
+    VERSION: '2.0.0', // WP0 Phase A, activated at WP0 Phase E.0.2a Activation Amendment
     select: select
   };
 

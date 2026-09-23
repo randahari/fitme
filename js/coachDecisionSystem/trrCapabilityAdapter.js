@@ -37,6 +37,15 @@
   var ContextComposer = (typeof module !== 'undefined' && module.exports)
     ? require('./contextComposer.js')
     : window.ContextComposer;
+  // WP0 Phase E.0.2a Activation Amendment §08/§09 — safe to require directly here (no circular
+  // dependency: eligibilityPolicy.js's own requires — contextComposer.js/capabilityRegistry.js/
+  // consentScopeRegistry.js — never require trrCapabilityAdapter.js back). contextComposer.js and
+  // contextRelevancePlanner.js deliberately do NOT require this module themselves (that WOULD be
+  // circular, since eligibilityPolicy.js requires contextComposer.js) — this file is the correct,
+  // acyclic seam that owns the requirement and injects a plain closure downstream instead.
+  var EligibilityPolicy = (typeof module !== 'undefined' && module.exports)
+    ? require('./eligibilityPolicy.js')
+    : window.EligibilityPolicy;
 
   var TRR_CAPABILITY_ID = 'TRR';
 
@@ -159,14 +168,31 @@
     return { ok: true };
   }
 
+  // WP0 Phase E.0.2a Activation Amendment §08 — the injected authorization closure every
+  // capability adapter builds the same way: bakes capability + consentState in once, exposes
+  // only (provider) => boolean to ContextComposer.assemble()/ContextRelevancePlanner.select(),
+  // never requiring either of those two files to reference EligibilityPolicy themselves (avoids
+  // the circular require described at this file's own top). Fail-closed by construction —
+  // EligibilityPolicy.computeEligibility() itself never resolves a malformed/missing input to
+  // true (eligibilityPolicy.js, unmodified).
+  function makeIsReasoningAccessAuthorized(capability, consentState) {
+    return function (provider) {
+      return EligibilityPolicy.computeEligibility(provider, capability, consentState).reasoningAccessAuthorized === true;
+    };
+  }
+
   // §20 — the reasoning-context adapter. Produces a shape byte-identical to
   // memoryLayer.js's buildTrainingReadinessReasoningContext(pipelineContext, detectedOpportunity)
   // (verified field-for-field against the current repository source), sourced from
   // ContextComposer.assemble()'s generic fragment map instead of direct pipelineContext reads.
-  async function buildReasoningContext(pipelineContext, detectedOpportunity) {
+  // Activation Amendment §08/§09 — consentState is a new, third, additive parameter (undefined
+  // for any pre-Amendment caller — internalPipelineOrchestrator.js's own call site is the only
+  // one that supplies it in production; EligibilityPolicy's own already-fail-closed handling of
+  // an undefined consentState is unchanged, never special-cased here).
+  async function buildReasoningContext(pipelineContext, detectedOpportunity, consentState) {
     var trrCapability = CapabilityRegistry.getById(TRR_CAPABILITY_ID);
     var composed = trrCapability
-      ? await ContextComposer.assemble({}, trrCapability, pipelineContext)
+      ? await ContextComposer.assemble({}, trrCapability, pipelineContext, makeIsReasoningAccessAuthorized(trrCapability, consentState))
       : { viable: false, context: null };
     var ctx = (composed && composed.viable && composed.context) ? composed.context : {};
 
@@ -201,7 +227,7 @@
   }
 
   var API = {
-    VERSION: '1.1.0', // WP0 Phase B, extended additively at WP0 Phase E.0.2a
+    VERSION: '1.2.0', // WP0 Phase B, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment
     TRR_CAPABILITY_ID: TRR_CAPABILITY_ID,
     TRR_CONTEXT_FIELD_IDS: TRR_CONTEXT_FIELD_IDS,
     registerAll: registerAll,

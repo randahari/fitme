@@ -457,3 +457,22 @@ test('CSR1-J. finalReview() never re-derives this rule regardless of Terminal De
   assert.equal(result.disposition, 'UNMODIFIED');
   assert.equal(result.reasonCode, 'NO_SAFETY_CONFLICT');
 });
+
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §16) — "Safety isolation". safetyLayer.js must remain structurally independent of the
+// Activation Amendment's own seam (contextRelevancePlanner.js / contextComposer.js /
+// eligibilityPolicy.js / capabilityRegistry.js): it reads pipelineContext.userSafetyContext /
+// userSafetyProvenance directly (unchanged, pre-existing design), never through
+// ContextComposer/ContextRelevancePlanner/EligibilityPolicy/CapabilityRegistry, and this file was
+// not touched by this Amendment's implementation.
+// ══════════════════════════════════════════════════════════════════
+
+test('Activation Amendment §16 — safetyLayer.js never references ContextComposer, ContextRelevancePlanner, EligibilityPolicy, or CapabilityRegistry (structural independence proof)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../js/coachDecisionSystem/safetyLayer.js'), 'utf8');
+  ['ContextComposer', 'ContextRelevancePlanner', 'EligibilityPolicy', 'CapabilityRegistry', 'contextComposer.js', 'contextRelevancePlanner.js', 'eligibilityPolicy.js', 'capabilityRegistry.js'].forEach((token) => {
+    assert.ok(src.indexOf(token) === -1, 'safetyLayer.js must not reference ' + token);
+  });
+});

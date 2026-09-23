@@ -744,19 +744,25 @@
        registration, live, threw "Cannot read properties of undefined (reading
        'isValidConsentScope')" at TrrCapabilityAdapter.registerAll(), aborting the remainder of the
        main application script's own composition sequence below. This tag closes that gap.
-       eligibilityPolicy.js itself remains deliberately NOT script-tagged here — nothing in the
-       production composition sequence requires window.EligibilityPolicy; adding a load-bearing
-       browser dependency for it now would be scope creep beyond this repair, not required for the
-       app to execute correctly) ->
        contextRelevancePlanner.js (no dependencies) -> contextComposer.js (requires
        ConsentScopeRegistry and ContextRelevancePlanner) -> capabilityRegistry.js (requires
-       contextComposer.js) -> trrCapabilityAdapter.js (requires both). Not yet wired into the live
-       pipeline until this commit — Phase A shipped these files unit-tested in isolation only (§31
-       Phase A). -->
+       contextComposer.js) -> eligibilityPolicy.js (requires ContextComposer, CapabilityRegistry,
+       ConsentScopeRegistry) -> trrCapabilityAdapter.js (requires CapabilityRegistry,
+       ContextComposer, EligibilityPolicy).
+       WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+       §08) — REPAIR: eligibilityPolicy.js is now a live, unconditional dependency of
+       trrCapabilityAdapter.js's own makeIsReasoningAccessAuthorized() closure — every call to
+       buildReasoningContext() (internalPipelineOrchestrator.js's own live TRR call site) invokes
+       it — but this file had never been script-tagged here (it was shadow-mode-only, correctly
+       un-tagged, before the Activation Amendment). Without this tag, window.EligibilityPolicy is
+       undefined in the browser and every live TRR reasoning pass throws "Cannot read properties
+       of undefined (reading 'computeEligibility')". This tag closes that gap, mirroring
+       consentScopeRegistry.js's own earlier, identical repair immediately above. -->
   <script src="js/coachDecisionSystem/consentScopeRegistry.js"></script>
   <script src="js/coachDecisionSystem/contextRelevancePlanner.js"></script>
   <script src="js/coachDecisionSystem/contextComposer.js"></script>
   <script src="js/coachDecisionSystem/capabilityRegistry.js"></script>
+  <script src="js/coachDecisionSystem/eligibilityPolicy.js"></script>
   <script src="js/coachDecisionSystem/trrCapabilityAdapter.js"></script>
   <!-- WP0 Phase D.1 (docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md §08/§10, Revision
        2, Product+Architecture APPROVED / READY FOR IMPLEMENTATION) — the closed Risk

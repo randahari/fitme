@@ -29,6 +29,13 @@ function sensitivityFields(overrides) {
   return Object.assign({ sensitivityTier: 'STANDARD', consentScope: null }, overrides || {});
 }
 
+// WP0 Phase E.0.2a Activation Amendment §08 — a permissive authorization stub, used ONLY by
+// tests below that exercise assemble()'s own PRE-EXISTING composition mechanics (required-vs-
+// optional invocation, double-invoke prevention, relevance bounding) — a concern orthogonal to
+// authorization itself, which is tested exhaustively, with the REAL EligibilityPolicy algorithm,
+// in tests/contextRelevancePlanner.test.js's own dedicated "Activation Amendment" test group.
+function authorizeAll() { return true; }
+
 test('registerFragmentProvider() accepts a well-formed provider', () => {
   const result = ContextComposer.registerFragmentProvider(Object.assign({ id: 'a', invoke: () => ({ value: 1, availability: 'AVAILABLE' }) }, sensitivityFields()));
   assert.equal(result.ok, true);
@@ -131,7 +138,7 @@ test('assemble(): optional (baseline) fragments are included alongside required 
     requiredContext: ['req1'],
     contextCeiling: ['opt1'],
     contextBaseline: ['opt1']
-  }));
+  }), {}, authorizeAll);
   assert.equal(result.viable, true);
   assert.ok('req1' in result.context);
   assert.ok('opt1' in result.context);
@@ -141,7 +148,8 @@ test('assemble(): optional context is bounded to the relevance-selected subset, 
   ['a', 'b', 'c'].forEach((id) => ContextComposer.registerFragmentProvider(Object.assign({ id, invoke: () => ({ value: id, availability: 'AVAILABLE' }) }, sensitivityFields())));
   const result = await ContextComposer.assemble(
     { shape: 'REQUEST_FOR_INFORMATION', openEntityMentions: [] },
-    capability({ contextCeiling: ['a', 'b', 'c'], contextBaseline: ['a'] })
+    capability({ contextCeiling: ['a', 'b', 'c'], contextBaseline: ['a'] }),
+    {}, authorizeAll
   );
   assert.equal(result.viable, true);
   assert.deepEqual(Object.keys(result.context), ['a']);
@@ -152,9 +160,23 @@ test('assemble(): a fragment id present in both requiredContext and the relevanc
   ContextComposer.registerFragmentProvider(Object.assign({ id: 'shared', invoke: () => { invokeCount++; return { value: 1, availability: 'AVAILABLE' }; } }, sensitivityFields()));
   await ContextComposer.assemble(
     { shape: 'DISCLOSURE' },
-    capability({ requiredContext: ['shared'], contextCeiling: ['shared'], contextBaseline: ['shared'] })
+    capability({ requiredContext: ['shared'], contextCeiling: ['shared'], contextBaseline: ['shared'] }),
+    {}, authorizeAll
   );
   assert.equal(invokeCount, 1);
+});
+
+// WP0 Phase E.0.2a Activation Amendment §08 — assemble()'s own new fourth parameter is passed
+// straight through to ContextRelevancePlanner.select() unmodified; select()'s own dedicated test
+// suite (tests/contextRelevancePlanner.test.js) already proves the real authorization semantics
+// exhaustively — this test proves only that assemble() itself correctly fails closed (an empty
+// optional set) when the parameter is omitted, never silently falling back to pre-Amendment
+// (unfiltered) behavior.
+test('assemble(): omitting isReasoningAccessAuthorized fails the optional set closed (empty), even though contextBaseline names a real, resolvable, AVAILABLE provider', async () => {
+  ContextComposer.registerFragmentProvider(Object.assign({ id: 'opt1', invoke: () => ({ value: 'o', availability: 'AVAILABLE' }) }, sensitivityFields()));
+  const result = await ContextComposer.assemble({}, capability({ contextCeiling: ['opt1'], contextBaseline: ['opt1'] }));
+  assert.equal(result.viable, true);
+  assert.deepEqual(result.context, {}, 'no permissive fallback — omitting the authorization function excludes the optional set entirely');
 });
 
 test('AVAILABILITY_VALUES is the exact, exhaustive, frozen three-value closed vocabulary', () => {

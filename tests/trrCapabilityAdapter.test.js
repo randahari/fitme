@@ -160,9 +160,40 @@ test('GOLDEN MASTER — need.observation/validReasonCategory are correctly sourc
 });
 
 // ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §16) — "actual TRR composed-context zero-drift". buildReasoningContext()'s new 3rd parameter
+// (consentState) is additive; every currently-registered TRR provider declares consentScope:null
+// (see the sensitivityTier/consentScope test below), so eligibilityPolicy.computeEligibility()
+// never consults consentState for any TRR provider. This proves that invariant directly at the
+// real, production buildReasoningContext() call surface, not just at eligibilityPolicy's own
+// unit level (already covered by tests/wp0PhaseE02aZeroDriftProof.test.js).
+// ══════════════════════════════════════════════════════════════════
+
+test('Activation Amendment §16 — buildReasoningContext() output is byte-identical whether consentState is omitted, granted, or ungranted (TRR composed-context zero-drift)', async () => {
+  const pc = fullPipelineContext();
+  const opp = detectedOpportunity();
+
+  const omitted = await TrrCapabilityAdapter.buildReasoningContext(pc, opp);
+  const granted = await TrrCapabilityAdapter.buildReasoningContext(pc, opp, { LEARNED_MEMORY_PERSONALIZATION: { granted: true, source: 'migrated' } });
+  const ungranted = await TrrCapabilityAdapter.buildReasoningContext(pc, opp, { LEARNED_MEMORY_PERSONALIZATION: { granted: false, source: 'migrated' } });
+  const malformed = await TrrCapabilityAdapter.buildReasoningContext(pc, opp, 'not-a-consent-state');
+  const nullConsent = await TrrCapabilityAdapter.buildReasoningContext(pc, opp, null);
+
+  const omittedJson = JSON.stringify(omitted);
+  assert.equal(JSON.stringify(granted), omittedJson, 'granted consent must not change TRR\'s composed context');
+  assert.equal(JSON.stringify(ungranted), omittedJson, 'ungranted consent must not change TRR\'s composed context');
+  assert.equal(JSON.stringify(malformed), omittedJson, 'malformed consentState must not change TRR\'s composed context (and must not throw)');
+  assert.equal(JSON.stringify(nullConsent), omittedJson, 'null consentState must not change TRR\'s composed context (and must not throw)');
+
+  // Non-trivial: the composed context genuinely includes TRR's own providers' real values, so
+  // this proof isn't vacuously true over an empty/degenerate context.
+  assert.notEqual(omitted.readinessStateContext, undefined, 'sanity check: composed context must carry real field values');
+});
+
+// ══════════════════════════════════════════════════════════════════
 // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
-// §15/§17) — TRR's own declared eligibility metadata. Shadow-only: none of this participates in
-// any live routing path yet (contextRelevancePlanner.js is unmodified).
+// §15/§17) — TRR's own declared eligibility metadata. Now ACTIVATED (Activation Amendment) —
+// this metadata is enforced live at the contextRelevancePlanner.js seam.
 // ══════════════════════════════════════════════════════════════════
 
 test('registerAll() declares capabilityRiskTier:STANDARD and sensitiveContextAccessPolicy:AUTHORIZED as two independent fields (WP0 Phase E.0.2a §15/§17)', () => {

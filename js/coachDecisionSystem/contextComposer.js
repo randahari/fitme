@@ -43,7 +43,7 @@
     ? require('./consentScopeRegistry.js')
     : window.ConsentScopeRegistry;
 
-  var CONTEXT_COMPOSER_VERSION = '1.2.0'; // WP0 Phase E.0.1, extended additively at WP0 Phase E.0.2a
+  var CONTEXT_COMPOSER_VERSION = '1.3.0'; // WP0 Phase E.0.1, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment
 
   var AVAILABILITY_VALUES = Object.freeze(['AVAILABLE', 'UNAVAILABLE', 'PARTIAL']);
 
@@ -164,7 +164,17 @@
   // Optional fragments are the ContextRelevancePlanner-selected subset only — never the full
   // ceiling — satisfying the binding "must never receive unrestricted access to all FITME
   // state" constraint at the composition boundary.
-  async function assemble(need, capability, pipelineContext) {
+  //
+  // WP0 Phase E.0.2a Activation Amendment §08 — isReasoningAccessAuthorized is a new, additive,
+  // fourth parameter: a plain (provider) => boolean closure, built and injected by the caller
+  // (e.g. trrCapabilityAdapter.js), never required by this file directly — EligibilityPolicy
+  // itself is not required here (would create a circular require: eligibilityPolicy.js already
+  // requires this file). Passed straight through to ContextRelevancePlanner.select(), which is
+  // the sole enforcement seam (§08's own binding text). requiredContext's own unconditional
+  // invocation loop above is deliberately NOT gated by this closure — the Amendment's named seam
+  // is select()'s own final filter only (§08), and both currently-registered capabilities declare
+  // requiredContext:[] today, so this is a documented scope boundary, not an oversight.
+  async function assemble(need, capability, pipelineContext, isReasoningAccessAuthorized) {
     capability = capability || {};
     var requiredContext = Array.isArray(capability.requiredContext) ? capability.requiredContext : [];
     var requiredResults = {};
@@ -177,7 +187,7 @@
       }
     }
 
-    var relevantFragmentIds = ContextRelevancePlanner.select(need, capability, getFragmentProvider);
+    var relevantFragmentIds = ContextRelevancePlanner.select(need, capability, getFragmentProvider, isReasoningAccessAuthorized);
     var optionalResults = {};
     for (var j = 0; j < relevantFragmentIds.length; j++) {
       var oid = relevantFragmentIds[j];

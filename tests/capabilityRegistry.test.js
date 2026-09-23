@@ -332,7 +332,16 @@ test('resolve(): a required fragment reported AVAILABLE is included in the resol
   assert.deepEqual(result.context.presentFragment, { value: 'hello', availability: 'AVAILABLE' });
 });
 
-test('resolve(): optional context is bounded to the relevance-selected subset, not the full contextCeiling (the "not a full dump" proof)', async () => {
+// WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §15) note: CapabilityRegistry.resolve() — the function under test here — is explicitly named as
+// NOT touched by the Amendment; it still calls ContextComposer.assemble(need, capability,
+// pipelineContext) with no isReasoningAccessAuthorized closure. Since the Amendment's own seam
+// (contextRelevancePlanner.js's final filter) now fails CLOSED whenever that closure is missing
+// (Amendment §10 — "no permissive fallback"), this specific, test-only, zero-production-caller
+// path (resolve() has no production callers) now correctly composes an EMPTY optional context,
+// not even contextBaseline. This is not a defect — see tests/wp0PhaseCOpenWorldProof.test.js's own
+// identical note for the full disclosure.
+test('resolve(): optional context is bounded to the relevance-selected subset, not the full contextCeiling — post-Activation-Amendment, the UNMODIFIED resolve() path supplies no authorization closure, so the optional context now fails closed to empty entirely (the "not a full dump" proof still holds, now even more strongly)', async () => {
   ['fragA', 'fragB', 'fragC'].forEach((id) => {
     ContextComposer.registerFragmentProvider({ id, sensitivityTier: 'STANDARD', consentScope: null, invoke: () => ({ value: id, availability: 'AVAILABLE' }) });
   });
@@ -345,7 +354,7 @@ test('resolve(): optional context is bounded to the relevance-selected subset, n
   }));
   const result = await CapabilityRegistry.resolve({ shape: 'REQUEST_FOR_INFORMATION', openEntityMentions: [] });
   assert.equal(result.status, 'RESOLVED');
-  assert.ok('fragA' in result.context);
+  assert.ok(!('fragA' in result.context), 'resolve() supplies no authorization closure, so even contextBaseline now fails closed (see comment above)');
   assert.ok(!('fragB' in result.context));
   assert.ok(!('fragC' in result.context));
 });

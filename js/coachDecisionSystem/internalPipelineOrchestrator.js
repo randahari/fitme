@@ -218,7 +218,12 @@
     // approved outcome is INELIGIBLE/TRUST_TEST_UNCERTAIN (Section 22), still Silence overall.
     // safetyPort: SafetyLayer is the real, already-approved SL-001 production implementation.
     var opportunities = buildOpportunitiesForDecisionPass(pipelineContext);
-    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer });
+    // WP0 Phase E.0.2a Activation Amendment §09 — identity is threaded additively so
+    // runDecisionPass() can perform its own PREFERENCE_CONSENT_READ (mirroring the three
+    // existing call sites in runDirectTurnPass() below) immediately before TRR reasoning-context
+    // composition, exactly like buildOpportunitiesForDecisionPass()'s own precedent for
+    // currentTurnId threading below.
+    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer, identity: identity });
 
     if (passResult.status !== 'FORMED') {
       // Defensive only — with opportunities always [], this cannot currently occur (an empty
@@ -553,7 +558,7 @@
     // this file that ever supplies buildOpportunitiesForDecisionPass()'s third parameter. See its
     // own header comment there for the full rationale.
     var opportunities = buildOpportunitiesForDecisionPass(pipelineContext, directOpportunity, turn.turnId);
-    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer });
+    var passResult = await runDecisionPass({ pipelineContext: pipelineContext, opportunities: opportunities, safetyPort: SafetyLayer, identity: identity });
 
     if (passResult.status !== 'FORMED') {
       // Defensive only — mirrors the APP_READY path's own identical defensive branch above. No
@@ -1154,6 +1159,10 @@
     var pipelineContext = params.pipelineContext;
     var opportunities = Array.isArray(params.opportunities) ? params.opportunities : [];
     var safetyPort = params.safetyPort;
+    // WP0 Phase E.0.2a Activation Amendment §09 — additive; identity is required only by the
+    // ADAPT_TO_CURRENT_STATE/TRR branch below (its own PREFERENCE_CONSENT_READ call), never by
+    // any other Reason category's own dispatch, which remains byte-identical.
+    var identity = params.identity || {};
 
     var opportunitiesConsidered = [];
     var candidateLists = [];
@@ -1190,11 +1199,37 @@
       // Reasoning Context -> AI Reasoning -> strict validation, all BETWEEN Stage 5 (already
       // ELIGIBLE, above) and Stage 6 (dispatchStage6, below) — never before, never after.
       if (eligibilityInput && eligibilityInput.validReasonCategory === 'ADAPT_TO_CURRENT_STATE') {
+        // WP0 Phase E.0.2a Activation Amendment §09 — the fourth PREFERENCE_CONSENT_READ call
+        // site in this file, structurally identical to the existing three (CPI-001 preference
+        // intake, Item 6 disclosure intake, WP0 Phase D.5 risk-characteristic-fact intake) —
+        // reused verbatim, no new StateAccess permission grant. Read once, here, immediately
+        // before reasoning-context composition; never inside pipelineContext assembly (§09 item
+        // 4 — memoryLayer.js is untouched). Fail-closed: any read failure resolves consentGranted
+        // to false, never a permissive default, exactly mirroring the three existing call sites'
+        // own established discipline.
+        var trrConsentGranted = false;
+        try {
+          var trrConsentAccess = StateAccess.createEngineAccess({
+            engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
+            userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+          });
+          trrConsentGranted = trrConsentAccess.read.memoryConsentGranted() === true;
+        } catch (e) {
+          trrConsentGranted = false; // fail closed — never authorize on a consent-read failure
+        }
+        // eligibilityPolicy.js's own established shape (§08.2 there): a single migrated grant
+        // under the one currently-registered scope. Consumed by EligibilityPolicy.computeEligibility()
+        // below via the injected isReasoningAccessAuthorized closure — never re-derived downstream.
+        var trrConsentState = { LEARNED_MEMORY_PERSONALIZATION: { granted: trrConsentGranted, source: 'migrated' } };
+
         // WP0 Phase B — was MemoryLayer.buildTrainingReadinessReasoningContext(pipelineContext,
         // eligibleOpportunity); now routes through CapabilityRegistry/ContextComposer via the
         // adapter, producing a byte-identical reasoning-context shape (verified: golden-master
-        // regression, tests/trrCapabilityAdapter.test.js).
-        var reasoningContext = await TrrCapabilityAdapter.buildReasoningContext(pipelineContext, eligibleOpportunity);
+        // regression, tests/trrCapabilityAdapter.test.js). Activation Amendment §08/§09 —
+        // trrConsentState is the new, third, additive parameter; TRR's own existing 6-provider
+        // context is unaffected by construction (Amendment §11 — every one of them already
+        // computes reasoningAccessAuthorized:true under TRR's declared AUTHORIZED policy).
+        var reasoningContext = await TrrCapabilityAdapter.buildReasoningContext(pipelineContext, eligibleOpportunity, trrConsentState);
         var proposal;
         try { proposal = await TrainingReadinessReasoningComponent.propose(reasoningContext); }
         catch (e) { proposal = null; } // defensive — propose() itself never throws, kept for safety

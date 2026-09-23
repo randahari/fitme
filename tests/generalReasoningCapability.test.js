@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const CapabilityRegistry = require('../js/coachDecisionSystem/capabilityRegistry.js');
 const ContextComposer = require('../js/coachDecisionSystem/contextComposer.js');
 const GeneralReasoningCapability = require('../js/coachDecisionSystem/generalReasoningCapability.js');
+const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
 
 function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
 function configureStub(handler) { GeneralReasoningCapability.configure({ callClaude: handler }); }
@@ -141,4 +142,52 @@ test('resolveAndReason() end-to-end: resolves to GENERAL_REASONING, composes con
   assert.equal(resolution.capability.id, 'GENERAL_REASONING');
   assert.ok(proposal);
   assert.equal(proposal.outcome, 'NO_VIABLE_PROPOSAL');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §12/§16) — "forced-live GENERAL_REASONING exclusion of unauthorized Safety-adjacent providers".
+// GENERAL_REASONING remains non-live in every real routing path (conversationalNeedCreator.js's
+// own isTrrMatch exclusion, unaffected by this Amendment). buildAuthorizedComposedContext() exists
+// solely so this capability's own real authorization outcome can be proven directly, even under a
+// forced/direct invocation — the concrete guarantee that flipping GENERAL_REASONING live in some
+// future, separately-approved phase would not silently leak SAFETY_AND_MEDICAL context.
+// ══════════════════════════════════════════════════════════════════
+
+test('Activation Amendment §12 — buildAuthorizedComposedContext() NEVER includes userSafetyContext/userSafetyProvenance for GENERAL_REASONING, even when the pipelineContext genuinely has them AVAILABLE and the Need\'s own relevance tags would otherwise select them', async () => {
+  TrrCapabilityAdapter.registerAll(); // registers the shared providers GENERAL_REASONING's own contextCeiling reuses, including userSafetyContext/userSafetyProvenance
+  GeneralReasoningCapability.registerAll();
+
+  const pipelineContext = {
+    readinessStateContext: { slept: 7 },
+    userSafetyContext: { flags: ['SOME_SAFETY_SIGNAL'] },
+    userSafetyProvenance: { source: 'user_stated' },
+    explicitRequestControls: null,
+    activityPreference: { likes: ['padel'] },
+    currentStateContext: { consumed: 1500 },
+    goalObjectiveContext: { goal: 'maintain' },
+    recentConversationContext: 'user: I am worried about my knee',
+    availability: {
+      readinessStateContext: 'AVAILABLE', userSafetyContext: 'AVAILABLE', userSafetyProvenance: 'AVAILABLE',
+      explicitRequestControls: 'UNAVAILABLE', activityPreference: 'AVAILABLE', currentStateContext: 'AVAILABLE',
+      goalObjectiveContext: 'AVAILABLE', recentConversationContext: 'AVAILABLE'
+    }
+  };
+
+  const composed = await GeneralReasoningCapability.buildAuthorizedComposedContext(pipelineContext, {});
+  assert.equal(composed.viable, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(composed.context, 'userSafetyContext'), false, 'userSafetyContext must never enter GENERAL_REASONING\'s composed context');
+  assert.equal(Object.prototype.hasOwnProperty.call(composed.context, 'userSafetyProvenance'), false, 'userSafetyProvenance must never enter GENERAL_REASONING\'s composed context');
+
+  // Non-trivial: a STANDARD, always-baseline field IS present, proving this isn't a vacuous
+  // proof over an empty/degenerate composed context.
+  assert.ok(Object.prototype.hasOwnProperty.call(composed.context, 'recentConversationContext'), 'sanity check: a STANDARD baseline field must still be composed');
+});
+
+test('Activation Amendment §12 — omitting the authorization closure (unauthorized capture) fails GENERAL_REASONING\'s own composed context fully closed, including its own baseline', async () => {
+  TrrCapabilityAdapter.registerAll();
+  GeneralReasoningCapability.registerAll();
+  const grCapability = CapabilityRegistry.getById('GENERAL_REASONING');
+  const composed = await ContextComposer.assemble({}, grCapability, { recentConversationContext: 'hi', availability: { recentConversationContext: 'AVAILABLE' } });
+  assert.deepEqual(Object.keys(composed.context), [], 'no isReasoningAccessAuthorized closure supplied — must fail closed, not even contextBaseline');
 });

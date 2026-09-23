@@ -60,6 +60,12 @@
   var StandardProposalContract = (typeof module !== 'undefined' && module.exports)
     ? require('./standardProposalContract.js')
     : window.StandardProposalContract;
+  // WP0 Phase E.0.2a Activation Amendment §08/§09/§12 — safe to require directly here, mirroring
+  // trrCapabilityAdapter.js's own identical reasoning (no circular dependency: eligibilityPolicy.js
+  // never requires this file back).
+  var EligibilityPolicy = (typeof module !== 'undefined' && module.exports)
+    ? require('./eligibilityPolicy.js')
+    : window.EligibilityPolicy;
 
   var GENERAL_REASONING_CAPABILITY_ID = 'GENERAL_REASONING';
   var TIMEOUT_MS = 12000; // matches TRR's own free-prose-reasoning timeout, not the shorter closed-vocabulary classifier one
@@ -278,6 +284,17 @@
   // compose bounded context, reason, validate. Exposed as one convenience function for tests
   // proving the whole chain end-to-end without re-deriving each step; production code does not
   // call this in Phase C (see generalReasoningActivationGate.js's own header).
+  //
+  // WP0 Phase E.0.2a Activation Amendment §12 — deliberately UNCHANGED: this function still
+  // routes through CapabilityRegistry.resolve() (capabilityRegistry.js, explicitly not touched
+  // by the Amendment, §15), which still calls ContextComposer.assemble() without an
+  // isReasoningAccessAuthorized closure — meaning resolveAndReason()'s own composed context now
+  // correctly, honestly resolves to the empty optional set (fail-closed, Amendment §10), since no
+  // authorization function is available on this specific, already-test-only, zero-production-
+  // caller path. buildAuthorizedComposedContext() below is the activation-aware equivalent,
+  // mirroring trrCapabilityAdapter.js's own buildReasoningContext() shape, for tests that need to
+  // prove real authorization-filtered composition for GENERAL_REASONING specifically (§12's own
+  // acceptance requirement) without touching capabilityRegistry.js.
   async function resolveAndReason(need, pipelineContext) {
     var resolution = await CapabilityRegistry.resolve(need, pipelineContext);
     if (resolution.status !== 'RESOLVED' || !resolution.capability || resolution.capability.id !== GENERAL_REASONING_CAPABILITY_ID) {
@@ -287,14 +304,41 @@
     return { resolution: resolution, proposal: proposal };
   }
 
+  // WP0 Phase E.0.2a Activation Amendment §08 — identical closure-injection pattern to
+  // trrCapabilityAdapter.js's own makeIsReasoningAccessAuthorized(); duplicated here rather than
+  // shared, matching this codebase's own established "reuse the skeleton by pattern, never by
+  // import" convention (see e.g. userSafetyProvenanceInterpreter.js's own header) — the two
+  // capability adapters are independent, sibling call sites, not a shared authority.
+  function makeIsReasoningAccessAuthorized(capability, consentState) {
+    return function (provider) {
+      return EligibilityPolicy.computeEligibility(provider, capability, consentState).reasoningAccessAuthorized === true;
+    };
+  }
+
+  // WP0 Phase E.0.2a Activation Amendment §12 — the activation-aware context-composition path
+  // for GENERAL_REASONING, mirroring trrCapabilityAdapter.js's own buildReasoningContext() shape
+  // exactly, EXCEPT this returns ContextComposer.assemble()'s own generic {viable, context} shape
+  // directly rather than a TRR-specific 6-field projection, since GENERAL_REASONING has no such
+  // fixed reasoning-context contract of its own (its prompt is built from need/composedContext
+  // directly — see buildPrompt() above). Still not reachable from any live routing seam
+  // (conversationalNeedCreator.js's own isTrrMatch exclusion, unaffected by this addition) — this
+  // exists solely so a real, non-bypassable authorization check can be exercised and tested
+  // end-to-end for this capability specifically, per §12's own binding acceptance requirement.
+  async function buildAuthorizedComposedContext(pipelineContext, consentState) {
+    var grCapability = CapabilityRegistry.getById(GENERAL_REASONING_CAPABILITY_ID);
+    if (!grCapability) return { viable: false, context: null };
+    return ContextComposer.assemble({}, grCapability, pipelineContext, makeIsReasoningAccessAuthorized(grCapability, consentState));
+  }
+
   var API = {
-    VERSION: '1.1.0', // WP0 Phase C, extended additively at WP0 Phase E.0.2a
+    VERSION: '1.2.0', // WP0 Phase C, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment
     GENERAL_REASONING_CAPABILITY_ID: GENERAL_REASONING_CAPABILITY_ID,
     CONTEXT_CEILING: CONTEXT_CEILING,
     configure: configure,
     registerAll: registerAll,
     reason: reason,
     resolveAndReason: resolveAndReason,
+    buildAuthorizedComposedContext: buildAuthorizedComposedContext,
     _internal: { buildPrompt: buildPrompt, parseProposal: parseProposal }
   };
 

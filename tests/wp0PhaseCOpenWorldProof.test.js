@@ -90,14 +90,23 @@ test('STEP 2 — full resolve() selects FALLBACK (GeneralReasoningCapability), n
 // WP0_SPEC_v1.0.md's Phase E.0 canonical principle: "context planning determines what the coach
 // should focus on... not what FITME is allowed to know"). Bridging roughKind -> a
 // CONTEXT_RELEVANCE_KINDS-shaped need is explicitly Phase E.0.2's job (the bounded AI Context Need
-// Planner), not yet built. Until then, tag-overlap mechanism (b) correctly no-ops for every
-// provider against this fixture's roughKind — ContextRelevancePlanner.select() itself is
-// UNCHANGED (still a pure, deterministic tag-overlap check); only the provider tags fed into it
-// changed vocabulary. This is the accurate, honest, un-papered-over post-migration behavior: only
-// GENERAL_REASONING's own contextBaseline (recentConversationContext) is proactively included.
-// GeneralReasoning remains non-user-reachable (generalReasoningActivationGate.js), so this has no
-// live production effect.
-test('STEP 3 — bounded context assembly: only contextBaseline (recentConversationContext) is proactively included for a Need whose roughKind vocabulary is disjoint from the canonical CONTEXT_RELEVANCE_KINDS taxonomy — the "not a full dump" proof still holds (see WP0 Phase E.0.1 note above)', async () => {
+// Planner), not yet built.
+//
+// WP0 Phase E.0.2a ACTIVATION AMENDMENT NOTE (supersedes the "only contextBaseline is proactively
+// included" claim this test made pre-Amendment): CapabilityRegistry.resolve() — the function this
+// test calls — is explicitly named as NOT touched by the Activation Amendment
+// (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md §15); it still calls
+// ContextComposer.assemble(need, resolvedCapability, pipelineContext) with no
+// isReasoningAccessAuthorized closure. Since the Amendment's own seam (contextRelevancePlanner.js's
+// final filter) now fails CLOSED whenever that closure is missing (Amendment §10 — "no permissive
+// fallback"), this specific, already-test-only, zero-production-caller path (resolve() has no
+// production callers — confirmed repeatedly across this session's own investigations) now
+// correctly composes an EMPTY optional context, not even contextBaseline. This is not a defect:
+// resolve()/resolveAndReason() were always a test convenience wrapper around the full chain, never
+// itself activation-aware — GeneralReasoningCapability.buildAuthorizedComposedContext() (Amendment
+// §12) is the activation-aware equivalent, exercised directly by
+// tests/generalReasoningCapability.test.js's own dedicated Amendment §12 test group.
+test('STEP 3 — bounded context assembly via the UNMODIFIED CapabilityRegistry.resolve() path composes an empty optional context post-Activation-Amendment (no isReasoningAccessAuthorized closure reaches this specific, test-only call chain) — the "not a full dump" proof still holds, now even more strongly (see notes above)', async () => {
   const pipelineContext = {
     readinessStateContext: { slept: 6 },
     userSafetyContext: null,
@@ -116,7 +125,7 @@ test('STEP 3 — bounded context assembly: only contextBaseline (recentConversat
   const resolution = await CapabilityRegistry.resolve(novelConceptNeed(), pipelineContext);
   assert.equal(resolution.status, 'RESOLVED');
   const contextKeys = Object.keys(resolution.context);
-  assert.deepEqual(contextKeys, ['recentConversationContext']); // baseline, always included — nothing else proactively selected (see note above)
+  assert.deepEqual(contextKeys, [], 'resolve() supplies no authorization closure, so even contextBaseline now fails closed on this specific, unmodified, test-only path (see notes above)');
 });
 
 test('STEP 4/5 — General Reasoning is invoked (mocked callClaude, controlled test only) and produces a validated STANDARD_PROPOSAL, entirely from the composed context — no concept-specific code anywhere', async () => {

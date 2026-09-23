@@ -7,6 +7,7 @@ const StateAccess = require('../js/stateAccess.js');
 const Consumer = require('../js/derivedIntelligenceConsumer.js');
 const MemoryLayer = require('../js/coachDecisionSystem/memoryLayer.js');
 const Orchestrator = require('../js/coachDecisionSystem/internalPipelineOrchestrator.js');
+const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
 
 function configureHappyPath() {
   StateAccess.configure({
@@ -901,6 +902,105 @@ test('TRR-ORCH-8. malformed reasoning output (isValidReasoningOutput fails) mean
     safetyPort: makeSafetyIntegrationPortTestDouble()
   });
   assert.equal(result.decision.kind, 'SILENCE');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// WP0 Phase E.0.2a Activation Amendment (docs/specs/WP0_PHASE_E_0_2A_ACTIVATION_AMENDMENT_v1.0.md
+// §09/§16) — "real consent plumbing with granted/ungranted scoped-provider proof" /
+// "malformed/missing consent fail-closed proof". Proves runDecisionPass() itself — not just
+// eligibilityPolicy.js's own unit-level fixtures — reads real consent exactly once via the
+// existing memoryLayer/PREFERENCE_CONSENT_READ capability-holder identity (already exhaustively
+// unit-tested at tests/stateAccess.test.js's own CPI-1..CPI-6) and threads the derived
+// ConsentState explicitly into TrrCapabilityAdapter.buildReasoningContext()'s own 3rd parameter.
+// TrrCapabilityAdapter.buildReasoningContext is monkey-patched here (same established convention
+// as TrainingReadinessReasoningComponent.propose above) purely to observe the exact consentState
+// argument the orchestrator derives and passes — never to change TRR's own real logic.
+// ══════════════════════════════════════════════════════════════════
+
+// Node's test runner applies a file-level test.afterEach() to every sibling test in the file,
+// not only ones declared textually after it — so this MUST restore the real original function
+// (never delete it), or every earlier TRR-ORCH-1..8 test above (which never itself touches
+// buildReasoningContext) would find it missing on its own turn.
+const REAL_BUILD_REASONING_CONTEXT = TrrCapabilityAdapter.buildReasoningContext;
+test.afterEach(() => {
+  TrrCapabilityAdapter.buildReasoningContext = REAL_BUILD_REASONING_CONTEXT;
+});
+
+test('TRR-ORCH-9. real consent plumbing — GRANTED: a real StateAccess-backed memoryConsent.granted:true reaches TrrCapabilityAdapter.buildReasoningContext as {LEARNED_MEMORY_PERSONALIZATION:{granted:true, source:"migrated"}}', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: true } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1
+  });
+  let capturedConsentState;
+  const originalBuild = TrrCapabilityAdapter.buildReasoningContext;
+  TrrCapabilityAdapter.buildReasoningContext = async (pc, opp, consentState) => {
+    capturedConsentState = consentState;
+    return originalBuild(pc, opp, consentState);
+  };
+  TrainingReadinessReasoningComponent.propose = async () => ({ outcome: 'NO_VIABLE_PROPOSAL' });
+  await Orchestrator.runDecisionPass({
+    identity: { userId: 'user-1', sessionGeneration: 1, runId: 'run-1' },
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.deepEqual(capturedConsentState, { LEARNED_MEMORY_PERSONALIZATION: { granted: true, source: 'migrated' } });
+});
+
+test('TRR-ORCH-10. real consent plumbing — UNGRANTED: a real StateAccess-backed memoryConsent.granted:false reaches TrrCapabilityAdapter.buildReasoningContext as {LEARNED_MEMORY_PERSONALIZATION:{granted:false, source:"migrated"}}', async () => {
+  StateAccess.configure({
+    getUserProfile: () => ({ coachEvents: [], memoryConsent: { granted: false } }),
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: (gen) => gen === 1
+  });
+  let capturedConsentState;
+  const originalBuild = TrrCapabilityAdapter.buildReasoningContext;
+  TrrCapabilityAdapter.buildReasoningContext = async (pc, opp, consentState) => {
+    capturedConsentState = consentState;
+    return originalBuild(pc, opp, consentState);
+  };
+  TrainingReadinessReasoningComponent.propose = async () => ({ outcome: 'NO_VIABLE_PROPOSAL' });
+  await Orchestrator.runDecisionPass({
+    identity: { userId: 'user-1', sessionGeneration: 1, runId: 'run-1' },
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.deepEqual(capturedConsentState, { LEARNED_MEMORY_PERSONALIZATION: { granted: false, source: 'migrated' } });
+});
+
+test('TRR-ORCH-11. malformed/missing consent fails closed: a StateAccess read failure (stale session / no getUserProfile configured / thrown read) never authorizes — the derived consentState is always granted:false, TRR\'s own outcome is unaffected either way (byte-drift proof), and the pass never throws', async () => {
+  // No identity supplied at all (undefined userId/sessionGeneration/runId) — mirrors every other
+  // pre-existing runDecisionPass() call in this file (TRR-ORCH-1..8), which never supplied
+  // identity either, and which the earlier phase of this same implementation already confirmed
+  // stays green (68/68) specifically because this read fails gracefully to false.
+  StateAccess.configure({
+    getUserProfile: () => { throw new Error('simulated StateAccess outage'); },
+    getCurrentUser: () => ({ uid: 'user-1' }),
+    isSessionCurrent: () => { throw new Error('simulated outage'); }
+  });
+  let capturedConsentState;
+  const originalBuild = TrrCapabilityAdapter.buildReasoningContext;
+  TrrCapabilityAdapter.buildReasoningContext = async (pc, opp, consentState) => {
+    capturedConsentState = consentState;
+    return originalBuild(pc, opp, consentState);
+  };
+  TrainingReadinessReasoningComponent.propose = async () => ({
+    outcome: 'ACTION_PROPOSED', action: 'go for a light swim',
+    actionCategory: 'PHYSICAL_ACTIVITY', activityReference: 'a light swim',
+    rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
+  });
+  const result = await Orchestrator.runDecisionPass({
+    pipelineContext: trrPipelineContext(),
+    opportunities: [{ eligibilityInput: trrEligibilityInput(), eligibleOpportunity: trrEligibleOpportunity() }],
+    safetyPort: makeSafetyIntegrationPortTestDouble()
+  });
+  assert.deepEqual(capturedConsentState, { LEARNED_MEMORY_PERSONALIZATION: { granted: false, source: 'migrated' } });
+  // Non-trivial: the pass still completes and TRR still proposes — proving the fail-closed
+  // consent read degrades gracefully (D3 §12.3) rather than aborting the Decision Pass.
+  assert.equal(result.status, 'FORMED');
+  assert.equal(result.decision.kind, 'INITIATIVE');
 });
 
 // ══════════════════════════════════════════════════════════════════

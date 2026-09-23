@@ -181,7 +181,12 @@ test('ContextRelevancePlanner.select() still performs plain tag-overlap matching
   const selected = ContextRelevancePlanner.select(
     { shape: 'RECOMMENDATION_REQUEST', openEntityMentions: [{ text: 'x', roughKind: 'some-non-canonical-tag' }] },
     capability,
-    (id) => providers[id] || null
+    (id) => providers[id] || null,
+    // WP0 Phase E.0.2a Activation Amendment §08 — a permissive authorization stub; this test's
+    // own subject is the tag-overlap SELECTION mechanism, unaffected by and orthogonal to the
+    // authorization concern (exhaustively covered separately in
+    // tests/contextRelevancePlanner.test.js's own dedicated "Activation Amendment" group).
+    function () { return true; }
   );
   assert.deepEqual(selected, ['legacyShapedFrag']);
 });
