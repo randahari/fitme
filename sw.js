@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.3';
+const VERSION = 'v2.47.4';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -78,6 +78,10 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/contextualMeaningPolicy.js',
   // WP0 Phase B (docs/specs/WP0_SPEC_v1.0.md §31) — CapabilityRegistry/ContextComposer
   // foundation (Phase A) + TRR Capability Adapter (Phase B), same load-order note as index.html.
+  // REPAIR (browser script-loading defect): consentScopeRegistry.js was already a live,
+  // unconditional dependency of contextComposer.js's validateProvider() but had never been
+  // precached/script-tagged — added here to match index.html's own fix.
+  '/fitme/js/coachDecisionSystem/consentScopeRegistry.js',
   '/fitme/js/coachDecisionSystem/contextRelevancePlanner.js',
   '/fitme/js/coachDecisionSystem/contextComposer.js',
   '/fitme/js/coachDecisionSystem/capabilityRegistry.js',

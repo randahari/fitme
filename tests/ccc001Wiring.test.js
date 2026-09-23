@@ -28,12 +28,12 @@ test('wiring: js/repositories/conversationRepository.js loads before js/app.js',
   assert.ok(repoIdx < appIdx);
 });
 
-test('wiring: conversationRepository.js is in the sw.js SHELL cache list, and VERSION was bumped to 2.47.3', () => {
+test('wiring: conversationRepository.js is in the sw.js SHELL cache list, and VERSION/APP_VERSION are bumped in lockstep (currently 2.47.4, bumped again by the consentScopeRegistry.js browser-wiring repair)', () => {
   assert.notEqual(swJs.indexOf('/fitme/js/repositories/conversationRepository.js'), -1);
   const versionMatch = swJs.match(/const VERSION = 'v([\d.]+)'/);
-  assert.equal(versionMatch[1], '2.47.3');
+  assert.equal(versionMatch[1], '2.47.4');
   const appVersionMatch = appJs.match(/const APP_VERSION = '([\d.]+)'/);
-  assert.equal(appVersionMatch[1], '2.47.3');
+  assert.equal(appVersionMatch[1], '2.47.4');
 });
 
 test('wiring: app.js configures ConversationRepository (including the cursor-stability documentIdField injection) and injects fetchRecentConversation into StateAccess.configure', () => {

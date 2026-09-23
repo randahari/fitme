@@ -617,3 +617,54 @@ test('37. every coachDecisionSystem module sharing the bounded-interpreter/reaso
     assert.match(body, /callClaude\(/, file + ' (window.' + globalName + ') is configure()\'d in js/app.js but its configure() body never references the real callClaude(...) closure');
   });
 });
+
+// REPAIR (browser script-loading defect, WP0 Phase E.0.2a pre-activation verification) —
+// contextComposer.js required window.ConsentScopeRegistry, unconditionally, inside its own
+// validateProvider() since WP0 Phase E.0.2a shipped (359d7d9), but consentScopeRegistry.js was
+// never given a <script> tag in index.html — Node's require()-based test suite never caught this
+// (require() loads the file directly, bypassing index.html entirely), so every real browser threw
+// "Cannot read properties of undefined (reading 'isValidConsentScope')" at
+// TrrCapabilityAdapter.registerAll() (js/app.js's own composition sequence), aborting every line
+// of js/app.js scheduled after it — confirmed by loading the real app in a browser before this
+// repair. This is a self-discovering, generic-but-focused safeguard (mirrors test 37's own
+// established convention immediately above) against the exact SAME class of defect recurring for
+// ANY coachDecisionSystem module sharing the `require('./X.js') : window.Y` dependency-declaration
+// shape this whole directory already uses uniformly — never a hardcoded list of today's known
+// dependencies a future one could be silently left off of.
+test('REPAIR: every js/coachDecisionSystem/*.js module that IS wired into index.html has every one of its own require()/window-global dependencies ALSO wired into index.html, in correct load order', () => {
+  const coachDecisionSystemDir = path.join(__dirname, '../js/coachDecisionSystem');
+  const files = fs.readdirSync(coachDecisionSystemDir).filter((f) => f.endsWith('.js'));
+  const repoRoot = path.join(__dirname, '..');
+  const scriptTagIndex = (relPathFromRepoRoot) => indexHtml.indexOf('src="' + relPathFromRepoRoot + '"');
+  // Matches this directory's own uniform dependency-declaration convention:
+  //   var X = (typeof module !== 'undefined' && module.exports)
+  //     ? require('./file.js')
+  //     : window.Global;
+  const depRe = /require\('(\.[\w./-]+\.js)'\)\s*\n\s*:\s*window\.(\w+)/g;
+
+  var checkedAtLeastOneDependency = false;
+  files.forEach((f) => {
+    const src = fs.readFileSync(path.join(coachDecisionSystemDir, f), 'utf8');
+    const ownTagSrc = 'js/coachDecisionSystem/' + f;
+    const ownIdx = scriptTagIndex(ownTagSrc);
+    if (ownIdx === -1) return; // this module is not itself wired into index.html (shadow/Node-only, e.g. eligibilityPolicy.js) — out of scope for this check
+
+    var m;
+    depRe.lastIndex = 0;
+    while ((m = depRe.exec(src)) !== null) {
+      const requiredRelPath = m[1]; // e.g. './consentScopeRegistry.js', or '../domain/activityReferenceNormalizer.js'
+      const globalName = m[2];
+      const resolvedAbs = path.normalize(path.join(coachDecisionSystemDir, requiredRelPath));
+      const resolvedRelFromRoot = path.relative(repoRoot, resolvedAbs).split(path.sep).join('/');
+      const depIdx = scriptTagIndex(resolvedRelFromRoot);
+      checkedAtLeastOneDependency = true;
+      assert.notEqual(depIdx, -1,
+        f + ' (script-tagged in index.html) requires window.' + globalName + ' (from ' + resolvedRelFromRoot + '), but that file has no <script> tag in index.html — window.' + globalName + ' would be undefined at runtime, exactly the defect this test guards against');
+      assert.ok(depIdx < ownIdx,
+        resolvedRelFromRoot + ' must be script-tagged BEFORE ' + ownTagSrc + ' in index.html (dependency load order)');
+    }
+  });
+  // Sanity floor — proves the scan itself is functioning (not silently matching zero dependency
+  // declarations across every wired module).
+  assert.ok(checkedAtLeastOneDependency, 'expected at least one require()/window-global dependency declaration among index.html-wired coachDecisionSystem modules; found none — the scan itself may be broken');
+});
