@@ -55,6 +55,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   var RiskCharacteristicValidator = (typeof module !== 'undefined' && module.exports)
     ? require('./riskCharacteristicValidator.js')
     : window.RiskCharacteristicValidator;
@@ -151,7 +156,7 @@
   function parseCandidateContentResponse(rawResponse, actionText) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.tags)) return null;
       var seen = {};
       var result = [];
@@ -244,7 +249,7 @@
   function parseDurableConstraintResponse(rawResponse, turnText) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.candidates)) return null;
       var seen = {};
       var result = [];
@@ -331,7 +336,7 @@
   function parseCorrectionResponse(rawResponse, expectedId) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results) || parsed.results.length !== 1) return null;
       var entry = parsed.results[0];
       if (!isPlainObject(entry) || entry.id !== expectedId) return null;
@@ -421,7 +426,7 @@
   function parseCandidateConflictResponse(rawResponse) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed)) return null;
       if (CANDIDATE_CONFLICT_RELATIONS.indexOf(parsed.relation) === -1) return null;
       return parsed.relation;

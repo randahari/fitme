@@ -308,25 +308,34 @@
       return { status: 'FAILED', error: { code: 'CONTEXT_ASSEMBLY_FAILED', message: (e && e.message) || 'Memory Layer context assembly failed' } };
     }
 
-    // §04 — Bounded Turn Understanding. Never throws (classify() itself is fail-closed by
+    // §04 — Bounded Turn Understanding. Never throws (understand() itself is fail-closed by
     // contract); the defensive catch below exists only for symmetry with every other collaborator
-    // call in this file, never because classify() is known to throw.
-    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §10.1) — pipelineContext.recentConversationContext
-    // (already assembled by MemoryLayer.assembleContext() above) is threaded through as an
-    // additive second argument — undefined/null when unavailable, in which case classify()
-    // behaves byte-identically to its pre-CCC-001 contract.
+    // call in this file, never because understand() is known to throw.
+    // CCC-001 (docs/specs/CCC_001_SPEC_v1.0.md §10.1, as amended by CCC_001_AMENDMENT_OU_001) —
+    // pipelineContext.recentConversationContext (already assembled by MemoryLayer.assembleContext()
+    // above) is threaded through as an additive second argument — undefined/null when unavailable.
+    // OU-001 (docs/specs/OU_001_SPEC_v1.0.md §07/§16) — the SAME single model call also yields
+    // openUnderstanding, held ONLY in this local variable for this pass: it is passed to the Need
+    // Creator below and nowhere else — never into pipelineContext, Safety, any intake gate,
+    // Expression, the engine result, or any persistence.
     var turnUnderstanding;
+    var openUnderstanding;
     try {
-      turnUnderstanding = await TurnUnderstandingInterpreter.classify(turn, pipelineContext.recentConversationContext);
+      var understanding = await TurnUnderstandingInterpreter.understand(turn, pipelineContext.recentConversationContext);
+      turnUnderstanding = understanding.turnUnderstanding;
+      openUnderstanding = understanding.openUnderstanding;
     } catch (e) {
       turnUnderstanding = TurnUnderstandingInterpreter._internal.failedResult();
+      openUnderstanding = null;
     }
 
     // §06 — Conversational Need Creator, Step A (domain-agnostic Need recognition) + Step B
     // (professional-capability resolution), a single combined call per its own contract. Returns
     // null for §17 Case A (no request) / Case C (interpretation failure) — neither ever produces
     // a Need — or {kind: 'DETECTED_OPPORTUNITY', opportunity} / {kind: 'UNSUPPORTED', need}.
-    var needCreatorResult = ConversationalNeedCreator.recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext);
+    // OU-001 §14 — the fourth argument only projects the same turn's OpenUnderstanding onto a Need
+    // that Step A recognizes anyway; it never creates or gates one.
+    var needCreatorResult = ConversationalNeedCreator.recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext, openUnderstanding);
 
     // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9/§10/§14 steps 2-5) — the new, parallel
     // Preference Intake Authorization computation: never gated on, and never gating,

@@ -24,6 +24,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   // §9/§5 — Engineering transport bounds only, never a semantic-completeness cap (see
   // memoryLayer.js's own caller, which always issues every batch required to cover the
   // complete eligible set). Exposed on the API so tests can exercise a different batch size
@@ -128,7 +133,7 @@
   function parseAndValidate(rawResponse, submittedIds) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};
       var duplicated = {};

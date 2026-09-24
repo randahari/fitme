@@ -43,6 +43,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   // §6/§12 — Engineering transport bounds only, never a semantic-completeness cap (the caller,
   // memoryLayer.js, always issues every batch required to cover the complete eligible set).
   // Exposed on the API so tests can exercise a different batch size without depending on a
@@ -189,7 +194,7 @@
   function parseAndValidate(rawResponse, submittedIds, idToStatementText) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};
       var duplicated = {};
@@ -438,7 +443,7 @@
   function parseAndValidateCorrection(rawResponse, expectedId) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results) || parsed.results.length !== 1) return null;
       var entry = parsed.results[0];
       if (!isPlainObject(entry) || entry.id !== expectedId) return null;

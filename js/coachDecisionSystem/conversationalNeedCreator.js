@@ -61,13 +61,32 @@
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
+  // OU-001 §14 — projection precondition only: a same-turn OpenUnderstanding carrying a string
+  // summary and a mentions array (TurnUnderstandingInterpreter.understand() already validated it).
+  function isProjectableOpenUnderstanding(openUnderstanding, turnId) {
+    return isPlainObject(openUnderstanding)
+      && openUnderstanding.turnId === turnId
+      && typeof openUnderstanding.summary === 'string'
+      && Array.isArray(openUnderstanding.mentions);
+  }
+
   // §06 Step A — domain-agnostic Need recognition. Gated ONLY on:
   //   1. turnUnderstanding.interpretationStatus === 'CLASSIFIED' (§17 Case C never produces a
   //      Need — a failed interpretation is never treated as a successful "no request" either);
   //   2. turnUnderstanding.affirmativeRequest.present === true (§17 Case A — no request present —
   //      also never produces a Need).
   // Never gated on domain/topic resolution, negativeControlPresent, or desireOnlyPresent.
-  function recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext) {
+  //
+  // OU-001 (docs/specs/OU_001_SPEC_v1.0.md §14; DUC_001_AMENDMENT_OU_001_v1.0.md §07) — additive
+  // fourth parameter, undefined for every pre-OU-001 caller. It never creates, gates, or prevents
+  // a Need (Step A above is the only admission gate). When a Need IS recognized and the same
+  // turn's OpenUnderstanding is present, the Need additionally carries its projection onto the
+  // existing open Need fields — openScopeDescription (the summary) and openEntityMentions (the
+  // bounded, provenance-labelled mentions) — which is structured derived output, never the raw
+  // turn text. Otherwise both fields are omitted and the Need is key-for-key identical to its
+  // pre-OU-001 shape. No categorization field of any kind is ever created, and open content never reaches
+  // capability matching (registryNeed below is unchanged).
+  function recognizeDirectUserNeed(turn, turnUnderstanding, pipelineContext, openUnderstanding) {
     if (!isPlainObject(turn) || typeof turn.turnId !== 'string' || turn.turnId.length === 0) return null;
     if (!isPlainObject(turnUnderstanding)) return null;
     if (turnUnderstanding.interpretationStatus !== 'CLASSIFIED') return null; // §17 Case C
@@ -78,13 +97,18 @@
     // correction — admission never depends on successful classification into a closed
     // vocabulary).
     var assembledAt = (pipelineContext && pipelineContext.assembledAt !== undefined) ? pipelineContext.assembledAt : null;
-    var need = freezeShallow({
+    var needFields = {
       needRef: 'duc:direct-user-request:' + turn.turnId,
       turnId: turn.turnId,
       domain: affirmativeRequest.domain,   // metadata only, may be null/UNRESOLVED
       topic: affirmativeRequest.topic,     // metadata only, may be null/UNRESOLVED
       recognizedAt: assembledAt
-    });
+    };
+    if (isProjectableOpenUnderstanding(openUnderstanding, turn.turnId)) {
+      needFields.openScopeDescription = openUnderstanding.summary;
+      needFields.openEntityMentions = openUnderstanding.mentions;
+    }
+    var need = freezeShallow(needFields);
 
     // §06 Step B — professional-capability resolution, performed on the already-recognized need,
     // never gating its existence.

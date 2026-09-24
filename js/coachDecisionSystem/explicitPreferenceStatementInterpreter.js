@@ -30,6 +30,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   var DEFAULT_MAX_CHARS_PER_TURN = 2000;
   var TIMEOUT_MS = 8000;
   var TARGET_MAX_CHARS = 80;
@@ -145,7 +150,7 @@
   function parseAndValidate(rawResponse, submittedIds, idToStatementText) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};
       var duplicated = {};

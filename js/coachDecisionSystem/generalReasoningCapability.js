@@ -51,6 +51,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   var CapabilityRegistry = (typeof module !== 'undefined' && module.exports)
     ? require('./capabilityRegistry.js')
     : window.CapabilityRegistry;
@@ -223,7 +228,7 @@
   function parseProposal(rawResponse) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       return isPlainObject(parsed) ? parsed : null;
     } catch (e) {
       return null;
@@ -324,10 +329,17 @@
   // (conversationalNeedCreator.js's own isTrrMatch exclusion, unaffected by this addition) — this
   // exists solely so a real, non-bypassable authorization check can be exercised and tested
   // end-to-end for this capability specifically, per §12's own binding acceptance requirement.
-  async function buildAuthorizedComposedContext(pipelineContext, consentState) {
+  //
+  // OU-001 (docs/specs/OU_001_SPEC_v1.0.md §15) — additive optional third parameter: the real Need
+  // (carrying the projected openScopeDescription/openEntityMentions) now reaches the composition
+  // seam E.0.2b will extend. Omitted, it defaults to {} — byte-identical to the prior behavior. For
+  // every current selection mechanism the composed context is identical either way (no shape, no
+  // roughKind), and the E.0.2a authorization filter still governs every candidate. Still non-live.
+  async function buildAuthorizedComposedContext(pipelineContext, consentState, need) {
     var grCapability = CapabilityRegistry.getById(GENERAL_REASONING_CAPABILITY_ID);
     if (!grCapability) return { viable: false, context: null };
-    return ContextComposer.assemble({}, grCapability, pipelineContext, makeIsReasoningAccessAuthorized(grCapability, consentState));
+    var composeNeed = (need !== null && typeof need === 'object' && !Array.isArray(need)) ? need : {};
+    return ContextComposer.assemble(composeNeed, grCapability, pipelineContext, makeIsReasoningAccessAuthorized(grCapability, consentState));
   }
 
   var API = {

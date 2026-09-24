@@ -30,6 +30,11 @@
 (function () {
   'use strict';
 
+  // MRE-001 (docs/specs/MRE_001_SPEC_v1.0.md) — shared transport-envelope normalizer; see each JSON.parse below.
+  var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseEnvelope.js')
+    : window.ModelResponseEnvelope;
+
   var TIMEOUT_MS = 12000; // longer than the classifier interpreters' 8000 — free-prose reasoning, not a closed-vocabulary verdict
   var MAX_TOKENS = 700;
 
@@ -121,7 +126,7 @@
   function parseProposal(rawResponse) {
     try {
       var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
-      var parsed = JSON.parse(text);
+      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       return isPlainObject(parsed) ? parsed : null;
     } catch (e) {
       return null;
