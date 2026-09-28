@@ -92,6 +92,20 @@
     recentConversationContext: 'STANDARD'
   };
 
+  // WP0 Phase E.0.2b (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md §10.4,
+  // Product/Architecture-approved text) — the platform-neutral semantic descriptor of each
+  // non-Safety field: WHAT information it provides and its limits, never when it is relevant.
+  // Descriptions are registration metadata only: they never enter TRR's reasoning context
+  // (buildReasoningContext() below reads provider values only), so TRR is unchanged. The two
+  // Safety-adjacent fields deliberately have NO description — a third, independent exclusion from
+  // Semantic Context Discovery, alongside their tier and tag (A1 §05.6).
+  var FIELD_DESCRIPTIONS = {
+    recentConversationContext: 'The most recent earlier turns of the conversation between the user and the coach (a small, bounded number of whole turns), as they were said. Older conversation is not included. What was said is not a confirmed fact.',
+    readinessStateContext: 'The user\'s own statements about their current readiness, such as fatigue, energy level, amount of sleep, available time, or recent physical activity, taken from the current message and from what the user has previously told the coach. Self-reported statements only; contains no measured or recorded data.',
+    explicitRequestControls: 'Explicit requests by the user that the coach stop proactively raising a specific coaching topic, taken from the current message and from what the user has previously told the coach.',
+    activityPreference: 'Physical activities the user has said they like or dislike, each with the user\'s own wording for the activity.'
+  };
+
   function freezeShallow(o) { try { return Object.freeze(o); } catch (e) { return o; } }
 
   // §17 — one ContextFragmentProvider per field, each a thin, direct pass-through of
@@ -99,7 +113,7 @@
   // memoryLayer.js's own buildTrainingReadinessReasoningContext() already performs today, now
   // exposed as a named, catalogued, reusable provider instead of an inline object-literal read.
   function makePipelineContextFragmentProvider(fieldId) {
-    return {
+    var provider = {
       id: fieldId,
       relevanceTags: FIELD_RELEVANCE_TAGS[fieldId] || [],
       sensitivityTier: FIELD_SENSITIVITY_TIERS[fieldId], // WP0 Phase E.0.2a §17
@@ -116,6 +130,8 @@
         };
       }
     };
+    if (FIELD_DESCRIPTIONS[fieldId]) { provider.description = FIELD_DESCRIPTIONS[fieldId]; } // WP0 Phase E.0.2b §10.4
+    return provider;
   }
 
   // Idempotent — safe to call more than once (defensive only; production wiring, app.js, calls

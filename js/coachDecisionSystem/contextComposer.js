@@ -32,6 +32,17 @@
 // with no awareness of this taxonomy itself. Existing provider registrations (trrCapabilityAdapter.js,
 // generalReasoningCapability.js) were migrated onto the canonical kinds in the same change so
 // registration continues to succeed.
+//
+// WP0 PHASE E.0.2b ADDITION (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md
+// §10/§11/§13; GCUK Ch.07 as amended by A1) — three additive pieces, none changing any existing
+// behavior: (1) an optional, platform-neutral `description` on each provider (the first adopter
+// of the source-agnostic semantic descriptor: WHAT information a source provides and its limits,
+// never when it is relevant); (2) buildDiscoveryCatalogue(), the deterministic authorized
+// catalogue presented to Semantic Context Discovery — built BEFORE any model call from the
+// eligibility layer's output, never from a provider's data, never invoking a provider; (3) an
+// optional, injected fifth `discover` parameter on assemble(). With no `discover` (TRR, and every
+// pre-E.0.2b caller) assemble() is byte-identical to before. This file still never requires the
+// discovery interpreter or eligibilityPolicy.js — both reach it only as injected closures.
 // ══════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
@@ -43,7 +54,10 @@
     ? require('./consentScopeRegistry.js')
     : window.ConsentScopeRegistry;
 
-  var CONTEXT_COMPOSER_VERSION = '1.3.0'; // WP0 Phase E.0.1, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment
+  var CONTEXT_COMPOSER_VERSION = '1.4.0'; // WP0 Phase E.0.1, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment, extended additively at WP0 Phase E.0.2b
+
+  // WP0 Phase E.0.2b §10.2 — transport bound for a provider's static semantic description.
+  var DESCRIPTION_MAX_CHARS = 400;
 
   var AVAILABILITY_VALUES = Object.freeze(['AVAILABLE', 'UNAVAILABLE', 'PARTIAL']);
 
@@ -119,6 +133,13 @@
     if (!ConsentScopeRegistry.isValidConsentScope(def.consentScope)) {
       return { ok: false, error: { code: 'INVALID_CONSENT_SCOPE', message: 'ContextFragmentProvider.consentScope must be null or a scope id registered in ConsentScopeRegistry' } };
     }
+    // WP0 Phase E.0.2b §10.2 — optional; when present, a non-empty (trimmed) string of at most
+    // DESCRIPTION_MAX_CHARS characters. Never truncated, never defaulted.
+    if ('description' in def && def.description !== undefined) {
+      if (typeof def.description !== 'string' || def.description.trim().length < 1 || def.description.trim().length > DESCRIPTION_MAX_CHARS) {
+        return { ok: false, error: { code: 'INVALID_DESCRIPTION', message: 'ContextFragmentProvider.description, if present, must be a non-empty string of at most ' + DESCRIPTION_MAX_CHARS + ' characters' } };
+      }
+    }
     return { ok: true };
   }
 
@@ -130,9 +151,53 @@
       relevanceTags: Array.isArray(def.relevanceTags) ? def.relevanceTags.slice() : [],
       sensitivityTier: def.sensitivityTier,
       consentScope: def.consentScope,
+      description: typeof def.description === 'string' ? def.description.trim() : null, // WP0 Phase E.0.2b §10.2
       invoke: def.invoke
     };
     return { ok: true };
+  }
+
+  function isSafetyExcluded(provider) {
+    return provider.sensitivityTier === 'SAFETY_ADJACENT'
+      || (Array.isArray(provider.relevanceTags) && provider.relevanceTags.indexOf('SAFETY_AND_MEDICAL') !== -1);
+  }
+
+  // WP0 Phase E.0.2b §11 (A1 §07) — the authorized catalogue: the descriptors the deterministic
+  // eligibility/authorization layer has made eligible for this capability and state, minus
+  // deterministically included sources, minus Safety-excluded sources (tier OR tag, A1 §05.6),
+  // minus undescribed sources. Pure, synchronous, never throws, never calls invoke(), never reads
+  // Pipeline Context. Exposes exactly {id, description, relevanceTags} — never invoke, tier,
+  // scope, data, consent or permission state (§11.4). Authorization arrives only as the injected
+  // predicate; future availability/permission state narrows this set only through it (A1 §08).
+  function buildDiscoveryCatalogue(capability, isReasoningAccessAuthorized) {
+    try {
+      capability = capability || {};
+      // Transitional (A1 §07): contextCeiling is the current eligibility layer's outer bound. This
+      // is the only line that changes when contextCeiling is retired; nothing in discovery does.
+      var eligibleUniverse = Array.isArray(capability.contextCeiling) ? capability.contextCeiling : [];
+      var baseline = Array.isArray(capability.contextBaseline) ? capability.contextBaseline : [];
+      var required = Array.isArray(capability.requiredContext) ? capability.requiredContext : [];
+      var seen = {};
+      var entries = [];
+      eligibleUniverse.forEach(function (id) {
+        if (!isNonEmptyString(id) || seen[id]) return;
+        seen[id] = true;
+        var provider = _providers[id];
+        if (!provider) return;
+        if (typeof isReasoningAccessAuthorized !== 'function' || isReasoningAccessAuthorized(provider) !== true) return;
+        if (baseline.indexOf(id) !== -1 || required.indexOf(id) !== -1) return;
+        if (isSafetyExcluded(provider)) return;
+        if (!isNonEmptyString(provider.description)) return;
+        entries.push(Object.freeze({
+          id: provider.id,
+          description: provider.description,
+          relevanceTags: Object.freeze(provider.relevanceTags.slice())
+        }));
+      });
+      return Object.freeze(entries);
+    } catch (e) {
+      return Object.freeze([]);
+    }
   }
 
   function getFragmentProvider(id) { return _providers[id] || null; }
@@ -174,7 +239,17 @@
   // invocation loop above is deliberately NOT gated by this closure — the Amendment's named seam
   // is select()'s own final filter only (§08), and both currently-registered capabilities declare
   // requiredContext:[] today, so this is a documented scope boundary, not an oversight.
-  async function assemble(need, capability, pipelineContext, isReasoningAccessAuthorized) {
+  //
+  // WP0 Phase E.0.2b §13 — optional fifth parameter `discover`: ({need, catalogue}) => Promise of
+  // a DiscoveryResult, injected by a discovery-enabled capability's composition path (today only
+  // GENERAL_REASONING). Absent → no discovery, and the result is byte-identical to before (the
+  // TRR path and every other caller). Present → discovery runs, and completes, BEFORE select()
+  // and before any optional provider is invoked (selection precedes invocation, A1 §06); its
+  // validated selectedIds only ever reach select() as proposals subject to the unchanged final
+  // authorization filter; its informationNeeds are only exposed on the result — never passed to
+  // select(), the catalogue builder, the predicate, or any provider (zero authority, A1 §05.5).
+  // Any failure yields empty outputs; nothing here can affect viability (A1 §05.7).
+  async function assemble(need, capability, pipelineContext, isReasoningAccessAuthorized, discover) {
     capability = capability || {};
     var requiredContext = Array.isArray(capability.requiredContext) ? capability.requiredContext : [];
     var requiredResults = {};
@@ -187,7 +262,14 @@
       }
     }
 
-    var relevantFragmentIds = ContextRelevancePlanner.select(need, capability, getFragmentProvider, isReasoningAccessAuthorized);
+    var discovery = null;
+    var relevantFragmentIds;
+    if (typeof discover === 'function') {
+      discovery = await runDiscovery(need, capability, isReasoningAccessAuthorized, discover);
+      relevantFragmentIds = ContextRelevancePlanner.select(need, capability, getFragmentProvider, isReasoningAccessAuthorized, discovery.selectedIds.slice());
+    } else {
+      relevantFragmentIds = ContextRelevancePlanner.select(need, capability, getFragmentProvider, isReasoningAccessAuthorized);
+    }
     var optionalResults = {};
     for (var j = 0; j < relevantFragmentIds.length; j++) {
       var oid = relevantFragmentIds[j];
@@ -199,7 +281,45 @@
     Object.keys(requiredResults).forEach(function (k) { context[k] = requiredResults[k]; });
     Object.keys(optionalResults).forEach(function (k) { context[k] = optionalResults[k]; });
 
+    if (discovery) { return { viable: true, context: context, discovery: discovery }; }
     return { viable: true, context: context };
+  }
+
+  function discoveryOutcome(status, selectedIds, informationNeeds) {
+    return Object.freeze({
+      status: status,
+      selectedIds: Object.freeze((selectedIds || []).slice()),
+      informationNeeds: Object.freeze((informationNeeds || []).slice())
+    });
+  }
+
+  // WP0 Phase E.0.2b §13 steps 3–4. Never throws.
+  async function runDiscovery(need, capability, isReasoningAccessAuthorized, discover) {
+    need = need || {};
+    if (typeof need.openScopeDescription !== 'string' || need.openScopeDescription.trim().length === 0) {
+      return discoveryOutcome('SKIPPED'); // S-2: no open semantic fields — no catalogue, no call
+    }
+    var catalogue = buildDiscoveryCatalogue(capability, isReasoningAccessAuthorized);
+    var discoverNeed = { openScopeDescription: need.openScopeDescription };
+    if (Array.isArray(need.openEntityMentions)) { discoverNeed.openEntityMentions = need.openEntityMentions; }
+    var raw;
+    try {
+      raw = await discover({ need: discoverNeed, catalogue: catalogue });
+    } catch (e) {
+      return discoveryOutcome('FAILED');
+    }
+    if (!isPlainObject(raw) || !Array.isArray(raw.selectedIds) || !Array.isArray(raw.informationNeeds)) {
+      return discoveryOutcome('FAILED');
+    }
+    // §15.2 — defense in depth: re-apply membership against the catalogue THIS composer built,
+    // in catalogue order, so a non-conforming injected discover() still cannot pass a foreign id.
+    var proposed = {};
+    raw.selectedIds.forEach(function (sid) { if (typeof sid === 'string') proposed[sid] = true; });
+    var selectedIds = catalogue.filter(function (e) { return proposed[e.id] === true; }).map(function (e) { return e.id; });
+    var informationNeeds = raw.informationNeeds.filter(function (n) { return typeof n === 'string'; });
+    var status = (raw.status === 'COMPLETED' || raw.status === 'SKIPPED' || raw.status === 'FAILED') ? raw.status : 'FAILED';
+    if (status !== 'COMPLETED') { return discoveryOutcome(status); }
+    return discoveryOutcome('COMPLETED', selectedIds, informationNeeds);
   }
 
   var API = {
@@ -213,6 +333,8 @@
     registerFragmentProvider: registerFragmentProvider,
     getFragmentProvider: getFragmentProvider,
     getAllFragmentProviderIds: getAllFragmentProviderIds,
+    buildDiscoveryCatalogue: buildDiscoveryCatalogue, // WP0 Phase E.0.2b §11
+    DESCRIPTION_MAX_CHARS: DESCRIPTION_MAX_CHARS,     // WP0 Phase E.0.2b §10.2
     assemble: assemble,
     __resetForTests__: __resetForTests__
   };

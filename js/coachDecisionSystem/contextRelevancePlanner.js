@@ -78,7 +78,16 @@
   // eligibilityPolicy.js is never required here for the same reason (see file header). Synchronous,
   // throws never, has no async/Promise return — a direct, structural signal (in addition to
   // containing no callClaude reference at all) that no AI round-trip can occur here.
-  function select(need, capability, getFragmentProvider, isReasoningAccessAuthorized) {
+  //
+  // WP0 Phase E.0.2b (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md §12;
+  // resolves GCUK Ch.22 item 4 in place) — optional fifth parameter `discoveredIds`: the
+  // already membership-validated selectedIds of Semantic Context Discovery (produced OUTSIDE this
+  // module by ContextComposer's injected discovery step). They are one more union member, exactly
+  // like baseline/needShapeDefaults/tag-overlap, and pass through the SAME unchanged final filter
+  // below — they can never add an id outside the ceiling or one that is not authorized. This
+  // module never receives informationNeeds, and remains synchronous and AI-free. Absent or not an
+  // array → output identical to before for every input.
+  function select(need, capability, getFragmentProvider, isReasoningAccessAuthorized, discoveredIds) {
     need = need || {};
     capability = capability || {};
     var ceiling = Array.isArray(capability.contextCeiling) ? capability.contextCeiling : [];
@@ -104,6 +113,11 @@
       });
     }
 
+    // WP0 Phase E.0.2b §12 — validated discovery proposals, a union member only.
+    if (Array.isArray(discoveredIds)) {
+      discoveredIds.forEach(function (id) { if (isNonEmptyString(id)) { selected[id] = true; } });
+    }
+
     // Defensive, independent re-enforcement of the ceiling bound (see header) — never trust
     // upstream validation alone for the one invariant this whole correction exists to guarantee.
     //
@@ -124,7 +138,7 @@
   }
 
   var API = {
-    VERSION: '2.0.0', // WP0 Phase A, activated at WP0 Phase E.0.2a Activation Amendment
+    VERSION: '2.1.0', // WP0 Phase A, activated at WP0 Phase E.0.2a Activation Amendment, extended additively at WP0 Phase E.0.2b
     select: select
   };
 

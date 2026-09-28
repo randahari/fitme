@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.6';
+const VERSION = 'v2.47.7';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -98,6 +98,7 @@ const SHELL = [
   // WP0 Phase C — same disclosure as index.html: registered, not live-wired, not configured.
   '/fitme/js/coachDecisionSystem/standardProposalContract.js',
   '/fitme/js/coachDecisionSystem/generalReasoningActivationGate.js',
+  '/fitme/js/coachDecisionSystem/semanticContextDiscoveryInterpreter.js',
   '/fitme/js/coachDecisionSystem/generalReasoningCapability.js',
   // WP0 Phase D.2/D.5 — extraction interpreter; classifyTurnForDurableConstraint() is now called
   // live by internalPipelineOrchestrator.js (Phase D.5) — see index.html's own disclosure.

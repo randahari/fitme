@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.47.6';
+const APP_VERSION = '2.47.7';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -3002,6 +3002,14 @@ TrrCapabilityAdapter.registerAll();
 // entirely on the routing-seam exclusion just described, not on withholding configuration.
 GeneralReasoningCapability.registerAll();
 GeneralReasoningCapability.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+// WP0 Phase E.0.2b (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md §21/§24) —
+// Semantic Context Discovery interpreter, configured with the same production callClaude closure
+// (coachDecisionSystemWiring.test.js test 37). Configuration only: its sole caller is
+// GeneralReasoningCapability.buildAuthorizedComposedContext(), which has no production caller, so
+// the production model-call count is unchanged (General Reasoning remains non-live).
+SemanticContextDiscoveryInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 

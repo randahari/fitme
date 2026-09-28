@@ -363,7 +363,9 @@ test('AC-23: ContextRelevancePlanner.select() output is identical for {} and for
   };
   const withNeed = await GeneralReasoningCapability.buildAuthorizedComposedContext(pipelineContext, consentState, forged);
   const withoutNeed = await GeneralReasoningCapability.buildAuthorizedComposedContext(pipelineContext, consentState);
-  assert.deepEqual(withNeed, withoutNeed);
+  const withoutDiscovery = ({ discovery, ...rest }) => rest;   // removes only the E.0.2b-authorized key
+  assert.deepEqual(withoutDiscovery(withNeed), withoutDiscovery(withoutNeed));
+  assert.deepEqual(withNeed.discovery.selectedIds, []);        // precondition: discovery added nothing
   assert.equal('userSafetyContext' in withNeed.context, false);
   assert.equal('userSafetyProvenance' in withNeed.context, false);
 });
@@ -471,7 +473,11 @@ test('AC-29: a production-derived Need reaches GeneralReasoningCapability.reason
   assert.ok(needLine.indexOf('padel tournament weekend') >= 0);
   const consentState = { LEARNED_MEMORY_PERSONALIZATION: { granted: true, source: 'migrated' } };
   const pc = { recentConversationContext: { items: [] }, currentStateContext: { x: 1 }, availability: { recentConversationContext: 'AVAILABLE', currentStateContext: 'AVAILABLE' } };
-  assert.deepEqual(await GeneralReasoningCapability.buildAuthorizedComposedContext(pc, consentState, need), await GeneralReasoningCapability.buildAuthorizedComposedContext(pc, consentState));
+  const withNeed = await GeneralReasoningCapability.buildAuthorizedComposedContext(pc, consentState, need);
+  const withoutNeed = await GeneralReasoningCapability.buildAuthorizedComposedContext(pc, consentState);
+  const withoutDiscovery = ({ discovery, ...rest }) => rest;   // removes only the E.0.2b-authorized key
+  assert.deepEqual(withoutDiscovery(withNeed), withoutDiscovery(withoutNeed));
+  assert.deepEqual(withNeed.discovery.selectedIds, []);        // precondition: discovery added nothing
 });
 
 // ═══ AC-31 — TRR zero drift ═══

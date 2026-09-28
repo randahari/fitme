@@ -71,6 +71,11 @@
   var EligibilityPolicy = (typeof module !== 'undefined' && module.exports)
     ? require('./eligibilityPolicy.js')
     : window.EligibilityPolicy;
+  // WP0 Phase E.0.2b (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md §21) —
+  // acyclic: the interpreter requires only modelResponseEnvelope.js.
+  var SemanticContextDiscoveryInterpreter = (typeof module !== 'undefined' && module.exports)
+    ? require('./semanticContextDiscoveryInterpreter.js')
+    : window.SemanticContextDiscoveryInterpreter;
 
   var GENERAL_REASONING_CAPABILITY_ID = 'GENERAL_REASONING';
   var TIMEOUT_MS = 12000; // matches TRR's own free-prose-reasoning timeout, not the shorter closed-vocabulary classifier one
@@ -103,9 +108,18 @@
   // WP0 Phase E.0.2a (docs/specs/WP0_PHASE_E_0_2A_POLICY_BASED_PROVIDER_ELIGIBILITY_SPEC_v1.0.md
   // §17 migration table) — both of this capability's own-registered providers are STANDARD,
   // consentScope null (neither is memoryConsent-gated data today).
+  // WP0 Phase E.0.2b §10.4 (Product/Architecture-approved text) — platform-neutral semantic
+  // descriptors of this capability's own two providers: WHAT information each provides and its
+  // limits, never when it is relevant.
+  var FIELD_DESCRIPTIONS = {
+    currentStateContext: 'Today\'s totals so far as logged by the user with FITME: calories consumed, grams of protein consumed, and calories burned through logged activity. Reflects only what has been logged today.',
+    goalObjectiveContext: 'The user\'s selected goal and daily calorie target from their FITME profile.'
+  };
+
   function makePipelineContextFragmentProvider(fieldId, relevanceTags) {
     return {
       id: fieldId,
+      description: FIELD_DESCRIPTIONS[fieldId], // WP0 Phase E.0.2b §10.4
       relevanceTags: relevanceTags,
       sensitivityTier: 'STANDARD',
       consentScope: null,
@@ -335,15 +349,24 @@
   // seam E.0.2b will extend. Omitted, it defaults to {} — byte-identical to the prior behavior. For
   // every current selection mechanism the composed context is identical either way (no shape, no
   // roughKind), and the E.0.2a authorization filter still governs every candidate. Still non-live.
+  //
+  // WP0 Phase E.0.2b (docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md §21) —
+  // GENERAL_REASONING is the one discovery-enabled capability: this path injects Semantic Context
+  // Discovery as assemble()'s fifth argument. The result additionally carries `discovery`
+  // ({status, selectedIds, informationNeeds}). informationNeeds is exposed there only — it is NOT
+  // passed to reason() or buildPrompt(); its reasoning consumption is deferred General Reasoning
+  // activation/integration scope and can never become retrieval authority (A1 §05.5a). Still
+  // non-live: this function has no production caller.
   async function buildAuthorizedComposedContext(pipelineContext, consentState, need) {
     var grCapability = CapabilityRegistry.getById(GENERAL_REASONING_CAPABILITY_ID);
     if (!grCapability) return { viable: false, context: null };
     var composeNeed = (need !== null && typeof need === 'object' && !Array.isArray(need)) ? need : {};
-    return ContextComposer.assemble(composeNeed, grCapability, pipelineContext, makeIsReasoningAccessAuthorized(grCapability, consentState));
+    return ContextComposer.assemble(composeNeed, grCapability, pipelineContext, makeIsReasoningAccessAuthorized(grCapability, consentState),
+      function (input) { return SemanticContextDiscoveryInterpreter.discover(input); });
   }
 
   var API = {
-    VERSION: '1.2.0', // WP0 Phase C, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment
+    VERSION: '1.3.0', // WP0 Phase C, extended additively at WP0 Phase E.0.2a, activated at WP0 Phase E.0.2a Activation Amendment, extended additively at WP0 Phase E.0.2b
     GENERAL_REASONING_CAPABILITY_ID: GENERAL_REASONING_CAPABILITY_ID,
     CONTEXT_CEILING: CONTEXT_CEILING,
     configure: configure,
