@@ -1,5 +1,5 @@
 # WP0 — PHASE E.0.2c — USER KNOWLEDGE RECORD AND CONCEPT IDENTITY FOUNDATION — IMPLEMENTATION SPEC
-## v1.0 — IMPLEMENTED — PENDING CLOSURE — implementation complete and verified (AC-0 … AC-62; Product/Architecture implementation review PASS); not CLOSED — closure pending commit, push and post-push canonical verification
+## v1.0 — CLOSED — IMPLEMENTED / VERIFIED; Product/Architecture canonical closure approved (see §36 Closure Record)
 
 **Repository path:** `docs/specs/WP0_PHASE_E_0_2C_USER_KNOWLEDGE_RECORD_AND_CONCEPT_IDENTITY_FOUNDATION_SPEC_v1.0.md`
 
@@ -14,7 +14,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **WP0 Phase E.0.2c — User Knowledge Record and Concept Identity Foundation** (GCUK Ch.23, "E.0.2c") **[CANON]**.
-- Status: **IMPLEMENTED — PENDING CLOSURE.** Implementation is complete and its verification has passed (AC-0 … AC-62; Product/Architecture implementation review PASS). E.0.2c is not CLOSED: closure is pending commit, push and post-push canonical verification. Product/Architecture resolved PD-1, ADP-1 (option (a), server-routed), ADP-2, ADP-4 and ADP-5 (§06, §28). Authoring this document modified no file under `js/**`, `tests/**`, `functions/**`, and did not modify `index.html`, `sw.js` or `firestore.rules`.
+- Status: **CLOSED** — implemented (commit `c0e22602abd47b59dfd760d83fa2dad30d1cfbba`), verified (AC-0 … AC-62; 83/83 focused, 3511/3511 full regression), Product/Architecture implementation review and canonical closure review PASS (§36 Closure Record). Product/Architecture resolved PD-1, ADP-1 (option (a), server-routed), ADP-2, ADP-4 and ADP-5 (§06, §28). Authoring this document modified no file under `js/**`, `tests/**`, `functions/**`, and did not modify `index.html`, `sw.js` or `firestore.rules`.
 - Repository baseline: `main` @ `bad5866851964ec3bbb299502f539c2933a02be7` (== `origin/main`) **[VERIFIED]**. Full deterministic suite on the working tree at authoring time: **3428/3428 passing** **[VERIFIED]**. The working tree carries 29 uncommitted entries unrelated to this Work Item (nutrition/UI/persistence/adaptive modules, their tests, two governance/Safety documents, and untracked planning documents); none is under `js/coachDecisionSystem/` or is a file this SPEC authorizes **[VERIFIED]**. Implementation must start from a baseline that excludes them or records them explicitly.
 - Authority: every **[CANON]** item is owned by Product/Architecture; the binding decisions implemented here are listed in §06. Every **[DESIGN]** item is submitted for approval. Items that require a decision before READY are listed in §28.
 
@@ -1091,12 +1091,25 @@ No fallback fabricates a record, evidence, concept or status.
 
 # 36. Status, Closure Criteria, and Definition of Complete
 
-- Status: **IMPLEMENTED — PENDING CLOSURE** — implementation complete and verified; PD-1, ADP-1, ADP-2, ADP-4, ADP-5 resolved; no Product or Architecture decision pending for E.0.2c. ADP-3 is a post-c sequencing item, not a condition of this Work Item. Not CLOSED: closure is pending commit, push and post-push canonical verification.
+- Status: **CLOSED — IMPLEMENTED / VERIFIED** (Closure Record below). PD-1, ADP-1, ADP-2, ADP-4, ADP-5 resolved; no Product or Architecture decision pending for E.0.2c. ADP-3 is a post-c sequencing item, not a condition of this Work Item.
 - Definition of Complete (for CLOSED): AC-0 … AC-62 pass in the full suite; R-1 … R-3 verified; full deterministic regression passing; production call counts and TRR hash unchanged; documentation updates per the Engineering Workflow at closure.
 
 ## Closure Record
 
-*(Empty until closure.)*
+**Implementation.** Commit `c0e22602abd47b59dfd760d83fa2dad30d1cfbba` ("Implement E.0.2c User Knowledge foundation"), parent `bad5866851964ec3bbb299502f539c2933a02be7`, pushed to `origin/main`. Exact scope: this SPEC plus the 9 files of §33 (`js/coachDecisionSystem/userKnowledgeContract.js`, `userKnowledgeTransitions.js`, `userKnowledgeStore.js`; `tests/e02cUserKnowledgeContract.test.js`, `e02cUserKnowledgeTransitions.test.js`, `e02cUserKnowledgeStore.test.js`, `e02cUserKnowledgeStatic.test.js`; `tests/fixtures/userKnowledgeInMemoryPort.js`, `userKnowledgePortConformance.js`). No existing file modified.
+
+**Verification.** AC-0 … AC-62 (63 criteria) pass. E.0.2c focused suite **83/83**; full deterministic regression **3511/3511** (3428 pre-existing + 83 new); 0 failures; 0 skips. R-1 … R-3 verified. Post-push verification PASS: `HEAD == origin/main == c0e2260` before closure; committed blobs identical to the tested and staged blobs; exactly 10 paths committed. Zero production wiring (`index.html`, `sw.js`, `js/app.js` and every other production file reference none of the new modules). Zero model-call delta; production call counts and the TRR request-body hash unchanged. No C4, Safety, TRR, OU-001, General Reasoning or shell change. The 29 unrelated working-tree entries present at the baseline were preserved byte-identical and excluded from both commits.
+
+**Reviews.** Product/Architecture Implementation Review: PASS. Canonical Closure Review: PASS.
+
+**Resolved architecture clarifications (recorded in §16.1, §16.4, AC-26, AC-62, §34, §20.2 during implementation review).**
+1. Authority resolution may perform the minimum bounded persisted-state read needed to determine authority; an authority failure performs no mutation, no id allocation and no unnecessary expansion read. Where authority is decidable without persisted state, rejection makes no port call.
+2. `configure(userId)` is an opaque, per-user store binding used only for scoping and validation; it grants no authority.
+3. INV-UC-S semantic near-copy verification is intentionally deferred to the future governed entry point; E.0.2c implements only the deterministic exact-copy protection (condition 5).
+
+**Implementation note.** A regression surfaced during implementation (MRE-001 W-1 treats any `JSON.parse` in `js/coachDecisionSystem/` as a model-output parse site) was resolved inside the new module by a structural deep copy; the MRE-001 test was not modified.
+
+**Carried forward (unchanged).** Every §31 deferral, including ADP-3 (explicit-statement intake ownership) for post-c sequencing review, and the §21.4 preconditions for the first Work Item that persists a real User Knowledge record.
 
 ---
 
@@ -1107,3 +1120,4 @@ No fallback fabricates a record, evidence, concept or status.
 - **v1.0** (ADP-5 and READY) — ADP-5 approved: a dedicated `correctInferredKnowledge` operation (`SERVER` only) atomically creates the `user_stated` successor and supersedes the targeted FITME-inferred records, under the narrow exception INV-UC-S (existing inferred targets; valid `userOriginTurnId`; successor anchored exclusively to the user's turn; user origin on every history entry; no relabeling; one atomic change set). No pending-supersession state. C4 explicitly unmodified. Generic `supersede` under `SERVER` can no longer produce `user_stated`. AC-57 rewritten; AC-59–61 added. Status set to READY FOR IMPLEMENTATION by Product/Architecture direction.
 - **v1.0** (implementation-review correction) — Architecture ruling on an internally impossible requirement found during implementation: "fails with `AUTHORITY` without calling the port" cannot hold when authority depends on a persisted target's `source`. §16.2 sentence, AC-26, the §34 authority row and the §20.2 pipeline order aligned with the new §16.4 (authority resolution may read; authority failure may not mutate; zero port calls where decidable without persisted state). §16.1 adds `userId` to `configure()` as an opaque identity binding that grants no authority; AC-62 added. No change to product behavior, storage architecture, source ownership, Concept Identity, correction architecture, ADP-5, C4 or d/e/f/g boundaries.
 - **v1.0** (implementation complete) — Status metadata only: READY FOR IMPLEMENTATION → IMPLEMENTED — PENDING CLOSURE after Product/Architecture implementation review PASS and pre-commit verification. Not CLOSED; the Closure Record is completed at closure. No normative change.
+- **v1.0** (canonical closure) — Status CLOSED — IMPLEMENTED / VERIFIED after Canonical Closure Review PASS; Closure Record completed (implementation commit `c0e22602abd47b59dfd760d83fa2dad30d1cfbba`). No normative change.
