@@ -1,5 +1,5 @@
 # CPI-001 AMENDMENT — Assertion Anchor for Intake Routing (USI-001)
-## v1.0 — DRAFT — submitted for Product / Architecture canonical review together with GCUK Amendment A2 and the DUC-001 USI-001 amendment
+## v1.0 — CANONICAL / CLOSED — approved together with GCUK Amendment A2 and the DUC-001 USI-001 amendment; implementation by USI-001
 
 **Repository path:** `docs/specs/CPI_001_AMENDMENT_USI_001_v1.0.md`
 
@@ -12,7 +12,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **CPI-001 Amendment for USI-001 — the preference assertion anchor.**
-- Status: **DRAFT.** Takes effect with A2 and the DUC detector amendment upon Product/Architecture approval; implemented by the USI-001 Work Item, not by this amendment.
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture as one canonical unit with A2 and the DUC detector amendment (commit `04265683c089e972d90bdd8675610ab37aee8574`); implemented by the USI-001 Work Item, not by this amendment.
 - Repository baseline: `main` @ `f1d4f53874983ef26fe88ac04303dbe3ac3d549d` **[VERIFIED]**.
 - Authority: the Product/Architecture decision authorizing a CPI assertion anchor for USI-001 routing, recorded in A2 as **AR-6a** **[CANON]**. The wording below is **[DESIGN]** until approved.
 
@@ -130,8 +130,9 @@ CPI-001 §1–§8 (scope, authority, consent, the three-class vocabulary), §11 
 
 # 12. Status and Closure
 
-- Status: **DRAFT.** Takes effect together with A2 and the DUC detector amendment upon approval. Implementation, verification and closure evidence belong to the USI-001 Work Item.
+- Status: **CANONICAL / CLOSED** — in effect together with A2 and the DUC detector amendment (commit `04265683c089e972d90bdd8675610ab37aee8574`). Implementation, verification and closure evidence belong to the USI-001 Work Item.
 
 # 13. Document History
 
 - **v1.0** (initial authoring) — Adds `assertionAnchorText` per AR-6a, at baseline `f1d4f53`.
+- **v1.0** (canonical closure) — Status CANONICAL / CLOSED: approved by Product/Architecture as one canonical unit with A2 and the DUC detector amendment, committed as `04265683c089e972d90bdd8675610ab37aee8574`. Status metadata only; no content change.

@@ -1,5 +1,5 @@
 # DUC-001 AMENDMENT — User-Stated Intake Detector (USI-001)
-## v1.0 — DRAFT — submitted for Product / Architecture canonical review together with GCUK Amendment A2
+## v1.0 — CANONICAL / CLOSED — approved together with GCUK Amendment A2 and the CPI-001 USI-001 amendment; implementation by USI-001
 
 **Repository path:** `docs/specs/DUC_001_AMENDMENT_USI_001_v1.0.md`
 
@@ -12,7 +12,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **DUC-001 Amendment for USI-001 — the User-Stated Intake Detector.**
-- Status: **DRAFT.** Takes effect with A2 upon Product/Architecture approval; implemented by the USI-001 Work Item, not by this amendment.
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture as one canonical unit with A2 and the CPI-001 USI-001 amendment (commit `04265683c089e972d90bdd8675610ab37aee8574`); implemented by the USI-001 Work Item, not by this amendment.
 - Repository baseline: `main` @ `f1d4f53874983ef26fe88ac04303dbe3ac3d549d` **[VERIFIED]**.
 - Authority: the ADP-3 Product/Architecture ruling, item 3 (model-call / Turn Understanding policy), recorded in A2 as AR-3 **[CANON]**. The wording below is **[DESIGN]** until approved.
 
@@ -126,8 +126,9 @@ DUC-001 §00–§03, §05–§16, §18, §20–§24; Dimensions 1–5 and their 
 
 # 11. Status and Closure
 
-- Status: **DRAFT.** Takes effect together with A2 upon approval. Implementation, verification and closure evidence belong to the USI-001 Work Item.
+- Status: **CANONICAL / CLOSED** — in effect together with A2 and the CPI-001 USI-001 amendment (commit `04265683c089e972d90bdd8675610ab37aee8574`). Implementation, verification and closure evidence belong to the USI-001 Work Item.
 
 # 12. Document History
 
 - **v1.0** (initial authoring) — Adds Dimension 6 per the ADP-3 ruling item 3, at baseline `f1d4f53`.
+- **v1.0** (canonical closure) — Status CANONICAL / CLOSED: approved by Product/Architecture as one canonical unit with A2 and the CPI-001 USI-001 amendment, committed as `04265683c089e972d90bdd8675610ab37aee8574`. Status metadata only; no content change.

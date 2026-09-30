@@ -1,5 +1,5 @@
 # FITME — GENERAL CONTEXT AND USER KNOWLEDGE FOUNDATION — AMENDMENT A2
-## v1.0 — DRAFT — submitted for Product / Architecture canonical review (User-Stated Intake; Epistemic Boundary; One Canonical User Memory Model; Intake Precedence; Sequence)
+## v1.0 — CANONICAL / CLOSED (User-Stated Intake; Epistemic Boundary; One Canonical User Memory Model; Intake Precedence; Sequence)
 
 **Repository path:** `docs/governance/FITME_General_Context_and_User_Knowledge_Foundation_Amendment_A2_v1.0.md`
 
@@ -14,7 +14,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **GCUK Amendment A2.**
-- Status: **DRAFT** — submitted for Product/Architecture canonical review together with the DUC detector amendment and the CPI anchor amendment. Authoring it modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture as one canonical unit together with the DUC detector amendment and the CPI anchor amendment (commit `04265683c089e972d90bdd8675610ab37aee8574`). Authoring it modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
 - Authority: every **[CANON]** statement below records the binding Product/Architecture ADP-3 ruling taken after the WP0 Phase E.0.2c closure (hereafter **AR-1 … AR-7**: 1 epistemic boundary; 2 sequencing; 3 model-call / Turn Understanding policy; 4 statement authority / literal policy; 5 one canonical memory model; 6 CPI / User Knowledge overlap; 7 live persistence), together with the follow-up decisions of the canonical review: the Dimension-6-local failure rule (approved), and **AR-6a** — rejecting whole-turn CPI ownership as the normal routing rule and authorizing an additive CPI-001 assertion anchor. The wording is **[DESIGN]** until this amendment is approved; the decisions themselves are not reopened here.
 - This amendment introduces no Product or Architecture decision beyond AR-1 … AR-7 and AR-6a.
 
@@ -295,9 +295,10 @@ Elsewhere: persisted AI semantic summaries with interpretation provenance (§05 
 
 # 15. Status and Closure
 
-**DRAFT.** Takes effect together with the DUC detector amendment and the CPI anchor amendment upon Product/Architecture approval. Authorizes no implementation, no SPEC and no live persistence.
+**CANONICAL / CLOSED.** In effect together with the DUC detector amendment and the CPI anchor amendment, approved as one canonical unit (commit `04265683c089e972d90bdd8675610ab37aee8574`). Authorizes no implementation, no SPEC and no live persistence.
 
 # 16. Document History
 
 - **v1.0** (initial authoring) — Records the ADP-3 Product/Architecture ruling (AR-1 … AR-7) after the WP0 Phase E.0.2c closure, at baseline `f1d4f53`.
 - **v1.0** (canonical review revision) — Whole-turn CPI ownership removed (AR-6a). §08.2 now uses owned literal spans, with CPI-001 owning the span of its `assertionAnchorText` (new companion CPI anchor amendment); all user-attributed text must be disjoint from owned spans except one CPI-citing reference factor; CPI Safety-veto turns persist nothing. §08.3 fails closed for USI-001 only when the anchor is unavailable, and states the proof boundary. Dimension-6-local failure rule unchanged.
+- **v1.0** (canonical closure) — Status CANONICAL / CLOSED: approved by Product/Architecture as one canonical unit with the DUC detector amendment and the CPI anchor amendment, committed as `04265683c089e972d90bdd8675610ab37aee8574`. Status metadata only; no content change.
