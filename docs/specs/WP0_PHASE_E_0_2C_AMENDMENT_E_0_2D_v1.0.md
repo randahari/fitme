@@ -12,7 +12,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **E.0.2c Amendment for E.0.2d — supporting-evidence index (`supportingRefIds`) and evidence-keyed record query (`queryRecordsBySupportingRefs`).**
-- Status: **CANONICAL / CLOSED** — approved by Product/Architecture after canonical review at baseline `df3000c`, together with rulings **D5-1** (`SCHEMA_VERSION` stays `1`, §14) and **D5-2** (implemented by the E.0.2d Work Item, §15); its canonization commit is recorded here when committed (A2/A3 precedent). Implemented by the E.0.2d Work Item, not by this amendment. Authoring modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture after canonical review at baseline `df3000c`, together with rulings **D5-1** (`SCHEMA_VERSION` stays `1`, §14) and **D5-2** (implemented by the E.0.2d Work Item, §15); canonization commit `416c00229ea8cbb4b07288eed0947c061734e841`. Implemented by the E.0.2d Work Item, not by this amendment. Authoring modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
 - Repository baseline: `main` @ `df3000c59e61de4549139ec8448596683ed06aa3` (== `origin/main`) **[VERIFIED]**.
 - Authority: the Product/Architecture decision approving **GAP-D5 Option A** after the E.0.2d GAP-D5 read-only investigation (hereafter **D5-A**): a derived `supportingRefIds` field following the `conceptIds` precedent (E.0.2c §10.4, ADP-4), and a bounded `queryRecordsBySupportingRefs` port/store read; no reverse-index store, no E.0.2d-local cache, no list-all, no duplicate observation store, no model involvement, no tombstones, no GCUK amendment. The canonical review then ruled **D5-1** — keep `SCHEMA_VERSION = 1`, no migration machinery — and **D5-2** — implementation within the E.0.2d Work Item, after this amendment is closed, the E.0.2d SPEC is updated to consume it, and the E.0.2d SPEC passes final review. The wording below is approved; the decisions are not reopened here.
 
@@ -246,10 +246,11 @@ No `index.html`, `sw.js`, `js/app.js`, `functions/**` or `firestore.rules` chang
 
 # 17. Status and Closure
 
-- Status: **CANONICAL / CLOSED** — approved by Product/Architecture after canonical review at baseline `df3000c`, with D5-1 and D5-2 resolved (§15). The canonization commit is recorded here when this document is committed (A2/A3 precedent).
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture after canonical review at baseline `df3000c`, with D5-1 and D5-2 resolved (§15); canonization commit `416c00229ea8cbb4b07288eed0947c061734e841`.
 - It authorizes no implementation by itself. Implementation, verification and closure evidence belong to the E.0.2d Work Item, which may begin only after the E.0.2d SPEC has been updated to consume this amendment and has passed final Product/Architecture review (§15).
 
 # 18. Document History
 
 - **v1.0** (initial authoring) — Adds the `supportingRefIds` derived index and the `queryRecordsBySupportingRefs` port/store read per D5-A (GAP-D5 Option A), at baseline `df3000c`.
 - **v1.0** (canonical finalization) — Status CANONICAL / CLOSED after Product/Architecture canonical review. D5-1: `SCHEMA_VERSION` stays `1`, no migration machinery (§14). D5-2: implementation by the E.0.2d Work Item in the canonical order of §15. §16 binding-invariant summary added. No change to the contract of §04–§13.
+- **v1.0** (canonical closure) — Canonization commit recorded: `416c00229ea8cbb4b07288eed0947c061734e841`. Status metadata only; no content change.
