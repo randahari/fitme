@@ -628,15 +628,33 @@ No other production file changes. No `index.html`, `sw.js`, `js/app.js`, `functi
 
 **New test file from the amendment.** `tests/e02cSupportingRefIndex.test.js` (amendment AC-SR1 … AC-SR8).
 
-**Authorized modifications to existing tests (only these four).**
-- `tests/mre001Wiring.test.js`: add `consolidationInterpreter.js: 1` to `SITE_FILES` and the W-1 total `19 → 20`.
-- `tests/wp0PhaseE02aZeroDriftProof.test.js`: add `consolidation.js` to `EXPECTED_REQUIRERS` (A3 §11).
-- `tests/e02cUserKnowledgeStore.test.js:422`: the asserted record key list gains `supportingRefIds` (amendment §13).
-- `tests/usi001StoreReads.test.js:107-112` (AC-39): the asserted store-operation set and `PORT_FUNCTIONS` list gain `queryRecordsBySupportingRefs` (amendment §13).
+**Authorized modifications to existing tests (only these six).**
+1. `tests/mre001Wiring.test.js` (W-1): add `consolidationInterpreter.js: 1` to `SITE_FILES` and the W-1 total `19 → 20`.
+2. `tests/wp0PhaseE02aZeroDriftProof.test.js`: add `consolidation.js` to `EXPECTED_REQUIRERS` (A3 §11).
+3. `tests/e02cUserKnowledgeStore.test.js:422`: the asserted record key list gains `supportingRefIds` (amendment §13).
+4. `tests/usi001StoreReads.test.js:107-112` (AC-39): the asserted store-operation set and `PORT_FUNCTIONS` list gain `queryRecordsBySupportingRefs` (amendment §13).
+5. `tests/mre001Wiring.test.js` (W-3; implementation-discovered test-compatibility clarification, §29.1): a path-specific Node-only exception for exactly `consolidationInterpreter.js`.
+6. `tests/e02cUserKnowledgeStatic.test.js` (AC-36, AC-37/AC-45; implementation-discovered test-compatibility clarification, §29.1): path-specific and usage-specific E.0.2d allowances.
 
 Every other existing test passes unchanged.
 
 **Implementation order within this Work Item [DESIGN].** The E.0.2c amendment changes are implemented and verified first (AC-SR1 … AC-SR8 and the full regression green), then the E.0.2d modules. Implementation begins only after this SPEC passes final Product/Architecture review (amendment D5-2).
+
+## 29.1 Implementation-discovered test-compatibility clarification — [CANON — Product/Architecture ruling during implementation]
+
+**Finding.** Two existing tests, written before E.0.2d existed, reject usages that this SPEC itself requires:
+- MRE-001 W-3 (`tests/mre001Wiring.test.js`) requires every `SITE_FILES` entry to be script-tagged in `index.html`. Edit 1 above must list `consolidationInterpreter.js` (its envelope-routed parse site, §15.2; otherwise W-1 coverage fails), while §08 and AC-D40 require that module to stay Node-only.
+- The E.0.2c isolation test (`tests/e02cUserKnowledgeStatic.test.js`) admits the `userKnowledgeContract.js` dependency and the token `relationDescription` only in E.0.2c and the named USI-001 modules (AC-36, AC-37/AC-45), while §08 requires three E.0.2d modules to depend on `userKnowledgeContract.js`, and §14.2, §14.3, §17 and U6 (§23.2) require E.0.2d to render, build and compare `relationDescription`.
+
+**Edit 5 — MRE-001 W-3, exactly.** A list `NODE_ONLY_SITE_FILES = ['consolidationInterpreter.js']`. For files in that list, W-3 asserts that the file is **not** script-tagged in `index.html` (enforcing §08 / AC-D40) instead of checking load order. For every other `SITE_FILES` entry, W-3 is unchanged: script-tagged, and loaded after `modelResponseEnvelope.js`. W-1 is unchanged except for edit 1: `consolidationInterpreter.js` remains a registered parse site whose `JSON.parse` count, envelope routing and standard `ModelResponseEnvelope` dependency declaration are all still checked. No other test in the file changes.
+
+**Edit 6 — E.0.2c isolation test, exactly** (the USI-001 §29 allowance pattern):
+- (A) `relationDescription`: the AC-36 allowed set gains exactly `js/coachDecisionSystem/consolidation.js` (renders presented records and references, §14.2–§14.3; builds drafts, §17) and `js/coachDecisionSystem/consolidationGate.js` (E2/U6 text comparison, §22–§23.2). No other E.0.2d module (`consolidationContract.js`, `consolidationInterpreter.js`) and no other file is admitted.
+- (B) `userKnowledgeContract.js` dependency: the AC-37/AC-45 scan strips, exactly once per file, only the standard two-line UMD declaration `? require('./userKnowledgeContract.js')` / `: window.UserKnowledgeContract;`, and only in `js/coachDecisionSystem/consolidationContract.js`, `consolidationGate.js` and `consolidation.js` (the §08 dependency table). After stripping, every token check applies unchanged, so these modules may not otherwise mention any E.0.2c module or global. In particular they never reference `userKnowledgeTransitions` or `userKnowledgeStore`: the store is injected (§17), and no transitions dependency exists.
+- (C) No shell allowance: no E.0.2d module, and no additional E.0.2c module, is admitted in `index.html`, `sw.js` or `js/app.js`. AC-45 is unchanged.
+- Every allowance must be scanned (the existing "was scanned" assertion is extended to the new paths). Every other path stays rejected exactly as before.
+
+**Scope of this clarification.** Compatibility only. It changes no Product behaviour, authority, data semantics, activation status, architecture boundary or implementation scope of this SPEC or of E.0.2c. The Node-only requirement (§08, AC-D40) is preserved and is now additionally enforced by W-3. E.0.2c isolation is preserved except for the exact §08-required E.0.2d consumers and usages above. Tests must not be satisfied through indirection or renamed tokens.
 
 ---
 
@@ -693,7 +711,7 @@ All deterministic tests stub the transport; none calls a model. The calibration 
 - AC-D40: no E.0.2d module is script-tagged, listed in `sw.js`, referenced by `js/app.js`, or declares the `callClaude: null` dependency shape.
 - AC-D41: module dependencies are exactly §08; no forbidden reference of §08; no clock, randomness or id generation.
 - AC-D42: E.0.2c production modules change only as the E.0.2c amendment for E.0.2d §13 specifies (no other operation, transition, authority rule, error code or invariant changes, amendment AC-SR7); `eligibilityPolicy.js`, `capabilityRegistry.js`, `contextComposer.js` and all Safety modules are byte-unchanged.
-- AC-D43: only the four §29 existing-test modifications, and production changes limited to the four new E.0.2d modules and the three E.0.2c modules of §29.
+- AC-D43: only the six §29 existing-test modifications (including the two §29.1 compatibility edits, exactly as specified there), and production changes limited to the four new E.0.2d modules and the three E.0.2c modules of §29.
 - AC-D44: production model-call counts and pinned request-body hashes unchanged.
 - AC-D45: full deterministic regression passes.
 
@@ -796,3 +814,4 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6 inv
 - **v1.0** (deterministic U5 merge resolution) — Owner concept resolution added to §23.1 and pass step 6: concepts of every owning record are resolved to current roots before the model call with the canonical `store.getConcepts`, `resolveConceptRoot` and `MAX_MERGE_CHAIN_DEPTH` over a transient pass-local concept map (§14.2); any incomplete resolution fails the pass `OWNERSHIP_READ_FAILED` (§25). The read bound is derived from existing constants (`OBS_MAX_PER_PASS`, `MAX_QUERY_LIMIT`, `MAX_FACTORS`, `MAX_READ_BATCH`, `MAX_MERGE_CHAIN_DEPTH`); no new constant. U5 is fully merge-resolved for presented references and non-presented owners in every stored status; the former statement that CAL-D1 covers missed U5 merge matches is removed. U6 confirmed free of concept-merge dependency. CAL-D1 limited to semantic residuals (§31). AC-D39 rewritten; AC-D50 extended; AC-D52, AC-D53 added. No port, store, API or canonical change.
 - **v1.0** (canonical finalization) — Product/Architecture final approval of the complete design. Status metadata and lifecycle wording only: specification CANONICAL / CLOSED — READY FOR IMPLEMENTATION (header, §01, §35); §35 now distinguishes the specification lifecycle from the E.0.2d Work Item lifecycle (NOT IMPLEMENTED — NOT CALIBRATED — NOT LIVE), and its existing closure criteria are labelled the Work Item CLOSED criteria, with CAL-D1 … CAL-D7 run only with Product approval. No normative change.
 - **v1.0** (canonical closure) — Specification canonization commit recorded: `0eff66dfbb6aa21342499b7aa4a613625b313135`. Status metadata only; no content change. The E.0.2d Work Item remains NOT IMPLEMENTED — NOT CALIBRATED — NOT LIVE.
+- **v1.0** (implementation-discovered test-compatibility clarification; Product/Architecture ruling during implementation) — Two existing tests written before E.0.2d existed reject usages this SPEC requires: MRE-001 W-3 requires every `SITE_FILES` entry to be script-tagged, while `consolidationInterpreter.js` is a required parse site that must stay Node-only; and the E.0.2c isolation test admits the `userKnowledgeContract.js` dependency and `relationDescription` only for E.0.2c and USI-001. New §29.1 authorizes exactly two further edits: a path-specific W-3 Node-only exception for `consolidationInterpreter.js` (which asserts it is not script-tagged), and path- and usage-specific E.0.2d allowances in `tests/e02cUserKnowledgeStatic.test.js` (`relationDescription` in `consolidation.js` and `consolidationGate.js`; the standard contract UMD declaration in `consolidationContract.js`, `consolidationGate.js` and `consolidation.js`; no shell allowance). Authorized existing-test edits: four → six; AC-D43 updated. No change to Product behaviour, authority, data semantics, activation, architecture boundary or implementation scope; the Node-only requirement and E.0.2c isolation are otherwise preserved. Follows the USI-001 revision-1 test-compatibility precedent.
