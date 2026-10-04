@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.7';
+const VERSION = 'v2.47.8';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -115,12 +115,18 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/expressionInputGate.js',
   '/fitme/js/coachDecisionSystem/expressionRenderer.js',
   '/fitme/js/coachDecisionSystem/trainingReadinessReasoningComponent.js',
+  // USI-001 — testable-not-live (activation gate false); see index.html's own disclosure.
+  '/fitme/js/coachDecisionSystem/userStatedIntakeActivationGate.js',
+  '/fitme/js/coachDecisionSystem/userKnowledgeContract.js',
   '/fitme/js/coachDecisionSystem/turnUnderstandingInterpreter.js',
   '/fitme/js/coachDecisionSystem/conversationalNeedCreator.js',
   '/fitme/js/coachDecisionSystem/explicitPreferenceStatementInterpreter.js',
   '/fitme/js/coachDecisionSystem/preferenceIntakeGate.js',
   '/fitme/js/coachDecisionSystem/userDisclosureRecognizer.js',
   '/fitme/js/coachDecisionSystem/safetyDisclosureIntakeGate.js',
+  '/fitme/js/coachDecisionSystem/userStatedIntakeInterpreter.js',
+  '/fitme/js/coachDecisionSystem/userStatedIntakeGate.js',
+  '/fitme/js/coachDecisionSystem/userStatedIntake.js',
   '/fitme/js/coachDecisionSystem/internalPipelineOrchestrator.js',
   '/fitme/js/coachDecisionSystem/registerCoachDecisionSystem.js',
   '/fitme/js/ui/navigationController.js',

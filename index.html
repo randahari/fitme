@@ -828,6 +828,12 @@
   <!-- DUC-001 (docs/specs/DUC_001_SPEC_v1.0.md §04/§06) — two new modules, loaded before
        internalPipelineOrchestrator.js, their sole consumer (same pattern as
        trainingReadinessReasoningComponent.js immediately above). -->
+  <!-- USI-001 (docs/specs/USI_001_SPEC_v1.0.md §08, §29) — testable-not-live. The activation gate
+       (default false; production never sets it) is read by turnUnderstandingInterpreter.js and
+       explicitPreferenceStatementInterpreter.js, so it loads before both. The second tag below is the E.0.2c
+       User Knowledge contract, which the USI-001 gate and coordinator depend on. -->
+  <script src="js/coachDecisionSystem/userStatedIntakeActivationGate.js"></script>
+  <script src="js/coachDecisionSystem/userKnowledgeContract.js"></script>
   <script src="js/coachDecisionSystem/turnUnderstandingInterpreter.js"></script>
   <script src="js/coachDecisionSystem/conversationalNeedCreator.js"></script>
   <!-- CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §9/§10) — two new modules, loaded before
@@ -845,6 +851,12 @@
        top-of-module require/window time, so it must already be loaded by this point. -->
   <script src="js/coachDecisionSystem/userDisclosureRecognizer.js"></script>
   <script src="js/coachDecisionSystem/safetyDisclosureIntakeGate.js"></script>
+  <!-- USI-001 — interpreter, deterministic gate and coordinator, loaded before
+       internalPipelineOrchestrator.js, their sole consumer. The executor and the User Knowledge
+       store are Node-only in this Work Item (no live persistence). -->
+  <script src="js/coachDecisionSystem/userStatedIntakeInterpreter.js"></script>
+  <script src="js/coachDecisionSystem/userStatedIntakeGate.js"></script>
+  <script src="js/coachDecisionSystem/userStatedIntake.js"></script>
   <script src="js/coachDecisionSystem/internalPipelineOrchestrator.js"></script>
   <script src="js/coachDecisionSystem/registerCoachDecisionSystem.js"></script>
   <script src="js/ui/navigationController.js"></script>

@@ -1,5 +1,5 @@
 // ── GLOBALS ──
-const APP_VERSION = '2.47.7';
+const APP_VERSION = '2.47.8';
 
 // C1-WP2: מזריק את גורמי הפלטפורמה האמיתיים (auth/Notification/navigator/fetch) לתוך
 // המתאמים. אותם אובייקטים גלובליים כמו קודם — רק דרך שכבת מתאם, לא ישירות.
@@ -398,6 +398,14 @@ TurnUnderstandingInterpreter.configure({
 // Invoked only by internalPipelineOrchestrator.js's own runDirectTurnPass(), in parallel with
 // TurnUnderstandingInterpreter above, never gated on/gating it.
 ExplicitPreferenceStatementInterpreter.configure({
+  callClaude: function (body) { return callClaude(body); }
+});
+
+// USI-001 (docs/specs/USI_001_SPEC_v1.0.md §14, §29) — the bounded User-Stated Intake interpreter,
+// configured with the same callClaude closure as its siblings (wiring test 37). Testable-not-live:
+// UserStatedIntakeActivationGate stays false, so the orchestrator never invokes USI-001, no User
+// Knowledge store is configured here, and the executor is not referenced by the shell (§08, §18.4).
+UserStatedIntakeInterpreter.configure({
   callClaude: function (body) { return callClaude(body); }
 });
 

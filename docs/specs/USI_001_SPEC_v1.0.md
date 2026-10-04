@@ -1,5 +1,5 @@
 # USI-001 — USER-STATED INTAKE AND CORRECTION — IMPLEMENTATION SPEC
-## v1.0 — REVISION 1 — READY FOR IMPLEMENTATION (Product Review: APPROVED. Architecture Review: APPROVED.)
+## v1.0 — REVISION 1 — IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING — NOT CLOSED — NOT LIVE (Product Review: APPROVED. Architecture Review: APPROVED.)
 
 **Repository path:** `docs/specs/USI_001_SPEC_v1.0.md`
 
@@ -14,7 +14,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **USI-001 — User-Stated Intake and Correction** (A2 §06, §10.1; absorbs the former E.0.2f).
-- Status: **Product Review: APPROVED. Architecture Review: APPROVED. Status: READY FOR IMPLEMENTATION.** Authoring modified no file under `js/**`, `tests/**`, `functions/**`, and did not modify `index.html`, `sw.js`, `firestore.rules` or any canonical document.
+- Status: **Product Review: APPROVED. Architecture Review: APPROVED. Status: IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING — NOT CLOSED — NOT LIVE** (§34). SPEC authoring modified no file under `js/**`, `tests/**`, `functions/**`, and did not modify `index.html`, `sw.js`, `firestore.rules` or any canonical document.
 - Repository baseline: `main` @ `629de1b5d840a6ed292329977c9d432cb19b0ec3` (== `origin/main`) **[VERIFIED]**. Full deterministic suite at the last verified state: 3511/3511 **[VERIFIED at `c0e2260`; `629de1b` added documentation only]**. The working tree carries 29 unrelated uncommitted entries; none is a file this SPEC authorizes.
 - Authority: every **[CANON]** item is owned by Product/Architecture (A2 AR-1 … AR-7, AR-6a; DUC detector amendment; CPI anchor amendment; E.0.2c). Every **[DESIGN]** item in this revision is Product/Architecture approved for implementation.
 
@@ -174,7 +174,7 @@ Resulting closed-output key (gate on only): `userStatedKnowledge: {present, inte
 
 ## 09.2 Prompt change (gate on only)
 
-- One additional closed-dimension instruction, `DIMENSION 6 (userStatedKnowledge)`, appended after Dimension 5; the JSON schema line gains the three keys. Dimensions 1–5 text, gating, vocabulary, the two-segment output instruction, the open block and the injection clause are unchanged.
+- **Placement (C1; Product/Architecture approval after calibration rounds 2–3).** The complete gate-off instruction block — Dimensions 1–5 text, gating and vocabulary, the open block, the two-segment output instruction, the closed JSON schema line and the injection clause — is kept byte-identical. Dimension 6 is one addendum, `DIMENSION 6 ADDENDUM (userStatedKnowledge)`, placed after that block and before the recent-conversation and turn blocks. The existing schema line is unchanged; the addendum names the three keys and asks for them at the end of the same part-1 JSON entry. No output segment, model call or model-output parse site is added. The gate-on prompt is therefore exactly the gate-off prompt with that one addendum inserted, and Dimensions 1–5 keep their existing task while Dimension 6 annotates the turn afterwards.
 - Semantics per DUC §04: present when the current turn states something about the user's own life or circumstances that may be worth remembering durably (`NEW_USER_KNOWLEDGE`), or expresses intent to correct, replace, withdraw or forget something the user told FITME or FITME understood about them (`CORRECTION_WITHDRAW_FORGET`). `anchorText`: the exact verbatim span of the current turn carrying it.
 - The instruction contains no example domain, activity, food, place, relationship or life-event word (DUC §04; checked by AC-9).
 
@@ -671,9 +671,9 @@ Gates (thresholds **[PROVISIONAL]**, confirmed at review):
 
 | Gate | Measure | Threshold |
 |---|---|---|
-| CAL-1 Turn Understanding regression | Dimensions 1–5 and `interpretationStatus` identical to gate-off on the fixed corpus | 100% |
+| CAL-1 Turn Understanding behavioural identity | Protected Turn Understanding outcomes (§26.1) of gate-on equal those of gate-off on the fixed corpus, with stochastic control | 100% of protected outcomes; zero recurring gate-caused differences |
 | CAL-2 Detector | Precision on ordinary turns (false-positive rate); recall on knowledge/correction turns; anchor literal-validity rate | FP ≤ 10%; recall ≥ 80%; validity ≥ 95% |
-| CAL-3 CPI unchanged | CPI classification outcomes identical to gate-off | 100% |
+| CAL-3 CPI behavioural identity | Protected CPI outcomes (§26.1) of gate-on equal those of gate-off on the fixed corpus, with stochastic control | 100% of protected outcomes; zero recurring gate-caused differences |
 | CAL-4 CPI anchor | Validity rate on eligible turns; human review of extent (complete assertion, not a fragment, not unrelated text) | validity ≥ 95%; extent acceptable ≥ 90% |
 | CAL-5 USI interpreter | Parse/format failures; proportion of proposals passing the gate; human review that accepted records reflect what the user said | FAILED ≤ 5%; review PASS |
 | CAL-6 Latency / budget | p99 latency for Turn Understanding, CPI and USI within timeouts; max output tokens ≤ 80% of `max_tokens`; zero `max_tokens` stops | as stated |
@@ -681,6 +681,21 @@ Gates (thresholds **[PROVISIONAL]**, confirmed at review):
 | CAL-8 Target authority | On a corpus of correction/withdraw/forget turns with 1, 2 and 3+ plausible presented targets, named and back-referring, English and Hebrew: (a) mutations executed against a record a human reviewer judges the user did not mean; (b) FORGET proposals on turns a reviewer judges are not deletion requests; (c) fail-closed rate on unambiguous requests (reported, informs PD) | (a) 0; (b) 0; (c) reported |
 
 Semantic completeness of anchors and of the model's structure is established only by this calibration, never claimed as deterministic.
+
+## 26.1 Behavioural identity measurement (CAL-1, CAL-3) — [CANON — Product/Architecture ruling after calibration rounds 2–3]
+
+CAL-1 and CAL-3 protect **downstream behavioural identity**: the existing production outcomes that Dimension 6 and `assertionAnchorText` are not allowed to change (DUC detector amendment §05.4, §07; CPI anchor amendment §05, §08, §09). They do not require field-by-field equality between independent stochastic model samples.
+
+1. **Protected outcomes** are computed by passing each sampled model result through the unmodified production downstream code.
+   - **CAL-1:** `interpretationStatus`; the Need result kind and the matched capability (`ConversationalNeedCreator`, with the production capabilities registered); the resulting routing (capability-routed opportunity, unsupported capability, or no Need); disclosure recognition and disclosure category (`UserDisclosureRecognizer`); and every other production downstream decision derived from Dimensions 1–5 at the time of measurement.
+   - **CAL-3:** `eligible`, `preferenceClass`, `polarity`, `target`; the `PreferenceIntakeGate` authorization outcome; the persisted payload and record id where applicable; the acknowledgement; and TRR consumption. The persisted payload, record id, acknowledgement and TRR consumption are deterministic functions of the authorized candidate record (`preferenceClass`, `polarity`, `target`). The gate's Safety veto is an independent model call whose input does not include the CPI output; the measurement holds it and consent constant per turn so that a measured difference reflects only the CPI output.
+2. **Non-consumed fields.** A difference in a model output field that no production code consumes at the time of measurement is **reported**, but it is not a behavioural regression. At this SPEC's baseline these include Dimension 3 `negativeControlPresent`, the verbatim span text of Dimensions 2 and 5, the Dimension 1 domain/topic when no registered capability matches either value, and CPI `ineligibleReason`. When any such field gains a production consumer, it becomes protected automatically.
+3. **Stochastic control.** Each corpus turn is sampled at least 3 times with the gate off and at least 3 times with the gate on, with an identical model and configuration.
+   - A protected outcome **fails** when all gate-off samples agree and at least 2 gate-on samples differ from them (a recurring gate-caused difference).
+   - A single non-recurring gate-on difference on a turn whose gate-off samples agree is reported. Across the corpus, such differences must not exceed the measured gate-off pairwise disagreement rate on protected outcomes.
+   - A turn whose gate-off samples disagree with each other is reported as unstable and does not decide the gate.
+4. A recurring change to a protected outcome **always fails**, whether or not the gate-on answer could be argued to be more correct. Example: a durable statement whose disclosure category changes from STATE (gate off) to CAPACITY_OR_CONSTRAINT (gate on).
+5. This section defines measurement only. It does not relax the DUC detector amendment or the CPI anchor amendment, the gate-off byte identity of §08.1 and AC-2, or any deterministic test. Recorded responses may be replayed locally to verify this measurement, but they never validate a prompt; prompt behaviour is established only by real-model calibration.
 
 ---
 
@@ -786,6 +801,7 @@ No fallback fabricates knowledge, evidence, a concept or a target.
 **Authorized modifications to existing tests (only these)**
 - The `2.47.7` → `2.47.8` version-pin updates in the existing files that pin it.
 - `tests/mre001Wiring.test.js`: add the USI interpreter to `SITE_FILES` (site 19) and the W-1 total `18 → 19`.
+- `tests/e02cUserKnowledgeStatic.test.js` (implementation-discovered test-compatibility clarification): its static allowlists/assertions may be extended **only** for the exact USI-001 production paths and usages this SPEC already requires — the `relationDescription` token in the USI-001 modules that build or present records (§13, §16, §17), the `userKnowledgeContract.js` dependency of the USI-001 modules (§15, AC-40), and the `userKnowledgeContract.js` browser script tag and service-worker asset (§29 `index.html`, `sw.js`). Every other path stays rejected exactly as before.
 
 No other existing test is modified: with the gate `false`, every existing Turn Understanding, CPI, orchestrator and production-backed test must pass unchanged.
 
@@ -871,7 +887,7 @@ All deterministic tests stub `callClaude`. Every test other than the calibration
 - AC-38: presented-concept reuse keeps the id; new concepts get their literal label; at most 6 new concepts per turn; no label is added to an existing concept; no merge.
 
 **Store reads (§19)**
-- AC-39: the two additive reads are consent-gated, bounded, validated and never throw; all existing E.0.2c tests pass unmodified.
+- AC-39: the two additive reads are consent-gated, bounded, validated and never throw; the E.0.2c suite passes; no E.0.2c production contract, transition, existing store operation or semantic invariant is changed; and the only change to E.0.2c tests is the §29-authorized USI-001 compatibility allowance in `tests/e02cUserKnowledgeStatic.test.js`.
 
 **Static and scope**
 - AC-40: USI modules have no dependency beyond the §29 set, the E.0.2c contract and MRE-001; the coordinator never requires the executor; no module reads a clock except through injection.
@@ -962,9 +978,11 @@ Residual risk §15.4.7(i) is accepted only while USI-001 remains testable-not-li
 
 # 34. Status, Closure Criteria, and Definition of Complete
 
-- Status: **READY FOR IMPLEMENTATION** (Product Review: APPROVED. Architecture Review: APPROVED.)
+- Status: **IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING — NOT CLOSED — NOT LIVE** (Product Review: APPROVED. Architecture Review: APPROVED.)
 - All Product/Architecture decisions required for implementation are resolved: ADP-U1 … ADP-U5, PD-U1 (testable-not-live limitation only), PD-U2, and the revision-1 target-authority contract (§15.4) (§32). Live persistence activation (§08.3) remains separately gated and is not authorized by this status.
-- Not CLOSED: implementation, calibration (§26) and full regression are still required before closure.
+- Implemented and deterministically verified: the implementation is complete and the full deterministic regression passes with the activation gate `false`. This is a checkpoint, not closure.
+- Not CLOSED: real-model calibration CAL-1 … CAL-8 (§26, §26.1; AC-90) has not passed and is not recorded; in particular, the C1 placement of Dimension 6 (§09.2) is not yet validated against the real model. Calibration must pass and be recorded in the Closure Record, with full regression passing, before closure.
+- Not LIVE: the activation gate remains `false` (§08); flipping it requires closure plus the separate approvals and prerequisites of §08.2 and §08.3.
 - Definition of Complete (for CLOSED): AC-0 … AC-53, AC-60 … AC-92 and R-1 … R-3 pass; calibration recorded; full regression passing; activation gate `false` in production.
 
 ## Closure Record
@@ -988,3 +1006,6 @@ Residual risk §15.4.7(i) is accepted only while USI-001 remains testable-not-li
   - corrected the stale "detector agreement" wording in this history.
 - **v1.0 revision 1** (READY) — Status metadata only: DRAFT → READY FOR IMPLEMENTATION after the final Product/Architecture review (Product Review: APPROVED. Architecture Review: APPROVED.). No normative change.
 - **v1.0 revision 1** (canonization) — Status metadata only: the §01 authority sentence changed from "submitted for approval" to "Product/Architecture approved for implementation". No normative change.
+- **v1.0 revision 1** (implementation-discovered test-compatibility clarification; Product/Architecture ruling during implementation) — `tests/e02cUserKnowledgeStatic.test.js`, written before USI-001 existed, rejects three usages this SPEC itself requires (`relationDescription` in USI-001 modules; their `userKnowledgeContract.js` dependency; the `userKnowledgeContract.js` script tag and asset). §29 now authorizes a path-specific compatibility allowance in that test for exactly those USI-001 usages, and AC-39 states the intended invariant (E.0.2c suite passes; no E.0.2c production or semantic change) instead of "unmodified". No change to USI behavior, E.0.2c production code or canon, target or persistence authority, precedence, any other Acceptance Criterion, or the testable-not-live boundary.
+- **v1.0 revision 1** (calibration-invariant clarification and C1 placement; Product/Architecture ruling after calibration rounds 2–3) — CAL-1 and CAL-3 now measure downstream behavioural identity with stochastic control (new §26.1): 100% of protected outcomes and zero recurring gate-caused differences remain required; differences in non-consumed fields are reported, not counted as regressions, and become protected as soon as they gain a consumer. §09.2: Dimension 6 moves from an instruction after Dimension 5 (with three keys added to the schema line) to a single addendum after the unchanged gate-off instruction block (C1); the schema line, output segments, model calls and parse sites are unchanged. No threshold lowered; no change to the DUC or CPI amendments, gate-off byte identity, target authority, persistence authority, precedence or the testable-not-live boundary.
+- **v1.0 revision 1** (implementation checkpoint) — Status metadata only (Product/Architecture approval): READY FOR IMPLEMENTATION → IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING — NOT CLOSED — NOT LIVE (header, §01, §34). Real-model calibration CAL-1 … CAL-8, AC-90 and the Closure Record remain required for closure; the activation gate remains `false`; every §08.2/§08.3 prerequisite is unchanged. No normative change.

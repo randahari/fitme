@@ -30,6 +30,31 @@ const NEW_FILES = Object.values(MODULES).concat([
 const GLOBALS = ['UserKnowledgeContract', 'UserKnowledgeTransitions', 'UserKnowledgeStore'];
 const FILE_TOKENS = ['userKnowledgeContract', 'userKnowledgeTransitions', 'userKnowledgeStore'];
 
+// USI-001 compatibility allowance (docs/specs/USI_001_SPEC_v1.0.md §29, AC-39; Product/Architecture
+// implementation-discovery ruling). USI-001 is the first canonically approved consumer of this
+// foundation. The allowances below are PATH-SPECIFIC and USAGE-SPECIFIC: they admit only the exact
+// USI-001 production files and the exact usages the USI-001 SPEC requires. Every other path keeps
+// the original E.0.2c boundary unchanged.
+// (A) relationDescription — only the USI-001 modules that build drafts (gate, §16-§17) and render
+//     presented records (coordinator, §13).
+const USI001_RELATION_DESCRIPTION_FILES = ['js/coachDecisionSystem/userStatedIntakeGate.js', 'js/coachDecisionSystem/userStatedIntake.js'];
+// (B) the userKnowledgeContract.js UMD dependency — only these USI-001 modules (§15, AC-40), and only
+//     as exactly this two-line declaration (no transitions/store reference of any kind).
+const USI001_CONTRACT_DEPENDENTS = ['js/coachDecisionSystem/userStatedIntakeGate.js', 'js/coachDecisionSystem/userStatedIntake.js', 'js/coachDecisionSystem/userStatedIntakeExecutor.js'];
+const USI001_CONTRACT_DEPENDENCY = "? require('./userKnowledgeContract.js')\n    : window.UserKnowledgeContract;";
+// (C) browser wiring — only the single contract script tag (§29 index.html) and the single matching
+//     service-worker asset (§29 sw.js). Transitions and the store stay unwired; app.js stays untouched.
+const USI001_SHELL_ALLOWANCES = {
+  'index.html': '<script src="js/coachDecisionSystem/userKnowledgeContract.js"></script>',
+  'sw.js': "'/fitme/js/coachDecisionSystem/userKnowledgeContract.js',"
+};
+// Removes exactly ONE occurrence of an allowed usage; fails if it is absent or repeated.
+function withoutExactlyOnce(src, allowed, label) {
+  const parts = src.split(allowed);
+  assert.equal(parts.length, 2, label + ': the allowed USI-001 usage must appear exactly once');
+  return parts.join('');
+}
+
 function walk(dir, exts) {
   const out = [];
   const go = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((ent) => {
@@ -71,7 +96,8 @@ test('AC-34: the three modules contain no domain vocabulary (English and Hebrew)
 // ═══════════════════ AC-36: prose is stored, never interpreted ═══════════════════
 test('AC-36: no production module other than userKnowledgeContract.js contains the token relationDescription', () => {
   const hits = walk('js', ['.js']).filter((f) => read(f).indexOf('relationDescription') !== -1);
-  assert.deepEqual(hits, [MODULES.contract]);
+  // USI-001 allowance (A): exactly the contract plus the two named USI-001 modules — no other file.
+  assert.deepEqual(hits.slice().sort(), [MODULES.contract].concat(USI001_RELATION_DESCRIPTION_FILES).sort());
   const views = ['epistemicOrigin', 'isExplicit', 'isContextual', 'isExpired', 'evidenceStanding', 'isUsableKnowledge', 'resolveConceptRoot', 'effectiveLabels'];
   const src = read(MODULES.contract);
   views.forEach((v) => {
@@ -87,9 +113,14 @@ test('AC-37/AC-45: no existing production, shell, server or rules file reference
   const outside = candidates.filter((f) => NEW_FILES.indexOf(f) === -1);
   assert.ok(outside.length > 50, 'scan is functioning');
   outside.forEach((f) => {
-    const src = read(f);
+    let src = read(f);
+    // USI-001 allowances (B)/(C): strip exactly the one approved usage, then apply the original check.
+    if (USI001_CONTRACT_DEPENDENTS.indexOf(f) !== -1) src = withoutExactlyOnce(src.split('\r\n').join('\n'), USI001_CONTRACT_DEPENDENCY, f);
+    if (Object.prototype.hasOwnProperty.call(USI001_SHELL_ALLOWANCES, f)) src = withoutExactlyOnce(src, USI001_SHELL_ALLOWANCES[f], f);
     GLOBALS.concat(FILE_TOKENS).forEach((t) => assert.equal(src.indexOf(t), -1, f + ' references ' + t));
   });
+  // Every allowance must actually be scanned (the allowance cannot silently cover a missing file).
+  USI001_CONTRACT_DEPENDENTS.concat(Object.keys(USI001_SHELL_ALLOWANCES)).forEach((f) => assert.ok(outside.indexOf(f) !== -1, f + ' was scanned'));
   const named = ['safetyLayer.js', 'safetyIntegrationPort.js', 'safetyContextInterpreter.js', 'userSafetyProvenanceInterpreter.js', 'riskCharacteristicIntakeGate.js', 'riskCharacteristicInterpreter.js', 'riskCharacteristicValidator.js', 'safetyDisclosureIntakeGate.js', 'preferenceIntakeGate.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'decisionFormation.js', 'contextComposer.js', 'contextRelevancePlanner.js', 'generalReasoningCapability.js', 'semanticContextDiscoveryInterpreter.js'];
   named.forEach((n) => assert.ok(outside.indexOf('js/coachDecisionSystem/' + n) !== -1, n + ' was scanned'));
 });
@@ -98,9 +129,12 @@ test('AC-45: the new modules are Node-only in E.0.2c — not script-tagged, not 
   const html = read('index.html');
   const sw = read('sw.js');
   const app = read('js/app.js');
+  // USI-001 allowance (C): only the single contract tag / asset; transitions and store stay unwired.
+  const htmlRest = withoutExactlyOnce(html, USI001_SHELL_ALLOWANCES['index.html'], 'index.html');
+  const swRest = withoutExactlyOnce(sw, USI001_SHELL_ALLOWANCES['sw.js'], 'sw.js');
   FILE_TOKENS.forEach((t) => {
-    assert.equal(html.indexOf(t), -1);
-    assert.equal(sw.indexOf(t), -1);
+    assert.equal(htmlRest.indexOf(t), -1);
+    assert.equal(swRest.indexOf(t), -1);
     assert.equal(app.indexOf(t), -1);
   });
 });

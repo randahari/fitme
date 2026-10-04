@@ -176,6 +176,15 @@
   var StateAccess = (typeof module !== 'undefined' && module.exports)
     ? require('../stateAccess.js')
     : window.StateAccess;
+  // USI-001 (docs/specs/USI_001_SPEC_v1.0.md §08, §11-§12) — testable-not-live. While the
+  // activation gate is false (production) runDirectTurnPass() never calls the coordinator, builds
+  // no recognition record and adds no key to the engine result.
+  var UserStatedIntakeActivationGate = (typeof module !== 'undefined' && module.exports)
+    ? require('./userStatedIntakeActivationGate.js')
+    : window.UserStatedIntakeActivationGate;
+  var UserStatedIntake = (typeof module !== 'undefined' && module.exports)
+    ? require('./userStatedIntake.js')
+    : window.UserStatedIntake;
 
   // Registered as this Composite Engine's `run(ctx)` (B2 EngineRegistry contract) — ctx shape
   // per js/engineRegistry.js: {userId, sessionGeneration, trigger, action, payload, now, runId,
@@ -344,9 +353,20 @@
     // eligible:true (§10's own "invoked only when..." contract) — a not-eligible turn never
     // reaches it at all, and reason:'NOT_ELIGIBLE' is set directly here instead (a value the gate
     // itself never produces).
+    //
+    // USI-001 §10.3 (ADP-U2) — classifyWithStatus() is called instead of classify(); its .result is
+    // exactly what classify() returns and is used exactly where classify()'s result was, so CPI-001
+    // behavior is unchanged. Its status/anchor feed only the gate-on recognition record (§11).
     var preferenceIntakeAuthorization;
+    var cpiClassificationStatus = 'FAILED';
+    var cpiAssertionAnchor = { valid: false, text: null };
+    var cpiRecognized = false;
     try {
-      var preferenceInterpreterResult = await ExplicitPreferenceStatementInterpreter.classify(turn, pipelineContext.recentConversationContext);
+      var preferenceClassification = await ExplicitPreferenceStatementInterpreter.classifyWithStatus(turn, pipelineContext.recentConversationContext);
+      cpiClassificationStatus = preferenceClassification.status;
+      cpiAssertionAnchor = preferenceClassification.anchor;
+      var preferenceInterpreterResult = preferenceClassification.result;
+      cpiRecognized = !!(preferenceInterpreterResult && preferenceInterpreterResult.eligible === true);
       if (preferenceInterpreterResult && preferenceInterpreterResult.eligible === true) {
         var consentGranted = false;
         try {
@@ -369,6 +389,7 @@
       }
     } catch (e) {
       preferenceIntakeAuthorization = { authorized: false, reason: 'NOT_ELIGIBLE', candidateRecord: null };
+      cpiClassificationStatus = 'FAILED';
     }
     var preferenceAuthorized = !!(preferenceIntakeAuthorization && preferenceIntakeAuthorization.authorized === true);
 
@@ -453,6 +474,10 @@
     //     fabricated). Only new-fact authorized -> mode:'NEW_FACT' (unchanged). Neither -> not
     //     authorized (unchanged).
     var riskCharacteristicFactCaptureAuthorization = { authorized: false, reason: 'NOT_RECOGNIZED', candidateRecord: null };
+    // USI-001 §11.1 — observation only (read by the gate-on recognition record; never alters this
+    // track): whether the durable-constraint recognition was available, and its literal spans.
+    var rcfRecognitionAvailable = false;
+    var rcfOwnedSpans = [];
     try {
       var rcfConsentAccess = StateAccess.createEngineAccess({
         engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
@@ -462,6 +487,10 @@
 
       var rcfNewFactAuth = null;
       var rcfClassification = await RiskCharacteristicInterpreter.classifyTurnForDurableConstraint(turn.text);
+      rcfRecognitionAvailable = !!(rcfClassification && rcfClassification.status === 'CLASSIFIED');
+      if (rcfRecognitionAvailable && Array.isArray(rcfClassification.candidates)) {
+        rcfClassification.candidates.forEach(function (c) { if (c && typeof c.anchorText === 'string') rcfOwnedSpans.push(c.anchorText); });
+      }
       if (rcfClassification && rcfClassification.status === 'CLASSIFIED'
         && Array.isArray(rcfClassification.candidates) && rcfClassification.candidates.length > 0) {
         rcfNewFactAuth = await RiskCharacteristicIntakeGate.authorizeNewFact({
@@ -484,7 +513,7 @@
             existingFact: { memoryId: rcfExistingFact.memoryId, literalStatementText: rcfExistingFact.literalStatementText },
             memoryConsent: { granted: rcfConsentGranted }
           });
-          if (rcfOneCorrectionAuth.reason === 'SAFETY_CLASSIFIER_UNAVAILABLE') { rcfCorrectionCheckFailed = true; break; }
+          if (rcfOneCorrectionAuth.reason === 'SAFETY_CLASSIFIER_UNAVAILABLE') { rcfCorrectionCheckFailed = true; rcfRecognitionAvailable = false; break; }
           if (rcfOneCorrectionAuth.authorized === true) rcfConfirmedMatches.push(rcfOneCorrectionAuth);
         }
         // Exactly one confirmed match required — 0 (nothing addressed), >1 (ambiguous), or any
@@ -525,8 +554,60 @@
       // the initial NOT_RECOGNIZED default, unchanged.
     } catch (e) {
       riskCharacteristicFactCaptureAuthorization = { authorized: false, reason: 'GATE_THREW', candidateRecord: null };
+      rcfRecognitionAvailable = false;
     }
     var riskCharacteristicFactCaptureAuthorized = !!(riskCharacteristicFactCaptureAuthorization && riskCharacteristicFactCaptureAuthorization.authorized === true);
+
+    // USI-001 (docs/specs/USI_001_SPEC_v1.0.md §11-§12) — gate on ONLY. Builds the in-memory
+    // higher-precedence recognition record for this turn and asks the coordinator for a decision
+    // (at most one bounded model call, §25). The record — including CPI-001's assertion anchor —
+    // lives only in this local scope: it is never placed in pipelineContext, the engine result,
+    // Expression, a Safety input, a log or telemetry (§10.4). Gate off: nothing here runs.
+    var userStatedIntakeDecision = null;
+    if (UserStatedIntakeActivationGate.isEnabled() === true) {
+      try {
+        var disclosureReason = disclosureCaptureAuthorization && disclosureCaptureAuthorization.reason;
+        var safetyOwnedSpans = rcfOwnedSpans.slice();
+        if (disclosureCaptureAuthorized && disclosureCaptureAuthorization.candidateRecord) {
+          var disclosureRecord = disclosureCaptureAuthorization.candidateRecord;
+          if (typeof disclosureRecord.restrictedActivityText === 'string') safetyOwnedSpans.push(disclosureRecord.restrictedActivityText);
+          if (typeof disclosureRecord.subjectKey === 'string') safetyOwnedSpans.push(disclosureRecord.subjectKey);
+        }
+        var recognition = {
+          safety: {
+            available: rcfRecognitionAvailable && disclosureReason !== 'SAFETY_CLASSIFIER_UNAVAILABLE' && disclosureReason !== 'GATE_THREW',
+            ownedSpans: safetyOwnedSpans
+          },
+          cpi: {
+            available: cpiClassificationStatus === 'CLASSIFIED',
+            recognized: cpiRecognized,
+            anchor: cpiAssertionAnchor,
+            gateReason: cpiRecognized ? (preferenceIntakeAuthorization && preferenceIntakeAuthorization.reason) || null : null,
+            authorized: preferenceAuthorized
+          }
+        };
+        userStatedIntakeDecision = await UserStatedIntake.evaluate({
+          turn: turn,
+          turnUnderstanding: turnUnderstanding,
+          recognition: recognition,
+          recentConversationContext: pipelineContext.recentConversationContext,
+          readConsent: function () {
+            var usiConsentAccess = StateAccess.createEngineAccess({
+              engineId: 'memoryLayer', action: 'PREFERENCE_CONSENT_READ',
+              userId: identity.userId, sessionGeneration: identity.sessionGeneration, runId: identity.runId
+            });
+            return usiConsentAccess.read.memoryConsentGranted() === true;
+          }
+        });
+      } catch (e) {
+        userStatedIntakeDecision = Object.freeze({ status: 'FAILED', reason: 'COORDINATOR_FAILED' });
+      }
+    }
+    // Adds the USI decision to an engine-result output only when one exists (gate on).
+    function withUserStatedIntakeDecision(output) {
+      if (userStatedIntakeDecision) output.userStatedIntakeDecision = userStatedIntakeDecision;
+      return output;
+    }
 
     // §14 step 5 — the deferred-Expression-dispatch sentinel, used identically across every
     // branch below whenever preferenceAuthorized OR disclosureCaptureAuthorized OR
@@ -546,14 +627,14 @@
       // ever attached.
       var unsupportedDecision = DecisionFormation.formUnsupportedCapabilityOutcome({ need: needCreatorResult.need });
       if (deferForFinalization) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+        return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, terminalDecision: unsupportedDecision.decision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION }) };
       }
       var unsupportedFinalDecision = applyDisclosureAcknowledgmentIfNeeded(unsupportedDecision.decision, disclosureRecognizedOnly, disclosureCategory);
       var unsupportedRenderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
       var unsupportedExpressionResult = (unsupportedRenderingContextResult && unsupportedRenderingContextResult.status === 'BUILT')
         ? await runExpressionStage(unsupportedFinalDecision, unsupportedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
         : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, terminalDecision: unsupportedFinalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: unsupportedExpressionResult } };
+      return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, terminalDecision: unsupportedFinalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: unsupportedExpressionResult }) };
     }
 
     // §06/§07 — a real DETECTED_OPPORTUNITY (or nothing, for Case A/C/UNSUPPORTED-already-handled)
@@ -576,7 +657,7 @@
       // ACKNOWLEDGED_PREFERENCE/ACKNOWLEDGED_DISCLOSURE shape, never an attach attempt against a
       // nonexistent object.
       if (deferForFinalization) {
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+        return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION }) };
       }
       if (disclosureRecognizedOnly) {
         var standaloneDisclosureDecision = applyDisclosureAcknowledgmentIfNeeded(null, disclosureRecognizedOnly, disclosureCategory);
@@ -584,14 +665,14 @@
         var passNotFormedExpressionResult = (passNotFormedRenderingContextResult && passNotFormedRenderingContextResult.status === 'BUILT')
           ? await runExpressionStage(standaloneDisclosureDecision, passNotFormedRenderingContextResult.expressionRenderingContext, ExpressionRenderer)
           : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
-        return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: standaloneDisclosureDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: passNotFormedExpressionResult } };
+        return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, candidates: [], terminalDecision: standaloneDisclosureDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: passNotFormedExpressionResult }) };
       }
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } } };
+      return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, candidates: [], preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: { status: 'NOT_ATTEMPTED', reason: passResult.reason || 'PASS_NOT_FORMED' } }) };
     }
 
     var terminalDecision = passResult.decision;
     if (deferForFinalization) {
-      return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION } };
+      return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, candidates: [], terminalDecision: terminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: DEFERRED_EXPRESSION }) };
     }
     var finalTerminalDecision = applyDisclosureAcknowledgmentIfNeeded(terminalDecision, disclosureRecognizedOnly, disclosureCategory);
     var renderingContextResult = MemoryLayer.buildExpressionRenderingContext(pipelineContext);
@@ -599,7 +680,7 @@
       ? await runExpressionStage(finalTerminalDecision, renderingContextResult.expressionRenderingContext, ExpressionRenderer)
       : { status: 'ABORTED', reason: 'EXPRESSION_RENDERING_CONTEXT_REJECTED' };
 
-    return { status: 'SUCCESS', output: { pipelineContext: pipelineContext, candidates: [], terminalDecision: finalTerminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: expressionResult } };
+    return { status: 'SUCCESS', output: withUserStatedIntakeDecision({ pipelineContext: pipelineContext, candidates: [], terminalDecision: finalTerminalDecision, preferenceIntakeAuthorization: preferenceIntakeAuthorization, disclosureCaptureAuthorization: disclosureCaptureAuthorization, riskCharacteristicFactCaptureAuthorization: riskCharacteristicFactCaptureAuthorization, expression: expressionResult }) };
   }
 
   // CPI-001 (docs/specs/CPI_001_SPEC_v1.0.md §14 steps 11-13) — Unified Finalization: dispatched

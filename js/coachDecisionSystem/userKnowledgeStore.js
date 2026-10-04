@@ -378,6 +378,38 @@
     return result('OK', { concepts: Object.freeze(req.conceptIds.map(function (id) { return cr.concepts[id]; }).filter(Boolean)) });
   }, { concepts: Object.freeze([]) });
 
+  // ── USI-001 §19 (ADP-U3) — additive bounded, consent-gated, validated reads (§20.1 port queries) ──
+  function uniqueIds(arr) { return arr.every(function (id, i) { return arr.indexOf(id) === i; }); }
+  function isLimit(n) { return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= L.MAX_QUERY_LIMIT; }
+  var queryRecordsByConcepts = op(true, async function (req) {
+    var bad = checkRequest(req, ['conceptIdsAny', 'statuses', 'limit'], []); if (bad) return bad;
+    if (!Array.isArray(req.conceptIdsAny) || req.conceptIdsAny.length < 1 || req.conceptIdsAny.length > L.MAX_QUERY_CONCEPT_IDS || !req.conceptIdsAny.every(C.isId) || !uniqueIds(req.conceptIdsAny)) return rejected('INVALID_VALUE', 'request.conceptIdsAny');
+    if (!Array.isArray(req.statuses) || req.statuses.length < 1 || req.statuses.length > C.STATUSES.length || !req.statuses.every(function (s) { return C.STATUSES.indexOf(s) !== -1; }) || !uniqueIds(req.statuses)) return rejected('INVALID_VALUE', 'request.statuses');
+    if (!isLimit(req.limit)) return rejected('INVALID_VALUE', 'request.limit');
+    var raw;
+    try { raw = await deps.port.queryRecordsByConcepts(deps.userId, { conceptIdsAny: req.conceptIdsAny.slice(), statuses: req.statuses.slice(), limit: req.limit }); } catch (e) { return result('FAILED'); }
+    if (!Array.isArray(raw) || raw.length > req.limit) return result('FAILED');
+    for (var i = 0; i < raw.length; i++) {
+      var v = C.validateRecord(raw[i]);
+      if (!v.ok || raw[i].userId !== deps.userId) return rejected('STORED_DOCUMENT_INVALID', v.path);
+      var matches = req.statuses.indexOf(raw[i].status) !== -1 && raw[i].conceptIds.some(function (c) { return req.conceptIdsAny.indexOf(c) !== -1; });
+      if (!matches) return rejected('STORED_DOCUMENT_INVALID', 'record');
+    }
+    return result('OK', { records: Object.freeze(raw.slice()) });
+  }, { records: Object.freeze([]) });
+  var queryRecentConcepts = op(true, async function (req) {
+    var bad = checkRequest(req, ['limit'], []); if (bad) return bad;
+    if (!isLimit(req.limit)) return rejected('INVALID_VALUE', 'request.limit');
+    var raw;
+    try { raw = await deps.port.queryRecentConcepts(deps.userId, { limit: req.limit }); } catch (e) { return result('FAILED'); }
+    if (!Array.isArray(raw) || raw.length > req.limit) return result('FAILED');
+    for (var i = 0; i < raw.length; i++) {
+      var v = C.validateConcept(raw[i]);
+      if (!v.ok || raw[i].userId !== deps.userId) return rejected('STORED_DOCUMENT_INVALID', v.path);
+    }
+    return result('OK', { concepts: Object.freeze(raw.slice()) });
+  }, { concepts: Object.freeze([]) });
+
   // ── §15.5 user control: forget and erase (never consent-gated; authority still applies) ──
   function deleteOutcome(outcome) {
     if (outcome && outcome.status === 'DELETED') return result('DELETED');
@@ -445,6 +477,8 @@
     unmergeConcept: unmergeConcept,
     getRecords: getRecords,
     getConcepts: getConcepts,
+    queryRecordsByConcepts: queryRecordsByConcepts,
+    queryRecentConcepts: queryRecentConcepts,
     forgetRecord: forgetRecord,
     forgetConcept: forgetConcept,
     eraseAllForUser: eraseAllForUser

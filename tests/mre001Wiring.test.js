@@ -25,12 +25,13 @@ const SITE_FILES = {
   'riskCharacteristicInterpreter.js': 4,           // S12–S15
   'trainingReadinessReasoningComponent.js': 1,     // S16
   'generalReasoningCapability.js': 1,              // S17
-  'semanticContextDiscoveryInterpreter.js': 1      // S18 — WP0 Phase E.0.2b (authorized compatibility update)
+  'semanticContextDiscoveryInterpreter.js': 1,     // S18 — WP0 Phase E.0.2b (authorized compatibility update)
+  'userStatedIntakeInterpreter.js': 1              // S19 — USI-001 (authorized update, USI_001_SPEC_v1.0.md §29)
 };
 const WRAPPED = /JSON\.parse\(ModelResponseEnvelope\.unwrapSingleJsonFence\(/g;
 const DEPENDENCY = /var ModelResponseEnvelope = \(typeof module !== 'undefined' && module\.exports\)\s*\n\s*\? require\('\.\/modelResponseEnvelope\.js'\)\s*\n\s*: window\.ModelResponseEnvelope;/;
 
-test('W-1 (atomicity): every JSON.parse in every site-owning module goes through the shared envelope — exactly 18 sites, none left unconverted', () => {
+test('W-1 (atomicity): every JSON.parse in every site-owning module goes through the shared envelope — exactly 19 sites, none left unconverted', () => {
   let total = 0;
   for (const [file, expected] of Object.entries(SITE_FILES)) {
     const src = codeOnly(read('js/coachDecisionSystem/' + file));
@@ -41,7 +42,7 @@ test('W-1 (atomicity): every JSON.parse in every site-owning module goes through
     assert.match(src, DEPENDENCY, file + ': missing the standard ModelResponseEnvelope dependency declaration');
     total += wrapped;
   }
-  assert.equal(total, 18);
+  assert.equal(total, 19);
 });
 
 test('W-1 (coverage): no other Coach Decision System module parses model output with JSON.parse (capabilityRegistry.js deep clone is the only excluded, non-model use)', () => {
@@ -81,12 +82,12 @@ test('W-3: index.html script-tags modelResponseEnvelope.js exactly once, before 
   }
 });
 
-test('W-4: sw.js precaches the new module and sw.js VERSION / app.js APP_VERSION are bumped in lockstep to 2.47.7', () => {
+test('W-4: sw.js precaches the new module and sw.js VERSION / app.js APP_VERSION are bumped in lockstep to 2.47.8', () => {
   const sw = read('sw.js');
   const app = read('js/app.js');
   assert.notEqual(sw.indexOf("'/fitme/js/coachDecisionSystem/modelResponseEnvelope.js'"), -1);
-  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.7');
-  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.7');
+  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.8');
+  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.8');
 });
 
 test('W-5: modelResponseEnvelope.js is pure — no dependencies, globals read, clock, randomness, I/O, logging or JSON parsing', () => {
