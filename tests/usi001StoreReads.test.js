@@ -107,6 +107,7 @@ test('AC-39: never throws — unconfigured and junk requests resolve to frozen r
 test('AC-39: no existing store operation changed — the operation set is the E.0.2c set plus exactly the two reads', () => {
   const ops = Object.keys(Store).filter((k) => typeof Store[k] === 'function');
   const E02C = ['configure', 'createRecord', 'promoteRecord', 'retractRecord', 'archiveRecord', 'supersede', 'correctInferredKnowledge', 'appendEvidence', 'applyEvidenceAvailability', 'addConfound', 'recordConfoundCheck', 'setConfidence', 'raiseSafetyFlag', 'createConcept', 'addConceptLabel', 'removeConceptLabel', 'mergeConcept', 'unmergeConcept', 'getRecords', 'getConcepts', 'forgetRecord', 'forgetConcept', 'eraseAllForUser'];
-  assert.deepEqual(ops.sort(), E02C.concat(['queryRecordsByConcepts', 'queryRecentConcepts']).sort());
-  assert.deepEqual(Store.PORT_FUNCTIONS, ['newId', 'getRecords', 'getConcepts', 'queryRecordsByConcepts', 'queryRecentConcepts', 'queryConceptsMergedInto', 'commit', 'deleteRecord', 'deleteConcept', 'deleteRecordsBySources', 'deleteAll']);
+  // E.0.2c amendment for E.0.2d §13 (authorized): the evidence-keyed read is added to both lists.
+  assert.deepEqual(ops.sort(), E02C.concat(['queryRecordsByConcepts', 'queryRecentConcepts', 'queryRecordsBySupportingRefs']).sort());
+  assert.deepEqual(Store.PORT_FUNCTIONS, ['newId', 'getRecords', 'getConcepts', 'queryRecordsByConcepts', 'queryRecordsBySupportingRefs', 'queryRecentConcepts', 'queryConceptsMergedInto', 'commit', 'deleteRecord', 'deleteConcept', 'deleteRecordsBySources', 'deleteAll']);
 });

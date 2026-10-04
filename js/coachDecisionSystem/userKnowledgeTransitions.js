@@ -231,6 +231,8 @@
       version: 1
     }, content, {
       evidence: { supporting: supporting, contradicting: contradicting, confoundsConsidered: confounds, confoundCheck: null },
+      // E.0.2c amendment for E.0.2d §06 — derived from supporting evidence only, never from input.
+      supportingRefIds: C.deriveSupportingRefIds({ supporting: supporting }),
       evidenceClass: draft.evidenceClass,
       temporality: draft.temporality,
       expiresAt: has(draft, 'expiresAt') ? draft.expiresAt : null,
@@ -354,6 +356,9 @@
     var ids = idSupply(request.ids);
     var eventId = ids.take('event'); if (!eventId) return fail('ID_EXHAUSTED', 'eventIds');
     b.next.evidence[request.list] = b.next.evidence[request.list].concat(fresh);
+    // E.0.2c amendment for E.0.2d §06 — recomputed when supporting evidence changes; a
+    // contradicting append leaves the index unchanged.
+    if (request.list === 'supporting') b.next.supportingRefIds = C.deriveSupportingRefIds(b.next.evidence);
     b.next.lastEvidenceAt = now;
     b.next.correctionHistory.push(recordHistory('EVIDENCE_ADDED', eventId, now, writer, producer, { refIds: fresh.map(function (r) { return r.refId; }) }));
     var e = checked([b.next]); if (e) return e;

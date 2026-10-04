@@ -17,7 +17,8 @@ function conceptDoc(userId, conceptId, labels, now, eventId) {
   if (!r.ok) throw new Error('fixture concept: ' + r.code);
   return r.changeSet.creates[0];
 }
-function recordDoc(userId, recordId, concept, now, eventId, source) {
+// `supporting` (optional, E.0.2c amendment for E.0.2d): evidence reference drafts {kind, ref}.
+function recordDoc(userId, recordId, concept, now, eventId, source, supporting) {
   const s = source || 'user_stated';
   const r = T.planCreateRecord({ concepts: { [concept.conceptId]: concept } }, {
     userId,
@@ -25,6 +26,7 @@ function recordDoc(userId, recordId, concept, now, eventId, source) {
     draft: {
       factors: [{ conceptId: concept.conceptId, role: 'subject' }],
       relationDescription: 'conformance fixture record',
+      evidence: { supporting: (supporting || []).map((x) => ({ kind: x.kind, ref: x.ref })) },
       evidenceClass: s === 'user_stated' ? 'EXPLICIT_STATEMENT' : 'CO_OCCURRENCE',
       temporality: 'DURABLE',
       confidence: 0.5,
@@ -163,6 +165,55 @@ function registerPortConformance(t, makePort, label) {
     assert.deepEqual(await port.getConcepts('uA', ['cG1']), []);
   });
 
+  // ── E.0.2c amendment for E.0.2d §07, §11 — queryRecordsBySupportingRefs ──
+  const TURN = (id) => ({ kind: 'CONVERSATION_TURN', ref: id });
+  test(name('queryRecordsBySupportingRefs is bounded: over-limit or malformed requests fail (amendment §07)'), async () => {
+    const { port } = makePort();
+    const refs = Array.from({ length: 11 }, (_, i) => 'CONVERSATION_TURN:t' + i);
+    const q = (over) => port.queryRecordsBySupportingRefs('uA', Object.assign({ refIdsAny: ['CONVERSATION_TURN:t0'], sources: ['user_stated'], statuses: ['active'], limit: 5 }, over));
+    assert.equal(Array.isArray(await q({})), true);
+    assert.equal(Array.isArray(await q({ refIdsAny: refs })), false);
+    assert.equal(Array.isArray(await q({ refIdsAny: [] })), false);
+    assert.equal(Array.isArray(await q({ limit: 51 })), false);
+    assert.equal(Array.isArray(await q({ limit: 0 })), false);
+    assert.equal(Array.isArray(await q({ sources: [] })), false);
+    assert.equal(Array.isArray(await q({ sources: ['nobody'] })), false);
+    assert.equal(Array.isArray(await q({ statuses: [] })), false);
+    assert.equal(Array.isArray(await q({ statuses: ['bogus'] })), false);
+  });
+
+  test(name('queryRecordsBySupportingRefs filters by supporting ref, source and status, orders and honours limit'), async () => {
+    const { port } = makePort();
+    const c = conceptDoc('uA', 'cH1', ['mu'], 100, 'evH0');
+    const docs = [c,
+      recordDoc('uA', 'rH1', c, 110, 'evH1', 'user_stated', [TURN('t1')]),
+      recordDoc('uA', 'rH2', c, 130, 'evH2', 'user_stated', [TURN('t1'), TURN('t2')]),
+      recordDoc('uA', 'rH3', c, 130, 'evH3', 'user_stated', [TURN('t2')]),
+      recordDoc('uA', 'rH4', c, 120, 'evH4', 'user_stated', [TURN('t9')]),
+      recordDoc('uA', 'rH5', c, 140, 'evH5', 'inferred_event', [TURN('t1')])];
+    await port.commit('uA', { creates: docs, updates: [] });
+    const us = (refIdsAny, limit, statuses) => port.queryRecordsBySupportingRefs('uA', { refIdsAny, sources: ['user_stated'], statuses: statuses || ['active'], limit: limit || 50 });
+    assert.deepEqual((await us(['CONVERSATION_TURN:t1', 'CONVERSATION_TURN:t2'])).map((r) => r.recordId), ['rH2', 'rH3', 'rH1']);
+    assert.deepEqual((await us(['CONVERSATION_TURN:t1', 'CONVERSATION_TURN:t2'], 2)).map((r) => r.recordId), ['rH2', 'rH3']);
+    assert.deepEqual((await us(['CONVERSATION_TURN:t9'])).map((r) => r.recordId), ['rH4']);
+    assert.deepEqual(await us(['CONVERSATION_TURN:t404']), []);
+    assert.deepEqual(await us(['CONVERSATION_TURN:t1'], 50, ['rejected']), []);
+    const inferred = await port.queryRecordsBySupportingRefs('uA', { refIdsAny: ['CONVERSATION_TURN:t1'], sources: ['inferred_event'], statuses: ['candidate'], limit: 50 });
+    assert.deepEqual(inferred.map((r) => r.recordId), ['rH5']);
+  });
+
+  test(name('queryRecordsBySupportingRefs: per-user isolation and deleted records never returned'), async () => {
+    const { port } = makePort();
+    const c = conceptDoc('uA', 'cI1', ['nu'], 100, 'evI0');
+    const r = recordDoc('uA', 'rI1', c, 101, 'evI1', 'user_stated', [TURN('t1')]);
+    await port.commit('uA', { creates: [c, r], updates: [] });
+    const q = (user) => port.queryRecordsBySupportingRefs(user, { refIdsAny: ['CONVERSATION_TURN:t1'], sources: ['user_stated'], statuses: ['active'], limit: 5 });
+    assert.deepEqual(await q('uB'), []);
+    assert.deepEqual(await q('uA'), [r]);
+    assert.deepEqual(await port.deleteRecord('uA', 'rI1'), { status: 'DELETED' });
+    assert.deepEqual(await q('uA'), []);
+  });
+
   test(name('never throws: malformed calls resolve (requirement 5)'), async () => {
     const { port } = makePort();
     const bad = [undefined, null, 42, 'has space', {}, []];
@@ -170,6 +221,7 @@ function registerPortConformance(t, makePort, label) {
       await assert.doesNotReject(() => port.getRecords(b, b));
       await assert.doesNotReject(() => port.getConcepts(b, b));
       await assert.doesNotReject(() => port.queryRecordsByConcepts(b, b));
+      await assert.doesNotReject(() => port.queryRecordsBySupportingRefs(b, b));
       await assert.doesNotReject(() => port.queryRecentConcepts(b, b));
       await assert.doesNotReject(() => port.queryConceptsMergedInto(b, b, b));
       await assert.doesNotReject(() => port.commit(b, b));

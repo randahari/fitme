@@ -48,6 +48,17 @@ const USI001_SHELL_ALLOWANCES = {
   'index.html': '<script src="js/coachDecisionSystem/userKnowledgeContract.js"></script>',
   'sw.js': "'/fitme/js/coachDecisionSystem/userKnowledgeContract.js',"
 };
+
+// E.0.2d compatibility allowance (docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md §29.1 edit 6;
+// Product/Architecture implementation-discovery ruling). E.0.2d is the second canonically approved
+// consumer of this foundation. PATH-SPECIFIC and USAGE-SPECIFIC, like the USI-001 allowance above:
+// (A) relationDescription — only consolidation.js (renders presented records/references, builds drafts)
+//     and consolidationGate.js (E2/U6 text comparison).
+const E02D_RELATION_DESCRIPTION_FILES = ['js/coachDecisionSystem/consolidation.js', 'js/coachDecisionSystem/consolidationGate.js'];
+// (B) the userKnowledgeContract.js UMD dependency — only the three E.0.2d modules whose §08 dependency
+//     table requires it, and only as exactly the standard two-line declaration. No transitions or store
+//     reference of any kind (the store is injected). (C) No shell allowance: AC-45 is unchanged.
+const E02D_CONTRACT_DEPENDENTS = ['js/coachDecisionSystem/consolidationContract.js', 'js/coachDecisionSystem/consolidationGate.js', 'js/coachDecisionSystem/consolidation.js'];
 // Removes exactly ONE occurrence of an allowed usage; fails if it is absent or repeated.
 function withoutExactlyOnce(src, allowed, label) {
   const parts = src.split(allowed);
@@ -96,8 +107,8 @@ test('AC-34: the three modules contain no domain vocabulary (English and Hebrew)
 // ═══════════════════ AC-36: prose is stored, never interpreted ═══════════════════
 test('AC-36: no production module other than userKnowledgeContract.js contains the token relationDescription', () => {
   const hits = walk('js', ['.js']).filter((f) => read(f).indexOf('relationDescription') !== -1);
-  // USI-001 allowance (A): exactly the contract plus the two named USI-001 modules — no other file.
-  assert.deepEqual(hits.slice().sort(), [MODULES.contract].concat(USI001_RELATION_DESCRIPTION_FILES).sort());
+  // USI-001 allowance (A) and E.0.2d allowance (A): exactly the contract plus the named modules — no other file.
+  assert.deepEqual(hits.slice().sort(), [MODULES.contract].concat(USI001_RELATION_DESCRIPTION_FILES, E02D_RELATION_DESCRIPTION_FILES).sort());
   const views = ['epistemicOrigin', 'isExplicit', 'isContextual', 'isExpired', 'evidenceStanding', 'isUsableKnowledge', 'resolveConceptRoot', 'effectiveLabels'];
   const src = read(MODULES.contract);
   views.forEach((v) => {
@@ -116,11 +127,13 @@ test('AC-37/AC-45: no existing production, shell, server or rules file reference
     let src = read(f);
     // USI-001 allowances (B)/(C): strip exactly the one approved usage, then apply the original check.
     if (USI001_CONTRACT_DEPENDENTS.indexOf(f) !== -1) src = withoutExactlyOnce(src.split('\r\n').join('\n'), USI001_CONTRACT_DEPENDENCY, f);
+    // E.0.2d allowance (B): the same single standard declaration, only in the three §08 modules.
+    if (E02D_CONTRACT_DEPENDENTS.indexOf(f) !== -1) src = withoutExactlyOnce(src.split('\r\n').join('\n'), USI001_CONTRACT_DEPENDENCY, f);
     if (Object.prototype.hasOwnProperty.call(USI001_SHELL_ALLOWANCES, f)) src = withoutExactlyOnce(src, USI001_SHELL_ALLOWANCES[f], f);
     GLOBALS.concat(FILE_TOKENS).forEach((t) => assert.equal(src.indexOf(t), -1, f + ' references ' + t));
   });
   // Every allowance must actually be scanned (the allowance cannot silently cover a missing file).
-  USI001_CONTRACT_DEPENDENTS.concat(Object.keys(USI001_SHELL_ALLOWANCES)).forEach((f) => assert.ok(outside.indexOf(f) !== -1, f + ' was scanned'));
+  USI001_CONTRACT_DEPENDENTS.concat(Object.keys(USI001_SHELL_ALLOWANCES), E02D_CONTRACT_DEPENDENTS).forEach((f) => assert.ok(outside.indexOf(f) !== -1, f + ' was scanned'));
   const named = ['safetyLayer.js', 'safetyIntegrationPort.js', 'safetyContextInterpreter.js', 'userSafetyProvenanceInterpreter.js', 'riskCharacteristicIntakeGate.js', 'riskCharacteristicInterpreter.js', 'riskCharacteristicValidator.js', 'safetyDisclosureIntakeGate.js', 'preferenceIntakeGate.js', 'memoryLayer.js', 'internalPipelineOrchestrator.js', 'decisionFormation.js', 'contextComposer.js', 'contextRelevancePlanner.js', 'generalReasoningCapability.js', 'semanticContextDiscoveryInterpreter.js'];
   named.forEach((n) => assert.ok(outside.indexOf('js/coachDecisionSystem/' + n) !== -1, n + ' was scanned'));
 });

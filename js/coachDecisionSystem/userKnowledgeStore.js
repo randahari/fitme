@@ -28,7 +28,7 @@
   var USER_KNOWLEDGE_STORE_VERSION = '1.0.0';
   var L = C.LIMITS;
 
-  var PORT_FUNCTIONS = Object.freeze(['newId', 'getRecords', 'getConcepts', 'queryRecordsByConcepts', 'queryRecentConcepts', 'queryConceptsMergedInto', 'commit', 'deleteRecord', 'deleteConcept', 'deleteRecordsBySources', 'deleteAll']);
+  var PORT_FUNCTIONS = Object.freeze(['newId', 'getRecords', 'getConcepts', 'queryRecordsByConcepts', 'queryRecordsBySupportingRefs', 'queryRecentConcepts', 'queryConceptsMergedInto', 'commit', 'deleteRecord', 'deleteConcept', 'deleteRecordsBySources', 'deleteAll']);
 
   var deps = null;
 
@@ -397,6 +397,33 @@
     }
     return result('OK', { records: Object.freeze(raw.slice()) });
   }, { records: Object.freeze([]) });
+  // ── E.0.2c amendment for E.0.2d §08 — bounded, consent-gated, validated evidence-keyed read ──
+  // Returns the user's records whose supportingRefIds contain at least one requested refId, filtered
+  // by source and status. A read only: confers nothing, mutates nothing. Every returned document is
+  // validated and must actually match the request, so a port cannot return a record that does not
+  // cite a requested reference. Only status 'OK' carries an answer (amendment §08, fail-closed use).
+  function distinctMembers(arr, vocabulary) {
+    return Array.isArray(arr) && arr.length >= 1 && arr.length <= vocabulary.length &&
+      arr.every(function (v) { return vocabulary.indexOf(v) !== -1; }) && uniqueIds(arr);
+  }
+  var queryRecordsBySupportingRefs = op(true, async function (req) {
+    var bad = checkRequest(req, ['refIdsAny', 'sources', 'statuses', 'limit'], []); if (bad) return bad;
+    if (!Array.isArray(req.refIdsAny) || req.refIdsAny.length < 1 || req.refIdsAny.length > L.MAX_QUERY_REF_IDS || !req.refIdsAny.every(C.isRefId) || !uniqueIds(req.refIdsAny)) return rejected('INVALID_VALUE', 'request.refIdsAny');
+    if (!distinctMembers(req.sources, C.SOURCES)) return rejected('INVALID_VALUE', 'request.sources');
+    if (!distinctMembers(req.statuses, C.STATUSES)) return rejected('INVALID_VALUE', 'request.statuses');
+    if (!isLimit(req.limit)) return rejected('INVALID_VALUE', 'request.limit');
+    var raw;
+    try { raw = await deps.port.queryRecordsBySupportingRefs(deps.userId, { refIdsAny: req.refIdsAny.slice(), sources: req.sources.slice(), statuses: req.statuses.slice(), limit: req.limit }); } catch (e) { return result('FAILED'); }
+    if (!Array.isArray(raw) || raw.length > req.limit) return result('FAILED');
+    for (var i = 0; i < raw.length; i++) {
+      var v = C.validateRecord(raw[i]);
+      if (!v.ok || raw[i].userId !== deps.userId) return rejected('STORED_DOCUMENT_INVALID', v.path);
+      var matches = req.statuses.indexOf(raw[i].status) !== -1 && req.sources.indexOf(raw[i].source) !== -1 &&
+        raw[i].supportingRefIds.some(function (id) { return req.refIdsAny.indexOf(id) !== -1; });
+      if (!matches) return rejected('STORED_DOCUMENT_INVALID', 'record');
+    }
+    return result('OK', { records: Object.freeze(raw.slice()) });
+  }, { records: Object.freeze([]) });
   var queryRecentConcepts = op(true, async function (req) {
     var bad = checkRequest(req, ['limit'], []); if (bad) return bad;
     if (!isLimit(req.limit)) return rejected('INVALID_VALUE', 'request.limit');
@@ -478,6 +505,7 @@
     getRecords: getRecords,
     getConcepts: getConcepts,
     queryRecordsByConcepts: queryRecordsByConcepts,
+    queryRecordsBySupportingRefs: queryRecordsBySupportingRefs,
     queryRecentConcepts: queryRecentConcepts,
     forgetRecord: forgetRecord,
     forgetConcept: forgetConcept,

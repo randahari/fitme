@@ -12,7 +12,7 @@
 // `peek(userId)` returns deep copies of both stores for assertions.
 'use strict';
 
-const L = { MAX_READ_BATCH: 50, MAX_QUERY_LIMIT: 50, MAX_QUERY_CONCEPT_IDS: 10 };
+const L = { MAX_READ_BATCH: 50, MAX_QUERY_LIMIT: 50, MAX_QUERY_CONCEPT_IDS: 10, MAX_QUERY_REF_IDS: 10 };
 const STATUSES = ['candidate', 'active', 'superseded', 'rejected', 'archived'];
 const SOURCES = ['user_stated', 'inferred_event', 'inferred_pattern', 'coach_generated', 'migrated'];
 const ID_KINDS = ['record', 'concept', 'event', 'confound'];
@@ -78,6 +78,25 @@ function createInMemoryPort(options) {
         const s = space(userId);
         return Array.from(s.records.values())
           .filter((r) => q.statuses.indexOf(r.status) !== -1 && r.conceptIds.some((c) => q.conceptIdsAny.indexOf(c) !== -1))
+          .sort(byUpdatedDesc('recordId'))
+          .slice(0, q.limit)
+          .map(out);
+      } catch (e) { return FAILED; }
+    },
+    // E.0.2c amendment for E.0.2d §07, §11 — reference implementation (in-memory scan permitted here;
+    // a persisting adapter must serve it from an index over supportingRefIds).
+    async queryRecordsBySupportingRefs(userId, q) {
+      calls.push('queryRecordsBySupportingRefs');
+      try {
+        if (shouldFail('queryRecordsBySupportingRefs') || !isId(userId) || !q || typeof q !== 'object') return FAILED;
+        if (!Array.isArray(q.refIdsAny) || q.refIdsAny.length < 1 || q.refIdsAny.length > L.MAX_QUERY_REF_IDS || !q.refIdsAny.every((r) => typeof r === 'string' && r.length > 0)) return FAILED;
+        if (!Array.isArray(q.sources) || q.sources.length < 1 || q.sources.length > 5 || !q.sources.every((x) => SOURCES.indexOf(x) !== -1)) return FAILED;
+        if (!Array.isArray(q.statuses) || q.statuses.length < 1 || q.statuses.length > 5 || !q.statuses.every((x) => STATUSES.indexOf(x) !== -1)) return FAILED;
+        if (!isLimit(q.limit, L.MAX_QUERY_LIMIT)) return FAILED;
+        const s = space(userId);
+        return Array.from(s.records.values())
+          .filter((r) => q.statuses.indexOf(r.status) !== -1 && q.sources.indexOf(r.source) !== -1 &&
+            Array.isArray(r.supportingRefIds) && r.supportingRefIds.some((id) => q.refIdsAny.indexOf(id) !== -1))
           .sort(byUpdatedDesc('recordId'))
           .slice(0, q.limit)
           .map(out);

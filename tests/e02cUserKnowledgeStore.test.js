@@ -419,7 +419,7 @@ test('AC-51 (B): a user-stated, explicit, durable 3-factor record with permanent
   assert.equal(rec.evidenceClass, 'EXPLICIT_STATEMENT');
   assert.equal(C.isExplicit(rec), true);
   assert.equal(C.isContextual(rec), true);
-  assert.deepEqual(Object.keys(rec).sort(), ['conceptIds', 'confidence', 'correctionHistory', 'createdAt', 'evidence', 'evidenceClass', 'expiresAt', 'factors', 'lastEvidenceAt', 'provenance', 'recordId', 'relationDescription', 'safetyFlag', 'schemaVersion', 'source', 'status', 'supersededBy', 'supersedes', 'temporality', 'updatedAt', 'userId', 'version']);
+  assert.deepEqual(Object.keys(rec).sort(), ['conceptIds', 'confidence', 'correctionHistory', 'createdAt', 'evidence', 'evidenceClass', 'expiresAt', 'factors', 'lastEvidenceAt', 'provenance', 'recordId', 'relationDescription', 'safetyFlag', 'schemaVersion', 'source', 'status', 'supersededBy', 'supersedes', 'supportingRefIds', 'temporality', 'updatedAt', 'userId', 'version']);
 });
 
 test('AC-52 (C): months later a bounded concept-keyed read returns the record without reading history', async () => {

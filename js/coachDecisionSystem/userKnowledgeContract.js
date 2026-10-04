@@ -55,6 +55,7 @@
     MAX_READ_BATCH: 50,
     MAX_QUERY_LIMIT: 50,
     MAX_QUERY_CONCEPT_IDS: 10,
+    MAX_QUERY_REF_IDS: 10,        // E.0.2c amendment for E.0.2d §04
     REASON_MAX_CHARS: 200
   });
 
@@ -64,7 +65,7 @@
   var REF_ID_PATTERN = /^[A-Z_]{1,32}:[A-Za-z0-9_.:\-]{1,200}$/;
 
   // ── exact key sets ──
-  var RECORD_KEYS = Object.freeze(['schemaVersion', 'recordId', 'userId', 'version', 'factors', 'conceptIds', 'relationDescription', 'evidence', 'evidenceClass', 'temporality', 'expiresAt', 'confidence', 'status', 'source', 'safetyFlag', 'provenance', 'supersedes', 'supersededBy', 'createdAt', 'updatedAt', 'lastEvidenceAt', 'correctionHistory']);
+  var RECORD_KEYS = Object.freeze(['schemaVersion', 'recordId', 'userId', 'version', 'factors', 'conceptIds', 'relationDescription', 'evidence', 'supportingRefIds', 'evidenceClass', 'temporality', 'expiresAt', 'confidence', 'status', 'source', 'safetyFlag', 'provenance', 'supersedes', 'supersededBy', 'createdAt', 'updatedAt', 'lastEvidenceAt', 'correctionHistory']);
   var FACTOR_KEYS = Object.freeze(['conceptId', 'role', 'valueDescription']);
   var EVIDENCE_KEYS = Object.freeze(['supporting', 'contradicting', 'confoundsConsidered', 'confoundCheck']);
   var EVIDENCE_REF_KEYS = Object.freeze(['refId', 'kind', 'ref', 'observedAt', 'addedAt', 'availability', 'availabilityCheckedAt', 'unresolvableReason']);
@@ -75,7 +76,8 @@
   var CONCEPT_KEYS = Object.freeze(['schemaVersion', 'conceptId', 'userId', 'version', 'labels', 'mergedInto', 'createdAt', 'updatedAt', 'history']);
   var CONCEPT_HISTORY_KEYS = Object.freeze(['eventId', 'kind', 'at', 'writer', 'producer', 'label', 'into', 'reason']);
 
-  // Draft shapes accepted by planners (§10.4 rule 2: never contains conceptIds).
+  // Draft shapes accepted by planners (§10.4 rule 2 / amendment §10.5 item 3: never contains
+  // conceptIds or supportingRefIds).
   var RECORD_DRAFT_REQUIRED = Object.freeze(['factors', 'relationDescription', 'evidenceClass', 'temporality', 'confidence', 'source', 'safetyFlag']);
   var RECORD_DRAFT_OPTIONAL = Object.freeze(['evidence', 'expiresAt', 'provenance', 'status']);
   var FACTOR_DRAFT_KEYS = Object.freeze(['conceptId', 'newConcept', 'role', 'valueDescription']);
@@ -157,6 +159,31 @@
     }
     out.sort();
     return out;
+  }
+
+  // ── E.0.2c amendment for E.0.2d §05 (new §10.5) — supportingRefIds derived index ──
+  // The refIds of evidence.supporting only, de-duplicated by exact string equality and sorted by
+  // UTF-16 code-unit order. A bounded, meaning-free index for evidence-keyed reads; never supplied by
+  // a caller; contradicting evidence, confounds and availability never contribute.
+  function deriveSupportingRefIds(evidence) {
+    var out = [];
+    var list = (evidence && Array.isArray(evidence.supporting)) ? evidence.supporting : [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var id = list[i] && list[i].refId;
+      if (typeof id === 'string' && !seen[id]) { seen[id] = true; out.push(id); }
+    }
+    out.sort();
+    return out;
+  }
+
+  // A well-formed evidence refId: kind:ref with kind in EVIDENCE_REF_KINDS and ref matching
+  // EVIDENCE_REF_PATTERN (the §11.1 identity). Used to validate evidence-keyed query requests.
+  function isRefId(s) {
+    if (typeof s !== 'string') return false;
+    var colon = s.indexOf(':');
+    if (colon < 1) return false;
+    return inList(EVIDENCE_REF_KINDS, s.slice(0, colon)) && EVIDENCE_REF_PATTERN.test(s.slice(colon + 1));
   }
   function sameStringArray(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
@@ -298,6 +325,8 @@
         refIds[list[r].refId] = true;
       }
     }
+    // amendment §05.3 — rule 13, evaluated after every evidence reference validated (rule 12)
+    if (!sameStringArray(doc.supportingRefIds, deriveSupportingRefIds(ev))) return fail('SUPPORTING_INDEX_MISMATCH', 'record.supportingRefIds');
     if (!Array.isArray(ev.confoundsConsidered) || ev.confoundsConsidered.length > LIMITS.MAX_CONFOUNDS) return fail('LIST_TOO_LONG', 'record.evidence.confoundsConsidered');
     var confoundIds = {};
     for (var c = 0; c < ev.confoundsConsidered.length; c++) {
@@ -450,6 +479,7 @@
   function validateRecordDraft(draft, newConceptCount) {
     if (!isPlainObject(draft)) return fail('NOT_OBJECT', 'draft');
     if (has(draft, 'conceptIds')) return fail('DERIVED_FIELD_SUPPLIED', 'draft.conceptIds');
+    if (has(draft, 'supportingRefIds')) return fail('DERIVED_FIELD_SUPPLIED', 'draft.supportingRefIds');
     var k = checkAllowedKeys(draft, RECORD_DRAFT_REQUIRED, RECORD_DRAFT_OPTIONAL, 'draft'); if (k) return k;
     if (!Array.isArray(draft.factors) || draft.factors.length < 1 || draft.factors.length > LIMITS.MAX_FACTORS) return fail('FACTOR_COUNT', 'draft.factors');
     for (var i = 0; i < draft.factors.length; i++) {
@@ -677,6 +707,8 @@
     normalizeText: normalizeText,
     normalizeLabelKey: normalizeLabelKey,
     deriveConceptIds: deriveConceptIds,
+    deriveSupportingRefIds: deriveSupportingRefIds,
+    isRefId: isRefId,
     validateRecord: validateRecord,
     validateConcept: validateConcept,
     validateChangeSet: validateChangeSet,

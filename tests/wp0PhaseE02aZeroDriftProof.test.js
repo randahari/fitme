@@ -105,7 +105,9 @@ test('Activation Amendment §08/§15: exactly trrCapabilityAdapter.js and genera
   const fs = require('node:fs');
   const path = require('node:path');
   const dir = path.join(__dirname, '../js/coachDecisionSystem');
-  const EXPECTED_REQUIRERS = ['trrCapabilityAdapter.js', 'generalReasoningCapability.js'];
+  // E.0.2d SPEC §29 edit 2 (A3 §11): consolidation.js is the first non-Capability governed consumer of
+  // the single eligibility policy.
+  const EXPECTED_REQUIRERS = ['trrCapabilityAdapter.js', 'generalReasoningCapability.js', 'consolidation.js'];
   const productionFilesExcludingEligibilityPolicyItself = fs.readdirSync(dir)
     .filter((f) => f.endsWith('.js') && f !== 'eligibilityPolicy.js');
   productionFilesExcludingEligibilityPolicyItself.forEach((f) => {

@@ -26,12 +26,16 @@ const SITE_FILES = {
   'trainingReadinessReasoningComponent.js': 1,     // S16
   'generalReasoningCapability.js': 1,              // S17
   'semanticContextDiscoveryInterpreter.js': 1,     // S18 — WP0 Phase E.0.2b (authorized compatibility update)
-  'userStatedIntakeInterpreter.js': 1              // S19 — USI-001 (authorized update, USI_001_SPEC_v1.0.md §29)
+  'userStatedIntakeInterpreter.js': 1,             // S19 — USI-001 (authorized update, USI_001_SPEC_v1.0.md §29)
+  'consolidationInterpreter.js': 1                 // S20 — WP0 Phase E.0.2d (authorized update, E.0.2d SPEC §29 edit 1)
 };
+// E.0.2d SPEC §29.1 edit 5 (implementation-discovered test-compatibility clarification): site owners
+// that are Node-only by canon. W-3 asserts they are NOT script-tagged instead of checking load order.
+const NODE_ONLY_SITE_FILES = ['consolidationInterpreter.js'];
 const WRAPPED = /JSON\.parse\(ModelResponseEnvelope\.unwrapSingleJsonFence\(/g;
 const DEPENDENCY = /var ModelResponseEnvelope = \(typeof module !== 'undefined' && module\.exports\)\s*\n\s*\? require\('\.\/modelResponseEnvelope\.js'\)\s*\n\s*: window\.ModelResponseEnvelope;/;
 
-test('W-1 (atomicity): every JSON.parse in every site-owning module goes through the shared envelope — exactly 19 sites, none left unconverted', () => {
+test('W-1 (atomicity): every JSON.parse in every site-owning module goes through the shared envelope — exactly 20 sites, none left unconverted', () => {
   let total = 0;
   for (const [file, expected] of Object.entries(SITE_FILES)) {
     const src = codeOnly(read('js/coachDecisionSystem/' + file));
@@ -42,7 +46,7 @@ test('W-1 (atomicity): every JSON.parse in every site-owning module goes through
     assert.match(src, DEPENDENCY, file + ': missing the standard ModelResponseEnvelope dependency declaration');
     total += wrapped;
   }
-  assert.equal(total, 19);
+  assert.equal(total, 20);
 });
 
 test('W-1 (coverage): no other Coach Decision System module parses model output with JSON.parse (capabilityRegistry.js deep clone is the only excluded, non-model use)', () => {
@@ -77,6 +81,10 @@ test('W-3: index.html script-tags modelResponseEnvelope.js exactly once, before 
   const envIdx = html.indexOf(tag);
   for (const file of Object.keys(SITE_FILES)) {
     const idx = html.indexOf('src="js/coachDecisionSystem/' + file + '"');
+    if (NODE_ONLY_SITE_FILES.indexOf(file) !== -1) {
+      assert.equal(idx, -1, file + ' is Node-only and must NOT be script-tagged (E.0.2d SPEC §08, AC-D40, §29.1)');
+      continue;
+    }
     assert.notEqual(idx, -1, file + ' must be script-tagged');
     assert.ok(envIdx < idx, 'modelResponseEnvelope.js must load before ' + file);
   }
