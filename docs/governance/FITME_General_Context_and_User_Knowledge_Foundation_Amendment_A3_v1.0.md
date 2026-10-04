@@ -1,5 +1,5 @@
 # FITME — GENERAL CONTEXT AND USER KNOWLEDGE FOUNDATION — AMENDMENT A3
-## v1.0 — AUTHORED — READY FOR PRODUCT / ARCHITECTURE CANONICAL REVIEW (Governed Consumers; Governed Sources; One Authorization Architecture)
+## v1.0 — CANONICAL / CLOSED (Governed Consumers; Governed Sources; One Authorization Architecture)
 
 **Repository path:** `docs/governance/FITME_General_Context_and_User_Knowledge_Foundation_Amendment_A3_v1.0.md`
 
@@ -14,7 +14,7 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **GCUK Amendment A3.**
-- Status: **AUTHORED — READY FOR PRODUCT/ARCHITECTURE CANONICAL REVIEW.** Not yet canonical. Authoring it modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
+- Status: **CANONICAL / CLOSED** — approved by Product/Architecture (commit `1afd9b8e6f713ed7ca052acdf3a1a436ad2c98d7`). Authoring it modified no file under `js/**`, `tests/**`, `functions/**`, `index.html`, `sw.js` or `firestore.rules`, and no closed canonical document.
 - Authority: every **[CANON]** statement below records the Product/Architecture decision taken after the E.0.2d read-only investigations at this baseline (hereafter **A3-1 … A3-7**):
   - **A3-1** — Option A approved: source eligibility is generalized from *capability + user + authorization state* to *governed consumer + user + authorization state*.
   - **A3-2** — A reasoning Capability is one type of governed consumer; a governed background process is another, without pretending to be a Capability and without becoming routable.
@@ -220,8 +220,9 @@ No other A1 §10 item changes.
 
 # 15. Status and Closure
 
-**AUTHORED — READY FOR PRODUCT/ARCHITECTURE CANONICAL REVIEW.** On approval, the status becomes CANONICAL / CLOSED with its canonization commit recorded here. Authorizes no implementation, no SPEC, no source or consumer registration, and no change to runtime behaviour.
+**CANONICAL / CLOSED.** In effect, approved by Product/Architecture (commit `1afd9b8e6f713ed7ca052acdf3a1a436ad2c98d7`). Authorizes no implementation, no SPEC, no source or consumer registration, and no change to runtime behaviour.
 
 # 16. Document History
 
 - **v1.0** (initial authoring) — Records Product/Architecture decisions A3-1 … A3-7 (Option A: governed consumer generalization; one authorization architecture; protected-source fail-closed; authorization user experience; Safety-adjacent boundary for governed background consumers) after the E.0.2d read-only investigations, at baseline `f06e127`.
+- **v1.0** (canonical closure) — Status CANONICAL / CLOSED: approved by Product/Architecture, committed as `1afd9b8e6f713ed7ca052acdf3a1a436ad2c98d7`. Status metadata only; no content change.
