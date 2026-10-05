@@ -85,7 +85,9 @@ test('AC-D62 / §16.5 (static): execution is reachable only through the per-pass
 });
 
 test('AC-D66 / R-10 (static): no rule, constant, instruction or exception names or targets a calibration case', () => {
-  const harness = read('tests/evals/e02dConsolidationCalibration.eval.js');
+  // P8: the calibration cases live in the corpus files; the harness keeps only its dry-run scenarios.
+  const harness = ['tests/evals/e02dConsolidationCalibration.eval.js', 'tests/evals/e02d/corpus.regression.v1.js',
+    'tests/evals/e02d/corpus.development.js', 'tests/evals/e02d/corpus.verifierProbes.js'].map(read).join('\n');
   const ids = (harness.match(/id: '([a-z0-9-]+)'/g) || []).map((m) => m.slice(5, -1));
   const texts = (harness.match(/\['t\d+', '([^']{12,})'/g) || []).map((m) => m.replace(/^\['t\d+', '/, '').slice(0, -1));
   assert.ok(ids.length >= 16 && texts.length >= 20, 'the scan reads the calibration corpus');

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "corpusId": "heldout-v1.1",
+  "status": "AWAITING_INDEPENDENT_CORPUS",
+  "note": "The held-out closure corpus is authored independently of the prompt author, delivered as a file OUTSIDE the repository, and frozen before any tuning against it (SPEC v1.1 §31.3). corpusSha256 is recorded here only from the delivered file; it is never fabricated. frozenPrompts is recorded only at prompt freeze. The harness refuses a held-out run unless both match.",
+  "corpusSha256": null,
+  "corpusRecordedAt": null,
+  "frozenPrompts": {
+    "generatorInstructionSha256": null,
+    "verifierInstructionSha256": null,
+    "frozenAt": null
+  },
+  "coverageBrief": {
+    "calibrationGates": ["CAL-D1", "CAL-D2", "CAL-D3", "CAL-D4", "CAL-D5", "CAL-D6", "CAL-D7", "CAL-D8"],
+    "languages": ["he", "en", "ar"],
+    "contexts": ["fitness, nutrition and recovery", "ordinary life outside fitness (for example work, study, caregiving, travel, social life, hobbies)"],
+    "required": [
+      "restatement ladder: verbatim, near paraphrase, translation, generalization, user assertion plus supporting events, genuine new inference, valid by-reference higher-order inference",
+      "APPEND: same meaning supporting, opposite meaning contradicting, same structure with different meaning, two same-structure candidates, unrelated evidence; SUPERSEDE; CREATE",
+      "no useful inference",
+      "outside or general knowledge traps and recording-artifact traps",
+      "Safety positives for every SPEC §24.1 category and ordinary negatives; the §24.3 residual subset",
+      "temporality: explicit recurring statement in one observation, repeated-observation recurrence, local clock, literal temporal expression, event-relative meaning, sequence from absolute instants, no temporal grounding, mislabel and invented-routine traps",
+      "concept reuse and shadowing; cross-source evidence; several proposals in one pass"
+    ],
+    "rules": [
+      "meaningful multilingual cases, not word-for-word duplicates",
+      "no closed domain ontology; domains are descriptive only",
+      "borderline labels fixed by Product (and, where needed, the Safety authority) before any run",
+      "synthetic data only; no real user data"
+    ]
+  }
+}
