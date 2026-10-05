@@ -1,11 +1,14 @@
 // ══════════════════════════════════════════════════════════════════
 // FitMe — Consolidation Contract (WP0 Phase E.0.2d)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md §08-§10, §12, §16, §19-§23, §27.
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.1) §08-§10, §12, §14.4, §15-§16,
+// §19-§23, §27.
 //
 // Exclusive responsibility: the platform-neutral, deterministic contract of E.0.2d — closed
 // process/governance vocabularies, provisional constants, the frozen governed-consumer declaration
-// (A3), the Observation Port descriptor and observation validators, the structural signature, the
-// literal-overlap function and the isConfidenceAssessed view. Pure and synchronous: no clock, no id
+// (A3), the Observation Port descriptor and observation validators, the Generator's per-operation
+// proposal shapes (§15.2), the recurring-window grounding vocabulary (§20.2), the Verifier's verdict
+// vocabulary and applicability (§15.5), the structural signature, the literal-overlap function and
+// the isConfidenceAssessed view. Pure and synchronous: no clock, no id
 // minting, no persistence, no model access, no platform reference. Every closed vocabulary here
 // describes process or governance (who produced content, which intake persisted a record, which
 // operation is proposed) — never what a user's life is about (§28).
@@ -41,8 +44,71 @@
   var SENSITIVITY_TIERS = Object.freeze(['STANDARD', 'SAFETY_ADJACENT']);
   var PASS_STATUSES = Object.freeze(['COMPLETED', 'PARTIAL', 'NOT_CONFIGURED', 'INVALID_REQUEST', 'CONSENT_NOT_GRANTED',
     'NO_ELIGIBLE_SOURCE', 'OBSERVATION_READ_INVALID', 'OWNERSHIP_READ_FAILED', 'NO_OBSERVATIONS', 'STORE_READ_FAILED',
-    'INTERPRETER_FAILED']);
+    'INTERPRETER_FAILED', 'VERIFIER_FAILED']);
   var OUTCOMES = Object.freeze(['ADMITTED_EXECUTED', 'ADMITTED_FAILED', 'REJECTED', 'NO_CHANGE']);
+
+  // §14.4 — pass-local key namespaces. A key is assigned deterministically in presentation order,
+  // lives only for one pass, and is never persisted or returned.
+  var KEY_PREFIXES = Object.freeze({ observation: 'o', userStated: 'u', record: 'r', concept: 'k', item: 'p' });
+  function passKey(prefix, index) { return prefix + (index + 1); }
+
+  // §15.2 — per-operation proposal shapes: each operation has exactly its own key set.
+  var FACTOR_KEYS = Object.freeze(['conceptKey', 'newConceptLabel', 'role', 'valueText']);
+  var CREATE_KEYS = Object.freeze(['operation', 'factors', 'relationText', 'evidenceClass', 'temporality', 'grounding',
+    'supporting', 'contradicting', 'reference', 'restatesUserStatement', 'safetyAdjacent']);
+  var OPERATION_KEYS = Object.freeze({
+    CREATE: CREATE_KEYS,
+    SUPERSEDE: Object.freeze(CREATE_KEYS.concat(['target'])),
+    APPEND_EVIDENCE: Object.freeze(['operation', 'target', 'list', 'observations', 'restatesUserStatement', 'safetyAdjacent'])
+  });
+
+  // §20.2 — recurring-window grounding. Process vocabularies only: they say WHERE temporal grounding
+  // lives in the evidence, never what it means. SOURCE forms and SOURCE_RECURRENCE are reserved.
+  var RECURRENCE_FORMS = Object.freeze(['OBSERVED', 'STATED', 'SOURCE']);
+  var WINDOW_FORMS = Object.freeze(['SOURCE_LOCAL', 'SEQUENCE', 'STATED', 'SOURCE']);
+  var ANCHOR_KINDS = Object.freeze(['SOURCE_TIME', 'USER_EXPRESSION', 'SOURCE_RECURRENCE']);
+  var SOURCE_TIME_FIELDS = Object.freeze(['LOCAL_DATE', 'LOCAL_TIME', 'INSTANT']);
+  var RESERVED_GROUNDING = Object.freeze({ form: 'SOURCE', anchorKind: 'SOURCE_RECURRENCE' });
+
+  // §15.5 — Verifier verdicts: five separate closed dimensions, applicability fixed by operation.
+  var VERDICT_DIMENSIONS = Object.freeze(['restatement', 'unsupported', 'safety', 'temporal', 'direction']);
+  var VERDICT_VALUES = Object.freeze({
+    restatement: Object.freeze(['NOT_RESTATED', 'RESTATED', 'UNCERTAIN']),
+    unsupported: Object.freeze(['NONE', 'PRESENT', 'UNCERTAIN', 'NOT_APPLICABLE']),
+    safety: Object.freeze(['NOT_SAFETY_ADJACENT', 'SAFETY_ADJACENT', 'UNCERTAIN']),
+    temporal: Object.freeze(['FAITHFUL', 'UNFAITHFUL', 'UNCERTAIN', 'NOT_APPLICABLE']),
+    direction: Object.freeze(['CONSISTENT', 'INCONSISTENT', 'UNCERTAIN', 'NOT_APPLICABLE'])
+  });
+  var PASSING_VERDICT = Object.freeze({ restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'FAITHFUL', direction: 'CONSISTENT' });
+  var CLAIM_DIMENSIONS = Object.freeze({ restatement: true, unsupported: true, safety: true, temporal: true, direction: false });
+  var VERDICT_APPLICABILITY = Object.freeze({
+    CREATE: CLAIM_DIMENSIONS,
+    SUPERSEDE: CLAIM_DIMENSIONS,
+    APPEND_EVIDENCE: Object.freeze({ restatement: true, unsupported: false, safety: true, temporal: false, direction: true })
+  });
+  // §16.5 — fixed order in which a failing dimension is reported.
+  var VERDICT_ORDER = Object.freeze(['safety', 'restatement', 'unsupported', 'temporal', 'direction']);
+  var VERDICT_CODES = Object.freeze({
+    safety: Object.freeze({ SAFETY_ADJACENT: 'SAFETY_VETO', UNCERTAIN: 'SAFETY_UNCERTAIN' }),
+    restatement: Object.freeze({ RESTATED: 'RESTATED', UNCERTAIN: 'RESTATEMENT_UNCERTAIN' }),
+    unsupported: Object.freeze({ PRESENT: 'UNSUPPORTED_CONTENT', UNCERTAIN: 'UNSUPPORTED_UNCERTAIN' }),
+    temporal: Object.freeze({ UNFAITHFUL: 'TEMPORAL_UNFAITHFUL', UNCERTAIN: 'TEMPORAL_UNCERTAIN' }),
+    direction: Object.freeze({ INCONSISTENT: 'DIRECTION_INCONSISTENT', UNCERTAIN: 'DIRECTION_UNCERTAIN' })
+  });
+
+  // E.0.2d's own closed reason codes. Codes from E.0.2c validators (validateFactorProposal,
+  // validateRecordDraft) and from the store pass through unchanged and are not listed here.
+  var REASON_CODES = Object.freeze([
+    'MALFORMED_PROPOSAL', 'DECLARED_RESTATEMENT', 'SAFETY_ADJACENT_PROPOSAL', 'UNKNOWN_OBSERVATION', 'INVALID_EVIDENCE',
+    'SOURCE_NOT_IN_SCOPE', 'USER_STATED_REFERENCE_INVALID', 'UNKNOWN_CONCEPT_KEY', 'INVALID_FACTOR', 'NEW_CONCEPT_SHADOWS_PRESENTED',
+    'NEW_CONCEPT_LIMIT', 'INVALID_OPERATION_SHAPE', 'EVIDENCE_CLASS_MISMATCH', 'GROUNDING_ANCHOR_INVALID', 'GROUNDING_INSUFFICIENT',
+    'GROUNDING_FORM_UNAVAILABLE', 'NO_NEW_MEANING', 'NO_INDEPENDENT_SUPPORT', 'MIRRORS_USER_STATED', 'LITERAL_RESTATEMENT',
+    'LIST_TOO_LONG', 'DUPLICATE_OF_PRESENTED', 'INVALID_TARGET', 'AMBIGUOUS_TARGET', 'NO_CHANGE', 'SUPERSEDE_IDENTICAL',
+    'SUPERSEDE_UNRELATED', 'NO_NEW_EVIDENCE', 'VERIFICATION_UNAVAILABLE', 'VERIFICATION_MALFORMED', 'VERIFICATION_MISSING',
+    'SAFETY_VETO', 'SAFETY_UNCERTAIN', 'RESTATED', 'RESTATEMENT_UNCERTAIN', 'UNSUPPORTED_CONTENT', 'UNSUPPORTED_UNCERTAIN',
+    'TEMPORAL_UNFAITHFUL', 'TEMPORAL_UNCERTAIN', 'DIRECTION_INCONSISTENT', 'DIRECTION_UNCERTAIN', 'TARGET_CONFLICT_IN_PASS',
+    'STORE_FAILED'
+  ]);
 
   // ── §27 constants [PROVISIONAL; confirmed or revised by calibration, §31] ──
   var LIMITS = Object.freeze({
@@ -63,6 +129,8 @@
     PRESENTED_USER_STATED_MAX: 8,
     MAX_NEW_CONCEPTS_PER_PROPOSAL: 4,
     MAX_NEW_CONCEPTS_PER_PASS: 8,
+    MAX_GROUNDING_ANCHORS: 8,
+    ANCHOR_TEXT_MAX_CHARS: 120,
     LITERAL_OVERLAP_MAX_CHARS: 24,
     DESCRIPTION_MAX_CHARS: 400,
     DATA_LABEL_MAX_CHARS: 80,
@@ -111,11 +179,30 @@
     if (!(typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && isFinite(v)))) return false;
     return e.unit === null || boundedText(e.unit, LIMITS.DATA_UNIT_MAX_CHARS);
   }
-  // §10.2 — Segment: exactly one of text/data is non-null.
+  function isValidLocalDate(v) { return typeof v === 'string' && LOCAL_DATE.test(v); }
+  function isValidLocalTime(v) { return typeof v === 'string' && LOCAL_TIME.test(v); }
+  function isValidOffset(v) { return typeof v === 'number' && Number.isInteger(v) && Math.abs(v) <= LIMITS.UTC_OFFSET_MAX_MINUTES; }
+
+  var SEGMENT_KEYS = ['segmentId', 'authorship', 'text', 'data'];
+  var SEGMENT_TIME_KEYS = ['localDate', 'localTime', 'utcOffsetMinutes'];
+  // §10.2 (v1.1) — a segment's optional structural time. An absent key is null.
+  function segmentTime(s, key) { return has(s, key) ? s[key] : null; }
+
+  // §10.2 — Segment: exactly one of text/data is non-null. The v1.1 segment-level time fields are
+  // optional; when present and non-null they must be well-formed (never converted, D-4).
   function isValidSegment(s) {
-    if (!exactKeys(s, ['segmentId', 'authorship', 'text', 'data'])) return false;
+    if (!C.isPlainObject(s)) return false;
+    var own = Object.keys(s);
+    if (!SEGMENT_KEYS.every(function (k) { return has(s, k); })) return false;
+    if (!own.every(function (k) { return SEGMENT_KEYS.indexOf(k) !== -1 || SEGMENT_TIME_KEYS.indexOf(k) !== -1; })) return false;
     if (!C.isId(s.segmentId) || AUTHORSHIP.indexOf(s.authorship) === -1) return false;
     if ((s.text === null) === (s.data === null)) return false;
+    var d = segmentTime(s, 'localDate');
+    var t = segmentTime(s, 'localTime');
+    var off = segmentTime(s, 'utcOffsetMinutes');
+    if (d !== null && !isValidLocalDate(d)) return false;
+    if (t !== null && !isValidLocalTime(t)) return false;
+    if (off !== null && !isValidOffset(off)) return false;
     if (s.text !== null) return boundedText(s.text, LIMITS.OBS_TEXT_MAX_CHARS);
     return Array.isArray(s.data) && s.data.length >= 1 && s.data.every(isValidDataEntry);
   }
@@ -124,9 +211,9 @@
     if (!exactKeys(o, ['ref', 'sourceId', 'observedAt', 'localDate', 'localTime', 'utcOffsetMinutes', 'segments'])) return false;
     if (!isValidRef(o.ref) || !C.isId(o.sourceId)) return false;
     if (o.observedAt !== null && !isNonNegInt(o.observedAt)) return false;
-    if (o.localDate !== null && (typeof o.localDate !== 'string' || !LOCAL_DATE.test(o.localDate))) return false;
-    if (o.localTime !== null && (typeof o.localTime !== 'string' || !LOCAL_TIME.test(o.localTime))) return false;
-    if (o.utcOffsetMinutes !== null && !(typeof o.utcOffsetMinutes === 'number' && Number.isInteger(o.utcOffsetMinutes) && Math.abs(o.utcOffsetMinutes) <= LIMITS.UTC_OFFSET_MAX_MINUTES)) return false;
+    if (o.localDate !== null && !isValidLocalDate(o.localDate)) return false;
+    if (o.localTime !== null && !isValidLocalTime(o.localTime)) return false;
+    if (o.utcOffsetMinutes !== null && !isValidOffset(o.utcOffsetMinutes)) return false;
     if (!Array.isArray(o.segments) || o.segments.length < 1 || o.segments.length > LIMITS.OBS_MAX_SEGMENTS) return false;
     if (!o.segments.every(isValidSegment)) return false;
     var ids = o.segments.map(function (s) { return s.segmentId; });
@@ -144,6 +231,85 @@
     if (REFERENCE_CLAIMANTS.indexOf(r.claimant) === -1) return false;
     if (!Array.isArray(r.claimedObservationRefs) || !r.claimedObservationRefs.every(isValidRef)) return false;
     return Array.isArray(r.segments) && r.segments.length >= 1 && r.segments.length <= LIMITS.OBS_MAX_SEGMENTS && r.segments.every(isValidSegment);
+  }
+
+  // ── §15.2 / §15.3 — per-operation proposal shapes (type, bound and vocabulary only) ──
+  // A proposal failing these checks is MALFORMED_PROPOSAL and is rejected alone. Key resolution,
+  // membership and every semantic or structural rule belong to the gate (§16), never to the shape.
+  function isStringOrNull(v) { return v === null || typeof v === 'string'; }
+  function isStringArray(a) { return Array.isArray(a) && a.every(function (s) { return typeof s === 'string'; }); }
+
+  function isValidFactorShape(f) {
+    return exactKeys(f, FACTOR_KEYS) && isStringOrNull(f.conceptKey) && isStringOrNull(f.newConceptLabel) &&
+      C.FACTOR_ROLES.indexOf(f.role) !== -1 && isStringOrNull(f.valueText);
+  }
+  function isValidAnchorShape(a) {
+    if (!C.isPlainObject(a) || ANCHOR_KINDS.indexOf(a.kind) === -1) return false;
+    if (a.kind === 'SOURCE_TIME') {
+      return exactKeys(a, ['kind', 'obsKey', 'segmentId', 'field']) && typeof a.obsKey === 'string' &&
+        isStringOrNull(a.segmentId) && SOURCE_TIME_FIELDS.indexOf(a.field) !== -1;
+    }
+    if (a.kind === 'USER_EXPRESSION') {
+      return exactKeys(a, ['kind', 'obsKey', 'segmentId', 'text']) && typeof a.obsKey === 'string' &&
+        typeof a.segmentId === 'string' && typeof a.text === 'string' && a.text.length >= 1 && a.text.length <= LIMITS.ANCHOR_TEXT_MAX_CHARS;
+    }
+    return exactKeys(a, ['kind', 'obsKey', 'segmentId']) && typeof a.obsKey === 'string' && isStringOrNull(a.segmentId);
+  }
+  function isValidGroundingPart(part, forms) {
+    return exactKeys(part, ['form', 'anchors']) && forms.indexOf(part.form) !== -1 && Array.isArray(part.anchors) &&
+      part.anchors.length >= 1 && part.anchors.length <= LIMITS.MAX_GROUNDING_ANCHORS && part.anchors.every(isValidAnchorShape);
+  }
+  // §20.2 — RecurringWindowGrounding.
+  function isValidGroundingShape(g) {
+    return exactKeys(g, ['recurrence', 'window']) && isValidGroundingPart(g.recurrence, RECURRENCE_FORMS) && isValidGroundingPart(g.window, WINDOW_FORMS);
+  }
+  function isValidReferenceShape(r) {
+    return exactKeys(r, ['uKey', 'factorIndex']) && typeof r.uKey === 'string' && isNonNegInt(r.factorIndex);
+  }
+  function isValidClaimFields(p) {
+    return Array.isArray(p.factors) && p.factors.length >= 1 && p.factors.length <= C.LIMITS.MAX_FACTORS && p.factors.every(isValidFactorShape) &&
+      typeof p.relationText === 'string' && PROPOSABLE_EVIDENCE_CLASSES.indexOf(p.evidenceClass) !== -1 &&
+      C.TEMPORALITIES.indexOf(p.temporality) !== -1 && (p.grounding === null || isValidGroundingShape(p.grounding)) &&
+      isStringArray(p.supporting) && isStringArray(p.contradicting) && (p.reference === null || isValidReferenceShape(p.reference));
+  }
+  // Returns true only for a proposal in exactly one operation's shape (§15.2).
+  function isValidProposalShape(p) {
+    if (!C.isPlainObject(p) || !has(OPERATION_KEYS, p.operation) || !exactKeys(p, OPERATION_KEYS[p.operation])) return false;
+    if (typeof p.restatesUserStatement !== 'boolean' || typeof p.safetyAdjacent !== 'boolean') return false;
+    if (p.operation === 'APPEND_EVIDENCE') {
+      return typeof p.target === 'string' && APPEND_LISTS.indexOf(p.list) !== -1 && isStringArray(p.observations) && p.observations.length >= 1;
+    }
+    if (p.operation === 'SUPERSEDE' && typeof p.target !== 'string') return false;
+    return isValidClaimFields(p);
+  }
+  // The operation of a proposal when it can be read, else null (for PassResult reporting, §15.3).
+  function readableOperation(p) {
+    return C.isPlainObject(p) && OPERATIONS.indexOf(p.operation) !== -1 ? p.operation : null;
+  }
+
+  // ── §15.5 — Verifier verdict entries ──
+  // The body of one attributable entry: exact keys, closed vocabulary per dimension, and the
+  // applicability fixed by the item's operation (NOT_APPLICABLE exactly where it does not apply).
+  function isValidVerdictBody(entry, operation) {
+    if (!has(VERDICT_APPLICABILITY, operation)) return false;
+    if (!exactKeys(entry, ['item'].concat(VERDICT_DIMENSIONS))) return false;
+    var applies = VERDICT_APPLICABILITY[operation];
+    return VERDICT_DIMENSIONS.every(function (d) {
+      var v = entry[d];
+      if (VERDICT_VALUES[d].indexOf(v) === -1) return false;
+      return applies[d] ? v !== 'NOT_APPLICABLE' : v === 'NOT_APPLICABLE';
+    });
+  }
+  // §16.5 step 1 — the reason code of the first failing applicable dimension in the fixed order, or
+  // null when every applicable dimension holds exactly its passing value. UNCERTAIN never passes.
+  function firstFailingVerdict(tokens, operation) {
+    var applies = VERDICT_APPLICABILITY[operation];
+    for (var i = 0; i < VERDICT_ORDER.length; i++) {
+      var d = VERDICT_ORDER[i];
+      if (!applies[d] || tokens[d] === PASSING_VERDICT[d]) continue;
+      return VERDICT_CODES[d][tokens[d]] || 'VERIFICATION_MALFORMED';
+    }
+    return null;
   }
 
   // §05 / §16.1 G5 — structural signature: the sorted multiset of (root, role) over factors.
@@ -228,13 +394,35 @@
     OWNER_STATUSES: OWNER_STATUSES,
     PASS_STATUSES: PASS_STATUSES,
     OUTCOMES: OUTCOMES,
+    KEY_PREFIXES: KEY_PREFIXES,
+    OPERATION_KEYS: OPERATION_KEYS,
+    FACTOR_KEYS: FACTOR_KEYS,
+    RECURRENCE_FORMS: RECURRENCE_FORMS,
+    WINDOW_FORMS: WINDOW_FORMS,
+    ANCHOR_KINDS: ANCHOR_KINDS,
+    SOURCE_TIME_FIELDS: SOURCE_TIME_FIELDS,
+    RESERVED_GROUNDING: RESERVED_GROUNDING,
+    VERDICT_DIMENSIONS: VERDICT_DIMENSIONS,
+    VERDICT_VALUES: VERDICT_VALUES,
+    PASSING_VERDICT: PASSING_VERDICT,
+    VERDICT_APPLICABILITY: VERDICT_APPLICABILITY,
+    VERDICT_ORDER: VERDICT_ORDER,
+    VERDICT_CODES: VERDICT_CODES,
+    REASON_CODES: REASON_CODES,
     LIMITS: LIMITS,
     PRODUCER: PRODUCER,
     BOOTSTRAP_CONFIDENCE: BOOTSTRAP_CONFIDENCE,
+    passKey: passKey,
     isValidDescriptor: isValidDescriptor,
     isValidRef: isValidRef,
     refIdOf: refIdOf,
     isValidSegment: isValidSegment,
+    segmentTime: segmentTime,
+    isValidProposalShape: isValidProposalShape,
+    isValidGroundingShape: isValidGroundingShape,
+    readableOperation: readableOperation,
+    isValidVerdictBody: isValidVerdictBody,
+    firstFailingVerdict: firstFailingVerdict,
     isValidObservation: isValidObservation,
     isValidClaim: isValidClaim,
     isValidTypedMemoryReference: isValidTypedMemoryReference,

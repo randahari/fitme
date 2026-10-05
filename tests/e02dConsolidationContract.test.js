@@ -103,4 +103,113 @@ test('§12 / §28: closed vocabularies are process/governance only; V1 scope is 
   assert.deepEqual(CC.OWNER_STATUSES, ['active', 'superseded', 'rejected', 'archived']);
   assert.deepEqual(CC.CLAIMANTS, ['SAFETY_INTAKE', 'CPI_PREFERENCE', 'USER_STATED_TYPED_MEMORY']);
   assert.equal(CC.PRODUCER.producer, 'e02d.consolidation');
+  assert.equal(CC.PRODUCER.producerVersion, '1.0.0'); // v1.1 keeps the canonical producerVersion (§17)
+});
+
+// ═══ v1.1 contract (SPEC v1.1 §10.2, §14.4, §15.2, §15.5, §16.5, §20.2, §25) ═══
+
+test('AC-D57 (contract): segment-level time is optional, absent equals null, and a non-null value must be well-formed', () => {
+  assert.equal(CC.isValidSegment(seg()), true); // the v1.0 four-key segment stays valid
+  assert.equal(CC.isValidSegment(seg({ localDate: null, localTime: null, utcOffsetMinutes: null })), true);
+  assert.equal(CC.isValidSegment(seg({ localTime: '22:40' })), true);
+  assert.equal(CC.isValidSegment(seg({ localDate: '2026-01-02', utcOffsetMinutes: 120 })), true);
+  assert.equal(CC.isValidSegment(seg({ localTime: '10pm' })), false);
+  assert.equal(CC.isValidSegment(seg({ localDate: '02/01/2026' })), false);
+  assert.equal(CC.isValidSegment(seg({ utcOffsetMinutes: 5000 })), false);
+  assert.equal(CC.isValidSegment(seg({ observedAt: 5 })), false); // no segment-level instant exists
+  assert.equal(CC.isValidSegment(seg({ extra: 1 })), false);
+  assert.equal(CC.segmentTime(seg(), 'localTime'), null);
+  assert.equal(CC.segmentTime(seg({ localTime: '7:05' }), 'localTime'), '7:05');
+  assert.equal(CC.isValidObservation(obs({ segments: [seg({ localTime: '22:40' })] })), true);
+  assert.equal(CC.isValidObservation(obs({ segments: [seg({ localTime: 'late' })] })), false);
+});
+
+const F = (o) => Object.assign({ conceptKey: 'k1', newConceptLabel: null, role: 'subject', valueText: null }, o);
+const anchor = (o) => Object.assign({ kind: 'SOURCE_TIME', obsKey: 'o1', segmentId: null, field: 'LOCAL_DATE' }, o);
+const G = (o) => Object.assign({ recurrence: { form: 'OBSERVED', anchors: [anchor()] }, window: { form: 'SOURCE_LOCAL', anchors: [anchor()] } }, o);
+const CREATE = (o) => Object.assign({ operation: 'CREATE', factors: [F()], relationText: 'An association.', evidenceClass: 'CO_OCCURRENCE', temporality: 'DURABLE',
+  grounding: null, supporting: ['o1'], contradicting: [], reference: null, restatesUserStatement: false, safetyAdjacent: false }, o);
+const APPEND = (o) => Object.assign({ operation: 'APPEND_EVIDENCE', target: 'r1', list: 'supporting', observations: ['o1'], restatesUserStatement: false, safetyAdjacent: false }, o);
+
+test('AC-D55 (contract): each operation has exactly its own key set; type, bound and vocabulary violations are malformed', () => {
+  assert.equal(CC.isValidProposalShape(CREATE()), true);
+  assert.equal(CC.isValidProposalShape(Object.assign(CREATE({ operation: 'SUPERSEDE' }), { target: 'r1' })), true);
+  assert.equal(CC.isValidProposalShape(APPEND()), true);
+  // a key of another operation, a missing key, an extra key
+  assert.equal(CC.isValidProposalShape(Object.assign(APPEND(), { factors: null })), false);
+  assert.equal(CC.isValidProposalShape(Object.assign(CREATE(), { target: 'r1' })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ operation: 'SUPERSEDE' })), false);
+  const noRef = CREATE(); delete noRef.reference;
+  assert.equal(CC.isValidProposalShape(noRef), false);
+  assert.equal(CC.isValidProposalShape(Object.assign(CREATE(), { confidence: 0.9 })), false);
+  // vocabularies and types
+  assert.equal(CC.isValidProposalShape(CREATE({ operation: 'DELETE' })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ evidenceClass: 'EXPLICIT_STATEMENT' })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ temporality: 'FOREVER' })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ restatesUserStatement: 'false' })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ safetyAdjacent: undefined })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ supporting: [1] })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ factors: [] })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ factors: Array.from({ length: 9 }, () => F()) })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ factors: [F({ role: 'cause' })] })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ factors: [Object.assign(F(), { conceptId: 'c1' })] })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ reference: { uKey: 'u1', factorIndex: -1 } })), false);
+  assert.equal(CC.isValidProposalShape(CREATE({ reference: { uKey: 'u1', factorIndex: 0 } })), true);
+  assert.equal(CC.isValidProposalShape(APPEND({ list: 'both' })), false);
+  assert.equal(CC.isValidProposalShape(APPEND({ observations: [] })), false);
+  assert.equal(CC.isValidProposalShape(APPEND({ target: null })), false);
+  assert.equal(CC.readableOperation(APPEND({ list: 'both' })), 'APPEND_EVIDENCE');
+  assert.equal(CC.readableOperation({ operation: 'X' }), null);
+  assert.equal(CC.readableOperation('text'), null);
+});
+
+test('AC-D56 (contract): grounding shape — closed process forms and anchor kinds, bounded anchors and expression text', () => {
+  assert.equal(CC.isValidProposalShape(CREATE({ temporality: 'RECURRING_WINDOW', grounding: G() })), true);
+  assert.equal(CC.isValidGroundingShape(G({ recurrence: { form: 'STATED', anchors: [{ kind: 'USER_EXPRESSION', obsKey: 'o1', segmentId: 'user', text: 'every evening' }] } })), true);
+  assert.equal(CC.isValidGroundingShape(G({ recurrence: { form: 'SOURCE', anchors: [{ kind: 'SOURCE_RECURRENCE', obsKey: 'o1', segmentId: null }] } })), true); // reserved; the gate rejects it
+  assert.equal(CC.isValidGroundingShape(G({ recurrence: { form: 'WEEKLY', anchors: [anchor()] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'OBSERVED', anchors: [anchor()] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'SOURCE_LOCAL', anchors: [] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'SOURCE_LOCAL', anchors: Array.from({ length: 9 }, () => anchor()) } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'SOURCE_LOCAL', anchors: [anchor({ field: 'DAYPART' })] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'STATED', anchors: [{ kind: 'USER_EXPRESSION', obsKey: 'o1', segmentId: null, text: 'x' }] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'STATED', anchors: [{ kind: 'USER_EXPRESSION', obsKey: 'o1', segmentId: 's', text: 'x'.repeat(121) }] } })), false);
+  assert.equal(CC.isValidGroundingShape(G({ window: { form: 'STATED', anchors: [{ kind: 'EVENT', obsKey: 'o1', segmentId: 's' }] } })), false);
+  // the vocabularies describe where grounding lives, never an event or life situation
+  assert.deepEqual(CC.RECURRENCE_FORMS, ['OBSERVED', 'STATED', 'SOURCE']);
+  assert.deepEqual(CC.WINDOW_FORMS, ['SOURCE_LOCAL', 'SEQUENCE', 'STATED', 'SOURCE']);
+  assert.deepEqual(CC.ANCHOR_KINDS, ['SOURCE_TIME', 'USER_EXPRESSION', 'SOURCE_RECURRENCE']);
+});
+
+test('§15.5 / §16.5 (contract): verdict bodies, fixed applicability, fixed failure order; UNCERTAIN never passes', () => {
+  const V = (o) => Object.assign({ item: 'p1', restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'FAITHFUL', direction: 'NOT_APPLICABLE' }, o);
+  const VA = (o) => V(Object.assign({ unsupported: 'NOT_APPLICABLE', temporal: 'NOT_APPLICABLE', direction: 'CONSISTENT' }, o));
+  assert.equal(CC.isValidVerdictBody(V(), 'CREATE'), true);
+  assert.equal(CC.isValidVerdictBody(V(), 'SUPERSEDE'), true);
+  assert.equal(CC.isValidVerdictBody(VA(), 'APPEND_EVIDENCE'), true);
+  assert.equal(CC.isValidVerdictBody(V({ direction: 'CONSISTENT' }), 'CREATE'), false); // must be NOT_APPLICABLE
+  assert.equal(CC.isValidVerdictBody(VA({ temporal: 'FAITHFUL' }), 'APPEND_EVIDENCE'), false);
+  assert.equal(CC.isValidVerdictBody(V({ unsupported: 'NOT_APPLICABLE' }), 'CREATE'), false);
+  assert.equal(CC.isValidVerdictBody(V({ safety: 'MAYBE' }), 'CREATE'), false);
+  assert.equal(CC.isValidVerdictBody(Object.assign(V(), { note: 'x' }), 'CREATE'), false);
+  assert.equal(CC.isValidVerdictBody(V(), 'DELETE'), false);
+  assert.equal(CC.firstFailingVerdict(V(), 'CREATE'), null);
+  assert.equal(CC.firstFailingVerdict(VA(), 'APPEND_EVIDENCE'), null);
+  assert.equal(CC.firstFailingVerdict(V({ restatement: 'UNCERTAIN', safety: 'SAFETY_ADJACENT' }), 'CREATE'), 'SAFETY_VETO'); // safety first
+  assert.equal(CC.firstFailingVerdict(V({ restatement: 'RESTATED', temporal: 'UNFAITHFUL' }), 'CREATE'), 'RESTATED');
+  assert.equal(CC.firstFailingVerdict(V({ unsupported: 'UNCERTAIN' }), 'CREATE'), 'UNSUPPORTED_UNCERTAIN');
+  assert.equal(CC.firstFailingVerdict(V({ temporal: 'UNCERTAIN' }), 'SUPERSEDE'), 'TEMPORAL_UNCERTAIN');
+  assert.equal(CC.firstFailingVerdict(VA({ direction: 'INCONSISTENT' }), 'APPEND_EVIDENCE'), 'DIRECTION_INCONSISTENT');
+  assert.equal(CC.firstFailingVerdict(VA({ safety: 'UNCERTAIN' }), 'APPEND_EVIDENCE'), 'SAFETY_UNCERTAIN');
+  assert.deepEqual(CC.VERDICT_ORDER, ['safety', 'restatement', 'unsupported', 'temporal', 'direction']);
+});
+
+test('§14.4 / §25 (contract): key namespaces, VERIFIER_FAILED status, closed reason codes, v1.1 limits', () => {
+  assert.deepEqual(CC.KEY_PREFIXES, { observation: 'o', userStated: 'u', record: 'r', concept: 'k', item: 'p' });
+  assert.equal(CC.passKey('r', 0), 'r1');
+  assert.ok(CC.PASS_STATUSES.indexOf('VERIFIER_FAILED') !== -1);
+  ['MALFORMED_PROPOSAL', 'UNKNOWN_CONCEPT_KEY', 'GROUNDING_INSUFFICIENT', 'GROUNDING_FORM_UNAVAILABLE', 'VERIFICATION_UNAVAILABLE',
+    'VERIFICATION_MALFORMED', 'VERIFICATION_MISSING', 'TARGET_CONFLICT_IN_PASS'].forEach((c) => assert.ok(CC.REASON_CODES.indexOf(c) !== -1, c));
+  assert.equal(CC.LIMITS.MAX_GROUNDING_ANCHORS, 8);
+  assert.equal(CC.LIMITS.ANCHOR_TEXT_MAX_CHARS, 120);
 });

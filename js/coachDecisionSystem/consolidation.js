@@ -1,13 +1,14 @@
 // ══════════════════════════════════════════════════════════════════
 // FitMe — Consolidation (WP0 Phase E.0.2d coordinator)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md §07-§26.
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.1) §07-§27.
 //
-// Exclusive responsibility: one bounded, off-turn consolidation pass — learning consent, A3 source
-// eligibility, bounded observation reads through the injected Observation Port, Typed Memory and
-// User Knowledge ownership, owner concept resolution, Safety exclusion, bounded presentation, one
-// interpreter call, the deterministic gate, and execution of admitted operations through the
-// injected User Knowledge store (configured by the host with writer authority SERVER and producer
-// e02d.consolidation). E.0.2d discovers and formulates FITME-inferred candidates only: it never
+// Exclusive responsibility: one bounded, off-turn consolidation pass (§13) — learning consent, A3
+// source eligibility, bounded observation reads through the injected Observation Port, Typed Memory
+// and User Knowledge ownership, owner concept resolution, Safety exclusion, bounded presentation under
+// pass-local keys (§14.4), the Generator call, the deterministic pre-verification gate, the Verifier
+// call only when at least one plan exists, deterministic post-verification authorization, and
+// execution of exactly the authorized plans through the injected User Knowledge store (configured by
+// the host with writer authority SERVER and producer e02d.consolidation). At most two model calls. E.0.2d discovers and formulates FITME-inferred candidates only: it never
 // assesses confidence, judges confounds, promotes, expires, retrieves knowledge for reasoning,
 // prompts the user or touches a user-stated record.
 //
@@ -24,6 +25,9 @@
   var Interpreter = (typeof module !== 'undefined' && module.exports)
     ? require('./consolidationInterpreter.js')
     : window.ConsolidationInterpreter;
+  var Verifier = (typeof module !== 'undefined' && module.exports)
+    ? require('./consolidationVerifier.js')
+    : window.ConsolidationVerifier;
   var Gate = (typeof module !== 'undefined' && module.exports)
     ? require('./consolidationGate.js')
     : window.ConsolidationGate;
@@ -69,7 +73,10 @@
     if (typeof d.isLearningConsentGranted !== 'function' || typeof d.getConsentState !== 'function') return { status: 'NOT_CONFIGURED' };
     if (!C.isId(d.userId) || !Array.isArray(d.observationSources)) return { status: 'NOT_CONFIGURED' };
     if (!(d.referenceSource === null || C.isPlainObject(d.referenceSource))) return { status: 'NOT_CONFIGURED' };
+    if (d.verifierModel !== undefined && !(typeof d.verifierModel === 'string' && d.verifierModel.length)) return { status: 'NOT_CONFIGURED' };
+    // Both model stages use the same injected transport, each with its own body and bounds (§08, §27).
     if (!Interpreter.configure({ modelTransport: d.modelTransport, timeoutMs: d.timeoutMs })) return { status: 'NOT_CONFIGURED' };
+    if (!Verifier.configure({ modelTransport: d.modelTransport, timeoutMs: d.verifierTimeoutMs, model: d.verifierModel })) return { status: 'NOT_CONFIGURED' };
     deps = {
       store: d.store, port: d.port, now: d.now, consent: d.isLearningConsentGranted, consentState: d.getConsentState,
       userId: d.userId, observationSources: d.observationSources.slice(), referenceSource: d.referenceSource
@@ -78,7 +85,7 @@
   }
 
   function result(status, extra) {
-    return Object.freeze(Object.assign({ status: status, sourcesRead: Object.freeze([]), observationsPresented: 0, proposals: Object.freeze([]) }, extra || {}));
+    return Object.freeze(Object.assign({ status: status, sourcesRead: Object.freeze([]), observationsPresented: 0, modelCalls: 0, proposals: Object.freeze([]) }, extra || {}));
   }
 
   // §11 item 3 — eligibility by the single A3 policy; never by consumer or source identity.
@@ -152,6 +159,14 @@
   }
 
   // §14.1 — observation rendering (data only). FITME-authored segments are never presented (E3).
+  // Observation-level time fields are always rendered (null when unknown); the optional segment-level
+  // time fields are rendered only when non-null.
+  var SEGMENT_TIME_KEYS = ['localDate', 'localTime', 'utcOffsetMinutes'];
+  function renderSegment(s) {
+    var out = s.text !== null ? { segmentId: s.segmentId, authorship: s.authorship, text: s.text } : { segmentId: s.segmentId, authorship: s.authorship, data: copy(s.data) };
+    SEGMENT_TIME_KEYS.forEach(function (k) { var v = CC.segmentTime(s, k); if (v !== null) out[k] = v; });
+    return out;
+  }
   function renderObservation(o, obsKey, description) {
     return {
       obsKey: obsKey,
@@ -160,9 +175,18 @@
       localTime: o.localTime,
       observedAt: o.observedAt === null ? null : CC.epochToIsoUtc(o.observedAt),
       utcOffsetMinutes: o.utcOffsetMinutes,
-      segments: o.segments.map(function (s) {
-        return s.text !== null ? { segmentId: s.segmentId, authorship: s.authorship, text: s.text } : { segmentId: s.segmentId, authorship: s.authorship, data: copy(s.data) };
-      })
+      segments: o.segments.map(renderSegment)
+    };
+  }
+  // §14.1 — the gate context of one presented observation: structural time at observation and
+  // segment level, each segment's authorship and text, and the user-authored texts for E2/U6.
+  function observationContext(ob) {
+    return {
+      ref: copy(ob.ref), refId: CC.refIdOf(ob.ref), observedAt: ob.observedAt, localDate: ob.localDate, localTime: ob.localTime, utcOffsetMinutes: ob.utcOffsetMinutes,
+      segments: ob.segments.map(function (s) {
+        return { segmentId: s.segmentId, authorship: s.authorship, text: s.text, localDate: CC.segmentTime(s, 'localDate'), localTime: CC.segmentTime(s, 'localTime'), utcOffsetMinutes: CC.segmentTime(s, 'utcOffsetMinutes') };
+      }),
+      userTexts: ob.segments.filter(function (s) { return s.authorship === 'USER_AUTHORED' && s.text !== null; }).map(function (s) { return s.text; })
     };
   }
   function presentableSegments(o) {
@@ -172,12 +196,51 @@
   function byRecency(idKey) {
     return function (a, b) { return (b.updatedAt - a.updatedAt) || (a[idKey] < b[idKey] ? -1 : (a[idKey] > b[idKey] ? 1 : 0)); };
   }
-  function renderRecord(r) {
+  // §14.2 — a presented FITME-sourced record, under its pass-local record key and with concept keys.
+  // No durable recordId or conceptId and no confidence is ever presented.
+  function renderRecord(r, recordKey, conceptKeyOf) {
     var rel = r.relationDescription;
     return {
-      recordId: r.recordId, status: r.status, evidenceClass: r.evidenceClass, temporality: r.temporality,
-      factors: r.factors.map(function (f) { return { conceptId: f.conceptId, role: f.role, valueDescription: f.valueDescription }; }),
+      recordKey: recordKey, status: r.status, evidenceClass: r.evidenceClass, temporality: r.temporality,
+      factors: r.factors.map(function (f) { return { conceptKey: conceptKeyOf(f.conceptId), role: f.role, valueDescription: f.valueDescription }; }),
       relationDescription: rel.length > L.PRESENTED_RELATION_MAX_CHARS ? rel.slice(0, L.PRESENTED_RELATION_MAX_CHARS) : rel
+    };
+  }
+  // §14.4 — deterministic concept keys: presented concepts first, in presentation order, then any root
+  // they resolve to that is not itself presented (rendered, but never resolvable by the gate).
+  function conceptKeyMap(presentedIds, rootMap) {
+    var ids = presentedIds.slice();
+    presentedIds.forEach(function (id) { var root = rootMap[id]; if (root !== undefined && ids.indexOf(root) === -1) ids.push(root); });
+    var keyOf = {};
+    ids.forEach(function (id, i) { keyOf[id] = CC.passKey(CC.KEY_PREFIXES.concept, i); });
+    return keyOf;
+  }
+  // §15.4 — a target rendered from trusted stored state, for the Verifier.
+  function renderTarget(r, recordKey, labelsOf) {
+    return {
+      recordKey: recordKey,
+      factors: r.factors.map(function (f) { return { labels: labelsOf(f.conceptId), role: f.role, valueDescription: f.valueDescription }; }),
+      relationDescription: r.relationDescription, evidenceClass: r.evidenceClass, temporality: r.temporality
+    };
+  }
+  // §15.4 — one verification item rendered from a plan (never from the Generator's raw text).
+  function renderItem(plan, itemKey, labelsOf) {
+    if (plan.operation === 'APPEND_EVIDENCE') {
+      return { item: itemKey, operation: plan.operation, claim: null, supporting: null, contradicting: null, target: plan.targetKey, list: plan.list, observations: plan.observations.slice() };
+    }
+    var c = plan.claim;
+    return {
+      item: itemKey, operation: plan.operation,
+      claim: {
+        factors: c.factors.map(function (f) {
+          var out = f.conceptId !== null ? { labels: labelsOf(f.conceptId) } : { newConceptLabel: f.newConceptLabel };
+          out.role = f.role; out.valueText = f.valueText; out.byReference = f.byReference;
+          return out;
+        }),
+        relationText: c.relationText, evidenceClass: c.evidenceClass, temporality: c.temporality, grounding: copy(c.grounding)
+      },
+      supporting: c.supporting.slice(), contradicting: c.contradicting.slice(),
+      target: plan.operation === 'SUPERSEDE' ? plan.targetKey : null, list: null, observations: null
     };
   }
   function recordTexts(r) {
@@ -314,9 +377,16 @@
     tmRefs.forEach(function (t) { references.push({ type: 'TYPED_MEMORY', tm: t }); });
     references = references.slice(0, L.PRESENTED_USER_STATED_MAX);
 
-    // concept/record block bound: drop least-recent FITME records, then unreferenced concepts
-    var renderConcept = function (id) { return { conceptId: id, rootConceptId: rootMap[id], labels: conceptMap[id].labels.slice(0, L.PRESENTED_LABELS_MAX) }; };
-    var blockSize = function () { return JSON.stringify(presentedIds.map(renderConcept)).length + JSON.stringify(fitme.map(renderRecord)).length; };
+    // concept/record block bound: drop least-recent FITME records, then unreferenced concepts.
+    // Measured on the keyed rendering actually presented (§14.2, §14.4).
+    var keyOfFor = function () { return conceptKeyMap(presentedIds, rootMap); };
+    var renderConcept = function (keyOf) {
+      return function (id) { return { conceptKey: keyOf[id], rootConceptKey: keyOf[rootMap[id]], labels: conceptMap[id].labels.slice(0, L.PRESENTED_LABELS_MAX) }; };
+    };
+    var renderRecords = function (keyOf) {
+      return fitme.map(function (r, i) { return renderRecord(r, CC.passKey(CC.KEY_PREFIXES.record, i), function (id) { return keyOf[id]; }); });
+    };
+    var blockSize = function () { var k = keyOfFor(); return JSON.stringify(presentedIds.map(renderConcept(k))).length + JSON.stringify(renderRecords(k)).length; };
     while (blockSize() > L.PRESENTED_BLOCK_MAX_CHARS && fitme.length) fitme.pop();
     var needed = function (id) {
       return fitme.some(function (r) { return r.conceptIds.indexOf(id) !== -1; }) ||
@@ -326,81 +396,116 @@
       if (!needed(presentedIds[ci])) presentedIds.splice(ci, 1);
     }
 
-    // obsKeys and gate context
+    // §14.4 — pass-local key maps for every namespace, and the gate context
+    var keyOf = keyOfFor();
+    var conceptKeyOf = function (id) { return keyOf[id]; };
+    var labelsOf = function (id) { return conceptMap[id] ? conceptMap[id].labels.slice(0, L.PRESENTED_LABELS_MAX) : []; };
     var obsCtx = {};
     var renderedObs = kept.map(function (ob, k) {
-      var key = 'o' + (k + 1);
-      obsCtx[key] = {
-        ref: copy(ob.ref), refId: CC.refIdOf(ob.ref), observedAt: ob.observedAt,
-        userTexts: ob.segments.filter(function (s) { return s.authorship === 'USER_AUTHORED' && s.text !== null; }).map(function (s) { return s.text; })
-      };
+      var key = CC.passKey(CC.KEY_PREFIXES.observation, k);
+      obsCtx[key] = observationContext(ob);
       return renderObservation(ob, key, descriptorOf[ob.sourceId].description);
     });
     var refCtx = {};
     var renderedRefs = references.map(function (x, k) {
-      var key = 'u' + (k + 1);
+      var key = CC.passKey(CC.KEY_PREFIXES.userStated, k);
       if (x.type === 'USER_KNOWLEDGE') {
         refCtx[key] = {
           type: 'USER_KNOWLEDGE', recordRef: { kind: 'USER_KNOWLEDGE_RECORD', ref: x.record.recordId },
           roots: x.record.conceptIds.map(function (id) { return rootMap[id]; }), texts: recordTexts(x.record),
           claimedRefIds: x.record.supportingRefIds.slice()
         };
-        return { uKey: key, factors: renderRecord(x.record).factors, relationDescription: x.record.relationDescription };
+        return { uKey: key, factors: renderRecord(x.record, null, conceptKeyOf).factors, relationDescription: x.record.relationDescription };
       }
       refCtx[key] = {
         type: 'TYPED_MEMORY', recordRef: copy(x.tm.recordRef), roots: [], texts: segmentTexts(x.tm.segments),
         claimedRefIds: x.tm.claimedObservationRefs.map(CC.refIdOf)
       };
-      return { uKey: key, segments: renderObservation({ segments: x.tm.segments, localDate: null, localTime: null, observedAt: null, utcOffsetMinutes: null }, key, null).segments };
+      return { uKey: key, segments: x.tm.segments.map(renderSegment) };
     });
-    var fitmeById = {};
-    fitme.forEach(function (r) { fitmeById[r.recordId] = r; });
+    var recordCtx = {};
+    var recordKeyOf = {};
+    fitme.forEach(function (r, i) { var key = CC.passKey(CC.KEY_PREFIXES.record, i); recordCtx[key] = r; recordKeyOf[r.recordId] = key; });
+    var conceptKeys = {};
+    presentedIds.forEach(function (id) { conceptKeys[keyOf[id]] = id; }); // presented concepts only (§14.4)
     var ownedRefIds = {};
     Object.keys(ownership.owned).forEach(function (id) { ownedRefIds[id] = true; });
     Object.keys(typedMemoryOwned).forEach(function (id) { ownedRefIds[id] = true; });
     var ctx = {
       observations: obsCtx,
+      conceptKeys: conceptKeys,
       presentedConcepts: presentedIds.map(function (id) { return { conceptId: id, labels: conceptMap[id].labels.slice() }; }),
       rootOf: function (id) { return has(rootMap, id) ? rootMap[id] : ('\u0000unresolved\u0000' + id); },
-      fitmeRecords: fitmeById,
+      records: recordCtx,
       references: refCtx,
       userStatedStructures: ukRefs.filter(function (r) { return references.some(function (x) { return x.record === r; }); }).concat(ownership.owners),
       ownedRefIds: ownedRefIds,
       ownersByRefId: ownersByRefId
     };
+    var base = { sourcesRead: Object.freeze(sourceIds), observationsPresented: renderedObs.length };
 
-    // 9 — one interpreter call
+    // §13 step 8 — the Generator: one call
     stage.status = 'INTERPRETER_FAILED';
-    var interpreted = await Interpreter.interpret({
+    var modelCalls = 1;
+    stage.modelCalls = modelCalls;
+    var generated = await Interpreter.interpret({
       observations: renderedObs,
-      concepts: presentedIds.map(renderConcept),
-      records: fitme.map(renderRecord),
+      concepts: presentedIds.map(renderConcept(keyOf)),
+      records: renderRecords(keyOf),
       userStated: renderedRefs
     });
-    if (!interpreted || interpreted.status !== 'OK') {
-      return result('INTERPRETER_FAILED', { sourcesRead: Object.freeze(sourceIds), observationsPresented: renderedObs.length });
-    }
+    if (!generated || generated.status !== 'OK') return result('INTERPRETER_FAILED', Object.assign({ modelCalls: modelCalls }, base));
 
-    // 10 — gate, then execute admitted proposals in output order
+    // §13 steps 9-10 — proposal isolation and the pre-verification gate
+    var screened = Gate.preVerify(generated.entries, ctx);
+    var plans = screened.filter(function (s) { return s.outcome === 'PLAN'; }).map(function (s) { return s.plan; });
+    var outcomes = {};
+    screened.forEach(function (s) {
+      if (s.outcome !== 'PLAN') outcomes[s.index] = { index: s.index, operation: s.operation, outcome: s.outcome, code: s.code, verification: null, recordIds: [] };
+    });
+    // §13 step 11 — no plan: no Verifier call, no writes
+    if (!plans.length) return finish('COMPLETED', outcomes, modelCalls, base);
+
+    // §13 step 12 — the Verifier: one batched call over every plan, rendered from plans and trusted state
+    stage.status = 'VERIFIER_FAILED';
+    modelCalls = 2;
+    stage.modelCalls = modelCalls;
+    var targetKeys = [];
+    plans.forEach(function (p) { if (p.targetKey && targetKeys.indexOf(p.targetKey) === -1) targetKeys.push(p.targetKey); });
+    var verification = await Verifier.verify({
+      observations: renderedObs,
+      userStated: renderedRefs,
+      targets: targetKeys.map(function (k) { return renderTarget(recordCtx[k], k, labelsOf); }),
+      items: plans.map(function (p, i) { return renderItem(p, CC.passKey(CC.KEY_PREFIXES.item, i), labelsOf); })
+    });
+
+    // §13 step 13 — post-verification authorization (the only grant of execution, §16.5)
+    var authorization = Gate.authorizePlans(plans, verification);
+    var verifierFailed = !verification || verification.status !== 'OK';
+
+    // §13 step 14 — execute exactly the authorized plans, in output order, after authorization completes
     stage.status = 'PARTIAL';
     stage.writesPossible = true;
-    var verdicts = Gate.evaluate(interpreted.proposals, ctx);
     var passNewIds = {};
-    var outcomes = [];
-    for (var v = 0; v < verdicts.length; v++) {
-      var verdict = verdicts[v];
-      if (!verdict.admitted) {
-        outcomes.push({ index: verdict.index, operation: verdict.operation, outcome: verdict.outcome, code: verdict.code, recordIds: [] });
+    for (var di = 0; di < authorization.decisions.length; di++) {
+      var d = authorization.decisions[di];
+      if (d.outcome !== 'AUTHORIZED' || !authorization.permits(d.plan)) {
+        outcomes[d.index] = { index: d.index, operation: d.operation, outcome: 'REJECTED', code: d.code, verification: d.verification, recordIds: [] };
         continue;
       }
-      outcomes.push(await execute(verdict, passNewIds));
+      outcomes[d.index] = Object.assign(await execute(d.plan, authorization, passNewIds), { verification: d.verification });
     }
-    var anyFailed = outcomes.some(function (x) { return x.outcome === 'ADMITTED_FAILED'; });
-    return result(anyFailed ? 'PARTIAL' : 'COMPLETED', {
-      sourcesRead: Object.freeze(sourceIds),
-      observationsPresented: renderedObs.length,
-      proposals: Object.freeze(outcomes.map(function (x) { return Object.freeze(Object.assign({}, x, { recordIds: Object.freeze(x.recordIds) })); }))
+    var anyFailed = Object.keys(outcomes).some(function (k) { return outcomes[k].outcome === 'ADMITTED_FAILED'; });
+    return finish(verifierFailed ? 'VERIFIER_FAILED' : (anyFailed ? 'PARTIAL' : 'COMPLETED'), outcomes, modelCalls, base);
+  }
+
+  // §13 step 15 — PassResult: ids, closed codes and closed verdict tokens only, in output order.
+  function finish(status, outcomes, modelCalls, base) {
+    var list = Object.keys(outcomes).map(Number).sort(function (a, b) { return a - b; }).map(function (k) {
+      var x = outcomes[k];
+      return Object.freeze({ index: x.index, operation: x.operation, outcome: x.outcome, code: x.code, verification: x.verification || null, recordIds: Object.freeze(x.recordIds.slice()) });
     });
+    return result(status, Object.assign({ modelCalls: modelCalls, proposals: Object.freeze(list) }, base));
   }
 
   // §17 — execution through the injected store. Equal new labels within a pass map to one concept.
@@ -418,9 +523,11 @@
     });
     return { draft: draft, newConcepts: labels.map(function (l) { return [l]; }), keys: keys };
   }
-  async function execute(verdict, passNewIds) {
-    var plan = verdict.plan;
-    var out = { index: verdict.index, operation: plan.operation, outcome: 'ADMITTED_FAILED', code: 'STORE_FAILED', recordIds: [] };
+  // Executes one plan only if this pass's authorization permits that exact plan object (§16.5). An
+  // APPEND writes exactly the plan's verified materialized refs (§16.3 A5).
+  async function execute(plan, authorization, passNewIds) {
+    var out = { index: plan.index, operation: plan.operation, outcome: 'ADMITTED_FAILED', code: 'STORE_FAILED', recordIds: [] };
+    if (!authorization || !authorization.permits(plan)) return Object.assign(out, { outcome: 'REJECTED', code: 'VERIFICATION_UNAVAILABLE' });
     var r;
     try {
       if (plan.operation === 'APPEND_EVIDENCE') {
@@ -444,11 +551,11 @@
   // runPass({passId, window}) → PassResult. Never throws. Carries ids and codes only (§13 step 11).
   async function runPass(request) {
     if (!deps) return result('NOT_CONFIGURED');
-    var stage = { status: 'INVALID_REQUEST', writesPossible: false };
+    var stage = { status: 'INVALID_REQUEST', writesPossible: false, modelCalls: 0 };
     try {
       return await runPassInner(request, stage);
     } catch (e) {
-      return result(stage.writesPossible ? 'PARTIAL' : stage.status);
+      return result(stage.writesPossible ? 'PARTIAL' : stage.status, { modelCalls: stage.modelCalls });
     }
   }
 

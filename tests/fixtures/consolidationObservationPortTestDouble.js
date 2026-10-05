@@ -61,10 +61,21 @@ function createObservationPort() {
     if (t.fitmeSegment) segments.push({ segmentId: 'fitme', authorship: 'FITME_AUTHORED', text: t.assistantText, data: null });
     return { ref: { kind: 'CONVERSATION_TURN', ref: turnId }, sourceId: 'conversationTurns', observedAt: t.createdAt, localDate: null, localTime: null, utcOffsetMinutes: null, segments };
   }
+  // §10.4 (v1.1): each meal segment carries its own structural localTime, normalized to HH:MM; the
+  // value also remains in its data. A meal without a parseable time has no structural time.
+  function normalizedTime(t) {
+    const m = typeof t === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(t) : null;
+    return m ? m[1].padStart(2, '0') + ':' + m[2] : null;
+  }
   function dayObservation(dayKey, d) {
-    const segments = d.meals.map((m, i) => ({ segmentId: 'meal' + (i + 1), authorship: 'USER_RECORDED', text: null, data: [
-      { label: 'name', value: m.name, unit: null }, { label: 'kcal', value: m.kcal, unit: 'kcal' }, { label: 'time', value: m.time, unit: null }
-    ] }));
+    const segments = d.meals.map((m, i) => {
+      const s = { segmentId: 'meal' + (i + 1), authorship: 'USER_RECORDED', text: null, data: [
+        { label: 'name', value: m.name, unit: null }, { label: 'kcal', value: m.kcal, unit: 'kcal' }, { label: 'time', value: m.time, unit: null }
+      ] };
+      const t = normalizedTime(m.time);
+      if (t !== null) s.localTime = t;
+      return s;
+    });
     if (d.totals) segments.push({ segmentId: 'totals', authorship: 'USER_RECORDED', text: null, data: Object.keys(d.totals).map((k) => ({ label: k, value: d.totals[k], unit: null })) });
     if (!segments.length) segments.push({ segmentId: 'empty', authorship: 'USER_RECORDED', text: null, data: [{ label: 'logged', value: false, unit: null }] });
     return { ref: { kind: 'DAY_LOG', ref: dayKey }, sourceId: 'dayLogs', observedAt: null, localDate: dayKey, localTime: null, utcOffsetMinutes: null, segments };

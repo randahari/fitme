@@ -1,7 +1,8 @@
 // WP0 Phase E.0.2d — Consolidation pass, end to end
-// (docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md §11-§26; AC-D1 … AC-D8, AC-D30 … AC-D39,
-// AC-D46 … AC-D52). The real User Knowledge store over the in-memory reference port, the Observation
-// Port test double, and a local stub transport. No model is ever called.
+// (docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md v1.1 §11-§27; AC-D1 … AC-D9, AC-D30 … AC-D39,
+// AC-D46 … AC-D52, AC-D54, AC-D56 … AC-D59, AC-D62 … AC-D65). The real User Knowledge store over the
+// in-memory reference port, the Observation Port test double, and a local stub transport that answers
+// both model stages (Generator and Verifier). No model is ever called.
 // Run with: node --test tests/e02dConsolidationPass.test.js
 
 const test = require('node:test');
@@ -43,9 +44,20 @@ function env(opts) {
   const overrides = {};
   const spy = {};
   STORE_FNS.forEach((fn) => { spy[fn] = async (req) => { storeCalls.push({ fn, req: clone(req) }); return overrides[fn] ? overrides[fn](req) : Store[fn](req); }; });
-  const transport = { bodies: [], respond: [] };
+  // One stub transport for both stages (§08). A Verifier body is recognized by its <items> data block.
+  // By default the Verifier passes every applicable dimension; tests override `transport.verdict`
+  // (per item) or `transport.verifierRaw` (the whole raw response) to exercise vetoes and failures.
+  const transport = { bodies: [], generator: [], verifier: [], respond: [], verdict: null, verifierRaw: null };
   const modelTransport = async (body) => {
     transport.bodies.push(body);
+    const content = body.messages[0].content;
+    if (content.lastIndexOf('<items>') !== -1 && content.indexOf('<concepts>') === -1) {
+      transport.verifier.push(body);
+      const vv = verifierView(body);
+      if (transport.verifierRaw) return transport.verifierRaw(vv);
+      return { content: [{ text: JSON.stringify({ verdicts: vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation), transport.verdict ? transport.verdict(it, vv) : {})) }) }] };
+    }
+    transport.generator.push(body);
     const proposals = typeof transport.respond === 'function' ? transport.respond(view(body)) : transport.respond;
     return { content: [{ text: JSON.stringify({ proposals }) }] };
   };
@@ -63,26 +75,54 @@ function env(opts) {
     record(id) { return uk.hooks.peek('u1').records.find((r) => r.recordId === id); }
   };
 }
-function view(body) {
-  const content = body.messages[0].content;
-  // The instruction itself names the tags, so the data block is the LAST occurrence of each tag.
-  const grab = (tag) => {
+// The instruction itself names the tags, so the data block is the LAST occurrence of each tag.
+function grabber(content) {
+  return (tag) => {
     const start = content.lastIndexOf('<' + tag + '>') + tag.length + 2;
     return JSON.parse(content.slice(start, content.indexOf('</' + tag + '>', start)));
   };
+}
+// The concept label and record wording of every id this test seeded, so that a Generator stub can
+// cite the pass-local keys the model actually sees (§14.4) — never a durable id.
+const LABEL_OF = new Map();
+const REL_OF = new Map();
+function view(body) {
+  const content = body.messages[0].content;
+  const grab = grabber(content);
   const observations = grab('observations');
+  const concepts = grab('concepts');
+  const records = grab('records');
   return {
-    content, observations, concepts: grab('concepts'), records: grab('records'), userStated: grab('user_stated'),
+    content, observations, concepts, records, userStated: grab('user_stated'),
     key(needle) {
       const o = observations.find((x) => x.localDate === needle || x.segments.some((s) => typeof s.text === 'string' && s.text.indexOf(needle) !== -1));
       assert.ok(o, 'observation for ' + needle + ' presented');
       return o.obsKey;
+    },
+    k(conceptId) {
+      const c = concepts.find((x) => x.labels.indexOf(LABEL_OF.get(conceptId)) !== -1);
+      assert.ok(c, 'concept ' + LABEL_OF.get(conceptId) + ' presented');
+      return c.conceptKey;
+    },
+    r(recordId) {
+      const r = records.find((x) => x.relationDescription === REL_OF.get(recordId));
+      return r ? r.recordKey : 'r99'; // a record that is not presented has no key; the model can only guess one
     }
   };
+}
+function verifierView(body) {
+  const grab = grabber(body.messages[0].content);
+  return { observations: grab('observations'), userStated: grab('user_stated'), targets: grab('targets'), items: grab('items'), content: body.messages[0].content };
+}
+function passing(operation) {
+  return operation === 'APPEND_EVIDENCE'
+    ? { restatement: 'NOT_RESTATED', unsupported: 'NOT_APPLICABLE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'NOT_APPLICABLE', direction: 'CONSISTENT' }
+    : { restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'FAITHFUL', direction: 'NOT_APPLICABLE' };
 }
 async function concept(e, label) {
   const r = await e.client().createConcept({ labels: [label] });
   assert.equal(r.status, 'COMMITTED');
+  LABEL_OF.set(r.ids.conceptIds[0], label);
   return r.ids.conceptIds[0];
 }
 async function userStated(e, factors, turns, extra) {
@@ -102,13 +142,17 @@ async function candidate(e, factors, turns, rel) {
     evidence: { supporting: turns.map((t) => ({ kind: 'CONVERSATION_TURN', ref: t })) }
   } });
   assert.equal(r.status, 'COMMITTED', JSON.stringify(r));
+  REL_OF.set(r.ids.recordIds[0], rel || 'A candidate association.');
   return r.ids.recordIds[0];
 }
-function F(o) { return Object.assign({ conceptId: null, newConceptLabel: null, role: 'subject', valueText: null, userStatedRef: null }, o); }
+// v1.1 per-operation proposal shapes (§15.2).
+function F(o) { return Object.assign({ conceptKey: null, newConceptLabel: null, role: 'subject', valueText: null }, o); }
 function P(o) {
-  return Object.assign({ operation: 'CREATE', targetRecordId: null, appendList: null, factors: [], relationText: 'Weaker sessions tend to accompany shorter rest in these notes.',
-    evidenceClass: 'CO_OCCURRENCE', temporality: 'DURABLE', supporting: [], contradicting: [], restatesUserStatement: false, safetyAdjacent: false }, o);
+  return Object.assign({ operation: 'CREATE', factors: [], relationText: 'Weaker sessions tend to accompany shorter rest in these notes.',
+    evidenceClass: 'CO_OCCURRENCE', temporality: 'DURABLE', grounding: null, supporting: [], contradicting: [], reference: null, restatesUserStatement: false, safetyAdjacent: false }, o);
 }
+function SUP(target, o) { return Object.assign(P(o), { operation: 'SUPERSEDE', target }); }
+function APP(o) { return Object.assign({ operation: 'APPEND_EVIDENCE', target: 'r1', list: 'supporting', observations: [], restatesUserStatement: false, safetyAdjacent: false }, o); }
 async function seedTurns(e) {
   e.op.seed.turn('t1', 'Only four hours of rest and my session felt like wading through mud.', 1 * DAY);
   e.op.seed.turn('t2', 'Short night again; the workout was a slog.', 2 * DAY);
@@ -234,7 +278,7 @@ test('AC-D7 / AC-D30 / AC-D46: a CREATE persists references only, the fixed fiel
   e.op.seed.day('2026-01-02', 2 * DAY + 100, [{ name: 'oats', kcal: 300, time: '7:30' }], { burned: 0 });
   const a = await concept(e, 'rest');
   const b = await concept(e, 'session quality');
-  e.transport.respond = (v) => [P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], evidenceClass: 'RECURRENCE',
+  e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'RECURRENCE',
     supporting: [v.key('Only four hours'), v.key('Short night'), v.key('2026-01-02')], contradicting: [v.key('full night')] })];
   e.configure();
   const r = await e.run();
@@ -363,8 +407,8 @@ test('AC-D37: the user-stated sleep fact alone is rejected; with independent obs
   e.transport.respond = (v) => {
     const uKey = v.userStated[0].uKey;
     return [
-      P({ factors: [F({ conceptId: s, role: 'subject', valueText: 'roughly five hours' })], relationText: 'This person tends to rest for roughly five hours.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('usually sleep')] }),
-      P({ factors: [F({ conceptId: s, role: 'condition', userStatedRef: uKey }), F({ conceptId: q, role: 'outcome', valueText: 'poorer' })],
+      P({ factors: [F({ conceptKey: v.k(s), role: 'subject', valueText: 'roughly five hours' })], relationText: 'This person tends to rest for roughly five hours.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('usually sleep')] }),
+      P({ factors: [F({ conceptKey: v.k(s), role: 'condition' }), F({ conceptKey: v.k(q), role: 'outcome', valueText: 'poorer' })], reference: { uKey, factorIndex: 0 },
         relationText: 'Poorer session outcomes have followed short-rest periods.', evidenceClass: 'RECURRENCE', supporting: [v.key('Rough night'), v.key('Woke early')] })
     ];
   };
@@ -394,7 +438,7 @@ test('AC-D38: owners in every stored status, outside the presented set, and Type
     const a = await concept(e, 'rest');
     const b = await concept(e, 'session quality');
     await setup(e, x);
-    e.transport.respond = (v) => [P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four hours')] })];
+    e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four hours')] })];
     e.configure();
     const r = await e.run();
     assert.equal(r.proposals[0].code, 'NO_INDEPENDENT_SUPPORT', name);
@@ -412,7 +456,7 @@ test('AC-D38: owners in every stored status, outside the presented set, and Type
     const a = await concept(e, 'rest');
     const b = await concept(e, 'session quality');
     await setup(e, x);
-    e.transport.respond = (v) => [P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four hours')] })];
+    e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four hours')] })];
     e.configure();
     const r = await e.run();
     assert.equal(r.proposals[0].outcome, 'ADMITTED_EXECUTED', name + ' ' + JSON.stringify(r.proposals[0]));
@@ -428,7 +472,7 @@ async function mirrorScenario(mergeSetup, ownerStatusChange) {
   const owner = await userStated(e, [[ids.X, 'subject'], [ids.B, 'outcome']], ['t1'], { rel: 'Owner statement.' });
   if (ownerStatusChange) await ownerStatusChange(e, owner);
   await mergeSetup(e, ids);
-  e.transport.respond = (v) => [P({ factors: [F({ conceptId: ids.Y, role: 'subject' }), F({ conceptId: ids.B, role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] })];
+  e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(ids.Y), role: 'subject' }), F({ conceptKey: v.k(ids.B), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] })];
   e.configure();
   const r = await e.run();
   return { e, r, ids };
@@ -471,8 +515,8 @@ test('AC-D39: owners in each stored status are compared identically; structurall
   const C2 = await concept(e, 'concept C');
   await userStated(e, [[X, 'subject'], [B, 'outcome']], ['t1']);
   e.transport.respond = (v) => [
-    P({ factors: [F({ conceptId: X, role: 'outcome' }), F({ conceptId: B, role: 'subject' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] }),
-    P({ factors: [F({ conceptId: X, role: 'subject' }), F({ conceptId: B, role: 'outcome' }), F({ conceptId: C2, role: 'condition' })], relationText: 'Three-way association across these notes.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
+    P({ factors: [F({ conceptKey: v.k(X), role: 'outcome' }), F({ conceptKey: v.k(B), role: 'subject' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] }),
+    P({ factors: [F({ conceptKey: v.k(X), role: 'subject' }), F({ conceptKey: v.k(B), role: 'outcome' }), F({ conceptKey: v.k(C2), role: 'condition' })], relationText: 'Three-way association across these notes.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
   ];
   e.configure();
   const r = await e.run();
@@ -525,7 +569,7 @@ test('AC-D47: chunks ≤ 10, user_stated only, the four statuses, limit 50; comp
   for (let i = 0; i < 55; i++) await userStated(e, [[c, 'subject']], ['t1'], { rel: 'Owner number ' + i + ' of t1.' });
   const a = await concept(e, 'rest');
   const b = await concept(e, 'session quality');
-  e.transport.respond = (v) => [P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Note number 2 ')] })];
+  e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Note number 2 ')] })];
   e.configure();
   const r = await e.run();
   const qs = e.storeCalls.filter((x) => x.fn === 'queryRecordsBySupportingRefs');
@@ -597,8 +641,9 @@ test('AC-D31: all writes run under SERVER; forbidden operations are never called
   const before = clone(e.record(us));
   const cand = await candidate(e, [[a, 'condition'], [b, 'outcome']], ['t1'], 'Existing candidate wording.');
   e.transport.respond = (v) => [
-    P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], relationText: 'Fresh wording about this pairing.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] }),
-    P({ operation: 'APPEND_EVIDENCE', targetRecordId: us, appendList: 'supporting', relationText: null, evidenceClass: null, temporality: null, factors: [F({ conceptId: a, role: 'subject' })], supporting: [v.key('Short night')] })
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'Fresh wording about this pairing.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] }),
+    // a user-stated record is never presented as a target, so it has no record key (§14.2, U7)
+    APP({ target: v.r(us), list: 'supporting', observations: [v.key('Short night')] })
   ];
   e.configure();
   const r = await e.run();
@@ -618,8 +663,8 @@ test('AC-D32: a store failure marks that proposal ADMITTED_FAILED and the pass P
   const a = await concept(e, 'rest');
   const b = await concept(e, 'session quality');
   e.transport.respond = (v) => [
-    P({ factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], relationText: 'First association wording here.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
-    P({ factors: [F({ conceptId: b, role: 'condition' }), F({ conceptId: a, role: 'outcome' })], relationText: 'Second association wording here.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'First association wording here.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(a), role: 'outcome' })], relationText: 'Second association wording here.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
   ];
   e.configure();
   let n = 0;
@@ -637,9 +682,9 @@ test('AC-D33: re-running a pass is safe — CREATE duplicate rejected, APPEND NO
   const appendTarget = await candidate(e, [[a, 'condition'], [b, 'outcome']], ['t9'], 'Candidate to append to.');
   const supTarget = await candidate(e, [[c, 'condition'], [b, 'outcome']], ['t9'], 'Candidate to supersede.');
   e.transport.respond = (v) => [
-    P({ factors: [F({ conceptId: b, role: 'condition' }), F({ conceptId: c, role: 'outcome' })], relationText: 'A new pairing worth noting.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
-    P({ operation: 'APPEND_EVIDENCE', targetRecordId: appendTarget, appendList: 'contradicting', relationText: null, evidenceClass: null, temporality: null, factors: [F({ conceptId: a, role: 'condition' }), F({ conceptId: b, role: 'outcome' })], contradicting: [v.key('full night')] }),
-    P({ operation: 'SUPERSEDE', targetRecordId: supTarget, factors: [F({ conceptId: c, role: 'condition' }), F({ conceptId: b, role: 'outcome', valueText: 'lower' })], relationText: 'A revised wording with newer support.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] })
+    P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(c), role: 'outcome' })], relationText: 'A new pairing worth noting.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    APP({ target: v.r(appendTarget), list: 'contradicting', observations: [v.key('full night')] }),
+    SUP(v.r(supTarget), { factors: [F({ conceptKey: v.k(c), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome', valueText: 'lower' })], relationText: 'A revised wording with newer support.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] })
   ];
   e.configure();
   const first = await e.run();
@@ -675,22 +720,275 @@ test('AC-D34: runPass never throws under any injected failure', async () => {
   assert.equal((await e4.run()).status, 'INTERPRETER_FAILED');
 });
 
-// ═══ AC-D9 (pass level) / §25 — at most one model call; none when a precondition stops the pass ═══
-test('AC-D9 / §25: exactly one model call per completed pass; malformed output writes nothing', async () => {
-  const e = env();
-  await seedTurns(e);
-  e.configure();
-  await e.run();
-  assert.equal(e.transport.bodies.length, 1);
+// ═══ AC-D9 (pass level) / §25 / §27 — 0, 1 or 2 model calls; never one per proposal ═══
+async function twoConcepts(e) { return { a: await concept(e, 'rest'), b: await concept(e, 'session quality') }; }
+test('AC-D9 / §27: 0 calls when a precondition stops the pass; 1 when no plan survives; 2 only when at least one plan exists', async () => {
+  // 0 — precondition
+  const e0 = env();
+  e0.op.override('readObservations', async () => []);
+  e0.configure();
+  const r0 = await e0.run();
+  assert.deepEqual([r0.status, r0.modelCalls, e0.transport.bodies.length], ['NO_OBSERVATIONS', 0, 0]);
+  // 1 — zero proposals
+  const e1 = env();
+  await seedTurns(e1);
+  e1.configure();
+  const r1 = await e1.run();
+  assert.deepEqual([r1.status, r1.modelCalls, e1.transport.generator.length, e1.transport.verifier.length], ['COMPLETED', 1, 1, 0]);
+  // 1 — every proposal rejected by the pre-verification gate
   const e2 = env();
-  e2.op.override('readObservations', async () => []);
+  await seedTurns(e2);
+  e2.transport.respond = (v) => [P({ factors: [F({ newConceptLabel: 'novel a', role: 'condition' }), F({ newConceptLabel: 'novel b', role: 'outcome' })], supporting: ['o99'] })];
   e2.configure();
-  assert.equal((await e2.run()).status, 'NO_OBSERVATIONS');
-  assert.equal(e2.transport.bodies.length, 0);
+  const r2 = await e2.run();
+  assert.deepEqual([r2.status, r2.modelCalls, e2.transport.verifier.length, r2.proposals[0].code], ['COMPLETED', 1, 0, 'UNKNOWN_OBSERVATION']);
+  // 1 — Generator failure
   const e3 = env();
   await seedTurns(e3);
-  e3.configure({ modelTransport: async () => ({ content: [{ text: '{"proposals":[{"operation":"CREATE"}]}' }] }) });
-  const before = e3.records().length;
-  assert.equal((await e3.run()).status, 'INTERPRETER_FAILED');
-  assert.equal(e3.records().length, before);
+  e3.configure({ modelTransport: async () => ({ content: [{ text: 'not json' }] }) });
+  const r3 = await e3.run();
+  assert.deepEqual([r3.status, r3.modelCalls], ['INTERPRETER_FAILED', 1]);
+  // 2 — several plans, still exactly one batched Verifier call
+  const e4 = env();
+  await seedTurns(e4);
+  const { a, b } = await twoConcepts(e4);
+  e4.transport.respond = (v) => [
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'First association.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(a), role: 'outcome' })], relationText: 'Second association.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] }),
+    P({ factors: [F({ conceptKey: v.k(a), role: 'subject' }), F({ newConceptLabel: 'a third thing', role: 'outcome' })], relationText: 'Third association.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Short night')] })
+  ];
+  e4.configure();
+  const r4 = await e4.run();
+  assert.deepEqual([r4.status, r4.modelCalls, e4.transport.generator.length, e4.transport.verifier.length], ['COMPLETED', 2, 1, 1]);
+  assert.equal(verifierView(e4.transport.verifier[0]).items.length, 3);
+});
+test('AC-D55 (pass level): a malformed proposal is rejected alone; its valid sibling is verified and written', async () => {
+  const e = env();
+  await seedTurns(e);
+  const { a, b } = await twoConcepts(e);
+  e.transport.respond = (v) => [
+    { operation: 'CREATE' },
+    { operation: 'APPEND_EVIDENCE', targetRecordId: 'm_record_1', appendList: 'supporting', factors: null }, // the v1.0 failure shape (§31.1)
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] })
+  ];
+  e.configure();
+  const before = e.records().length;
+  const r = await e.run();
+  assert.equal(r.status, 'COMPLETED');
+  assert.deepEqual(r.proposals.map((x) => [x.index, x.operation, x.outcome, x.code]), [
+    [0, 'CREATE', 'REJECTED', 'MALFORMED_PROPOSAL'], [1, 'APPEND_EVIDENCE', 'REJECTED', 'MALFORMED_PROPOSAL'], [2, 'CREATE', 'ADMITTED_EXECUTED', null]]);
+  assert.equal(e.records().length, before + 1);
+  assert.equal(verifierView(e.transport.verifier[0]).items.length, 1);
+});
+
+// ═══ AC-D54 / AC-D58 — keys only, and Verifier input rendered from plans and trusted state ═══
+test('AC-D54 / AC-D58: no durable id reaches either model; the Verifier sees all presented observations, trusted targets and plan-rendered items', async () => {
+  const e = env();
+  await seedTurns(e);
+  const { a, b } = await twoConcepts(e);
+  const cand = await candidate(e, [[a, 'condition'], [b, 'outcome']], ['t9'], 'Stored candidate wording for the target.');
+  e.transport.respond = (v) => [
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ newConceptLabel: 'a fresh idea', role: 'outcome', valueText: 'lower' })], relationText: 'A plan-rendered claim.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    APP({ target: v.r(cand), list: 'contradicting', observations: [v.key('full night')] })
+  ];
+  e.configure();
+  const r = await e.run();
+  assert.equal(r.status, 'COMPLETED', JSON.stringify(r));
+  const g = e.transport.generator[0].messages[0].content;
+  const vb = e.transport.verifier[0].messages[0].content;
+  [a, b, cand].forEach((id) => { assert.equal(g.indexOf(id), -1, 'durable id in Generator input'); assert.equal(vb.indexOf(id), -1, 'durable id in Verifier input'); });
+  const vv = verifierView(e.transport.verifier[0]);
+  assert.deepEqual(vv.observations, view(e.transport.generator[0]).observations); // identical, same keys
+  assert.deepEqual(vv.targets.map((t) => t.relationDescription), ['Stored candidate wording for the target.']); // from stored state
+  assert.deepEqual(vv.targets[0].factors.map((f) => f.labels[0]), ['rest', 'session quality']);
+  assert.deepEqual(vv.items.map((it) => [it.item, it.operation]), [['p1', 'CREATE'], ['p2', 'APPEND_EVIDENCE']]);
+  assert.deepEqual(vv.items[0].claim.factors.map((f) => f.labels || f.newConceptLabel), [['rest'], 'a fresh idea']);
+  assert.equal(vv.items[0].claim.relationText, 'A plan-rendered claim.');
+  assert.equal(vv.items[1].claim, null); // APPEND generates no claim of its own
+  assert.equal(JSON.stringify(vv.items).indexOf('restatesUserStatement'), -1); // the Generator's raw output is never forwarded
+});
+
+// ═══ AC-D59 / AC-D63 — Verifier failure and attribution: no unverified write ═══
+test('AC-D59 / AC-D63: a failed or unattributable Verifier result writes nothing; a malformed item rejects only its plan', async () => {
+  const setup = async (verifierRaw) => {
+    const e = env();
+    await seedTurns(e);
+    const { a, b } = await twoConcepts(e);
+    e.transport.respond = (v) => [
+      P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'First.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+      P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(a), role: 'outcome' })], relationText: 'Second.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
+    ];
+    e.transport.verifierRaw = verifierRaw;
+    e.configure();
+    const before = e.records().length;
+    const r = await e.run();
+    return { e, r, written: e.records().length - before };
+  };
+  const ok = (vv) => vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation)));
+  const failures = {
+    transport: () => { throw new Error('down'); },
+    not_json: () => ({ content: [{ text: 'no' }] }),
+    max_tokens: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv) }) }], stop_reason: 'max_tokens' }),
+    unknown_item: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv).concat([Object.assign({}, ok(vv)[0], { item: 'p7' })]) }) }] }),
+    duplicate_item: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv).concat([ok(vv)[0]]) }) }] }),
+    missing_item_key: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { item: undefined }), ok(vv)[1]] }) }] })
+  };
+  for (const [name, raw] of Object.entries(failures)) {
+    const { r, written } = await setup(raw);
+    assert.equal(r.status, 'VERIFIER_FAILED', name);
+    assert.equal(r.modelCalls, 2, name);
+    assert.equal(written, 0, name);
+    assert.deepEqual(r.proposals.map((x) => x.code), ['VERIFICATION_UNAVAILABLE', 'VERIFICATION_UNAVAILABLE'], name);
+  }
+  const malformed = await setup((vv) => ({ content: [{ text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { direction: 'CONSISTENT' }), ok(vv)[1]] }) }] }));
+  assert.equal(malformed.r.status, 'COMPLETED');
+  assert.deepEqual(malformed.r.proposals.map((x) => [x.outcome, x.code]), [['REJECTED', 'VERIFICATION_MALFORMED'], ['ADMITTED_EXECUTED', null]]);
+  assert.equal(malformed.written, 1);
+  const missing = await setup((vv) => ({ content: [{ text: JSON.stringify({ verdicts: [ok(vv)[1]] }) }] }));
+  assert.deepEqual(missing.r.proposals.map((x) => x.code), ['VERIFICATION_MISSING', null]);
+});
+
+// ═══ AC-D60 / E6 / §24 — semantic vetoes are final; Generator flags only reject early ═══
+test('E6 / AC-D60: RESTATED and UNCERTAIN restatement verdicts block the write; NOT_RESTATED is the only pass', async () => {
+  for (const [value, code] of [['RESTATED', 'RESTATED'], ['UNCERTAIN', 'RESTATEMENT_UNCERTAIN']]) {
+    const e = env();
+    e.op.seed.turn('t1', 'Late dinners wreck my next morning.', DAY);
+    e.op.seed.turn('t2', 'Like I said, eating late ruins the next day for me.', 3 * DAY);
+    const x = await concept(e, 'late eating');
+    const y = await concept(e, 'next-day functioning');
+    e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(x), role: 'condition' }), F({ conceptKey: v.k(y), role: 'outcome' })],
+      relationText: 'Late eating is associated with impaired functioning the following day.', evidenceClass: 'RECURRENCE', supporting: [v.key('Late dinners'), v.key('eating late')] })];
+    e.transport.verdict = () => ({ restatement: value }); // the Generator declared false; the Verifier decides
+    e.configure();
+    const before = e.records().length;
+    const r = await e.run();
+    assert.deepEqual([r.proposals[0].outcome, r.proposals[0].code, r.proposals[0].verification.restatement], ['REJECTED', code, value]);
+    assert.equal(e.records().length, before);
+  }
+});
+test('§24 / AC-D65: the Generator Safety flag rejects before verification; the Verifier Safety veto is final, including for APPEND', async () => {
+  const e = env();
+  await seedTurns(e);
+  const { a, b } = await twoConcepts(e);
+  e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')], safetyAdjacent: true })];
+  e.configure();
+  const r = await e.run();
+  assert.deepEqual([r.proposals[0].code, r.modelCalls, e.transport.verifier.length], ['SAFETY_ADJACENT_PROPOSAL', 1, 0]);
+  for (const value of ['SAFETY_ADJACENT', 'UNCERTAIN']) {
+    const e2 = env();
+    await seedTurns(e2);
+    const c = await twoConcepts(e2);
+    const cand = await candidate(e2, [[c.a, 'condition'], [c.b, 'outcome']], ['t9'], 'Append target wording.');
+    e2.transport.respond = (v) => [
+      P({ factors: [F({ conceptKey: v.k(c.a), role: 'subject' }), F({ newConceptLabel: 'other', role: 'outcome' })], relationText: 'A create claim.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+      APP({ target: v.r(cand), list: 'supporting', observations: [v.key('Short night')] })
+    ];
+    e2.transport.verdict = () => ({ safety: value });
+    e2.configure();
+    const before = clone(e2.record(cand));
+    const before2 = e2.records().length;
+    const r2 = await e2.run();
+    assert.deepEqual(r2.proposals.map((x) => x.code), value === 'SAFETY_ADJACENT' ? ['SAFETY_VETO', 'SAFETY_VETO'] : ['SAFETY_UNCERTAIN', 'SAFETY_UNCERTAIN']);
+    assert.equal(e2.records().length, before2);
+    assert.deepEqual(e2.record(cand), before);
+  }
+});
+test('§17.1 / AC-D60: unsupported or uncertain claim content and unfaithful temporal content are never written', async () => {
+  for (const [dim, value, code] of [['unsupported', 'PRESENT', 'UNSUPPORTED_CONTENT'], ['unsupported', 'UNCERTAIN', 'UNSUPPORTED_UNCERTAIN'], ['temporal', 'UNFAITHFUL', 'TEMPORAL_UNFAITHFUL']]) {
+    const e = env();
+    await seedTurns(e);
+    const { a, b } = await twoConcepts(e);
+    e.transport.respond = (v) => [P({ factors: [F({ conceptKey: v.k(a), role: 'condition', valueText: 'below the usual recommendation' }), F({ conceptKey: v.k(b), role: 'outcome' })], evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] })];
+    e.transport.verdict = () => ({ [dim]: value });
+    e.configure();
+    const before = e.records().length;
+    const r = await e.run();
+    assert.equal(r.proposals[0].code, code);
+    assert.equal(e.records().length, before);
+  }
+});
+
+// ═══ APPEND end to end (R-1; AC-D17 … AC-D21, AC-D62, AC-D65) ═══
+test('APPEND end to end: target by key, trusted structure, materialized observations verified and written exactly; INCONSISTENT writes nothing', async () => {
+  for (const direction of ['CONSISTENT', 'INCONSISTENT', 'UNCERTAIN']) {
+    const e = env();
+    await seedTurns(e);
+    const { a, b } = await twoConcepts(e);
+    const cand = await candidate(e, [[a, 'condition'], [b, 'outcome']], ['t1'], 'Flatter sessions have followed short nights.');
+    e.transport.respond = (v) => [APP({ target: v.r(cand), list: 'supporting', observations: [v.key('Only four'), v.key('Short night')] })];
+    e.transport.verdict = () => ({ direction });
+    e.configure();
+    const before = clone(e.record(cand));
+    const r = await e.run();
+    const vv = verifierView(e.transport.verifier[0]);
+    // t1 is already on the target: only the materialized observation is rendered for direction
+    assert.deepEqual(vv.items[0].observations, [vv.observations.find((o) => o.segments[0].text.indexOf('Short night') !== -1).obsKey]);
+    assert.equal(vv.targets[0].relationDescription, 'Flatter sessions have followed short nights.');
+    if (direction === 'CONSISTENT') {
+      assert.deepEqual([r.proposals[0].outcome, r.proposals[0].recordIds], ['ADMITTED_EXECUTED', [cand]]);
+      const after = e.record(cand);
+      assert.deepEqual(after.evidence.supporting.map((x) => x.ref), ['t1', 't2']); // exactly the verified set was added
+      assert.deepEqual(after.factors, before.factors); // structure untouched
+    } else {
+      assert.equal(r.proposals[0].code, direction === 'INCONSISTENT' ? 'DIRECTION_INCONSISTENT' : 'DIRECTION_UNCERTAIN');
+      assert.deepEqual(e.record(cand), before);
+    }
+  }
+});
+
+// ═══ Temporality end to end (R-4; AC-D56, AC-D57) ═══
+test('AC-D56 / AC-D57: structural meal times reach the gate; observed and stated grounding admit; an ungrounded recurring window never does', async () => {
+  const e = env();
+  e.op.seed.day('2026-01-01', 1 * DAY, [{ name: 'noodles', kcal: 700, time: '22:40' }]);
+  e.op.seed.day('2026-01-02', 2 * DAY, [{ name: 'noodles', kcal: 680, time: '7:05' }]);
+  e.op.seed.turn('t1', 'Every Sunday I cook for the whole week.', 3 * DAY);
+  e.op.seed.turn('t2', 'Groggy again today.', 4 * DAY);
+  const x = await concept(e, 'late intake');
+  const y = await concept(e, 'grogginess');
+  e.transport.respond = (v) => {
+    const d1 = v.key('2026-01-01');
+    const d2 = v.key('2026-01-02');
+    const day1 = v.observations.find((o) => o.obsKey === d1);
+    assert.equal(day1.segments[0].localTime, '22:40'); // segment-level structural time rendered
+    assert.equal(v.observations.find((o) => o.obsKey === d2).segments[0].localTime, '07:05'); // normalized by the adapter
+    const T = (k) => ({ kind: 'SOURCE_TIME', obsKey: k, segmentId: 'meal1', field: 'LOCAL_TIME' });
+    const turn = v.key('Every Sunday');
+    const X = (t) => ({ kind: 'USER_EXPRESSION', obsKey: turn, segmentId: 'user', text: t });
+    return [
+      P({ factors: [F({ conceptKey: v.k(x), role: 'condition' }), F({ conceptKey: v.k(y), role: 'outcome' })], relationText: 'Logged intake has recurred at the observed local times.', evidenceClass: 'RECURRENCE', temporality: 'RECURRING_WINDOW',
+        supporting: [d1, d2], grounding: { recurrence: { form: 'OBSERVED', anchors: [T(d1), T(d2)] }, window: { form: 'SOURCE_LOCAL', anchors: [T(d1), T(d2)] } } }),
+      P({ factors: [F({ conceptKey: v.k(x), role: 'subject' }), F({ newConceptLabel: 'batch cooking', role: 'condition' })], relationText: 'A weekly cooking routine noted by the person.', evidenceClass: 'SINGLE_OBSERVATION', temporality: 'RECURRING_WINDOW',
+        supporting: [turn], grounding: { recurrence: { form: 'STATED', anchors: [X('every sunday')] }, window: { form: 'STATED', anchors: [X('every sunday')] } } }),
+      P({ factors: [F({ conceptKey: v.k(y), role: 'subject' }), F({ newConceptLabel: 'something else', role: 'outcome' })], relationText: 'An ungrounded recurring claim.', evidenceClass: 'RECURRENCE', temporality: 'RECURRING_WINDOW',
+        supporting: [turn, v.key('Groggy')], grounding: null })
+    ];
+  };
+  e.configure();
+  const r = await e.run();
+  assert.deepEqual(r.proposals.map((p) => [p.outcome, p.code]), [['ADMITTED_EXECUTED', null], ['ADMITTED_EXECUTED', null], ['REJECTED', 'INVALID_OPERATION_SHAPE']]);
+  const vv = verifierView(e.transport.verifier[0]);
+  assert.deepEqual(vv.items[0].claim.grounding.window.anchors.map((a) => a.value), ['22:40', '07:05']); // resolved structural values
+  assert.equal(vv.items[1].claim.grounding.recurrence.anchors[0].value, 'every sunday');
+  const written = e.record(r.proposals[0].recordIds[0]);
+  assert.equal(written.temporality, 'RECURRING_WINDOW');
+  assert.equal(JSON.stringify(written).indexOf('grounding'), -1); // grounding is never persisted (§20.5)
+});
+
+// ═══ AC-D64 — PassResult carries ids, closed codes and closed tokens only ═══
+test('AC-D64: PassResult shape — modelCalls, per-proposal closed codes and verdict tokens, no content', async () => {
+  const e = env();
+  await seedTurns(e);
+  const { a, b } = await twoConcepts(e);
+  e.transport.respond = (v) => [
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'Secret wording one.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(a), role: 'outcome' })], relationText: 'Secret wording two.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
+  ];
+  e.transport.verdict = (it) => (it.item === 'p2' ? { temporal: 'UNCERTAIN' } : {});
+  e.configure();
+  const r = await e.run();
+  assert.deepEqual(Object.keys(r).sort(), ['modelCalls', 'observationsPresented', 'proposals', 'sourcesRead', 'status']);
+  assert.deepEqual(Object.keys(r.proposals[0]).sort(), ['code', 'index', 'operation', 'outcome', 'recordIds', 'verification']);
+  assert.deepEqual(r.proposals[1].verification, { restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'UNCERTAIN', direction: 'NOT_APPLICABLE' });
+  const s = JSON.stringify(r);
+  ['Secret wording', 'Only four hours', 'wading'].forEach((t) => assert.equal(s.indexOf(t), -1, t));
 });
