@@ -12,8 +12,8 @@ const path = require('node:path');
 const Interpreter = require('../js/coachDecisionSystem/riskCharacteristicInterpreter.js');
 const RiskCharacteristicValidator = require('../js/coachDecisionSystem/riskCharacteristicValidator.js');
 
-function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponse(obj) { return { content: [{ type: 'text', text: JSON.stringify(obj) }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 function configureStub(handler) { Interpreter.configure({ callClaude: handler }); }
 

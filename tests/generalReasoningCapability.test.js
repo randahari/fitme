@@ -8,7 +8,7 @@ const ContextComposer = require('../js/coachDecisionSystem/contextComposer.js');
 const GeneralReasoningCapability = require('../js/coachDecisionSystem/generalReasoningCapability.js');
 const TrrCapabilityAdapter = require('../js/coachDecisionSystem/trrCapabilityAdapter.js');
 
-function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
+function fakeResponse(obj) { return { content: [{ type: 'text', text: JSON.stringify(obj) }] }; }
 function configureStub(handler) { GeneralReasoningCapability.configure({ callClaude: handler }); }
 test.afterEach(() => { GeneralReasoningCapability.configure({ callClaude: null, timeoutMs: undefined }); });
 

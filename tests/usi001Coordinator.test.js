@@ -22,7 +22,7 @@ function setup(opts) {
   const state = { consent: true };
   Store.configure({ port, now: () => (clock += 10), writerAuthority: 'CLIENT', isLearningConsentGranted: () => state.consent, userId: USER, producer: 'usi-001.intake', producerVersion: '1.0.0' });
   const bodies = [];
-  I.configure({ callClaude: async (b) => { bodies.push(b); return { content: [{ text: JSON.stringify({ proposals: o.proposals || [] }) }] }; } });
+  I.configure({ callClaude: async (b) => { bodies.push(b); return { content: [{ type: 'text', text: JSON.stringify({ proposals: o.proposals || [] }) }] }; } });
   U.configure({ store: Store, interpreter: I });
   env = { port, hooks, state, bodies };
   return env;

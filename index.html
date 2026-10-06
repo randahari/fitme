@@ -658,6 +658,8 @@
        Coach Decision System module below, each of which resolves it at top-of-module
        require/window time. -->
   <script src="js/coachDecisionSystem/modelResponseEnvelope.js"></script>
+  <!-- MRS-001: shared provider-response structural boundary; loads before every model-output-parsing module. -->
+  <script src="js/coachDecisionSystem/modelResponseStructure.js"></script>
   <!-- CSSC-001: situationalContextInterpreter.js loads before the Memory Layer module below,
        which resolves it at top-of-module require/window time (same pattern as the two files
        above it). -->

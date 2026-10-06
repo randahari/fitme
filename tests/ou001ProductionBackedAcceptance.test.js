@@ -40,7 +40,7 @@ function makeHarness(req) {
   function idsIn(body, re) {
     return (body.messages[0].content.match(re) || []).map((m) => m.match(/"([^"]+)"/)[1]);
   }
-  function text(obj) { return { content: [{ text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
+  function text(obj) { return { content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
 
   function closedEntry(id, overrides) {
     return Object.assign({
@@ -308,7 +308,7 @@ test('AC-22 (a): PreferenceIntakeGate rejects a prior-turn-only ACTIVITY_SENTIME
 test('AC-22 (b): RiskCharacteristicInterpreter drops, and RiskCharacteristicIntakeGate rejects, a prior-turn-only anchor', async () => {
   const anchor = 'allergic to peanuts';
   const turn = { turnId: 't-rcf', text: 'Should I eat it?' };
-  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: JSON.stringify({ candidates: [{ domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', severity: 'PROHIBITIVE', anchorText: anchor }] }) }] }) });
+  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ candidates: [{ domain: 'INGESTION_OR_SUBSTANCE_EXPOSURE', severity: 'PROHIBITIVE', anchorText: anchor }] }) }] }) });
   const classified = await RiskCharacteristicInterpreter.classifyTurnForDurableConstraint(turn.text);
   assert.equal(classified.status, 'CLASSIFIED');
   assert.deepEqual(classified.candidates, []);
@@ -329,7 +329,7 @@ test('AC-22 (c): SafetyContextInterpreter\'s own literal check drops a prior-tur
   SafetyContextInterpreter.configure({
     callClaude: async (body) => {
       const id = body.messages[0].content.match(/<statement id="([^"]+)"/)[1];
-      return { content: [{ text: JSON.stringify({ results: [{ id: id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: PRIOR_ONLY, statedDurationText: null }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: PRIOR_ONLY, statedDurationText: null }] }) }] };
     }
   });
   const auth = await SafetyDisclosureIntakeGate.authorize({ turn: CURRENT, pipelineContext: {}, consentGranted: true, category: 'STATE' });
@@ -373,7 +373,7 @@ test('AC-23: ContextRelevancePlanner.select() output is identical for {} and for
 // ═══ AC-27 / AC-28 — Need projection; registryNeed and Opportunities unchanged ═══
 function closedResponse(turnId, closedOverrides, open) {
   const closed = JSON.stringify({ results: [H.closedEntry(turnId, closedOverrides)] });
-  return { content: [{ text: open === undefined ? closed : closed + '\n@@OPEN_UNDERSTANDING@@\n' + JSON.stringify(open) }] };
+  return { content: [{ type: 'text', text: open === undefined ? closed : closed + '\n@@OPEN_UNDERSTANDING@@\n' + JSON.stringify(open) }] };
 }
 async function understandWith(turn, closedOverrides, open, rcc) {
   TurnUnderstandingInterpreter.configure({ callClaude: async () => closedResponse(turn.turnId, closedOverrides, open) });
@@ -466,7 +466,7 @@ test('AC-29: a production-derived Need reaches GeneralReasoningCapability.reason
   const pair = await understandWith(turn, { affirmativeRequestPresent: true }, { id: 't-gr', summary: 'The user asks how to pace a padel tournament weekend.', mentions: ['padel tournament weekend'] });
   const need = NeedCreator.recognizeDirectUserNeed(turn, pair.turnUnderstanding, { assembledAt: 5 }, pair.openUnderstanding).need;
   const prompts = [];
-  GeneralReasoningCapability.configure({ callClaude: async (body) => { prompts.push(body.messages[0].content); return { content: [{ text: '{}' }] }; } });
+  GeneralReasoningCapability.configure({ callClaude: async (body) => { prompts.push(body.messages[0].content); return { content: [{ type: 'text', text: '{}' }] }; } });
   await GeneralReasoningCapability.reason(need, {});
   const needLine = prompts[0].split('\n').find((l) => l.indexOf('Need: ') === 0);
   assert.ok(needLine.indexOf('The user asks how to pace a padel tournament weekend.') >= 0);

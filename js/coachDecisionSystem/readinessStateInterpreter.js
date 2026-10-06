@@ -40,6 +40,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   // Engineering transport bounds only, never a semantic-completeness cap (the caller,
   // memoryLayer.js, always issues every batch required to cover the complete eligible set).
@@ -142,7 +145,7 @@
   // batch-level parse failure) is simply absent from the map — fail-closed by omission.
   function parseAndValidate(rawResponse, submittedIds) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-4' }).text || ''; // MRS-001 S5 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};

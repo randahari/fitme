@@ -151,7 +151,7 @@ function correctionStub(confirmed) {
   configureStub(async (body) => {
     const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
     assert.match(body.messages[0].content, /peanut allergy/); // buildCorrectionPrompt embeds the existing fact text
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
   });
 }
 

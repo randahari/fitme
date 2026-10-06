@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════════
 // FitMe — Consolidation (WP0 Phase E.0.2d coordinator)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.1) §07-§27.
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.2) §07-§27.1.
 //
 // Exclusive responsibility: one bounded, off-turn consolidation pass (§13) — learning consent, A3
 // source eligibility, bounded observation reads through the injected Observation Port, Typed Memory
@@ -48,6 +48,7 @@
   var deps = null;
 
   function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  var V11_FIELDS = ['verifierModel', 'timeoutMs', 'verifierTimeoutMs']; // v1.2 §08: replaced by the stage profiles
   function copy(v) {
     if (Array.isArray(v)) return v.map(copy);
     if (v !== null && typeof v === 'object') { var o = {}; Object.keys(v).forEach(function (k) { o[k] = copy(v[k]); }); return o; }
@@ -73,10 +74,16 @@
     if (typeof d.isLearningConsentGranted !== 'function' || typeof d.getConsentState !== 'function') return { status: 'NOT_CONFIGURED' };
     if (!C.isId(d.userId) || !Array.isArray(d.observationSources)) return { status: 'NOT_CONFIGURED' };
     if (!(d.referenceSource === null || C.isPlainObject(d.referenceSource))) return { status: 'NOT_CONFIGURED' };
-    if (d.verifierModel !== undefined && !(typeof d.verifierModel === 'string' && d.verifierModel.length)) return { status: 'NOT_CONFIGURED' };
-    // Both model stages use the same injected transport, each with its own body and bounds (§08, §27).
-    if (!Interpreter.configure({ modelTransport: d.modelTransport, timeoutMs: d.timeoutMs })) return { status: 'NOT_CONFIGURED' };
-    if (!Verifier.configure({ modelTransport: d.modelTransport, timeoutMs: d.verifierTimeoutMs, model: d.verifierModel })) return { status: 'NOT_CONFIGURED' };
+    // v1.2 §08 / §27.1 — the v1.1 fields are replaced by complete profiles; supplying any of them is
+    // NOT_CONFIGURED, so a v1.1-style override never takes effect in part. A supplied profile must be
+    // complete and valid; an omitted one is that stage's default profile, never a partial merge.
+    if (V11_FIELDS.some(function (k) { return has(d, k); })) return { status: 'NOT_CONFIGURED' };
+    var generatorProfile = d.generatorProfile === undefined ? CC.DEFAULT_GENERATOR_PROFILE : d.generatorProfile;
+    var verifierProfile = d.verifierProfile === undefined ? CC.DEFAULT_VERIFIER_PROFILE : d.verifierProfile;
+    if (!CC.isValidRequestProfile(generatorProfile) || !CC.isValidRequestProfile(verifierProfile)) return { status: 'NOT_CONFIGURED' };
+    // Both model stages use the same injected transport, each with its own profile (§08, §27.1).
+    if (!Interpreter.configure({ modelTransport: d.modelTransport, profile: generatorProfile })) return { status: 'NOT_CONFIGURED' };
+    if (!Verifier.configure({ modelTransport: d.modelTransport, profile: verifierProfile })) return { status: 'NOT_CONFIGURED' };
     deps = {
       store: d.store, port: d.port, now: d.now, consent: d.isLearningConsentGranted, consentState: d.getConsentState,
       userId: d.userId, observationSources: d.observationSources.slice(), referenceSource: d.referenceSource
@@ -84,8 +91,14 @@
     return { status: 'CONFIGURED' };
   }
 
+  // v1.2 §13 step 15 — stageFailure is {stage, reason} only for a classified §15.0 stage failure; null
+  // otherwise, including a preserved v1.1 defensive path (B1). Diagnostic only: nothing reads it.
   function result(status, extra) {
-    return Object.freeze(Object.assign({ status: status, sourcesRead: Object.freeze([]), observationsPresented: 0, modelCalls: 0, proposals: Object.freeze([]) }, extra || {}));
+    return Object.freeze(Object.assign({ status: status, sourcesRead: Object.freeze([]), observationsPresented: 0, modelCalls: 0, stageFailure: null, proposals: Object.freeze([]) }, extra || {}));
+  }
+  function stageFailureOf(stage, stageResult) {
+    var reason = stageResult && stageResult.reason;
+    return CC.STAGE_FAILURE_REASONS.indexOf(reason) !== -1 ? Object.freeze({ stage: stage, reason: reason }) : null;
   }
 
   // §11 item 3 — eligibility by the single A3 policy; never by consumer or source identity.
@@ -454,7 +467,7 @@
       records: renderRecords(keyOf),
       userStated: renderedRefs
     });
-    if (!generated || generated.status !== 'OK') return result('INTERPRETER_FAILED', Object.assign({ modelCalls: modelCalls }, base));
+    if (!generated || generated.status !== 'OK') return result('INTERPRETER_FAILED', Object.assign({ modelCalls: modelCalls, stageFailure: stageFailureOf('GENERATOR', generated) }, base));
 
     // §13 steps 9-10 — proposal isolation and the pre-verification gate
     var screened = Gate.preVerify(generated.entries, ctx);
@@ -496,7 +509,8 @@
       outcomes[d.index] = Object.assign(await execute(d.plan, authorization, passNewIds), { verification: d.verification });
     }
     var anyFailed = Object.keys(outcomes).some(function (k) { return outcomes[k].outcome === 'ADMITTED_FAILED'; });
-    return finish(verifierFailed ? 'VERIFIER_FAILED' : (anyFailed ? 'PARTIAL' : 'COMPLETED'), outcomes, modelCalls, base);
+    var stageFailure = verifierFailed ? stageFailureOf('VERIFIER', verification) : null;
+    return finish(verifierFailed ? 'VERIFIER_FAILED' : (anyFailed ? 'PARTIAL' : 'COMPLETED'), outcomes, modelCalls, Object.assign({ stageFailure: stageFailure }, base));
   }
 
   // §13 step 15 — PassResult: ids, closed codes and closed verdict tokens only, in output order.

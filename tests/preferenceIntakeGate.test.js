@@ -10,7 +10,7 @@ const Gate = require('../js/coachDecisionSystem/preferenceIntakeGate.js');
 const SafetyContextInterpreter = require('../js/coachDecisionSystem/safetyContextInterpreter.js');
 
 function safetyFakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
 function configureSafetyStub(handler) {
   SafetyContextInterpreter.configure({ callClaude: handler });
@@ -113,7 +113,7 @@ test('9. a Safety classifier that cannot produce a trustworthy result (thrown) f
 });
 
 test('10. a Safety classifier returning malformed JSON fails closed (SAFETY_VETO_UNAVAILABLE)', async () => {
-  configureSafetyStub(async () => ({ content: [{ text: 'not json' }] }));
+  configureSafetyStub(async () => ({ content: [{ type: 'text', text: 'not json' }] }));
   const result = await Gate.authorize({ interpreterResult: VALID_INTERPRETER_RESULT, turn: VALID_TURN, pipelineContext: {}, consentGranted: true });
   assert.equal(result.authorized, false);
   assert.equal(result.reason, 'SAFETY_VETO_UNAVAILABLE');

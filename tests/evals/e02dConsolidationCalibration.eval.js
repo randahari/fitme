@@ -1,5 +1,5 @@
-// WP0 Phase E.0.2d — calibration harness for the v1.1 architecture (P8)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md v1.1 §27, §31; tests/evals/e02d/README.md.
+// WP0 Phase E.0.2d — calibration harness for the v1.2 architecture (P8)
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md v1.2 §27, §27.1, §31, §31.4; MRS-001; tests/evals/e02d/README.md.
 //
 // NOT part of the default regression run (not matched by `node --test tests/*.test.js`), never run in
 // CI. A REAL run is PAID and requires explicit Product approval of a budget statement first.
@@ -19,6 +19,10 @@
 // Generator instruction, to the Verifier only if it begins with the Verifier instruction; anything
 // else fails closed (UNKNOWN_STAGE). Responses are never shifted between stages.
 //
+// Stage profiles (v1.2 §31.4): every run names the complete EXPLICIT-PROFILE request profile of each stage
+// (model, reasoning, effort, total output ceiling, timeout, provider binding). Overrides are applied only
+// through Consolidation.configure({generatorProfile, verifierProfile}); the harness never rewrites a body.
+//
 // Safeguards: synthetic corpora only; the credential is read from ANTHROPIC_API_KEY only and is never
 // printed, logged or written; direct model API only; dry-run and replay run under a network trap that
 // must record zero attempts; a paid run is refused without an approved budget and a price table; the
@@ -37,6 +41,7 @@ const req = (p) => require(path.join(ROOT, p));
 const Interpreter = req('js/coachDecisionSystem/consolidationInterpreter.js');
 const Verifier = req('js/coachDecisionSystem/consolidationVerifier.js');
 const CC = req('js/coachDecisionSystem/consolidationContract.js');
+const MRS = req('js/coachDecisionSystem/modelResponseStructure.js'); // evidence only: the stages extract on their own
 
 function loadModules() {
   return {
@@ -64,8 +69,8 @@ async function withIsolatedModules(fn) {
   }
 }
 
-const HARNESS_VERSION = '2.0.0';
-const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/2';
+const HARNESS_VERSION = '3.0.0';
+const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/3'; // v1.2: v1.1 (schema 2) recordings are not v1.2 evidence (§31.4)
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const DAY = 86400000;
 const WINDOW = { fromEpochMs: 0, toEpochMs: 14 * DAY };
@@ -287,7 +292,7 @@ function scriptedVerifierResponse(spec, vv, probeTruth) {
     return Object.assign({ item: it.item }, t);
   });
   if (spec === 'malformed-first' && verdicts.length) verdicts[0].direction = verdicts[0].direction === 'NOT_APPLICABLE' ? 'CONSISTENT' : 'NOT_APPLICABLE';
-  return { content: [{ text: JSON.stringify({ verdicts }) }], stop_reason: 'end_turn' };
+  return { content: [{ type: 'text', text: JSON.stringify({ verdicts }) }], stop_reason: 'end_turn' };
 }
 function estimateTokens(text, lang) {
   if (typeof text !== 'string') return 0;
@@ -356,12 +361,12 @@ async function runSample(c, sampleIdx, run) {
   const transport = async (body) => {
     const stage = stageOf(body); // throws UNKNOWN_STAGE: fails closed
     const seq = calls.length;
-    const override = stage === 'GENERATOR' ? run.generatorModelOverride : null;
-    const effective = override ? Object.assign({}, body, { model: override }) : body;
-    const requestHash = sha256(canonicalJson(effective));
+    const profile = stage === 'GENERATOR' ? run.generatorProfile : run.verifierProfile;
+    const requestHash = sha256(canonicalJson(body));
     const source = run.sourceOf(stage);
-    const rec = { stage, seq, model: effective.model, configuredModel: body.model, modelOverride: override, maxTokens: body.max_tokens, requestHash,
-      requestChars: body.messages[0].content.length, source, raw: null, stopReason: null, usage: null, latencyMs: null, transport: 'OK' };
+    const rec = { stage, seq, profile, model: body.model, maxTokens: body.max_tokens, requestHash,
+      requestChars: body.messages[0].content.length, source, raw: null, stopReason: null, usage: null, latencyMs: null, transport: 'OK',
+      structure: null, refusal: null, answerTextChars: null };
     calls.push(rec);
     if (stage === 'VERIFIER') rec.request = verifierView(body);
     else rec.concepts = generatorView(body).concepts; // for the shadowing measure (CAL-D6)
@@ -380,16 +385,17 @@ async function runSample(c, sampleIdx, run) {
       } else if (source === 'SYNTHETIC') {
         if (stage === 'GENERATOR') {
           const script = c.script && c.script.generator !== undefined ? c.script.generator : (c.plan || []);
-          if (script && script.raw !== undefined) raw = { content: [{ text: script.raw }], stop_reason: 'end_turn' };
-          else raw = { content: [{ text: JSON.stringify({ proposals: script.map((t) => resolveProposal(t, generatorView(body))) }) }], stop_reason: 'end_turn' };
+          if (script && script.raw !== undefined) raw = { content: [{ type: 'text', text: script.raw }], stop_reason: 'end_turn' };
+          else raw = { content: [{ type: 'text', text: JSON.stringify({ proposals: script.map((t) => resolveProposal(t, generatorView(body))) }) }], stop_reason: 'end_turn' };
         } else {
           const spec = run.mode === 'generator-only' ? 'pass' : ((c.script && c.script.verifier) || run.dryRunVerifier || 'pass');
           raw = scriptedVerifierResponse(spec, rec.request, c.truth);
         }
-        raw.usage = { input_tokens: estimateTokens(body.messages[0].content, lang), output_tokens: estimateTokens(raw.content[0].text, 'en') };
+        const scripted = MRS.extractAnswerText(raw, { state: 'EXPLICIT_PROFILE', reasoning: profile.reasoning });
+        raw.usage = { input_tokens: estimateTokens(body.messages[0].content, lang), output_tokens: estimateTokens(scripted.text || '', 'en') };
         rec.usageEstimated = true;
       } else {
-        raw = await run.realSend(effective);
+        raw = await run.realSend(body);
       }
     } catch (e) {
       if (rec.transport === 'OK') rec.transport = e && e.apiFailure ? 'API_FAILURE' : 'ERROR';
@@ -400,25 +406,31 @@ async function runSample(c, sampleIdx, run) {
     rec.latencyMs = Number(process.hrtime.bigint() - started) / 1e6;
     rec.raw = raw;
     rec.stopReason = raw ? raw.stop_reason : null;
-    rec.usage = raw && raw.usage ? { input: raw.usage.input_tokens, output: raw.usage.output_tokens } : null;
+    rec.usage = raw && raw.usage ? { input: raw.usage.input_tokens, output: raw.usage.output_tokens } : null; // output may include reasoning (§31.4)
+    // §31.4 — the MRS-001 structural outcome under the stage's own profile, the refusal outcome with the
+    // provider-supplied category/details (evidence only, never PassResult) and the answer-text size.
+    const x = MRS.extractAnswerText(raw, { state: 'EXPLICIT_PROFILE', reasoning: profile.reasoning });
+    rec.structure = { status: x.status, failure: x.failure };
+    rec.refusal = x.failure === 'REFUSAL' ? { refused: true, category: x.refusal.category, details: x.refusal.details } : { refused: false };
+    rec.answerTextChars = x.status === 'OK' ? x.text.length : null;
     return raw;
   };
   const cfg = { store: M.Store, port: obs.port, modelTransport: transport, now: () => 99999999, isLearningConsentGranted: () => true, getConsentState: () => ({}),
-    userId: 'cal', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory };
-  if (run.verifierModel) cfg.verifierModel = run.verifierModel;
+    userId: 'cal', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory,
+    generatorProfile: run.generatorProfile, verifierProfile: run.verifierProfile };
   if (M.Consolidation.configure(cfg).status !== 'CONFIGURED') throw new HarnessRefusal('CONFIGURATION_FAILED');
   const result = await M.Consolidation.runPass({ passId: 'cal-' + c.id + '-' + sampleIdx, window: WINDOW });
 
   // ── evidence assembly ──
   const gen = calls.find((x) => x.stage === 'GENERATOR') || null;
   const ver = calls.find((x) => x.stage === 'VERIFIER') || null;
-  const parsedGen = gen && gen.raw ? Interpreter._internal.parseResponse(gen.raw) : null;
+  const parsedGen = gen && gen.raw ? Interpreter._internal.parseResponse(gen.raw, run.generatorProfile) : null;
   const plans = result.proposals.filter(isPlanOutcome);
   let parsedVer = null;
   if (ver && ver.raw && ver.request) {
     const operations = {};
     ver.request.items.forEach((it) => { operations[it.item] = it.operation; });
-    parsedVer = Verifier._internal.parseResponse(ver.raw, operations);
+    parsedVer = Verifier._internal.parseResponse(ver.raw, operations, run.verifierProfile);
   }
   const attribution = plans.map((p, i) => ({ pKey: CC.passKey(CC.KEY_PREFIXES.item, i), proposalIndex: p.index }));
   const touched = new Set([].concat(...result.proposals.map((p) => p.recordIds || [])));
@@ -434,6 +446,7 @@ async function runSample(c, sampleIdx, run) {
   Object.assign(sample, {
     status: sample.replayDiverged ? 'REPLAY_DIVERGED' : result.status,
     modelCalls: result.modelCalls,
+    stageFailure: result.stageFailure,
     passResult: result,
     calls,
     generator: gen ? { status: parsedGen ? parsedGen.status : 'FAILED', entries, concepts: gen.concepts || [] } : null,
@@ -497,6 +510,10 @@ function costOf(model, usage, prices) {
   const p = prices.models[model];
   return (usage.input || 0) / 1e6 * p.inputPerMTok + (usage.output || 0) / 1e6 * p.outputPerMTok;
 }
+function answerSize(calls) {
+  const xs = calls.map((c) => c.answerTextChars).filter((x) => typeof x === 'number');
+  return { p50: pct(xs, 0.5), max: xs.length ? Math.max(...xs) : null };
+}
 function accounting(samples, prices) {
   const stages = {};
   for (const stage of ['GENERATOR', 'VERIFIER']) {
@@ -512,6 +529,14 @@ function accounting(samples, prices) {
       tokensEstimated: calls.some((c) => c.usageEstimated),
       maxOutputTokens: Math.max(0, ...calls.map((c) => (c.usage && c.usage.output) || 0)),
       maxTokensStops: calls.filter((c) => c.stopReason === 'max_tokens').length,
+      // CAL-D7 v1.2 (§31.2): provider output usage against the profile's TOTAL ceiling (may include
+      // reasoning); answer-text size and refusals reported separately; failures by stageFailure.reason.
+      profiles: Array.from(new Set(calls.map((c) => canonicalJson(c.profile)))).map((j) => JSON.parse(j)),
+      maxOutputUsageRatio: calls.reduce((m, c) => (c.usage && c.profile ? Math.max(m, (c.usage.output || 0) / c.profile.maxOutputTokens) : m), 0),
+      answerTextChars: answerSize(calls),
+      refusals: { count: calls.filter((c) => c.refusal && c.refusal.refused).length, rate: calls.length ? calls.filter((c) => c.refusal && c.refusal.refused).length / calls.length : null },
+      structuralFailures: calls.reduce((m, c) => { if (c.structure && c.structure.failure) m[c.structure.failure] = (m[c.structure.failure] || 0) + 1; return m; }, {}),
+      stageFailures: samples.reduce((m, s) => { const f = s.stageFailure; if (f && f.stage === stage) m[f.reason] = (m[f.reason] || 0) + 1; return m; }, {}),
       cost: costs.some((x) => x === null) ? null : costs.reduce((a, b) => a + b, 0),
       costBasis: calls.length && calls.every((c) => c.source === 'REAL') ? 'ACTUAL_USAGE' : 'NOT_BILLED_OR_ESTIMATED',
       latencyMs: { p50: pct(lat, 0.5), p99: pct(lat, 0.99), max: lat.length ? Math.max(...lat) : null }
@@ -533,7 +558,7 @@ function sourcePolicy(mode, how) {
 }
 function loadReplay(replayPath) {
   const art = JSON.parse(fs.readFileSync(replayPath, 'utf8'));
-  if (art.schema !== ARTIFACT_SCHEMA || !art.harness || !/^2\./.test(art.harness.version)) throw new HarnessRefusal('REPLAY_NOT_V11_EVIDENCE');
+  if (art.schema !== ARTIFACT_SCHEMA || !art.harness || !/^3\./.test(art.harness.version)) throw new HarnessRefusal('REPLAY_NOT_V12_EVIDENCE');
   const map = new Map();
   art.samples.forEach((s) => s.calls.forEach((c) => {
     const key = s.caseId + '#' + s.sample + '#' + c.stage + '#' + c.seq;
@@ -544,8 +569,9 @@ function loadReplay(replayPath) {
 }
 
 async function runCalibration(opts) {
-  const o = Object.assign({ mode: 'end-to-end', corpus: 'development', samples: 3, only: null, dryRun: false, replayPath: null, generatorModelOverride: null,
-    verifierModel: null, prices: null, outDir: os.tmpdir(), runId: null, heldoutManifestPath: null, heldoutPath: null, realSend: null, paidApproval: null,
+  rejectV11Options(opts);
+  const o = Object.assign({ mode: 'end-to-end', corpus: 'development', samples: 3, only: null, dryRun: false, replayPath: null, generatorProfile: null,
+    verifierProfile: null, prices: null, outDir: os.tmpdir(), runId: null, heldoutManifestPath: null, heldoutPath: null, realSend: null, paidApproval: null,
     dryRunVerifier: null, write: true, modules: null }, opts || {});
   if (MODES.indexOf(o.mode) === -1) throw new HarnessRefusal('UNKNOWN_MODE', o.mode);
   let corpus;
@@ -556,7 +582,8 @@ async function runCalibration(opts) {
   if (problems.length) throw new HarnessRefusal('CORPUS_INVALID', problems.slice(0, 5).join('; '));
   if ((o.mode === 'verifier-probes') !== (corpus.kind === 'verifier-probes')) throw new HarnessRefusal('MODE_CORPUS_MISMATCH', o.mode + ' / ' + corpus.kind);
   const how = o.dryRun ? 'SYNTHETIC' : (o.replayPath ? 'REPLAY' : 'REAL');
-  const run = { mode: o.mode, corpus, sourceOf: sourcePolicy(o.mode, how), generatorModelOverride: o.generatorModelOverride, verifierModel: o.verifierModel,
+  const profiles = resolveProfiles(o);
+  const run = { mode: o.mode, corpus, sourceOf: sourcePolicy(o.mode, how), generatorProfile: profiles.generator, verifierProfile: profiles.verifier,
     dryRunVerifier: o.dryRunVerifier, replay: null, realSend: o.realSend, abort: null, modules: o.modules || loadModules() };
   const anyReal = ['GENERATOR', 'VERIFIER'].some((s) => run.sourceOf(s) === 'REAL');
   if (anyReal) {
@@ -590,8 +617,7 @@ async function runCalibration(opts) {
     harness: { version: HARNESS_VERSION, runId, mode: o.mode, diagnosticOnly: o.mode === 'generator-only', source: how, dryRun: !!o.dryRun, replayOf: o.replayPath || null },
     corpus: { id: corpus.id, kind: corpus.kind, sha256: corpusSha256, cases: cases.length, samples: o.samples, tuningAllowed: corpus.tuningAllowed === true },
     prompts: { generatorInstructionSha256: h.generator, verifierInstructionSha256: h.verifier },
-    models: { generator: { configured: Interpreter.MODEL, override: o.generatorModelOverride || null, maxTokens: Interpreter.MAX_TOKENS, timeoutMs: Interpreter.TIMEOUT_MS },
-      verifier: { configured: o.verifierModel || 'module default', maxTokens: Verifier.MAX_TOKENS, timeoutMs: Verifier.TIMEOUT_MS } },
+    profiles: { generator: run.generatorProfile, verifier: run.verifierProfile }, // §31.4: complete stage profiles
     prices: o.prices ? { source: o.prices.source, effectiveDate: o.prices.effectiveDate } : null,
     networkAttempts,
     aborted: run.abort,
@@ -610,25 +636,35 @@ async function runCalibration(opts) {
   return { artifact, file, manifestFile, sha256: manifest.sha256 };
 }
 
+// v1.2 §31.4 — complete stage profiles only, through configure(); a v1.1 model override never applies in part.
+function rejectV11Options(opts) {
+  ['generatorModelOverride', 'verifierModel'].forEach((k) => { if (opts && opts[k] !== undefined && opts[k] !== null) throw new HarnessRefusal('V11_OPTION_REMOVED', k); });
+}
+function resolveProfiles(o) {
+  const generator = o.generatorProfile || CC.DEFAULT_GENERATOR_PROFILE;
+  const verifier = o.verifierProfile || CC.DEFAULT_VERIFIER_PROFILE;
+  if (!CC.isValidRequestProfile(generator)) throw new HarnessRefusal('PROFILE_INVALID', 'generator');
+  if (!CC.isValidRequestProfile(verifier)) throw new HarnessRefusal('PROFILE_INVALID', 'verifier');
+  return { generator: CC.copyProfile(generator), verifier: CC.copyProfile(verifier) };
+}
+
 // ── pre-run budget statement (offline; renders the real prompts under the network trap) ──
 async function budgetStatement(opts) {
-  const o = Object.assign({ mode: 'end-to-end', corpus: 'development', samples: 3, only: null, prices: null, generatorModelOverride: null, verifierModel: null,
+  rejectV11Options(opts);
+  const o = Object.assign({ mode: 'end-to-end', corpus: 'development', samples: 3, only: null, prices: null, generatorProfile: null, verifierProfile: null,
     assumedVerifierDispatchRate: 1, assumedPlansPerPass: 2, assumedGeneratorOutputTokens: 500, assumedVerifierOutputTokensPerItem: 60, paidApproval: null }, opts || {});
   // Rendering runs over isolated module instances: the caller's Generator/Verifier/store configuration
-  // is never read for writing nor changed. The effective Verifier model is the explicit one, or else
-  // the default of a freshly loaded (unconfigured) Verifier instance — exactly what a run uses.
-  let defaultVerifierModel = null;
-  const render = await withIsolatedModules((M) => {
-    defaultVerifierModel = M.Verifier._internal.buildRequestBody({}).model;
-    return runCalibration({ mode: o.mode, corpus: o.corpus, samples: 1, only: o.only, dryRun: true, write: false, heldoutManifestPath: o.heldoutManifestPath, heldoutPath: o.heldoutPath,
-      generatorModelOverride: o.generatorModelOverride, verifierModel: o.verifierModel, modules: M });
-  });
+  // is never read for writing nor changed. The effective profiles are the explicit ones, or else the
+  // stage defaults (§27.1) — exactly what a run uses.
+  const profiles = resolveProfiles(o);
+  const render = await withIsolatedModules((M) => runCalibration({ mode: o.mode, corpus: o.corpus, samples: 1, only: o.only, dryRun: true, write: false,
+    heldoutManifestPath: o.heldoutManifestPath, heldoutPath: o.heldoutPath, generatorProfile: profiles.generator, verifierProfile: profiles.verifier, modules: M }));
   const art = render.artifact;
   const passes = art.corpus.cases * o.samples;
   const realGen = o.mode !== 'verifier-probes';
   const realVer = o.mode !== 'generator-only';
-  const genModel = o.generatorModelOverride || Interpreter.MODEL;
-  const verModel = o.verifierModel || defaultVerifierModel;
+  const genModel = profiles.generator.model;
+  const verModel = profiles.verifier.model;
   const genIn = art.samples.map((s) => s.calls.find((c) => c.stage === 'GENERATOR')).filter(Boolean).map((c) => c.usage.input);
   const genInPerPass = genIn.length ? genIn.reduce((a, b) => a + b, 0) / genIn.length : 0;
   const instrDelta = (Verifier._internal.INSTRUCTION.length - Interpreter._internal.INSTRUCTION.length) / 4;
@@ -637,8 +673,8 @@ async function budgetStatement(opts) {
   const maxVerifierCalls = realVer ? passes : 0;
   const expected = { generator: maxGeneratorCalls, verifier: Math.ceil(maxVerifierCalls * o.assumedVerifierDispatchRate) }; // no preflight or retry calls exist
   const tokens = {
-    generator: { inputExpected: Math.round(genInPerPass * expected.generator), outputExpected: o.assumedGeneratorOutputTokens * expected.generator, outputMax: Interpreter.MAX_TOKENS * maxGeneratorCalls, inputMax: Math.round(genInPerPass * maxGeneratorCalls) },
-    verifier: { inputExpected: Math.round(verInPerPass * expected.verifier), outputExpected: o.assumedVerifierOutputTokensPerItem * o.assumedPlansPerPass * expected.verifier, outputMax: Verifier.MAX_TOKENS * maxVerifierCalls, inputMax: Math.round(verInPerPass * maxVerifierCalls) }
+    generator: { inputExpected: Math.round(genInPerPass * expected.generator), outputExpected: o.assumedGeneratorOutputTokens * expected.generator, outputMax: profiles.generator.maxOutputTokens * maxGeneratorCalls, inputMax: Math.round(genInPerPass * maxGeneratorCalls) },
+    verifier: { inputExpected: Math.round(verInPerPass * expected.verifier), outputExpected: o.assumedVerifierOutputTokensPerItem * o.assumedPlansPerPass * expected.verifier, outputMax: profiles.verifier.maxOutputTokens * maxVerifierCalls, inputMax: Math.round(verInPerPass * maxVerifierCalls) }
   };
   const price = (m) => (o.prices && o.prices.models && o.prices.models[m]) || null;
   const c = (m, i, out) => (price(m) ? i / 1e6 * price(m).inputPerMTok + out / 1e6 * price(m).outputPerMTok : null);
@@ -648,18 +684,19 @@ async function budgetStatement(opts) {
   const sum = (x) => (x.generator === null || x.verifier === null ? null : Object.assign({ total: x.generator + x.verifier }, x));
   return {
     mode: o.mode, diagnosticOnly: o.mode === 'generator-only', corpus: art.corpus, samples: o.samples, passes,
-    generatorModel: realGen ? genModel : '(scripted plans; no Generator call)', generatorModelOverride: o.generatorModelOverride || null,
+    generatorModel: realGen ? genModel : '(scripted plans; no Generator call)',
     verifierModel: realVer ? verModel : '(pass-through stub; no Verifier call)',
+    generatorProfile: realGen ? profiles.generator : null, verifierProfile: realVer ? profiles.verifier : null,
     maxGeneratorCalls, maxVerifierCalls, maxTotalCalls: maxGeneratorCalls + maxVerifierCalls,
     expectedCalls: Object.assign({ total: expected.generator + expected.verifier }, expected),
     tokens, estimatedCost: sum(est), maxCost: sum(max), maxApprovedCost: o.paidApproval ? o.paidApproval.maxCostUsd : null,
     prices: o.prices ? { source: o.prices.source, effectiveDate: o.prices.effectiveDate } : 'PRICE_TABLE_REQUIRED',
-    latency: { generatorTimeoutMs: Interpreter.TIMEOUT_MS, verifierTimeoutMs: Verifier.TIMEOUT_MS, maxPerPassMs: Interpreter.TIMEOUT_MS + Verifier.TIMEOUT_MS,
-      maxSequentialRunMs: passes * (Interpreter.TIMEOUT_MS + Verifier.TIMEOUT_MS) },
+    latency: { generatorTimeoutMs: profiles.generator.timeoutMs, verifierTimeoutMs: profiles.verifier.timeoutMs, maxPerPassMs: profiles.generator.timeoutMs + profiles.verifier.timeoutMs,
+      maxSequentialRunMs: passes * (profiles.generator.timeoutMs + profiles.verifier.timeoutMs) },
     assumptions: ['ESTIMATE: input tokens from the real rendered Generator prompts at ' + JSON.stringify(CHARS_PER_TOKEN) + ' data characters per token',
       'ASSUMPTION: Verifier dispatch rate ' + o.assumedVerifierDispatchRate + ' (1 = every pass reaches the Verifier; maximums are unaffected)',
       'ASSUMPTION: ' + o.assumedPlansPerPass + ' plans per verified pass; expected outputs ' + o.assumedGeneratorOutputTokens + ' (Generator) and ' + o.assumedVerifierOutputTokensPerItem + ' per item (Verifier)',
-      'Maximum cost uses each stage\'s max_tokens ceiling for every call']
+      'Maximum cost uses each stage profile\'s total maxOutputTokens ceiling (reasoning plus answer) for every call']
   };
 }
 
@@ -676,10 +713,12 @@ async function main() {
   const opts = {
     mode: env.E02D_MODE || 'end-to-end', corpus: env.E02D_CORPUS || 'development', samples: Math.max(1, Number(env.E02D_SAMPLES || 3)),
     only: env.E02D_ONLY ? env.E02D_ONLY.split(',') : null, dryRun: env.E02D_DRY_RUN === '1', replayPath: env.E02D_REPLAY || null,
-    generatorModelOverride: env.E02D_GENERATOR_MODEL_OVERRIDE || null, verifierModel: env.E02D_VERIFIER_MODEL || null,
+    generatorProfile: env.E02D_GENERATOR_PROFILE ? JSON.parse(fs.readFileSync(env.E02D_GENERATOR_PROFILE, 'utf8')) : null,
+    verifierProfile: env.E02D_VERIFIER_PROFILE ? JSON.parse(fs.readFileSync(env.E02D_VERIFIER_PROFILE, 'utf8')) : null,
     prices: env.E02D_PRICES ? JSON.parse(fs.readFileSync(env.E02D_PRICES, 'utf8')) : null, outDir: env.E02D_OUT_DIR || os.tmpdir(),
     heldoutPath: env.E02D_HELDOUT_PATH || null
   };
+  if (env.E02D_GENERATOR_MODEL_OVERRIDE || env.E02D_VERIFIER_MODEL) { console.error('Refusing: v1.1 model overrides are replaced by complete stage profiles (E02D_GENERATOR_PROFILE / E02D_VERIFIER_PROFILE).'); process.exitCode = 1; return; }
   if (env.E02D_PRINT_PROMPT_HASHES === '1') { console.log(JSON.stringify(instructionHashes(), null, 2)); return; }
   if (env.E02D_PLAN_ONLY === '1' || (!opts.dryRun && !opts.replayPath)) {
     console.log(JSON.stringify(await budgetStatement(Object.assign({}, opts, { paidApproval: env.E02D_MAX_COST_USD ? { maxCostUsd: Number(env.E02D_MAX_COST_USD) } : null })), null, 2));

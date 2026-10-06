@@ -30,6 +30,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   var VERSION = '1.0.0'; // WP0 Phase E.0.2b
 
@@ -181,7 +184,7 @@
 
       var parsed;
       try {
-        var text = (raw.content && raw.content[0] && raw.content[0].text) || '';
+        var text = ModelResponseStructure.extractAnswerText(raw, { state: 'FROZEN_CONTRACT', entry: 'F-18' }).text || ''; // MRS-001 S18 — a structural failure takes today's empty-text path
         parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       } catch (e) {
         return result(FAILED);

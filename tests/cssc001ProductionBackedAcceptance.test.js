@@ -40,7 +40,7 @@ function stubClassifier(classifyEverythingAs) {
   SituationalContextInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id: id, verdict: classifyEverythingAs })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id: id, verdict: classifyEverythingAs })) }) }] };
     }
   });
 }
@@ -56,7 +56,7 @@ test('CSSC-E2E-1. the real, complete chain: a night-shift statement classifies, 
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       const results = ids.map((id) => ({ id: id, verdict: id === 'mem-night-shift' ? 'CLASSIFIED_CURRENT_STATE' : 'INELIGIBLE_OR_NOT_CLASSIFIED' }));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 
@@ -170,7 +170,7 @@ test('CSSC-E2E-4. zero-call negative case at the full-pipeline level — with no
     getWeekday: () => 3
   });
   let called = false;
-  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
 
   const result = await Orchestrator.run({ userId: 'cssc-user-1', sessionGeneration: 1, runId: 'run-d', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
   assert.equal(result.output.pipelineContext.situationalContext, null);

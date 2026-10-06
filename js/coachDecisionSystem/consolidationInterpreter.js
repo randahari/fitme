@@ -1,9 +1,10 @@
 // ══════════════════════════════════════════════════════════════════
 // FitMe — Consolidation Interpreter: the Generator stage (WP0 Phase E.0.2d)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.1) §08, §15.1-§15.3, §27; MRE-001.
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.2) §08, §15.0-§15.3, §27, §27.1; MRS-001; MRE-001.
 //
-// Exclusive responsibility: build the one bounded Generator request, send it once through the
-// host-injected model transport, parse it through the shared MRE-001 envelope, and isolate every
+// Exclusive responsibility: build the one bounded Generator request from its EXPLICIT-PROFILE request
+// profile (v1.2 §27.1), send it once through the host-injected model transport, extract the answer text
+// through MRS-001 under the same profile (§15.0), parse it through the shared MRE-001 envelope, and isolate every
 // proposal by its per-operation shape (§15.3): an invalid envelope fails the whole result; a single
 // malformed proposal inside a valid envelope is reported alone and never affects its siblings. The
 // Generator only PROPOSES; this module grants nothing — every proposal is gated, verified and
@@ -20,15 +21,16 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
   var CC = (typeof module !== 'undefined' && module.exports)
     ? require('./consolidationContract.js')
     : window.ConsolidationContract;
 
-  // §27 — implementation/calibration constants (R-11); never architecture. MODEL is the v1.0
-  // baseline value and may be substituted without an architectural change, subject to calibration.
-  var MODEL = 'claude-haiku-4-5-20251001';
-  var MAX_TOKENS = 1600;                      // [PROVISIONAL]
-  var TIMEOUT_MS = 20000;                     // [PROVISIONAL]
+  // v1.2 §27.1 — the request profile (model, reasoning, effort, total output ceiling, timeout, provider
+  // binding) is implementation/calibration configuration (R-11), never architecture. The default is
+  // ConsolidationContract.DEFAULT_GENERATOR_PROFILE; Consolidation.configure() may supply a complete one.
   var OK = 'OK';
   var FAILED = 'FAILED';
 
@@ -53,15 +55,19 @@
     'Answer with exactly one JSON object and nothing else: {"proposals":[...]}. Each proposal has exactly the keys of its operation. CREATE: {"operation":"CREATE","factors":[{"conceptKey":key|null,"newConceptLabel":string|null,"role":"condition"|"subject"|"outcome","valueText":string|null}],"relationText":string,"evidenceClass":"SINGLE_OBSERVATION"|"CO_OCCURRENCE"|"RECURRENCE","temporality":"DURABLE"|"TEMPORARY"|"RECURRING_WINDOW","grounding":{"recurrence":{"form":string,"anchors":[anchor]},"window":{"form":string,"anchors":[anchor]}}|null,"supporting":[key],"contradicting":[key],"reference":{"uKey":key,"factorIndex":integer}|null,"restatesUserStatement":boolean,"safetyAdjacent":boolean}. SUPERSEDE: every CREATE key with "operation":"SUPERSEDE" plus "target":key. APPEND_EVIDENCE: {"operation":"APPEND_EVIDENCE","target":key,"list":"supporting"|"contradicting","observations":[key],"restatesUserStatement":boolean,"safetyAdjacent":boolean}.'
   ].join('\n');
 
-  var deps = { modelTransport: null, timeoutMs: TIMEOUT_MS };
+  var deps = { modelTransport: null, profile: CC.DEFAULT_GENERATOR_PROFILE };
 
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype; }
 
+  // A supplied profile must be complete and valid (§27.1); it is never merged with the default. An
+  // invalid profile leaves the stage unconfigured.
   function configure(injected) {
     var d = injected || {};
+    var profile = d.profile === undefined ? CC.DEFAULT_GENERATOR_PROFILE : d.profile;
+    var valid = CC.isValidRequestProfile(profile);
     deps = {
-      modelTransport: typeof d.modelTransport === 'function' ? d.modelTransport : null,
-      timeoutMs: (typeof d.timeoutMs === 'number' && d.timeoutMs > 0) ? d.timeoutMs : TIMEOUT_MS
+      modelTransport: (valid && typeof d.modelTransport === 'function') ? d.modelTransport : null,
+      profile: valid ? CC.copyProfile(profile) : CC.DEFAULT_GENERATOR_PROFILE
     };
     return deps.modelTransport !== null;
   }
@@ -77,8 +83,9 @@
       '<user_stated>' + JSON.stringify(input.userStated || []) + '</user_stated>'
     ].join('\n');
   }
-  function buildRequestBody(input) {
-    return { model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: buildPrompt(input) }] };
+  // v1.2 §15.1 — {model, max_tokens, <binding fields>, messages}; the prompt is unchanged from v1.1.
+  function buildRequestBody(input, profile) {
+    return CC.buildProfileRequestBody(profile || deps.profile, buildPrompt(input));
   }
 
   function withTimeout(promiseLike, ms) {
@@ -96,17 +103,27 @@
     return own.length === keys.length && keys.every(function (k) { return Object.prototype.hasOwnProperty.call(o, k); });
   }
 
-  function failed() { return Object.freeze({ status: FAILED, entries: Object.freeze([]) }); }
+  // `reason` is a closed STAGE_FAILURE_REASONS code for a classified §15.0 condition, else null (B1).
+  function failed(reason) { return Object.freeze({ status: FAILED, entries: Object.freeze([]), reason: reason || null }); }
 
   // §15.3 — envelope level fails the whole result; proposal level isolates each proposal.
   // Returns {status: 'OK', entries: [{index, ok: true, proposal} | {index, ok: false, operation}]}.
-  function parseResponse(raw) {
+  // v1.2 §15.0 — the provider response first crosses MRS-001 under the reasoning mode of the profile
+  // that built its request (G4); reasons follow the §15.0 precedence after transport and timeout.
+  function parseResponse(raw, profile) {
+    var extracted = ModelResponseStructure.extractAnswerText(raw, { state: 'EXPLICIT_PROFILE', reasoning: profile ? profile.reasoning : null }); // MRS-001 S20
+    if (extracted.failure === 'CONTRACT_UNRESOLVED' || extracted.failure === 'REFUSAL') return failed(extracted.failure);
+    if (extracted.stopReason === 'max_tokens') return failed('MAX_TOKENS');
+    if (extracted.status !== 'OK') return failed(extracted.failure);
+    var parsed;
     try {
-      if (!raw || raw.stop_reason === 'max_tokens') return failed();
-      var text = (raw.content && raw.content[0] && raw.content[0].text) || '';
-      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
-      if (!exactKeys(parsed, ['proposals']) || !Array.isArray(parsed.proposals)) return failed();
-      if (parsed.proposals.length > CC.LIMITS.MAX_PROPOSALS) return failed();
+      parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(extracted.text));
+    } catch (e) {
+      return failed('INVALID_ENVELOPE');
+    }
+    try {
+      if (!exactKeys(parsed, ['proposals']) || !Array.isArray(parsed.proposals)) return failed('INVALID_ENVELOPE');
+      if (parsed.proposals.length > CC.LIMITS.MAX_PROPOSALS) return failed('INVALID_ENVELOPE');
       var entries = parsed.proposals.map(function (p, index) {
         return CC.isValidProposalShape(p)
           ? Object.freeze({ index: index, ok: true, proposal: p })
@@ -123,11 +140,13 @@
   async function interpret(input) {
     try {
       if (!isConfigured() || !isPlainObject(input)) return failed();
+      var profile = deps.profile; // the same profile builds the request and governs its extraction (G4)
       var call;
-      try { call = deps.modelTransport(buildRequestBody(input)); } catch (e) { return failed(); }
-      var raw = await withTimeout(call, deps.timeoutMs);
-      if (!raw || raw.__e02d_timed_out || raw.__e02d_failed) return failed();
-      return parseResponse(raw);
+      try { call = deps.modelTransport(buildRequestBody(input, profile)); } catch (e) { return failed('TRANSPORT_FAILED'); }
+      var raw = await withTimeout(call, profile.timeoutMs);
+      if (raw && raw.__e02d_failed) return failed('TRANSPORT_FAILED');
+      if (raw && raw.__e02d_timed_out) return failed('TIMEOUT');
+      return parseResponse(raw, profile);
     } catch (e) {
       return failed();
     }
@@ -137,9 +156,7 @@
     configure: configure,
     isConfigured: isConfigured,
     interpret: interpret,
-    MODEL: MODEL,
-    MAX_TOKENS: MAX_TOKENS,
-    TIMEOUT_MS: TIMEOUT_MS,
+    DEFAULT_PROFILE: CC.DEFAULT_GENERATOR_PROFILE,
     _internal: {
       INSTRUCTION: INSTRUCTION,
       buildPrompt: buildPrompt,

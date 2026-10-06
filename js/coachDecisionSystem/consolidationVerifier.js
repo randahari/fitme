@@ -1,10 +1,11 @@
 // ══════════════════════════════════════════════════════════════════
 // FitMe — Consolidation Verifier: the reject-only Verifier stage (WP0 Phase E.0.2d)
-// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.1) §08, §15.4-§15.6, §27; MRE-001.
+// docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md (v1.2) §08, §15.0, §15.4-§15.6, §27, §27.1; MRS-001; MRE-001.
 //
 // Exclusive responsibility: one batched verification request over every plan that survived the
-// deterministic pre-verification gate, sent once through the host-injected model transport, parsed
-// through the shared MRE-001 envelope, and returned as closed per-item verdict tokens keyed by the
+// deterministic pre-verification gate, built from its EXPLICIT-PROFILE request profile (v1.2 §27.1), sent
+// once through the host-injected model transport, extracted through MRS-001 under the same profile (§15.0),
+// parsed through the shared MRE-001 envelope, and returned as closed per-item verdict tokens keyed by the
 // pass-local item key (p1, p2, …).
 //
 // Authority: NONE. The Verifier never receives a plan, a record, a store or a port — only data the
@@ -21,16 +22,16 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
   var CC = (typeof module !== 'undefined' && module.exports)
     ? require('./consolidationContract.js')
     : window.ConsolidationContract;
 
-  // §27 — implementation/calibration constants (R-11), never architecture. The model is configurable
-  // through configure({model}); the default is only the provisional baseline value and is chosen for
-  // real use by the separately authorized calibration plan.
-  var DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-  var MAX_TOKENS = 800;                       // VERIFIER_MAX_TOKENS [PROVISIONAL]
-  var TIMEOUT_MS = 20000;                     // VERIFIER_TIMEOUT_MS [PROVISIONAL]
+  // v1.2 §27.1 — the request profile (model, reasoning, effort, total output ceiling, timeout, provider
+  // binding) is implementation/calibration configuration (R-11), never architecture. The default is
+  // ConsolidationContract.DEFAULT_VERIFIER_PROFILE; Consolidation.configure() may supply a complete one.
   var OK = 'OK';
   var FAILED = 'FAILED';
 
@@ -48,17 +49,20 @@
     'Answer with exactly one JSON object and nothing else: {"verdicts":[{"item":key,"restatement":value,"unsupported":value,"safety":value,"temporal":value,"direction":value}]}, with exactly one entry for each item key in <items>.'
   ].join('\n');
 
-  var deps = { modelTransport: null, timeoutMs: TIMEOUT_MS, model: DEFAULT_MODEL };
+  var deps = { modelTransport: null, profile: CC.DEFAULT_VERIFIER_PROFILE };
 
   function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype; }
   function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 
+  // A supplied profile must be complete and valid (§27.1); it is never merged with the default. An
+  // invalid profile leaves the stage unconfigured.
   function configure(injected) {
     var d = injected || {};
+    var profile = d.profile === undefined ? CC.DEFAULT_VERIFIER_PROFILE : d.profile;
+    var valid = CC.isValidRequestProfile(profile);
     deps = {
-      modelTransport: typeof d.modelTransport === 'function' ? d.modelTransport : null,
-      timeoutMs: (typeof d.timeoutMs === 'number' && d.timeoutMs > 0) ? d.timeoutMs : TIMEOUT_MS,
-      model: (typeof d.model === 'string' && d.model.length) ? d.model : DEFAULT_MODEL
+      modelTransport: (valid && typeof d.modelTransport === 'function') ? d.modelTransport : null,
+      profile: valid ? CC.copyProfile(profile) : CC.DEFAULT_VERIFIER_PROFILE
     };
     return deps.modelTransport !== null;
   }
@@ -74,8 +78,9 @@
       '<items>' + JSON.stringify(input.items || []) + '</items>'
     ].join('\n');
   }
-  function buildRequestBody(input) {
-    return { model: deps.model, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: buildPrompt(input) }] };
+  // v1.2 §15.4 — {model, max_tokens, <binding fields>, messages}; the prompt is unchanged from v1.1.
+  function buildRequestBody(input, profile) {
+    return CC.buildProfileRequestBody(profile || deps.profile, buildPrompt(input));
   }
 
   function withTimeout(promiseLike, ms) {
@@ -87,23 +92,33 @@
       .then(function (r) { clearTimeout(timeoutId); return r; });
   }
 
-  function failed() { return Object.freeze({ status: FAILED, verdicts: Object.freeze({}) }); }
+  // `reason` is a closed STAGE_FAILURE_REASONS code for a classified §15.0 condition, else null (B1).
+  function failed(reason) { return Object.freeze({ status: FAILED, verdicts: Object.freeze({}), reason: reason || null }); }
 
   // §15.6 — parse and attribute. `operations` maps each presented item key to its operation.
   // Whole result FAILED: max_tokens, non-JSON, wrong envelope, or any attribution anomaly (an entry
   // that is not an object, whose item is missing or unknown, or an item key seen twice).
   // Item level: an attributable entry with a wrong key set, vocabulary or applicability → {ok:false}.
   // Returns {status: 'OK', verdicts: {pKey → {ok: true, tokens} | {ok: false}}}; absent keys are missing.
-  function parseResponse(raw, operations) {
+  // v1.2 §15.0 — the provider response first crosses MRS-001 under the reasoning mode of the profile
+  // that built its request (G4). A structural failure or refusal yields no verdict at all (reject-only).
+  function parseResponse(raw, operations, profile) {
+    var extracted = ModelResponseStructure.extractAnswerText(raw, { state: 'EXPLICIT_PROFILE', reasoning: profile ? profile.reasoning : null }); // MRS-001 S21
+    if (extracted.failure === 'CONTRACT_UNRESOLVED' || extracted.failure === 'REFUSAL') return failed(extracted.failure);
+    if (extracted.stopReason === 'max_tokens') return failed('MAX_TOKENS');
+    if (extracted.status !== 'OK') return failed(extracted.failure);
+    var parsed;
     try {
-      if (!raw || raw.stop_reason === 'max_tokens') return failed();
-      var text = (raw.content && raw.content[0] && raw.content[0].text) || '';
-      var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
-      if (!isPlainObject(parsed) || Object.keys(parsed).length !== 1 || !Array.isArray(parsed.verdicts)) return failed();
+      parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(extracted.text));
+    } catch (e) {
+      return failed('INVALID_ENVELOPE');
+    }
+    try {
+      if (!isPlainObject(parsed) || Object.keys(parsed).length !== 1 || !Array.isArray(parsed.verdicts)) return failed('INVALID_ENVELOPE');
       var verdicts = {};
       for (var i = 0; i < parsed.verdicts.length; i++) {
         var entry = parsed.verdicts[i];
-        if (!isPlainObject(entry) || typeof entry.item !== 'string' || !has(operations, entry.item) || has(verdicts, entry.item)) return failed();
+        if (!isPlainObject(entry) || typeof entry.item !== 'string' || !has(operations, entry.item) || has(verdicts, entry.item)) return failed('ATTRIBUTION_ANOMALY');
         if (!CC.isValidVerdictBody(entry, operations[entry.item])) { verdicts[entry.item] = Object.freeze({ ok: false }); continue; }
         var tokens = {};
         CC.VERDICT_DIMENSIONS.forEach(function (d) { tokens[d] = entry[d]; });
@@ -126,11 +141,13 @@
         if (!isPlainObject(it) || typeof it.item !== 'string' || has(operations, it.item)) return failed();
         operations[it.item] = it.operation;
       }
+      var profile = deps.profile; // the same profile builds the request and governs its extraction (G4)
       var call;
-      try { call = deps.modelTransport(buildRequestBody(input)); } catch (e) { return failed(); }
-      var raw = await withTimeout(call, deps.timeoutMs);
-      if (!raw || raw.__e02d_timed_out || raw.__e02d_failed) return failed();
-      return parseResponse(raw, operations);
+      try { call = deps.modelTransport(buildRequestBody(input, profile)); } catch (e) { return failed('TRANSPORT_FAILED'); }
+      var raw = await withTimeout(call, profile.timeoutMs);
+      if (raw && raw.__e02d_failed) return failed('TRANSPORT_FAILED');
+      if (raw && raw.__e02d_timed_out) return failed('TIMEOUT');
+      return parseResponse(raw, operations, profile);
     } catch (e) {
       return failed();
     }
@@ -140,8 +157,7 @@
     configure: configure,
     isConfigured: isConfigured,
     verify: verify,
-    MAX_TOKENS: MAX_TOKENS,
-    TIMEOUT_MS: TIMEOUT_MS,
+    DEFAULT_PROFILE: CC.DEFAULT_VERIFIER_PROFILE,
     _internal: {
       INSTRUCTION: INSTRUCTION,
       buildPrompt: buildPrompt,

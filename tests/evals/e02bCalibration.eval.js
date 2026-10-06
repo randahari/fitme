@@ -92,7 +92,7 @@ async function directCallClaude(body) {
   const t0 = Date.now();
   let data;
   if (DRY_RUN) {
-    data = { content: [{ text: JSON.stringify({ selectedIds: [], informationNeeds: ['dry run'] }) }], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } };
+    data = { content: [{ type: 'text', text: JSON.stringify({ selectedIds: [], informationNeeds: ['dry run'] }) }], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } };
   } else {
     const res = await fetch(API_URL, {
       method: 'POST',

@@ -12,9 +12,9 @@ const CLASSIFIED = 'CLASSIFIED';
 const FAILED = 'FAILED';
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 function entry(id, overrides) {
   return Object.assign({
@@ -171,7 +171,7 @@ test('17. malformed JSON at the batch level fails every id closed, never throws'
 });
 
 test('18. a response missing the top-level "results" array fails closed', () => {
-  const accepted = Interpreter._internal.parseAndValidate({ content: [{ text: JSON.stringify({ nope: [] }) }] }, ['t1']);
+  const accepted = Interpreter._internal.parseAndValidate({ content: [{ type: 'text', text: JSON.stringify({ nope: [] }) }] }, ['t1']);
   assert.deepEqual(accepted, {});
 });
 

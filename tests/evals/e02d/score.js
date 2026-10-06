@@ -1,12 +1,12 @@
 // WP0 Phase E.0.2d — offline calibration scoring (P8). No network, no model calls.
 // Usage: node tests/evals/e02d/score.js <artifact.json> [labels.json]
 //
-// Input: a v2 calibration artifact (e02d-calibration-artifact/2) and, optionally, a human-review labels
+// Input: a v3 calibration artifact (e02d-calibration-artifact/3, SPEC v1.2 §31.4) and, optionally, a human-review labels
 // file {"rows": {"<rowId>": {<rubric fields>}}} (README.md §Human-review rubric). This tool never
 // labels anything itself: every measure that depends on human judgement reports AWAITING_HUMAN_LABELS
 // until each relevant row carries a non-null label.
 //
-// Thresholds are the canonical SPEC v1.1 §31.2 [PROVISIONAL] values. Measures whose target the SPEC
+// Thresholds are the canonical SPEC §31.2 [PROVISIONAL] values (CAL-D7 as restated in v1.2). Measures whose target the SPEC
 // leaves to Product (CAL-D4 precision, CAL-D8 false-veto, MALFORMED_PROPOSAL rate) are reported as
 // numerator / denominator / rate / raw cases and marked PRODUCT DECISION REQUIRED — never pass/fail.
 // The output never decides closure: closureDecision is always NOT_DETERMINED_BY_TOOLING.
@@ -14,17 +14,43 @@
 
 const fs = require('node:fs');
 
-const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/2';
+const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/3';
 const PRODUCT = 'PRODUCT DECISION REQUIRED';
-const SOURCE = 'SPEC v1.1 §31.2 [PROVISIONAL]';
+const SOURCE = 'SPEC v1.2 §31.2 [PROVISIONAL]';
 
 function ratio(n, d) { return { numerator: n, denominator: d, rate: d ? n / d : null }; }
 function atMost(r, max) { return r.denominator === 0 ? 'NO_DATA' : (r.rate <= max ? 'MEETS' : 'BELOW'); }
 function atLeast(r, min) { return r.denominator === 0 ? 'NO_DATA' : (r.rate >= min ? 'MEETS' : 'BELOW'); }
 function zero(n, d) { return d === 0 ? 'NO_DATA' : (n === 0 ? 'MEETS' : 'BELOW'); }
 
+// CAL-D7 v1.2 (§31.2) per stage: failures by stageFailure.reason; zero max_tokens stops; provider output
+// usage measured against the profile's TOTAL maxOutputTokens (which may include reasoning tokens); p99
+// latency within the profile timeout; extracted answer-text size and refusals reported separately.
+function stageD7(valid, stage) {
+  const calls = [].concat(...valid.map((s) => s.calls.filter((c) => c.stage === stage)));
+  const byReason = valid.reduce((m, s) => { const f = s.stageFailure; if (f && f.stage === stage) m[f.reason] = (m[f.reason] || 0) + 1; return m; }, {});
+  const stops = calls.filter((c) => c.stopReason === 'max_tokens');
+  const ratios = calls.filter((c) => c.usage && c.profile).map((c) => (c.usage.output || 0) / c.profile.maxOutputTokens);
+  const maxRatio = ratios.length ? Math.max(...ratios) : null;
+  const lat = calls.filter((c) => typeof c.latencyMs === 'number' && c.profile).map((c) => ({ ms: c.latencyMs, limit: c.profile.timeoutMs }));
+  const sorted = lat.map((x) => x.ms).sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(0.99 * sorted.length) - 1)] : null;
+  const limit = lat.length ? Math.min(...lat.map((x) => x.limit)) : null;
+  const refused = calls.filter((c) => c.refusal && c.refusal.refused);
+  const sizes = calls.map((c) => c.answerTextChars).filter((x) => typeof x === 'number');
+  return {
+    calls: calls.length,
+    stageFailuresByReason: byReason,
+    maxTokensStops: { count: stops.length, status: zero(stops.length, calls.length), threshold: 'zero', thresholdSource: SOURCE },
+    maxOutputUsage: { maxRatioOfTotalCeiling: maxRatio, status: maxRatio === null ? 'NO_DATA' : (maxRatio <= 0.8 ? 'MEETS' : 'BELOW'), threshold: '<= 80% of the profile total maxOutputTokens (may include reasoning)', thresholdSource: SOURCE },
+    latencyP99: { ms: p99, profileTimeoutMs: limit, status: p99 === null ? 'NO_DATA' : (p99 <= limit ? 'MEETS' : 'BELOW'), thresholdSource: SOURCE },
+    refusals: Object.assign(ratio(refused.length, calls.length), { categories: refused.map((c) => c.refusal.category), reportedSeparately: true }),
+    answerTextChars: { max: sizes.length ? Math.max(...sizes) : null, reportedSeparately: true, note: 'deterministic extracted answer-text size, not output-token usage' }
+  };
+}
+
 function score(artifact, labelsFile) {
-  if (!artifact || artifact.schema !== ARTIFACT_SCHEMA) throw new Error('SCORE_REFUSED: not a v1.1 (schema 2) calibration artifact');
+  if (!artifact || artifact.schema !== ARTIFACT_SCHEMA) throw new Error('SCORE_REFUSED: not a v1.2 (schema 3) calibration artifact');
   const labels = (labelsFile && labelsFile.rows) || {};
   const valid = artifact.samples.filter((s) => s.status !== 'REPLAY_DIVERGED' && !s.integrity.length);
   const excluded = artifact.samples.filter((s) => valid.indexOf(s) === -1).map((s) => ({ caseId: s.caseId, sample: s.sample, status: s.status, integrity: s.integrity }));
@@ -106,7 +132,8 @@ function score(artifact, labelsFile) {
   const v7 = ratio(verFailed.length, verDispatched.length);
   gates['CAL-D7'] = {
     interpreterFailed: Object.assign(g7, { rawCases: genFailed.map((s) => s.caseId + ':' + s.sample), status: atMost(g7, 0.05), threshold: '<= 5% of passes', thresholdSource: SOURCE }),
-    verifierFailed: Object.assign(v7, { rawCases: verFailed.map((s) => s.caseId + ':' + s.sample), status: atMost(v7, 0.05), threshold: '<= 5% of verifier-dispatched passes', thresholdSource: SOURCE })
+    verifierFailed: Object.assign(v7, { rawCases: verFailed.map((s) => s.caseId + ':' + s.sample), status: atMost(v7, 0.05), threshold: '<= 5% of verifier-dispatched passes', thresholdSource: SOURCE }),
+    byStage: { GENERATOR: stageD7(valid, 'GENERATOR'), VERIFIER: stageD7(valid, 'VERIFIER') }
   };
   // CAL-D8 — false vetoes (end-to-end: labelled genuine vetoed plans; probes: predetermined truth)
   const vetoes = rows.filter((r) => r.class === 'VERIFIER_VETO');

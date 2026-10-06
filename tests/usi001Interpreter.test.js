@@ -17,7 +17,7 @@ const INPUT = {
   records: [{ recordId: 'r1', origin: 'USER_STATED', status: 'active', factors: [{ conceptId: 'c1', role: 'subject', valueDescription: null }], relationDescription: 'x' }],
   owned: { cpiAssertion: 'owned cpi', safety: ['owned safety'] }
 };
-const reply = (o, extra) => Object.assign({ content: [{ text: typeof o === 'string' ? o : JSON.stringify(o) }] }, extra || {});
+const reply = (o, extra) => Object.assign({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o) }] }, extra || {});
 
 test('AC-16: the request has exactly model/max_tokens/messages (one user message); MODEL, MAX_TOKENS 800, every data block present and framed as data', async () => {
   const bodies = [];

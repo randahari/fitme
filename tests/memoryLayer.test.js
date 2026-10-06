@@ -578,7 +578,7 @@ test('CSSC1-A. the mechanical pre-check confirms a live HABIT/FOOD_LOGGING/WEAKE
 test('CSSC1-B. with no live WEAKENING signal, zero interpreter/LLM calls occur and situationalContext is UNAVAILABLE (the invocation gate)', async () => {
   configureNoWeakeningSignal();
   let called = false;
-  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null);
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
@@ -588,7 +588,7 @@ test('CSSC1-B. with no live WEAKENING signal, zero interpreter/LLM calls occur a
 test('CSSC1-C. a live WEAKENING signal but zero eligible user-stated records still yields zero interpreter calls and UNAVAILABLE (an empty read is not a distinct "attempted, empty" state)', async () => {
   configureWeakeningSignal(async () => []);
   let called = false;
-  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null);
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
@@ -600,7 +600,7 @@ test('CSSC1-D. a live WEAKENING signal with an eligible user-stated fact classif
     { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות עכשיו' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SituationalContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: '{"results":[{"id":"mem-1","verdict":"CLASSIFIED_CURRENT_STATE"}]}' }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[{"id":"mem-1","verdict":"CLASSIFIED_CURRENT_STATE"}]}' }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.availability.situationalContext, 'AVAILABLE');
@@ -619,7 +619,7 @@ test('CSSC1-E. an attempted classification that qualifies no record resolves ite
     { _id: 'mem-1', type: 'fact', payload: { text: 'אני לא אוהב טונה' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SituationalContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: '{"results":[{"id":"mem-1","verdict":"INELIGIBLE_OR_NOT_CLASSIFIED"}]}' }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[{"id":"mem-1","verdict":"INELIGIBLE_OR_NOT_CLASSIFIED"}]}' }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.situationalContext.items, []);
@@ -637,7 +637,7 @@ test('CSSC1-F. more than one batch\'s worth of eligible records all get classifi
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       ids.forEach((id) => seenIds.add(id));
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -651,7 +651,7 @@ test('CSSC1-G. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_RE
   configureWeakeningSignal(async () => [
     { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
-  SituationalContextInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  SituationalContextInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   // If this file ever mistakenly tried to read userStatedMemory via the coachDecisionSystem/
   // DECISION_PASS identity instead of memoryLayer/USER_STATED_MEMORY_READ, StateAccess would
   // throw STATE_ACCESS_DENIED — assembleContext()'s own try/catch would then degrade this field
@@ -675,7 +675,7 @@ test('CSSC1-H. consent not granted resolves situationalContext UNAVAILABLE with 
     getLocalDate: () => '2026-07-29',
     getWeekday: () => 3
   });
-  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  SituationalContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null);
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
@@ -710,7 +710,7 @@ test('CSSC1-J. edit/reject/delete/consent-grant are naturally reflected on the n
   SituationalContextInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
   const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -755,7 +755,7 @@ test.afterEach(() => { ExplicitRequestInterpreter.configure({ callClaude: null }
 test('EUR1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
   configureConsentGranted(async () => []);
   let called = false;
-  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.explicitRequestControls, null);
   assert.equal(ctx.availability.explicitRequestControls, 'UNAVAILABLE');
@@ -770,7 +770,7 @@ test('EUR1-B. unlike situationalContext, this step attempts a read/classificatio
   ]);
   let called = false;
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; },
+    callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; },
     // classify() itself is stubbed at the module level below for determinism; this callClaude
     // stub only proves invocation occurred despite the total absence of a Habit/Pattern signal.
   });
@@ -783,7 +783,7 @@ test('EUR1-C. an actionable resolved FOOD_LOGGING request populates explicitRequ
     { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.availability.explicitRequestControls, 'AVAILABLE');
@@ -802,7 +802,7 @@ test('EUR1-D. a positive/non-suppressive request (NO_V1_ACTIONABLE_INTENT) never
     { _id: 'mem-1', type: 'fact', payload: { text: 'Please remind me to log my food.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.explicitRequestControls.items, []);
@@ -814,7 +814,7 @@ test('EUR1-E. a supportive request (NO_V1_ACTIONABLE_INTENT) never enters items[
     { _id: 'mem-1', type: 'fact', payload: { text: 'Help me stay consistent with food logging.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.explicitRequestControls.items, []);
@@ -825,7 +825,7 @@ test('EUR1-F. a suppressive request with unresolved scope never enters items[]',
     { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest running.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'UNRESOLVED', domain: null, topic: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'UNRESOLVED', domain: null, topic: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.explicitRequestControls.items, []);
@@ -837,7 +837,7 @@ test('EUR1-G. a plain, non-request fact never enters items[]', async () => {
     { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'INELIGIBLE_OR_NOT_CLASSIFIED', controlIntent: null, scopeStatus: null, domain: null, topic: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'INELIGIBLE_OR_NOT_CLASSIFIED', controlIntent: null, scopeStatus: null, domain: null, topic: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.explicitRequestControls.items, []);
@@ -854,7 +854,7 @@ test('EUR1-H. more than one batch\'s worth of eligible records all receive legit
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       ids.forEach((id) => seenIds.add(id));
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
     }
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -869,7 +869,7 @@ test('EUR1-I. multiple distinct active controls (different Domain/Topic pairs) a
     { _id: 'mem-2', type: 'fact', payload: { text: 'Don\'t suggest protein reminders anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [
       { id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' },
       { id: 'mem-2', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'PROTEIN_INTAKE' }
     ] }) }] })
@@ -886,7 +886,7 @@ test('EUR1-J. duplicate active controls for the same Domain/Topic both appear �
     { _id: 'mem-2', type: 'fact', payload: { text: 'Seriously, stop suggesting food logging.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [
       { id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' },
       { id: 'mem-2', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }
     ] }) }] })
@@ -899,7 +899,7 @@ test('EUR1-K. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_REA
   configureConsentGranted(async () => [
     { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
-  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal('facts' in ctx, false);
   assert.equal('userStatedMemory' in ctx, false);
@@ -920,7 +920,7 @@ test('EUR1-L. consent not granted resolves explicitRequestControls UNAVAILABLE w
     getWeekday: () => 3
   });
   let called = false;
-  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.explicitRequestControls, null);
   assert.equal(ctx.availability.explicitRequestControls, 'UNAVAILABLE');
@@ -955,7 +955,7 @@ test('EUR1-N. edit/reject/delete/consent-grant are naturally reflected on the ne
   ExplicitRequestInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' })) }) }] };
     }
   });
   const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -970,7 +970,7 @@ test('EUR1-O. Pipeline Context (including explicitRequestControls) is frozen exa
     { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.ok(Object.isFrozen(ctx));
@@ -984,7 +984,7 @@ test('EUR1-P. this new step does not affect situationalContext or any other exis
     { _id: 'mem-1', type: 'fact', payload: { text: 'Don\'t suggest food logging anymore.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ExplicitRequestInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
@@ -1009,7 +1009,7 @@ test.afterEach(() => { SafetyContextInterpreter.configure({ callClaude: null });
 test('USC1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
   configureConsentGranted(async () => []);
   let called = false;
-  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.userSafetyContext, null);
   assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
@@ -1021,7 +1021,7 @@ test('USC1-B. like explicitRequestControls, this step attempts a read/classifica
     { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now, my knee is hurt.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   let called = false;
-  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(called, true, 'USC-001 must attempt classification even with zero live Habit/Pattern signals — it has no equivalent pre-check gate');
 });
@@ -1031,7 +1031,7 @@ test('USC1-C. an accepted RESTRICTION_STATED record populates userSafetyContext.
     { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now, my knee is hurt.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.availability.userSafetyContext, 'AVAILABLE');
@@ -1049,7 +1049,7 @@ test('USC1-D. PD-USC-01: an accepted restriction with a literal temporal qualifi
     { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run for a month.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: 'for a month' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: 'for a month' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   const item = ctx.userSafetyContext.items[0];
@@ -1062,7 +1062,7 @@ test('USC1-E. a symptom-only mention (no literal restriction) never enters items
     { _id: 'mem-1', type: 'fact', payload: { text: 'My knee hurts a little today.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.userSafetyContext.items, []);
@@ -1074,7 +1074,7 @@ test('USC1-F. a plain, non-restriction fact never enters items[]', async () => {
     { _id: 'mem-1', type: 'fact', payload: { text: 'אני עובד בלילות' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.userSafetyContext.items, []);
@@ -1091,7 +1091,7 @@ test('USC1-G. more than one batch\'s worth of eligible records all receive legit
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       ids.forEach((id) => seenIds.add(id));
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
     }
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -1106,7 +1106,7 @@ test('USC1-H. multiple distinct active restrictions all appear, no deduplication
     { _id: 'mem-2', type: 'fact', payload: { text: 'I can\'t swim for a month.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [
       { id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null },
       { id: 'mem-2', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'swim', statedDurationText: 'for a month' }
     ] }) }] })
@@ -1121,7 +1121,7 @@ test('USC1-I. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_REA
   configureConsentGranted(async () => [
     { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
-  SafetyContextInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  SafetyContextInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal('facts' in ctx, false);
   assert.equal('userStatedMemory' in ctx, false);
@@ -1142,7 +1142,7 @@ test('USC1-J. consent not granted resolves userSafetyContext UNAVAILABLE with ze
     getWeekday: () => 3
   });
   let called = false;
-  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  SafetyContextInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.userSafetyContext, null);
   assert.equal(ctx.availability.userSafetyContext, 'UNAVAILABLE');
@@ -1177,7 +1177,7 @@ test('USC1-L. edit/reject/delete/consent-grant are naturally reflected on the ne
   SafetyContextInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null })) }) }] };
     }
   });
   const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -1192,7 +1192,7 @@ test('USC1-M. Pipeline Context (including userSafetyContext) is frozen exactly a
     { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.ok(Object.isFrozen(ctx));
@@ -1206,9 +1206,9 @@ test('USC1-N. this new step does not affect situationalContext, explicitRequestC
     { _id: 'mem-1', type: 'fact', payload: { text: 'I can\'t run right now.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
   });
-  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
@@ -1238,7 +1238,7 @@ test.afterEach(() => { UserSafetyProvenanceInterpreter.configure({ callClaude: n
 test('USP1-A. no qualifying source records at all yields zero interpreter calls and UNAVAILABLE — no attempt was made', async () => {
   configureConsentGranted(async () => []);
   let called = false;
-  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.userSafetyProvenance, null);
   assert.equal(ctx.availability.userSafetyProvenance, 'UNAVAILABLE');
@@ -1250,7 +1250,7 @@ test('USP1-B. like userSafetyContext, this step attempts a read/classification w
     { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   let called = false;
-  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(called, true, 'USP-001 must attempt classification even with zero live Habit/Pattern signals — it has no equivalent pre-check gate');
 });
@@ -1260,7 +1260,7 @@ test('USP1-C. an accepted NAMED_SOURCE_STATED record populates userSafetyProvena
     { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.availability.userSafetyProvenance, 'AVAILABLE');
@@ -1276,7 +1276,7 @@ test('USP1-D. a passive attribution never enters items[] — attempted, AVAILABL
     { _id: 'mem-1', type: 'fact', payload: { text: 'I was told not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.userSafetyProvenance.items, []);
@@ -1288,7 +1288,7 @@ test('USP1-E. PD-USP-02: a bare proper name never enters items[]', async () => {
     { _id: 'mem-1', type: 'fact', payload: { text: 'Yossi told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED', statedSourceText: null }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.deepEqual(ctx.userSafetyProvenance.items, []);
@@ -1305,7 +1305,7 @@ test('USP1-F. more than one batch\'s worth of eligible records all receive legit
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       ids.forEach((id) => seenIds.add(id));
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
     }
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -1320,7 +1320,7 @@ test('USP1-G. multiple distinct named-source records all appear, no deduplicatio
     { _id: 'mem-2', type: 'fact', payload: { text: 'My coach told me not to swim.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 90 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [
       { id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' },
       { id: 'mem-2', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my coach' }
     ] }) }] })
@@ -1335,7 +1335,7 @@ test('USP1-H. reuses the existing, unmodified memoryLayer/USER_STATED_MEMORY_REA
   configureConsentGranted(async () => [
     { _id: 'mem-1', type: 'fact', payload: { text: 'x' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
-  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal('facts' in ctx, false);
   assert.equal('userStatedMemory' in ctx, false);
@@ -1356,7 +1356,7 @@ test('USP1-I. consent not granted resolves userSafetyProvenance UNAVAILABLE with
     getWeekday: () => 3
   });
   let called = false;
-  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.userSafetyProvenance, null);
   assert.equal(ctx.availability.userSafetyProvenance, 'UNAVAILABLE');
@@ -1378,9 +1378,9 @@ test('USP1-K. a USP-001 failure does not corrupt situationalContext, explicitReq
   // USP-001's own interpreter throws synchronously; the three sibling interpreters succeed normally.
   UserSafetyProvenanceInterpreter.configure({ callClaude: () => { throw new Error('simulated USP-001 failure'); } });
   SafetyContextInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: 'run', statedDurationText: null }] }) }] })
   });
-  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   // The interpreter's own classifyBatch() absorbs a synchronous callClaude throw internally
   // (never throws to its caller, per its own "never throws" discipline) — so this step still
@@ -1401,7 +1401,7 @@ test('USP1-L. a sibling interpreter failure does not corrupt userSafetyProvenanc
   // The sibling USC-001 interpreter throws synchronously; USP-001 succeeds normally.
   SafetyContextInterpreter.configure({ callClaude: () => { throw new Error('simulated USC-001 failure'); } });
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   // Same absorbed-throw behavior as USP1-K, on the sibling side this time — the point of this
@@ -1434,7 +1434,7 @@ test('USP1-M. edit/reject/delete/consent-grant are naturally reflected on the ne
   UserSafetyProvenanceInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' })) }) }] };
     }
   });
   const before = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
@@ -1449,7 +1449,7 @@ test('USP1-N. Pipeline Context (including userSafetyProvenance) is frozen exactl
     { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.ok(Object.isFrozen(ctx));
@@ -1463,9 +1463,9 @@ test('USP1-O. this new step does not affect situationalContext, explicitRequestC
     { _id: 'mem-1', type: 'fact', payload: { text: 'My doctor told me not to run.' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   UserSafetyProvenanceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'my doctor' }] }) }] })
   });
-  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ text: '{"results":[]}' }] }) });
+  ExplicitRequestInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: '{"results":[]}' }] }) });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.situationalContext, null, 'no live WEAKENING signal in this fixture — situationalContext must remain UNAVAILABLE, untouched by the new step');
   assert.equal(ctx.availability.situationalContext, 'UNAVAILABLE');
@@ -1506,7 +1506,7 @@ test.afterEach(() => {
 test('TRR-MEM-1. no eligible Typed Memory records yields zero interpreter calls and UNAVAILABLE for all three new fields — no attempt was made', async () => {
   configureConsentGranted(async () => []);
   let called = false;
-  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.readinessStateContext, null);
   assert.equal(ctx.availability.readinessStateContext, 'UNAVAILABLE');
@@ -1522,7 +1522,7 @@ test('TRR-MEM-2. readinessStateContext has NO mechanical pre-check gate — atte
     { _id: 'mem-1', type: 'fact', payload: { text: 'I barely slept' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   let called = false;
-  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{"results":[]}' }] }; } });
+  ReadinessStateInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{"results":[]}' }] }; } });
   await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(called, true, 'readinessStateContext must be attempted regardless of any Habit/Pattern signal');
 });
@@ -1532,7 +1532,7 @@ test('TRR-MEM-3. an accepted readiness statement populates readinessStateContext
     { _id: 'mem-1', type: 'fact', payload: { text: 'I barely slept' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ReadinessStateInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', verdict: 'CLASSIFIED_CURRENT_STATE' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', verdict: 'CLASSIFIED_CURRENT_STATE' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.availability.readinessStateContext, 'AVAILABLE');
@@ -1548,7 +1548,7 @@ test('TRR-MEM-4. an accepted preference statement populates activityPreference.i
     { _id: 'mem-1', type: 'fact', payload: { text: 'no preference for running' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ActivityPreferenceInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', sentimentClassification: 'NEGATIVE_SENTIMENT', activityText: 'running' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', sentimentClassification: 'NEGATIVE_SENTIMENT', activityText: 'running' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.activityPreference.items.length, 1);
@@ -1561,7 +1561,7 @@ test('TRR-MEM-5. an accepted opposition statement populates activityOppositionCo
     { _id: 'mem-1', type: 'fact', payload: { text: 'please never suggest cycling to me' }, confidence: 1, source: 'user_stated', status: 'active', updated_at: 100 }
   ]);
   ActivityOppositionInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'mem-1', oppositionClassification: 'ACTIVITY_OPPOSITION_STATED', opposedActivityText: 'cycling' }] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'mem-1', oppositionClassification: 'ACTIVITY_OPPOSITION_STATED', opposedActivityText: 'cycling' }] }) }] })
   });
   const ctx = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'run-1' });
   assert.equal(ctx.activityOppositionControls.items.length, 1);

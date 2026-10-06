@@ -28,7 +28,7 @@ function makeSiteCatalog(req) {
   const TRR = req('js/coachDecisionSystem/trainingReadinessReasoningComponent.js');
   const GR = req('js/coachDecisionSystem/generalReasoningCapability.js');
 
-  const raw = (text) => ({ content: [{ text: text }] });
+  const raw = (text) => ({ content: [{ type: 'text', text: text }] });
   const J = (o) => JSON.stringify(o);
   const tuEntry = (o) => Object.assign({ id: 't1', affirmativeRequestPresent: false, domain: null, topic: null, currentStateStatementPresent: false, currentStateStatementText: null, negativeControlPresent: false, desireOnlyPresent: false, personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null }, o);
   const proposal = (o) => Object.assign({ outcome: 'ACTION_PROPOSED', action: 'Take an easy 20-minute walk today.', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }, o);
@@ -238,8 +238,8 @@ const SC_PAYLOAD = JSON.stringify({ results: [{ id: 'mem-1', restrictionClassifi
 const USP_PAYLOAD = JSON.stringify({ results: [{ id: 'mem-1', namedSourceClassification: 'NAMED_SOURCE_STATED', statedSourceText: 'My doctor' }] });
 async function assembleWith(scText, uspText) {
   configureSafetyMemory();
-  SafetyContextInterpreter.configure({ callClaude: async () => ({ content: [{ text: scText }] }) });
-  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => ({ content: [{ text: uspText }] }) });
+  SafetyContextInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: scText }] }) });
+  UserSafetyProvenanceInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: uspText }] }) });
   try {
     const pc = await MemoryLayer.assembleContext({ userId: 'user-1', sessionGeneration: 1, runId: 'mre-p' });
     return {
@@ -286,10 +286,10 @@ test('P-4: fenced RiskCharacteristicInterpreter outputs (S12–S15) give deep-eq
     ['classifyCandidateConflictWithFact', ['eat peanut butter', 'allergic to peanuts'], JSON.stringify({ relation: 'CONFIRMED_CONFLICT' })]
   ];
   for (const [fn, args, payload] of cases) {
-    RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: payload }] }) });
+    RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: payload }] }) });
     const plain = await RiskCharacteristicInterpreter[fn].apply(null, args);
     for (const form of ACCEPT_FORMS) {
-      RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: form(payload) }] }) });
+      RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: form(payload) }] }) });
       assert.deepEqual(await RiskCharacteristicInterpreter[fn].apply(null, args), plain, fn);
     }
   }
@@ -298,7 +298,7 @@ test('P-4: fenced RiskCharacteristicInterpreter outputs (S12–S15) give deep-eq
       callClaude: async (body) => {
         const id = (body.messages[0].content.match(/id="([^"]+)"/) || [])[1];
         const payload = JSON.stringify({ results: [{ id: id, correctionConfirmed: true }] });
-        return { content: [{ text: text(payload) }] };
+        return { content: [{ type: 'text', text: text(payload) }] };
       }
     });
     return RiskCharacteristicIntakeGate.authorizeCorrection({
@@ -343,7 +343,7 @@ async function requestBodyHashes() {
   const out = {};
   const capture = async (name, M, fn) => {
     const seen = [];
-    M.configure({ callClaude: async (b) => { seen.push(JSON.stringify(name === 'TU.understand' ? withPreAmendmentOuInstruction(b) : b)); return { content: [{ text: '{}' }] }; } });
+    M.configure({ callClaude: async (b) => { seen.push(JSON.stringify(name === 'TU.understand' ? withPreAmendmentOuInstruction(b) : b)); return { content: [{ type: 'text', text: '{}' }] }; } });
     try { await fn(); } finally { M.configure({ callClaude: null }); }
     out[name] = crypto.createHash('sha256').update(seen.join('\n')).digest('hex');
   };

@@ -17,7 +17,7 @@ const TURN = { turnId: 'cpi-1', text: 'I enjoy running because it clears my head
 const ELIGIBLE_A = { eligible: true, preferenceClass: 'ACTIVITY_SENTIMENT', polarity: 'POSITIVE', target: 'running', ineligibleReason: null };
 function stub(entry) {
   const bodies = [];
-  CPI.configure({ callClaude: async (body) => { bodies.push(body); return { content: [{ text: JSON.stringify({ results: [Object.assign({ id: 'cpi-1' }, entry)] }) }] }; } });
+  CPI.configure({ callClaude: async (body) => { bodies.push(body); return { content: [{ type: 'text', text: JSON.stringify({ results: [Object.assign({ id: 'cpi-1' }, entry)] }) }] }; } });
   return bodies;
 }
 
@@ -39,7 +39,7 @@ test('AC-10: missing, over-length, non-literal or (class A) target-not-contained
   Gate.__setEnabledForTests__(true);
   SafetyContextInterpreter.configure({ callClaude: async (body) => {
     const ids = (body.messages[0].content.match(/<statement id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-    return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null })) }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null })) }) }] };
   } });
   const anchors = [undefined, null, '', 'x'.repeat(201), 'I love swimming', 'it clears my head', 'I enjoy running'];
   const outcomes = [];
@@ -73,8 +73,8 @@ test('AC-11: classifyWithStatus returns FAILED on unconfigured, throw, timeout a
       () => CPI.configure({ callClaude: null }),
       () => CPI.configure({ callClaude: () => { throw new Error('boom'); } }),
       () => CPI.configure({ callClaude: () => new Promise(() => {}), timeoutMs: 20 }),
-      () => CPI.configure({ callClaude: async () => ({ content: [{ text: 'prose { not json' }] }) }),
-      () => CPI.configure({ callClaude: async () => ({ content: [{ text: JSON.stringify({ results: [{ id: 'cpi-1', eligible: 'maybe' }] }) }] }) })
+      () => CPI.configure({ callClaude: async () => ({ content: [{ type: 'text', text: 'prose { not json' }] }) }),
+      () => CPI.configure({ callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ results: [{ id: 'cpi-1', eligible: 'maybe' }] }) }] }) })
     ];
     for (const setup of cases) {
       setup();

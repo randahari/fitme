@@ -74,7 +74,7 @@ function freshProduction() {
 function authzFor(cap, consent) {
   return (p) => EligibilityPolicy.computeEligibility(p, cap, consent).reasoningAccessAuthorized === true;
 }
-function modelText(obj) { return { content: [{ text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
+function modelText(obj) { return { content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
 function stubModel(obj) { return async () => modelText(obj); }
 function listJs(dir) {
   const out = [];
@@ -579,10 +579,10 @@ test('AC-31: no registered description contains a platform or vendor token', () 
   });
 });
 
-test('AC-32: the interpreter depends only on modelResponseEnvelope.js', () => {
+test('AC-32: the interpreter depends exactly on modelResponseEnvelope.js and modelResponseStructure.js (MRS-001)', () => {
   const code = codeOnly(read('js/coachDecisionSystem/semanticContextDiscoveryInterpreter.js'));
   const requires = (code.match(/require\('([^']+)'\)/g) || []);
-  assert.deepEqual(requires, ["require('./modelResponseEnvelope.js')"]);
+  assert.deepEqual(requires, ["require('./modelResponseEnvelope.js')", "require('./modelResponseStructure.js')"]);
   const globals = (code.match(/: window\.([A-Za-z]+);/g) || []);
-  assert.deepEqual(globals, [': window.ModelResponseEnvelope;']);
+  assert.deepEqual(globals, [': window.ModelResponseEnvelope;', ': window.ModelResponseStructure;']);
 });

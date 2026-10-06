@@ -100,7 +100,7 @@ function makeCaller(apiKey, stats, baselineEnvelope) {
     const started = Date.now();
     let data;
     if (DRY_RUN) {
-      data = { content: [{ text: '{"results":[]}' }], stop_reason: 'end_turn', usage: { output_tokens: 0 } };
+      data = { content: [{ type: 'text', text: '{"results":[]}' }], stop_reason: 'end_turn', usage: { output_tokens: 0 } };
     } else {
       const res = await fetch(API_URL, {
         method: 'POST',

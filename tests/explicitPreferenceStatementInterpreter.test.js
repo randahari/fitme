@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const Interpreter = require('../js/coachDecisionSystem/explicitPreferenceStatementInterpreter.js');
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
 function configureStub(handler) {
   Interpreter.configure({ callClaude: handler });
@@ -119,7 +119,7 @@ test('13. unconfigured/thrown/timeout/malformed callClaude all fail closed to el
   configureStub(() => { throw new Error('boom'); });
   assert.deepEqual(await Interpreter.classify({ turnId: 't1', text: 'x' }), Interpreter._internal.failedResult());
 
-  configureStub(async () => ({ content: [{ text: 'not json' }] }));
+  configureStub(async () => ({ content: [{ type: 'text', text: 'not json' }] }));
   assert.deepEqual(await Interpreter.classify({ turnId: 't1', text: 'x' }), Interpreter._internal.failedResult());
 });
 

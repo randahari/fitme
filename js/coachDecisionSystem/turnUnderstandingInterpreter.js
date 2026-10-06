@@ -53,6 +53,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
   // USI-001 (docs/specs/USI_001_SPEC_v1.0.md §09; DUC_001_AMENDMENT_USI_001_v1.0.md) — Dimension 6
   // exists only while this gate is on. With the gate off (production), the prompt, request body and
   // closed output are byte-identical to the pre-USI baseline.
@@ -352,8 +355,13 @@
   // independently by validateDimension6(), so a Dimension-6-only malformation never turns a
   // CLASSIFIED entry into FAILED.
   function parseAndValidate(rawResponse, submittedIds, dimension6Sink) {
+    var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-1' }).text || ''; // MRS-001 S1 — a structural failure takes today's empty-text path
+    return validateClosedText(text, submittedIds, dimension6Sink);
+  }
+  // MRS-001 §11.2 / ED-1 — the closed-segment validation over already-extracted answer text. The
+  // provider response crosses MRS-001 once (splitResponse or parseAndValidate); this never sees one.
+  function validateClosedText(text, submittedIds, dimension6Sink) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};
@@ -468,14 +476,16 @@
   }
 
   // OU-001 §08 — split one raw response into its closed and open segments. With no sentinel the
-  // closed "segment" is the raw response itself, untouched, so parseAndValidate() sees exactly
+  // closed segment is the whole answer text, untouched, so the closed validation sees exactly
   // what it saw before OU-001 (legacy compatibility, zero drift for every sentinel-free response).
+  // MRS-001 §11.2 / ED-1 — the provider response crosses MRS-001 exactly once, here (S2); the closed
+  // segment travels on as text only. A structural failure leaves an empty closed segment and no open one.
   function splitResponse(rawResponse) {
-    var text = rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text;
+    var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-1' }).text;
     var i = (typeof text === 'string') ? text.indexOf(OU_SEGMENT_SENTINEL) : -1;
-    if (i < 0) return { closedResponse: rawResponse, openText: null };
+    if (i < 0) return { closedText: (typeof text === 'string') ? text : '', openText: null };
     return {
-      closedResponse: { content: [{ text: text.slice(0, i) }] },
+      closedText: text.slice(0, i),
       openText: text.slice(i + OU_SEGMENT_SENTINEL.length)
     };
   }
@@ -486,7 +496,7 @@
     var raw = await requestModel(batchRecords, recentConversationContext);
     if (!raw) return {};
     var submittedIds = batchRecords.map(function (r) { return r.sourceTurnId; });
-    return parseAndValidate(splitResponse(raw).closedResponse, submittedIds);
+    return validateClosedText(splitResponse(raw).closedText, submittedIds);
   }
 
   // OU-001 §11 — normalization used only for locating a mention's text.
@@ -650,7 +660,7 @@
 
     var segments = splitResponse(raw);
     var dimension6Sink = withDimension6 ? {} : null;
-    var accepted = parseAndValidate(segments.closedResponse, [turn.turnId], dimension6Sink);
+    var accepted = validateClosedText(segments.closedText, [turn.turnId], dimension6Sink);
     var result = accepted[turn.turnId];
     if (!result) return understandingPair(failedResult(withDimension6), null); // closed FAILED => open null (one-way)
 
@@ -684,6 +694,7 @@
       buildRecentConversationContextBlock: buildRecentConversationContextBlock,
       buildRequestBody: buildRequestBody,
       parseAndValidate: parseAndValidate,
+      validateClosedText: validateClosedText,
       classifyBatch: classifyBatch,
       failedResult: failedResult,
       validateDimension6: validateDimension6,

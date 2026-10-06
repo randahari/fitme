@@ -47,6 +47,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   // §6/§12 — Engineering transport bounds only, never a semantic-completeness cap (the caller,
   // memoryLayer.js, always issues every batch required to cover the complete eligible set).
@@ -191,9 +194,13 @@
   // coerced default value. A statedDurationText that fails the literal-substring check does NOT
   // reject the whole record (§9) — only that one field is dropped (set to null) while the
   // otherwise-valid RESTRICTION_STATED record, with its own valid restrictedActivityText, is kept.
+  // MRS-001 S9 (I-1): the F-8 (classify) path; classifyBatchWithStatus reaches the same body under F-9.
   function parseAndValidate(rawResponse, submittedIds, idToStatementText) {
+    return parseAndValidateUnder({ state: 'FROZEN_CONTRACT', entry: 'F-8' }, rawResponse, submittedIds, idToStatementText);
+  }
+  function parseAndValidateUnder(contract, rawResponse, submittedIds, idToStatementText) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, contract).text || ''; // MRS-001 S9 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};
@@ -353,7 +360,7 @@
     var timeoutMs = (typeof deps.timeoutMs === 'number' && deps.timeoutMs > 0) ? deps.timeoutMs : TIMEOUT_MS;
     var result = await withTimeout(call, timeoutMs);
     if (!result || result.__usc_timed_out || result.__usc_failed) return { status: 'FAILED', accepted: {} };
-    var accepted = parseAndValidate(result, submittedIds, idToStatementText);
+    var accepted = parseAndValidateUnder({ state: 'FROZEN_CONTRACT', entry: 'F-9' }, result, submittedIds, idToStatementText);
     // Every submitted id must have validly resolved (§9's own literal-substring/gating-consistency
     // enforcement already applied inside parseAndValidate()) — any id missing here means the model
     // either omitted it, duplicated it, or answered it inconsistently/malformed; that turn's own
@@ -442,7 +449,7 @@
 
   function parseAndValidateCorrection(rawResponse, expectedId) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-10' }).text || ''; // MRS-001 S10 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results) || parsed.results.length !== 1) return null;
       var entry = parsed.results[0];

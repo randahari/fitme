@@ -76,7 +76,7 @@ function stubTurnUnderstanding(resultByTurnId) {
         // by any acceptance case exercising it.
         personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }, resultByTurnId[id] || {}));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -87,7 +87,7 @@ function stubReadinessStateInterpreterClassifiesAll() {
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 }
@@ -96,7 +96,7 @@ function stubTrainingReadinessActionProposed() {
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED',
           action: 'שקול/י אימון קליל וקצר יותר היום, לאור שנת הלילה המוגבלת.',
           actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,
@@ -113,7 +113,7 @@ function stubTrainingReadinessActionProposed() {
 // WP0 Phase D.6 — see the require() comment above.
 function stubRiskCharacteristicInterpreterNoSignal() {
   RiskCharacteristicInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ tags: [] }) }] })
   });
 }
 
@@ -265,7 +265,7 @@ test('DUC-CASE-A. "אני עייף היום" (no request) never produces UNSUPPO
 
 test('DUC-CASE-C. a forced Turn Understanding failure (malformed model output) never produces UNSUPPORTED either — same Decision-Pass-level Silence as Case A, machine-readably distinct only at the interpreter boundary', async () => {
   configureFixture();
-  TurnUnderstandingInterpreter.configure({ callClaude: async () => ({ content: [{ text: 'not json' }] }) });
+  TurnUnderstandingInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: 'not json' }] }) });
   stubReadinessStateInterpreterClassifiesAll();
   stubExpressionRendererEchoes();
 
@@ -364,7 +364,7 @@ test('DUC-CLARIFICATION-1. a CLARIFICATION_NEEDED-producing reasoning outcome fo
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'CLARIFICATION_NEEDED',
           action: 'איזה סוג אימון בדרך כלל אתה עושה כשאתה מתאמן?',
           actionCategory: null, activityReference: null,
@@ -439,7 +439,7 @@ test('DUC-NEGCONTROL-2. "אל תציע לי ריצה, אבל מה עם אימו�
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
       return {
         content: [{
-          text: JSON.stringify({
+          type: 'text', text: JSON.stringify({
             results: ids.map((id) => ({
               id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE',
               scopeStatus: 'RESOLVED', domain: 'WORKOUT', topic: 'WORKOUT_FREQUENCY'
@@ -571,7 +571,7 @@ test('DUC-COLLISION-1. Stage 3 mechanically detects BOTH the turn-caused DIRECT_
 test('DUC-COLLISION-2 (CRITICAL — proves the Turn-Serving defect is corrected). the user\'s direct TRR Candidate is NOT displaced by an unrelated, real, higher-canonical-tier proactive Candidate — the governed response serves the originating turn', async () => {
   const ConversationalNeedCreator = require('../js/coachDecisionSystem/conversationalNeedCreator.js');
   TrainingReadinessReasoningComponent.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({
       outcome: 'ACTION_PROPOSED',
       action: 'שקול/י אימון קליל יותר היום לאור שנת הלילה המוגבלת.',
       actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,

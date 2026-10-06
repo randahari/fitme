@@ -35,11 +35,11 @@ test('AC-42: index.html tags the activation gate, the E.0.2c contract, the USI i
   ['userStatedIntakeExecutor.js', 'userKnowledgeStore.js', 'userKnowledgeTransitions.js'].forEach((f) => assert.equal(html.indexOf(f), -1, f + ' must not be tagged'));
 });
 
-test('AC-42: sw.js precaches the same five assets and VERSION / APP_VERSION are bumped in lockstep to 2.47.8', () => {
+test('AC-42: sw.js precaches the same five assets and VERSION / APP_VERSION are bumped in lockstep to 2.47.9', () => {
   TAGGED.forEach((f) => assert.notEqual(swIdx(f), -1, f + ' precached'));
   ['userStatedIntakeExecutor.js', 'userKnowledgeStore.js', 'userKnowledgeTransitions.js'].forEach((f) => assert.equal(sw.indexOf(f), -1, f));
-  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.8');
-  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.8');
+  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.9');
+  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.9');
 });
 
 test('AC-42 / wiring test 37: js/app.js configures UserStatedIntakeInterpreter with the real callClaude closure, and nothing else of USI-001', () => {

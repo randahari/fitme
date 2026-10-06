@@ -18,14 +18,14 @@ function configureSafetyStub(handler) {
 function noNewRestrictionStub() {
   configureSafetyStub(async (body) => {
     const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
   });
 }
 
 function newRestrictionFoundStub(restrictedActivityText) {
   configureSafetyStub(async (body) => {
     const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: restrictedActivityText, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: restrictedActivityText, statedDurationText: null }] }) }] };
   });
 }
 
@@ -67,7 +67,7 @@ function correctionConfirmedStub(expectedRestrictionSubstring, confirmed) {
     const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
     // buildCorrectionPrompt embeds the existing restriction text directly into the prompt.
     assert.match(body.messages[0].content, new RegExp(expectedRestrictionSubstring));
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
   });
 }
 
@@ -80,9 +80,9 @@ test('4. an explicit, unambiguous correction against exactly one existing restri
     const idMatch = content.match(/<statement id="([^"]+)"/);
     if (content.indexOf('previously, explicitly') >= 0) {
       // This is the correction-check prompt.
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: true }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: true }] }) }] };
     }
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
   });
   const pipelineContext = { userSafetyContext: { items: [{ sourceMemoryId: 'm1', restrictedActivityText: 'לרוץ' }] } };
   const result = await Gate.authorize({ turn: { turnId: 't3', text: 'הרופא אישר לי לחזור לרוץ' }, pipelineContext: pipelineContext, consentGranted: true, category: 'STATE' });
@@ -95,9 +95,9 @@ test('5. an ordinary state statement (correction never confirmed) preserves the 
     const content = body.messages[0].content;
     const idMatch = content.match(/<statement id="([^"]+)"/);
     if (content.indexOf('previously, explicitly') >= 0) {
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: false }] }) }] }; // "my knee feels better" alone
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: false }] }) }] }; // "my knee feels better" alone
     }
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
   });
   const pipelineContext = { userSafetyContext: { items: [{ sourceMemoryId: 'm1', restrictedActivityText: 'לרוץ' }] } };
   const result = await Gate.authorize({ turn: { turnId: 't4', text: 'הברך שלי מרגישה יותר טוב' }, pipelineContext: pipelineContext, consentGranted: true, category: 'STATE' });
@@ -110,9 +110,9 @@ test('6. ambiguity — more than one confirmed correction match against multiple
     const content = body.messages[0].content;
     const idMatch = content.match(/<statement id="([^"]+)"/);
     if (content.indexOf('previously, explicitly') >= 0) {
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: true }] }) }] }; // confirms EVERY restriction — ambiguous
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: true }] }) }] }; // confirms EVERY restriction — ambiguous
     }
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
   });
   const pipelineContext = { userSafetyContext: { items: [{ sourceMemoryId: 'm1', restrictedActivityText: 'לרוץ' }, { sourceMemoryId: 'm2', restrictedActivityText: 'לשחות' }] } };
   const result = await Gate.authorize({ turn: { turnId: 't5', text: 'אני מרגיש הרבה יותר טוב' }, pipelineContext: pipelineContext, consentGranted: true, category: 'STATE' });
@@ -143,7 +143,7 @@ test('9. a classifier that fails ONLY on the correction-check leg (new-restricti
     if (content.indexOf('previously, explicitly') >= 0) {
       throw new Error('correction transport failure');
     }
-    return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
   });
   const pipelineContext = { userSafetyContext: { items: [{ sourceMemoryId: 'm1', restrictedActivityText: 'לרוץ' }] } };
   const result = await Gate.authorize({ turn: { turnId: 't6', text: 'משהו' }, pipelineContext: pipelineContext, consentGranted: true, category: 'STATE' });
@@ -155,7 +155,7 @@ test('9. a classifier that fails ONLY on the correction-check leg (new-restricti
 
 test('10. an invalid turn (missing turnId/text) is rejected (INVALID_TURN), no classifier call attempted', async () => {
   let called = false;
-  configureSafetyStub(async () => { called = true; return { content: [{ text: '{}' }] }; });
+  configureSafetyStub(async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; });
   const result = await Gate.authorize({ turn: {}, pipelineContext: {}, consentGranted: true, category: 'STATE' });
   assert.equal(result.authorized, false);
   assert.equal(result.reason, 'INVALID_TURN');

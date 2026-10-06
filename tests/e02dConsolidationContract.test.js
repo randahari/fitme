@@ -213,3 +213,79 @@ test('§14.4 / §25 (contract): key namespaces, VERIFIER_FAILED status, closed r
   assert.equal(CC.LIMITS.MAX_GROUNDING_ANCHORS, 8);
   assert.equal(CC.LIMITS.ANCHOR_TEXT_MAX_CHARS, 120);
 });
+
+// ═══ v1.2 §27.1 / AC-D68 — request-profile validation (MRS-001 §08.3–§08.7) ═══
+test('AC-D68: the default profiles are valid, frozen, and exactly §27.1; STAGE_FAILURE_REASONS is the closed §15.0 vocabulary', () => {
+  assert.deepEqual(CC.DEFAULT_GENERATOR_PROFILE, { model: 'claude-haiku-4-5-20251001', reasoning: 'OFF', effort: 'NOT_APPLICABLE', maxOutputTokens: 1600, timeoutMs: 20000, providerBinding: { thinking: { type: 'disabled' } } });
+  assert.deepEqual(CC.DEFAULT_VERIFIER_PROFILE, { model: 'claude-haiku-4-5-20251001', reasoning: 'OFF', effort: 'NOT_APPLICABLE', maxOutputTokens: 800, timeoutMs: 20000, providerBinding: { thinking: { type: 'disabled' } } });
+  [CC.DEFAULT_GENERATOR_PROFILE, CC.DEFAULT_VERIFIER_PROFILE].forEach((p) => {
+    assert.equal(CC.isValidRequestProfile(p), true);
+    assert.ok(Object.isFrozen(p) && Object.isFrozen(p.providerBinding) && Object.isFrozen(p.providerBinding.thinking));
+  });
+  assert.deepEqual(CC.STAGE_FAILURE_REASONS, ['TRANSPORT_FAILED', 'TIMEOUT', 'CONTRACT_UNRESOLVED', 'REFUSAL', 'MAX_TOKENS', 'NOT_A_RESPONSE', 'MALFORMED_BLOCK',
+    'UNSUPPORTED_BLOCK', 'REASONING_NOT_PERMITTED', 'NO_ANSWER_TEXT', 'MULTIPLE_ANSWER_TEXT', 'INVALID_ENVELOPE', 'ATTRIBUTION_ANOMALY']);
+  assert.deepEqual(CC.PROFILE_KEYS, ['model', 'reasoning', 'effort', 'maxOutputTokens', 'timeoutMs', 'providerBinding']);
+});
+
+test('AC-D68: every invalid profile is rejected — missing/extra/ill-typed keys, vocabularies, inexact bindings, effort/binding disagreement under OFF and ON, foreign binding fields', () => {
+  const base = () => ({ model: 'm', reasoning: 'OFF', effort: 'NOT_APPLICABLE', maxOutputTokens: 100, timeoutMs: 1000, providerBinding: { thinking: { type: 'disabled' } } });
+  const P = (o) => Object.assign(base(), o);
+  const B = (b, o) => P(Object.assign({ providerBinding: b }, o || {}));
+  const invalid = {
+    notObject: null, array: [], missingKey: (() => { const p = base(); delete p.effort; return p; })(), extraKey: P({ extra: 1 }),
+    emptyModel: P({ model: '' }), nonStringModel: P({ model: 7 }),
+    reasoningCase: P({ reasoning: 'off' }), reasoningOther: P({ reasoning: 'AUTO' }), effortOther: P({ effort: 'XHIGH' }), effortLower: P({ effort: 'low' }),
+    zeroTokens: P({ maxOutputTokens: 0 }), floatTokens: P({ maxOutputTokens: 1.5 }), stringTimeout: P({ timeoutMs: '1000' }), negativeTimeout: P({ timeoutMs: -1 }),
+    bindingNotObject: B(null), bindingMissingThinking: B({}),
+    offWithAdaptive: B({ thinking: { type: 'adaptive' } }),
+    offDisabledWithDisplay: B({ thinking: { type: 'disabled', display: 'summarized' } }),        // C4: exact objects only
+    offDisabledWithBudget: B({ thinking: { type: 'disabled', budget_tokens: 1024 } }),
+    offBetweenToolsWithBinding: B({ thinking: { type: 'between_tools', block_binding: 'x' } }, { effort: 'HIGH' }),
+    offEnabled: B({ thinking: { type: 'enabled', budget_tokens: 1024 } }),
+    onWithDisabled: B({ thinking: { type: 'disabled' } }, { reasoning: 'ON' }),
+    onAdaptiveExtraField: B({ thinking: { type: 'adaptive', display: 'summarized' } }, { reasoning: 'ON' }),
+    explicitEffortWithoutControl: P({ effort: 'LOW' }),                                           // C3
+    naWithControl: B({ thinking: { type: 'disabled' }, output_config: { effort: 'low' } }),        // C3
+    controlValueDiffers: B({ thinking: { type: 'disabled' }, output_config: { effort: 'high' } }, { effort: 'LOW' }),
+    controlExtraField: B({ thinking: { type: 'disabled' }, output_config: { effort: 'low', format: {} } }, { effort: 'LOW' }),
+    onExplicitEffortWithoutControl: B({ thinking: { type: 'adaptive' } }, { reasoning: 'ON', effort: 'MEDIUM' }),
+    betweenToolsWithoutExplicitEffort: B({ thinking: { type: 'between_tools' } }),               // C5
+    foreignBindingModel: B({ thinking: { type: 'disabled' }, model: 'x' }),
+    foreignBindingMaxTokens: B({ thinking: { type: 'disabled' }, max_tokens: 5 }),
+    foreignBindingMessages: B({ thinking: { type: 'disabled' }, messages: [] }),
+    foreignBindingTools: B({ thinking: { type: 'disabled' }, tools: [] })
+  };
+  for (const [name, p] of Object.entries(invalid)) assert.equal(CC.isValidRequestProfile(p), false, name);
+  // valid: reasoning and effort are independent — OFF with an explicit effort and matching control is valid (C3)
+  const valid = {
+    offDisabledNoEffort: base(),
+    offDisabledLow: B({ thinking: { type: 'disabled' }, output_config: { effort: 'low' } }, { effort: 'LOW' }),
+    offBetweenToolsHigh: B({ thinking: { type: 'between_tools' }, output_config: { effort: 'high' } }, { effort: 'HIGH' }),
+    onAdaptiveNoEffort: B({ thinking: { type: 'adaptive' } }, { reasoning: 'ON' }),
+    onAdaptiveMedium: B({ thinking: { type: 'adaptive' }, output_config: { effort: 'medium' } }, { reasoning: 'ON', effort: 'MEDIUM' })
+  };
+  for (const [name, p] of Object.entries(valid)) assert.equal(CC.isValidRequestProfile(p), true, name);
+});
+
+test('AC-D68 (static): no profile rule mentions a model id or derives effort from reasoning; no capability registry', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(ROOT, 'js/coachDecisionSystem/consolidationContract.js'), 'utf8');
+  const body = src.slice(src.indexOf('function isValidRequestProfile('), src.indexOf('function clonePlain('));
+  assert.ok(body.length > 0);
+  assert.equal(/claude|haiku|sonnet|opus|p\.model\s*===|p\.model\.(indexOf|startsWith|match)/i.test(body), false, 'no model-id rule');
+  assert.equal(/reasoning\s*===\s*'OFF'\s*\?\s*'NOT_APPLICABLE'|effort\s*=\s*p\.reasoning/.test(body), false, 'effort is never derived from reasoning');
+  assert.equal(/capabilit/i.test(body), false);
+});
+
+test('§15.1 / §15.4: buildProfileRequestBody emits model, max_tokens, the binding fields in their stated order, then messages — never aliasing the profile', () => {
+  const p = { model: 'm', reasoning: 'OFF', effort: 'LOW', maxOutputTokens: 9, timeoutMs: 1, providerBinding: { thinking: { type: 'disabled' }, output_config: { effort: 'low' } } };
+  const body = CC.buildProfileRequestBody(p, 'prompt');
+  assert.deepEqual(Object.keys(body), ['model', 'max_tokens', 'thinking', 'output_config', 'messages']);
+  assert.deepEqual(body, { model: 'm', max_tokens: 9, thinking: { type: 'disabled' }, output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'prompt' }] });
+  body.thinking.type = 'mutated';
+  assert.equal(p.providerBinding.thinking.type, 'disabled');
+  const copy = CC.copyProfile(p);
+  assert.deepEqual(copy, p);
+  assert.ok(Object.isFrozen(copy.providerBinding.output_config));
+  assert.notEqual(copy.providerBinding, p.providerBinding);
+});

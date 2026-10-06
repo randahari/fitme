@@ -59,7 +59,7 @@ function stubTurnUnderstanding(resultByTurnId) {
         negativeControlPresent: false, desireOnlyPresent: false,
         personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }, resultByTurnId[id] || {}));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -68,7 +68,7 @@ function stubReadinessStateInterpreterClassifiesAll() {
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 }
@@ -77,7 +77,7 @@ function stubTrainingReadinessProposal(action) {
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED', action: action,
           actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,
           rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
@@ -98,17 +98,17 @@ function stubRiskCharacteristicFullMechanism(opts) {
       const content = body.messages[0].content;
       if (content.indexOf('already-durable Safety-relevant fact on record') >= 0) {
         if (opts.conflictThrows) throw new Error('transport exploded');
-        if (opts.conflictMalformed) return { content: [{ text: 'not json at all' }] };
+        if (opts.conflictMalformed) return { content: [{ type: 'text', text: 'not json at all' }] };
         const factMatch = content.match(/verbatim: "([^"]*)"/);
         const factText = factMatch ? factMatch[1] : '';
         const relation = (opts.conflictRelationForFactText && opts.conflictRelationForFactText[factText]) || 'AMBIGUOUS';
         const extra = (opts.conflictExtraFields && opts.conflictExtraFields[factText]) || {};
-        return { content: [{ text: JSON.stringify(Object.assign({ relation: relation }, extra)) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(Object.assign({ relation: relation }, extra)) }] };
       }
       const match = content.match(/\n<proposed_action>([\s\S]*)<\/proposed_action>/);
       const actionText = match ? match[1] : '';
       const tags = (opts.tagsForActionText && opts.tagsForActionText[actionText]) || [];
-      return { content: [{ text: JSON.stringify({ tags: tags }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ tags: tags }) }] };
     }
   });
 }
@@ -299,12 +299,12 @@ test('7c. timeout on the relation classifier -> DEFERRED (real timeout, not mere
       const content = body.messages[0].content;
       if (content.indexOf('already-durable Safety-relevant fact on record') >= 0) {
         await new Promise((resolve) => setTimeout(resolve, 100)); // exceeds the 10ms configured timeout
-        return { content: [{ text: JSON.stringify({ relation: 'CONFIRMED_NO_CONFLICT' }) }] };
+        return { content: [{ type: 'text', text: JSON.stringify({ relation: 'CONFIRMED_NO_CONFLICT' }) }] };
       }
       const match = content.match(/\n<proposed_action>([\s\S]*)<\/proposed_action>/);
       const actionText = match ? match[1] : '';
       const tags = actionText === action ? [{ domain: 'PHYSICAL_EXERTION_OR_MOVEMENT', anchorText: 'אימון' }] : [];
-      return { content: [{ text: JSON.stringify({ tags: tags }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ tags: tags }) }] };
     }
   });
   stubExpressionRendererEchoes();
@@ -332,7 +332,7 @@ test('8. confirmed conflict + independently-cleared safeAlternative -> still DEF
 test('9. model/self-asserted severity in the relation-classifier response cannot override NOT_ESTABLISHED — extra fields are silently discarded, never trusted', async () => {
   const action = 'נסה אימון עצים';
   RiskCharacteristicInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ relation: 'CONFIRMED_CONFLICT', severity: 'LIFE_CRITICAL', diagnosis: 'a fabricated diagnosis' }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ relation: 'CONFIRMED_CONFLICT', severity: 'LIFE_CRITICAL', diagnosis: 'a fabricated diagnosis' }) }] })
   });
   const built = await Orchestrator.resolveDurableFactRelation(
     'PHYSICAL_EXERTION_OR_MOVEMENT', action,
@@ -389,7 +389,7 @@ test('12a. TRR golden-master, D.6.1-specific: a real TRR candidate with zero ris
   stubTurnUnderstanding({ 't-trr-gm-1': DIRECT_REQUEST_TURN_UNDERSTANDING });
   stubReadinessStateInterpreterClassifiesAll();
   stubTrainingReadinessProposal('שקול/י אימון קליל יותר היום.');
-  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] }) });
+  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ tags: [] }) }] }) });
   stubExpressionRendererEchoes();
 
   const result = await runTurn('t-trr-gm-1', 'ישנתי 5 שעות, כדאי לי להתאמן היום?');
@@ -427,7 +427,7 @@ test('classifyCandidateConflictWithFact: unconfigured interpreter fails closed',
 
 test('classifyCandidateConflictWithFact: invalid input (empty strings) fails closed without ever calling the model', async () => {
   let called = false;
-  RiskCharacteristicInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ text: '{}' }] }; } });
+  RiskCharacteristicInterpreter.configure({ callClaude: async () => { called = true; return { content: [{ type: 'text', text: '{}' }] }; } });
   const r1 = await RiskCharacteristicInterpreter.classifyCandidateConflictWithFact('', 'y');
   const r2 = await RiskCharacteristicInterpreter.classifyCandidateConflictWithFact('x', '');
   assert.deepEqual(r1, { status: 'FAILED' });
@@ -436,7 +436,7 @@ test('classifyCandidateConflictWithFact: invalid input (empty strings) fails clo
 });
 
 test('classifyCandidateConflictWithFact: an out-of-vocabulary relation value fails closed', async () => {
-  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: JSON.stringify({ relation: 'DEFINITELY_MAYBE' }) }] }) });
+  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ relation: 'DEFINITELY_MAYBE' }) }] }) });
   const result = await RiskCharacteristicInterpreter.classifyCandidateConflictWithFact('x', 'y');
   assert.deepEqual(result, { status: 'FAILED' });
 });

@@ -50,7 +50,7 @@ test.afterEach(() => {
   GeneralReasoningActivationGate.__setLiveFallbackApprovedForTests__(false); // never leak a gate-ON state across test files
 });
 
-function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
+function fakeResponse(obj) { return { content: [{ type: 'text', text: JSON.stringify(obj) }] }; }
 
 // A Need fixture for a message like "שיחקתי קרלינג היום, יש לי טכניקה גרועה, מה כדאי לתקן?"
 // (I played curling today, my technique is poor, what should I fix?) — representative of the

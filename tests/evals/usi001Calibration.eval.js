@@ -161,7 +161,7 @@ const CORPUS = ORDINARY.concat(NEW, CPI_CASES, MUTATIONS, PROBES);
 // ── harness corrections (rounds 2 and 4; harness only — no production change) ───────────────
 // Round 2:
 // 1. Measurement parsing reuses the PRODUCTION parsers (TurnUnderstandingInterpreter splitResponse
-//    + parseAndValidate + validateDimension6; CPI parseAndValidate + validateAssertionAnchor). The
+//    + validateClosedText (MRS-001 ED-1) + validateDimension6; CPI parseAndValidate + validateAssertionAnchor). The
 //    harness owns no parser and is never more permissive than production.
 // 2. Every model call is attributed to the case and phase that STARTED it; each case awaits its own
 //    in-flight calls before the next case starts.
@@ -267,7 +267,7 @@ function makeTransport(component) {
       if (DRY_RUN && !fetchImpl) {
         const o = dryOverride ? (dryOverride(component, body, rec) || {}) : {};
         if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs));
-        data = { content: [{ text: o.text !== undefined ? o.text : dryReply(component, body) }], stop_reason: o.stopReason || 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } };
+        data = { content: [{ type: 'text', text: o.text !== undefined ? o.text : dryReply(component, body) }], stop_reason: o.stopReason || 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } };
       } else {
         const r = await postMessages(body);
         if (!r.ok || !r.data) {
@@ -309,11 +309,11 @@ function callsOf(caseId, phase, component) { return calls.filter((x) => x.case =
 function timedOut(rec) { return !!rec && typeof rec.latencyMs === 'number' && TIMEOUT_MS[rec.component] !== undefined && rec.latencyMs > TIMEOUT_MS[rec.component]; }
 
 // ── measurement through the production parsers ──────────────────────────────────────────────
-function asRaw(rec) { return { content: [{ text: rec.rawText }], stop_reason: rec.stopReason }; }
+function asRaw(rec) { return { content: [{ type: 'text', text: rec.rawText }], stop_reason: rec.stopReason }; }
 function measureD6(rec, turnId, suppliedText) {
   if (!rec || typeof rec.rawText !== 'string') return { parsed: false, rawPresent: false, raw: null, validated: null };
   const sink = {};
-  const accepted = TU._internal.parseAndValidate(TU._internal.splitResponse(asRaw(rec)).closedResponse, [turnId], sink);
+  const accepted = TU._internal.validateClosedText(TU._internal.splitResponse(asRaw(rec)).closedText, [turnId], sink); // MRS-001 ED-1: the closed segment is text
   if (!accepted[turnId]) return { parsed: false, rawPresent: false, raw: null, validated: null };
   const raw = sink[turnId];
   return { parsed: true, rawPresent: !!raw && raw.present === true, raw, validated: TU._internal.validateDimension6(raw, suppliedText) };

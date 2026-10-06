@@ -16,9 +16,9 @@ const RESOLVED = 'RESOLVED';
 const UNRESOLVED = 'UNRESOLVED';
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 function notClassified(id) {
   return { id: id, requestClassification: NOT_CLASSIFIED, controlIntent: null, scopeStatus: null, domain: null, topic: null };
@@ -202,7 +202,7 @@ test('26. a duplicate returned id fails closed, regardless of whether the two en
 });
 
 test('27. a batch-level malformed response (not valid JSON) fails every id in that batch closed', () => {
-  const raw = { content: [{ text: 'not json at all' }] };
+  const raw = { content: [{ type: 'text', text: 'not json at all' }] };
   assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-1', 'mem-2']), {});
 });
 

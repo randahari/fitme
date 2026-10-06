@@ -55,11 +55,11 @@ function env(opts) {
       transport.verifier.push(body);
       const vv = verifierView(body);
       if (transport.verifierRaw) return transport.verifierRaw(vv);
-      return { content: [{ text: JSON.stringify({ verdicts: vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation), transport.verdict ? transport.verdict(it, vv) : {})) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ verdicts: vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation), transport.verdict ? transport.verdict(it, vv) : {})) }) }] };
     }
     transport.generator.push(body);
     const proposals = typeof transport.respond === 'function' ? transport.respond(view(body)) : transport.respond;
-    return { content: [{ text: JSON.stringify({ proposals }) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ proposals }) }] };
   };
   const cfg = Object.assign({ store: spy, port: op.port, modelTransport, now: () => clock, isLearningConsentGranted: () => state.consent === true,
     getConsentState: () => state.consentState, userId: 'u1', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory }, o.cfg || {});
@@ -745,7 +745,7 @@ test('AC-D9 / §27: 0 calls when a precondition stops the pass; 1 when no plan s
   // 1 — Generator failure
   const e3 = env();
   await seedTurns(e3);
-  e3.configure({ modelTransport: async () => ({ content: [{ text: 'not json' }] }) });
+  e3.configure({ modelTransport: async () => ({ content: [{ type: 'text', text: 'not json' }] }) });
   const r3 = await e3.run();
   assert.deepEqual([r3.status, r3.modelCalls], ['INTERPRETER_FAILED', 1]);
   // 2 — several plans, still exactly one batched Verifier call
@@ -827,11 +827,11 @@ test('AC-D59 / AC-D63: a failed or unattributable Verifier result writes nothing
   const ok = (vv) => vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation)));
   const failures = {
     transport: () => { throw new Error('down'); },
-    not_json: () => ({ content: [{ text: 'no' }] }),
-    max_tokens: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv) }) }], stop_reason: 'max_tokens' }),
-    unknown_item: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv).concat([Object.assign({}, ok(vv)[0], { item: 'p7' })]) }) }] }),
-    duplicate_item: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: ok(vv).concat([ok(vv)[0]]) }) }] }),
-    missing_item_key: (vv) => ({ content: [{ text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { item: undefined }), ok(vv)[1]] }) }] })
+    not_json: () => ({ content: [{ type: 'text', text: 'no' }] }),
+    max_tokens: (vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: ok(vv) }) }], stop_reason: 'max_tokens' }),
+    unknown_item: (vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: ok(vv).concat([Object.assign({}, ok(vv)[0], { item: 'p7' })]) }) }] }),
+    duplicate_item: (vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: ok(vv).concat([ok(vv)[0]]) }) }] }),
+    missing_item_key: (vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { item: undefined }), ok(vv)[1]] }) }] })
   };
   for (const [name, raw] of Object.entries(failures)) {
     const { r, written } = await setup(raw);
@@ -840,11 +840,11 @@ test('AC-D59 / AC-D63: a failed or unattributable Verifier result writes nothing
     assert.equal(written, 0, name);
     assert.deepEqual(r.proposals.map((x) => x.code), ['VERIFICATION_UNAVAILABLE', 'VERIFICATION_UNAVAILABLE'], name);
   }
-  const malformed = await setup((vv) => ({ content: [{ text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { direction: 'CONSISTENT' }), ok(vv)[1]] }) }] }));
+  const malformed = await setup((vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: [Object.assign({}, ok(vv)[0], { direction: 'CONSISTENT' }), ok(vv)[1]] }) }] }));
   assert.equal(malformed.r.status, 'COMPLETED');
   assert.deepEqual(malformed.r.proposals.map((x) => [x.outcome, x.code]), [['REJECTED', 'VERIFICATION_MALFORMED'], ['ADMITTED_EXECUTED', null]]);
   assert.equal(malformed.written, 1);
-  const missing = await setup((vv) => ({ content: [{ text: JSON.stringify({ verdicts: [ok(vv)[1]] }) }] }));
+  const missing = await setup((vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: [ok(vv)[1]] }) }] }));
   assert.deepEqual(missing.r.proposals.map((x) => x.code), ['VERIFICATION_MISSING', null]);
 });
 
@@ -986,9 +986,219 @@ test('AC-D64: PassResult shape — modelCalls, per-proposal closed codes and ver
   e.transport.verdict = (it) => (it.item === 'p2' ? { temporal: 'UNCERTAIN' } : {});
   e.configure();
   const r = await e.run();
-  assert.deepEqual(Object.keys(r).sort(), ['modelCalls', 'observationsPresented', 'proposals', 'sourcesRead', 'status']);
+  assert.deepEqual(Object.keys(r).sort(), ['modelCalls', 'observationsPresented', 'proposals', 'sourcesRead', 'stageFailure', 'status']); // v1.2 §13 step 15
+  assert.equal(r.stageFailure, null);
   assert.deepEqual(Object.keys(r.proposals[0]).sort(), ['code', 'index', 'operation', 'outcome', 'recordIds', 'verification']);
   assert.deepEqual(r.proposals[1].verification, { restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'UNCERTAIN', direction: 'NOT_APPLICABLE' });
   const s = JSON.stringify(r);
   ['Secret wording', 'Only four hours', 'wading'].forEach((t) => assert.equal(s.indexOf(t), -1, t));
+});
+
+// ═══ v1.2 — EXPLICIT-PROFILE stages, MRS-001 structural integration, PassResult.stageFailure (§08, §13, §15.0, §25, §27.1) ═══
+const GEN_DEFAULT = CC.DEFAULT_GENERATOR_PROFILE;
+const VER_DEFAULT = CC.DEFAULT_VERIFIER_PROFILE;
+const profile = (base, o) => Object.assign({}, base, o);
+const THINK_BLOCK = { type: 'thinking', thinking: 'internal reasoning that must never be read', signature: 'sig' };
+async function twoPlans(e) {
+  await seedTurns(e);
+  const { a, b } = await twoConcepts(e);
+  e.transport.respond = (v) => [
+    P({ factors: [F({ conceptKey: v.k(a), role: 'condition' }), F({ conceptKey: v.k(b), role: 'outcome' })], relationText: 'First.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('Only four')] }),
+    P({ factors: [F({ conceptKey: v.k(b), role: 'condition' }), F({ conceptKey: v.k(a), role: 'outcome' })], relationText: 'Second.', evidenceClass: 'SINGLE_OBSERVATION', supporting: [v.key('full night')] })
+  ];
+}
+
+test('AC-D1 (v1.2): every v1.1 field, and every invalid or incomplete profile, is NOT_CONFIGURED with zero calls — never merged with a default', async () => {
+  const e = env();
+  const bad = [{ verifierModel: 'm' }, { verifierModel: undefined }, { timeoutMs: 20000 }, { verifierTimeoutMs: 20000 },
+    { generatorProfile: null }, { generatorProfile: {} }, { verifierProfile: { model: 'm' } },
+    { generatorProfile: (() => { const p = profile(GEN_DEFAULT); delete p.timeoutMs; return p; })() },
+    { verifierProfile: profile(VER_DEFAULT, { extra: 1 }) }, { generatorProfile: profile(GEN_DEFAULT, { reasoning: 'off' }) }];
+  for (const over of bad) {
+    assert.equal(e.configure(over).status, 'NOT_CONFIGURED', JSON.stringify(over));
+    e.op.calls.length = 0;
+    const r = await e.run();
+    assert.equal(r.status, 'NOT_CONFIGURED');
+    assert.equal(r.stageFailure, null);
+    assert.equal(e.op.calls.length + e.storeCalls.length + e.transport.bodies.length, 0);
+  }
+  assert.equal(e.configure({ generatorProfile: profile(GEN_DEFAULT), verifierProfile: profile(VER_DEFAULT) }).status, 'CONFIGURED');
+});
+
+test('AC-D67: default request bodies are exactly {model, max_tokens, thinking:{type:"disabled"}, messages}, in that order, with the default timeouts; a configured profile alone builds its stage body; prompts unchanged', async () => {
+  const e = env();
+  await twoPlans(e);
+  e.configure();
+  await e.run();
+  const [g, v] = [e.transport.generator[0], e.transport.verifier[0]];
+  assert.deepEqual(Object.keys(g), ['model', 'max_tokens', 'thinking', 'messages']);
+  assert.deepEqual(Object.keys(v), ['model', 'max_tokens', 'thinking', 'messages']);
+  assert.deepEqual([g.model, g.max_tokens, g.thinking, g.messages.length, g.messages[0].role], ['claude-haiku-4-5-20251001', 1600, { type: 'disabled' }, 1, 'user']);
+  assert.deepEqual([v.model, v.max_tokens, v.thinking, v.messages.length, v.messages[0].role], ['claude-haiku-4-5-20251001', 800, { type: 'disabled' }, 1, 'user']);
+  assert.deepEqual([GEN_DEFAULT.timeoutMs, VER_DEFAULT.timeoutMs], [20000, 20000]);
+  const Interpreter = require(path.join(ROOT, 'js/coachDecisionSystem/consolidationInterpreter.js'));
+  const Verifier = require(path.join(ROOT, 'js/coachDecisionSystem/consolidationVerifier.js'));
+  assert.ok(g.messages[0].content.startsWith(Interpreter._internal.INSTRUCTION + '\n'));
+  assert.ok(v.messages[0].content.startsWith(Verifier._internal.INSTRUCTION + '\n'));
+  // independent, configured stage profiles: each stage body is built only from its own profile
+  const e2 = env();
+  await twoPlans(e2);
+  const gp = profile(GEN_DEFAULT, { model: 'generator-under-test', maxOutputTokens: 1234 });
+  const vp = profile(VER_DEFAULT, { model: 'verifier-under-test', maxOutputTokens: 321, effort: 'LOW', providerBinding: { thinking: { type: 'disabled' }, output_config: { effort: 'low' } } });
+  assert.equal(e2.configure({ generatorProfile: gp, verifierProfile: vp }).status, 'CONFIGURED');
+  await e2.run();
+  const gb = e2.transport.generator[0];
+  assert.deepEqual(Object.keys(gb), ['model', 'max_tokens', 'thinking', 'messages']);
+  assert.deepEqual([gb.model, gb.max_tokens, gb.thinking], ['generator-under-test', 1234, { type: 'disabled' }]);
+  const vb = e2.transport.verifier[0];
+  assert.deepEqual(Object.keys(vb), ['model', 'max_tokens', 'thinking', 'output_config', 'messages']);
+  assert.deepEqual([vb.model, vb.max_tokens, vb.thinking, vb.output_config], ['verifier-under-test', 321, { type: 'disabled' }, { effort: 'low' }]);
+  // a profile timeout governs its stage
+  const e3 = env();
+  await seedTurns(e3);
+  e3.configure({ generatorProfile: profile(GEN_DEFAULT, { timeoutMs: 15 }), modelTransport: () => new Promise(() => {}) });
+  assert.deepEqual((await e3.run()).stageFailure, { stage: 'GENERATOR', reason: 'TIMEOUT' });
+});
+
+test('AC-D64 / AC-D69 (Generator): every classified §15.0 condition → INTERPRETER_FAILED with stageFailure {GENERATOR, reason}, one call, no Verifier call, no writes', async () => {
+  const valid = JSON.stringify({ proposals: [] });
+  const cases = {
+    TRANSPORT_FAILED: () => { throw new Error('down'); },
+    TRANSPORT_FAILED_rejected: async () => { throw new Error('rejected'); },
+    REFUSAL: async () => ({ content: [{ type: 'text', text: valid }], stop_reason: 'refusal', stop_details: { type: 'refusal', category: 'cyber', explanation: 'PROVIDER REFUSAL TEXT' } }),
+    MAX_TOKENS: async () => ({ content: [{ type: 'text', text: valid }], stop_reason: 'max_tokens' }),
+    MAX_TOKENS_before_structural: async () => ({ content: [{ text: valid }], stop_reason: 'max_tokens' }),
+    NOT_A_RESPONSE: async () => null,
+    MALFORMED_BLOCK: async () => ({ content: [{ text: valid }] }),
+    UNSUPPORTED_BLOCK: async () => ({ content: [{ type: 'text', text: valid }, { type: 'tool_use', id: 'x', name: 'n', input: {} }] }),
+    REASONING_NOT_PERMITTED: async () => ({ content: [THINK_BLOCK, { type: 'text', text: valid }] }),
+    NO_ANSWER_TEXT: async () => ({ content: [] }),
+    MULTIPLE_ANSWER_TEXT: async () => ({ content: [{ type: 'text', text: valid }, { type: 'text', text: valid }] }),
+    INVALID_ENVELOPE: async () => ({ content: [{ type: 'text', text: 'not json' }] }),
+    INVALID_ENVELOPE_keys: async () => ({ content: [{ type: 'text', text: JSON.stringify({ proposals: [], extra: 1 }) }] })
+  };
+  for (const [name, transport] of Object.entries(cases)) {
+    const e = env();
+    await seedTurns(e);
+    e.configure({ modelTransport: transport });
+    const before = e.records().length;
+    const r = await e.run();
+    const reason = name.replace(/_(rejected|before_structural|keys)$/, '');
+    assert.equal(r.status, 'INTERPRETER_FAILED', name);
+    assert.deepEqual(r.stageFailure, { stage: 'GENERATOR', reason }, name);
+    assert.ok(CC.STAGE_FAILURE_REASONS.indexOf(r.stageFailure.reason) !== -1);
+    assert.equal(r.modelCalls, 1, name);
+    assert.equal(e.records().length, before, name + ': no writes');
+    assert.deepEqual(r.proposals, [], name);
+    assert.equal(JSON.stringify(r).indexOf('PROVIDER REFUSAL TEXT'), -1, name + ': no provider refusal text in PassResult (AC-D70)');
+  }
+});
+
+test('AC-D64 / AC-D69 / §15.6 (Verifier): every classified condition → VERIFIER_FAILED with stageFailure {VERIFIER, reason}; every plan VERIFICATION_UNAVAILABLE; no writes (reject-only)', async () => {
+  const ok = (vv) => vv.items.map((it) => Object.assign({ item: it.item }, passing(it.operation)));
+  const good = (vv) => JSON.stringify({ verdicts: ok(vv) });
+  const cases = {
+    TRANSPORT_FAILED: () => { throw new Error('down'); },
+    REFUSAL: (vv) => ({ content: [{ type: 'text', text: good(vv) }], stop_reason: 'refusal', stop_details: { category: null, explanation: 'PROVIDER REFUSAL TEXT' } }),
+    MAX_TOKENS: (vv) => ({ content: [{ type: 'text', text: good(vv) }], stop_reason: 'max_tokens' }),
+    NOT_A_RESPONSE: () => 'nope',
+    MALFORMED_BLOCK: (vv) => ({ content: [{ text: good(vv) }] }),
+    UNSUPPORTED_BLOCK: (vv) => ({ content: [{ type: 'server_tool_use' }, { type: 'text', text: good(vv) }] }),
+    REASONING_NOT_PERMITTED: (vv) => ({ content: [{ type: 'redacted_thinking', data: 'x' }, { type: 'text', text: good(vv) }] }),
+    NO_ANSWER_TEXT: () => ({ content: [] }),
+    MULTIPLE_ANSWER_TEXT: (vv) => ({ content: [{ type: 'text', text: good(vv) }, { type: 'text', text: good(vv) }] }),
+    INVALID_ENVELOPE: () => ({ content: [{ type: 'text', text: '{"verdicts": {}}' }] }),
+    ATTRIBUTION_ANOMALY: (vv) => ({ content: [{ type: 'text', text: JSON.stringify({ verdicts: ok(vv).concat([ok(vv)[0]]) }) }] })
+  };
+  for (const [reason, verifierRaw] of Object.entries(cases)) {
+    const e = env();
+    await twoPlans(e);
+    e.transport.verifierRaw = verifierRaw;
+    e.configure();
+    const before = e.records().length;
+    const r = await e.run();
+    assert.equal(r.status, 'VERIFIER_FAILED', reason);
+    assert.deepEqual(r.stageFailure, { stage: 'VERIFIER', reason }, reason);
+    assert.equal(r.modelCalls, 2, reason);
+    assert.equal(e.records().length, before, reason + ': no writes');
+    assert.deepEqual(r.proposals.map((x) => [x.outcome, x.code, x.verification]), [['REJECTED', 'VERIFICATION_UNAVAILABLE', null], ['REJECTED', 'VERIFICATION_UNAVAILABLE', null]], reason);
+    assert.equal(JSON.stringify(r).indexOf('PROVIDER REFUSAL TEXT'), -1, reason);
+  }
+  // a profile timeout yields TIMEOUT
+  const e = env();
+  await twoPlans(e);
+  e.transport.verifierRaw = () => new Promise(() => {});
+  e.configure({ verifierProfile: profile(VER_DEFAULT, { timeoutMs: 15 }) });
+  assert.deepEqual((await e.run()).stageFailure, { stage: 'VERIFIER', reason: 'TIMEOUT' });
+});
+
+test('B1 (§13 step 15): a preserved v1.1 defensive internal-exception path keeps its v1.1 status and carries stageFailure null — no reason is inferred', async () => {
+  const Gate = require(path.join(ROOT, 'js/coachDecisionSystem/consolidationGate.js'));
+  const original = { preVerify: Gate.preVerify, authorizePlans: Gate.authorizePlans };
+  try {
+    Gate.preVerify = () => { throw new Error('internal defect after a successful Generator call'); };
+    const e = env();
+    await twoPlans(e);
+    e.configure();
+    const r = await e.run();
+    assert.deepEqual([r.status, r.stageFailure, r.modelCalls], ['INTERPRETER_FAILED', null, 1]);
+    Gate.preVerify = original.preVerify;
+    Gate.authorizePlans = () => { throw new Error('internal defect after a successful Verifier call'); };
+    const e2 = env();
+    await twoPlans(e2);
+    e2.configure();
+    const before = e2.records().length;
+    const r2 = await e2.run();
+    assert.deepEqual([r2.status, r2.stageFailure, r2.modelCalls], ['VERIFIER_FAILED', null, 2]);
+    assert.equal(e2.records().length, before);
+  } finally {
+    Object.assign(Gate, original);
+  }
+  // successful and non-stage statuses carry null too
+  const ok = env();
+  await twoPlans(ok);
+  ok.configure();
+  const done = await ok.run();
+  assert.deepEqual([done.status, done.stageFailure], ['COMPLETED', null]);
+});
+
+test('AC-D70: a refusal (empty or partial text) is reported as REFUSAL — never INVALID_ENVELOPE or a semantic rejection', async () => {
+  for (const content of [[], [{ type: 'text', text: '{"proposals":[' }], [{ type: 'text', text: JSON.stringify({ proposals: [] }) }]]) {
+    const e = env();
+    await seedTurns(e);
+    e.configure({ modelTransport: async () => ({ content, stop_reason: 'refusal' }) });
+    const r = await e.run();
+    assert.deepEqual([r.status, r.stageFailure], ['INTERPRETER_FAILED', { stage: 'GENERATOR', reason: 'REFUSAL' }]);
+  }
+});
+
+test('AC-D71: each stage extracts under the reasoning mode of the profile that built its request — OFF rejects reasoning; an ON test profile accepts it, never reads it, and parses the single answer text', async () => {
+  const ON_GEN = { model: 'reasoning-test-model', reasoning: 'ON', effort: 'NOT_APPLICABLE', maxOutputTokens: 4000, timeoutMs: 20000, providerBinding: { thinking: { type: 'adaptive' } } };
+  const ON_VER = Object.assign({}, ON_GEN, { maxOutputTokens: 2000 });
+  const e = env();
+  await twoPlans(e);
+  const plain = e.cfg.modelTransport;
+  const withReasoning = async (body) => { const raw = await plain(body); return Object.assign({}, raw, { content: [THINK_BLOCK].concat(raw.content) }); };
+  // OFF (default): a reasoning block before the answer fails closed
+  e.configure({ modelTransport: withReasoning });
+  assert.deepEqual((await e.run()).stageFailure, { stage: 'GENERATOR', reason: 'REASONING_NOT_PERMITTED' });
+  // ON: accepted, never read, single answer parsed — the pass completes and writes
+  const e2 = env();
+  await twoPlans(e2);
+  const plain2 = e2.cfg.modelTransport;
+  const withReasoning2 = async (body) => { const raw = await plain2(body); return Object.assign({}, raw, { content: [THINK_BLOCK].concat(raw.content) }); };
+  assert.equal(e2.configure({ modelTransport: withReasoning2, generatorProfile: ON_GEN, verifierProfile: ON_VER }).status, 'CONFIGURED');
+  const r = await e2.run();
+  assert.deepEqual([r.status, r.stageFailure, r.modelCalls], ['COMPLETED', null, 2]);
+  assert.deepEqual(r.proposals.map((x) => x.outcome), ['ADMITTED_EXECUTED', 'ADMITTED_EXECUTED']);
+  assert.deepEqual(e2.transport.bodies.map((b) => b.thinking), [{ type: 'adaptive' }, { type: 'adaptive' }]);
+  assert.equal(JSON.stringify(r).indexOf('internal reasoning'), -1);
+  assert.equal(JSON.stringify(e2.records()).indexOf('internal reasoning'), -1);
+  // mixed: Generator ON, Verifier OFF — the Verifier's own profile governs its own extraction
+  const e3 = env();
+  await twoPlans(e3);
+  const plain3 = e3.cfg.modelTransport;
+  const withReasoning3 = async (body) => { const raw = await plain3(body); return Object.assign({}, raw, { content: [THINK_BLOCK].concat(raw.content) }); };
+  e3.configure({ modelTransport: withReasoning3, generatorProfile: ON_GEN });
+  assert.deepEqual((await e3.run()).stageFailure, { stage: 'VERIFIER', reason: 'REASONING_NOT_PERMITTED' });
 });

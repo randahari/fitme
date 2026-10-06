@@ -36,11 +36,11 @@ function walk(dir) {
   return out;
 }
 
-test('AC-D41: module dependencies are exactly §08 (v1.1: five modules; the Verifier never depends on the User Knowledge contract)', () => {
+test('AC-D41: module dependencies are exactly §08 (v1.1: five modules; the Verifier never depends on the User Knowledge contract; v1.2: the two model stages also require modelResponseStructure.js)', () => {
   const deps = (f) => (codeOnly(read(f)).match(/require\('([^']+)'\)/g) || []).map((m) => m.slice(9, -2)).sort();
   assert.deepEqual(deps(MODULES.contract), ['./userKnowledgeContract.js']);
-  assert.deepEqual(deps(MODULES.interpreter), ['./consolidationContract.js', './modelResponseEnvelope.js']);
-  assert.deepEqual(deps(MODULES.verifier), ['./consolidationContract.js', './modelResponseEnvelope.js']);
+  assert.deepEqual(deps(MODULES.interpreter), ['./consolidationContract.js', './modelResponseEnvelope.js', './modelResponseStructure.js']);
+  assert.deepEqual(deps(MODULES.verifier), ['./consolidationContract.js', './modelResponseEnvelope.js', './modelResponseStructure.js']);
   assert.deepEqual(deps(MODULES.gate), ['./consolidationContract.js', './userKnowledgeContract.js']);
   assert.deepEqual(deps(MODULES.coordinator), ['./consolidationContract.js', './consolidationGate.js', './consolidationInterpreter.js', './consolidationVerifier.js', './eligibilityPolicy.js', './userKnowledgeContract.js']);
   // §08: the Verifier reads no store, port, record or User Knowledge field itself
@@ -56,7 +56,7 @@ test('AC-D41: no forbidden reference, clock, randomness or id generation; timers
     forbidden.forEach((t) => assert.equal(src.indexOf(t), -1, f + ' contains ' + t));
     const windowUses = (src.match(/window\.[A-Za-z]+/g) || []);
     windowUses.forEach((w) => assert.ok(['window.UserKnowledgeContract', 'window.ConsolidationContract', 'window.ConsolidationInterpreter', 'window.ConsolidationVerifier',
-      'window.ConsolidationGate', 'window.Consolidation', 'window.ModelResponseEnvelope', 'window.EligibilityPolicy'].indexOf(w) !== -1, f + ' uses ' + w));
+      'window.ConsolidationGate', 'window.Consolidation', 'window.ModelResponseEnvelope', 'window.ModelResponseStructure', 'window.EligibilityPolicy'].indexOf(w) !== -1, f + ' uses ' + w));
     if (MODEL_STAGES.indexOf(f) === -1) assert.equal(/setTimeout|setInterval/.test(src), false, f + ' uses a timer');
   });
 });

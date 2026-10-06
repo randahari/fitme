@@ -24,7 +24,7 @@ function entry(overrides) {
 }
 function stub(e, open) {
   const bodies = [];
-  TU.configure({ callClaude: async (body) => { bodies.push(body); const closed = JSON.stringify({ results: [e] }); return { content: [{ text: open ? closed + '\n@@OPEN_UNDERSTANDING@@\n' + open : closed }] }; } });
+  TU.configure({ callClaude: async (body) => { bodies.push(body); const closed = JSON.stringify({ results: [e] }); return { content: [{ type: 'text', text: open ? closed + '\n@@OPEN_UNDERSTANDING@@\n' + open : closed }] }; } });
   return bodies;
 }
 const D6 = (present, intent, anchorText) => ({ userStatedKnowledgePresent: present, userStatedKnowledgeIntent: intent, userStatedKnowledgeAnchorText: anchorText });
@@ -89,7 +89,7 @@ test('AC-7: invalid shape, unknown intent, empty or over-length anchor, and an a
 
 test('AC-7 / DUC §05.5: a FAILED Turn Understanding result carries the absent Dimension 6 shape (gate on) and no key at all (gate off)', async () => {
   Gate.__setEnabledForTests__(true);
-  TU.configure({ callClaude: async () => ({ content: [{ text: 'not json' }] }) });
+  TU.configure({ callClaude: async () => ({ content: [{ type: 'text', text: 'not json' }] }) });
   const on = await TU.classify(TURN);
   assert.equal(on.interpretationStatus, 'FAILED');
   assert.deepEqual(on.userStatedKnowledge, { present: false, intent: null, anchorText: null });

@@ -26,7 +26,7 @@ function e(id, o) {
   }, o || {});
 }
 const J = (entries) => JSON.stringify({ results: entries });
-function resp(text, stopReason) { return Object.assign({ content: [{ text: text }] }, stopReason ? { stop_reason: stopReason } : {}); }
+function resp(text, stopReason) { return Object.assign({ content: [{ type: 'text', text: text }] }, stopReason ? { stop_reason: stopReason } : {}); }
 function stubResponse(response, capture) {
   Interpreter.configure({ callClaude: async (body) => { if (capture) capture.push(body); return response; } });
 }

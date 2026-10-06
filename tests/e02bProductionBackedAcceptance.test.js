@@ -52,7 +52,7 @@ function withOpen(scn) {
   return Object.assign({}, scn, { openSegment: JSON.stringify({ id: scn.turnId, summary: 'The user communicates something (' + scn.name + ').', mentions: [scn.text.split(/\s+/)[0]] }) });
 }
 function countedDiscovery(counter) {
-  Discovery.configure({ callClaude: async () => { counter.calls++; return { content: [{ text: JSON.stringify({ selectedIds: ['goalObjectiveContext'], informationNeeds: [MARKER] }) }] }; } });
+  Discovery.configure({ callClaude: async () => { counter.calls++; return { content: [{ type: 'text', text: JSON.stringify({ selectedIds: ['goalObjectiveContext'], informationNeeds: [MARKER] }) }] }; } });
 }
 async function withFixedNow(fn) {
   const orig = Date.now;

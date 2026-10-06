@@ -86,7 +86,7 @@ function deps(f) {
 }
 test('AC-40: USI modules depend only on the §29 set, the E.0.2c contract and MRE-001; the coordinator never requires the executor', () => {
   assert.deepEqual(deps(NEW_MODULES.activationGate), { requires: [], globals: [] });
-  assert.deepEqual(deps(NEW_MODULES.interpreter), { requires: ['./modelResponseEnvelope.js'], globals: ['ModelResponseEnvelope'] });
+  assert.deepEqual(deps(NEW_MODULES.interpreter), { requires: ['./modelResponseEnvelope.js', './modelResponseStructure.js'], globals: ['ModelResponseEnvelope', 'ModelResponseStructure'] });
   assert.deepEqual(deps(NEW_MODULES.gate), { requires: ['./userKnowledgeContract.js'], globals: ['UserKnowledgeContract'] });
   assert.deepEqual(deps(NEW_MODULES.coordinator), {
     requires: ['./userKnowledgeContract.js', './userStatedIntakeActivationGate.js', './userStatedIntakeInterpreter.js', './userStatedIntakeGate.js'],

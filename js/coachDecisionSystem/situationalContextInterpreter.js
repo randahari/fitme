@@ -28,6 +28,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   // §9/§5 — Engineering transport bounds only, never a semantic-completeness cap (see
   // memoryLayer.js's own caller, which always issues every batch required to cover the
@@ -132,7 +135,7 @@
   // by an explicit "false" entry, since nothing downstream needs to distinguish why (§6, §15).
   function parseAndValidate(rawResponse, submittedIds) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-7' }).text || ''; // MRS-001 S8 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};

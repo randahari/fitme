@@ -19,6 +19,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   var MODEL = 'claude-haiku-4-5-20251001';
   var MAX_TOKENS = 800;   // §14.2 / §24 [PROVISIONAL]
@@ -173,7 +176,7 @@
   function parseResponse(raw) {
     try {
       if (!raw || raw.stop_reason === 'max_tokens') return failed();
-      var text = (raw.content && raw.content[0] && raw.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(raw, { state: 'FROZEN_CONTRACT', entry: 'F-19' }).text || ''; // MRS-001 S19 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed)) return failed();
       var keys = Object.keys(parsed);

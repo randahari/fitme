@@ -13,9 +13,9 @@ const STATED = 'NAMED_SOURCE_STATED';
 const NOT_CLASSIFIED = 'NO_NAMED_SOURCE_OR_NOT_CLASSIFIED';
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 function notNamed(id) {
   return { id: id, namedSourceClassification: NOT_CLASSIFIED, statedSourceText: null };
@@ -277,7 +277,7 @@ test('35. a duplicate returned id fails closed, regardless of whether the two en
 });
 
 test('36. a batch-level malformed response (not valid JSON) fails every id in that batch closed', () => {
-  const raw = { content: [{ text: 'not json at all' }] };
+  const raw = { content: [{ type: 'text', text: 'not json at all' }] };
   assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-1', 'mem-2'], {}), {});
 });
 

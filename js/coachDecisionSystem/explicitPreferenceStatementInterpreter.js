@@ -34,6 +34,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
   // USI-001 (docs/specs/USI_001_SPEC_v1.0.md §10; CPI_001_AMENDMENT_USI_001_v1.0.md) — the
   // routing-only assertionAnchorText exists only while this gate is on. With the gate off
   // (production), the prompt, request body and classify() output are byte-identical to baseline.
@@ -188,7 +191,7 @@
   // locally, by validateAssertionAnchor().
   function parseAndValidate(rawResponse, submittedIds, idToStatementText, anchorSink) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-2' }).text || ''; // MRS-001 S3 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return {};
       var seen = {};

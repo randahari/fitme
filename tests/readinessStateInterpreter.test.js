@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const Interpreter = require('../js/coachDecisionSystem/readinessStateInterpreter.js');
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
 function configureStub(handler) {
   Interpreter.configure({ callClaude: handler, maxRecordsPerBatch: undefined });
@@ -73,7 +73,7 @@ test('8. a timeout fails closed to empty', async () => {
 });
 
 test('9. malformed JSON response fails closed to empty', async () => {
-  configureStub(async () => ({ content: [{ text: 'not json' }] }));
+  configureStub(async () => ({ content: [{ type: 'text', text: 'not json' }] }));
   const result = await Interpreter.classify([{ id: 'm1', text: 'I barely slept' }]);
   assert.deepEqual(result, []);
 });

@@ -138,6 +138,89 @@
     UTC_OFFSET_MAX_MINUTES: 1440
   });
 
+  // ── v1.2 §27.1 — request profiles (MRS-001 §08.3–§08.7). Both stages are EXPLICIT-PROFILE: a profile
+  // builds the stage's request and governs MRS-001 extraction of its response (§15.0). `reasoning`
+  // and `effort` are independent dimensions, validated independently; nothing reads a model id. ──
+  var REASONING_MODES = Object.freeze(['OFF', 'ON']);
+  var EFFORT_LEVELS = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'NOT_APPLICABLE']);
+  var PROFILE_KEYS = Object.freeze(['model', 'reasoning', 'effort', 'maxOutputTokens', 'timeoutMs', 'providerBinding']);
+  // Provider binding values [EXTERNAL, §04 item 16]: the reasoning field `thinking` and the effort
+  // control `output_config: {effort}` — the only fields a binding may carry (§27.1 closed binding keys).
+  var BINDING_KEYS = Object.freeze(['thinking', 'output_config']);
+  var OFF_THINKING_TYPES = Object.freeze(['disabled', 'between_tools']);
+  var ON_THINKING_TYPE = 'adaptive';
+  var PROVIDER_EFFORT = Object.freeze({ LOW: 'low', MEDIUM: 'medium', HIGH: 'high' });
+
+  // §15.0 — closed stage-failure reasons, in precedence order. Only a classified condition yields a
+  // reason; a preserved v1.1 defensive path yields stageFailure null (§13 step 15, B1).
+  var STAGE_FAILURE_REASONS = Object.freeze([
+    'TRANSPORT_FAILED', 'TIMEOUT', 'CONTRACT_UNRESOLVED', 'REFUSAL', 'MAX_TOKENS',
+    'NOT_A_RESPONSE', 'MALFORMED_BLOCK', 'UNSUPPORTED_BLOCK', 'REASONING_NOT_PERMITTED', 'NO_ANSWER_TEXT', 'MULTIPLE_ANSWER_TEXT',
+    'INVALID_ENVELOPE', 'ATTRIBUTION_ANOMALY'
+  ]);
+  var STAGES = Object.freeze(['GENERATOR', 'VERIFIER']);
+
+  function deepFreeze(o) {
+    Object.keys(o).forEach(function (k) { if (o[k] !== null && typeof o[k] === 'object') deepFreeze(o[k]); });
+    return Object.freeze(o);
+  }
+  // §27.1 default profiles [PROVISIONAL]: v1.1's model, output bounds and timeouts, reasoning OFF
+  // stated explicitly; the model has no effort control, so effort is NOT_APPLICABLE (C3).
+  var DEFAULT_GENERATOR_PROFILE = deepFreeze({
+    model: 'claude-haiku-4-5-20251001', reasoning: 'OFF', effort: 'NOT_APPLICABLE',
+    maxOutputTokens: 1600, timeoutMs: 20000, providerBinding: { thinking: { type: 'disabled' } }
+  });
+  var DEFAULT_VERIFIER_PROFILE = deepFreeze({
+    model: 'claude-haiku-4-5-20251001', reasoning: 'OFF', effort: 'NOT_APPLICABLE',
+    maxOutputTokens: 800, timeoutMs: 20000, providerBinding: { thinking: { type: 'disabled' } }
+  });
+
+  function isPositiveInteger(v) { return typeof v === 'number' && Number.isInteger(v) && v > 0; }
+  function isExactTypeObject(v, type) { return C.isPlainObject(v) && exactKeys(v, ['type']) && v.type === type; }
+
+  // §27.1 validation (C3, C4, C5). The `between_tools` OFF binding is admitted only with an explicit
+  // effort (every canonical level is at or below the provider's `high` ceiling); provider/model support
+  // for it is an approval-time profile fact (I-3), and the stage requests are tool-free by construction
+  // (§15.1, §15.4: the body holds only model, max_tokens, the binding fields and messages).
+  function isValidRequestProfile(p) {
+    if (!C.isPlainObject(p) || !exactKeys(p, PROFILE_KEYS)) return false;
+    if (typeof p.model !== 'string' || !p.model.length) return false;
+    if (REASONING_MODES.indexOf(p.reasoning) === -1 || EFFORT_LEVELS.indexOf(p.effort) === -1) return false;
+    if (!isPositiveInteger(p.maxOutputTokens) || !isPositiveInteger(p.timeoutMs)) return false;
+    var b = p.providerBinding;
+    if (!C.isPlainObject(b) || !has(b, 'thinking')) return false;
+    if (!Object.keys(b).every(function (k) { return BINDING_KEYS.indexOf(k) !== -1; })) return false;
+    // reasoning binding — exact objects only
+    var thinkingOk = p.reasoning === 'OFF'
+      ? OFF_THINKING_TYPES.some(function (t) { return isExactTypeObject(b.thinking, t); })
+      : isExactTypeObject(b.thinking, ON_THINKING_TYPE);
+    if (!thinkingOk) return false;
+    // effort — independent of reasoning: explicit exactly when the binding carries the effort control
+    if (p.effort === 'NOT_APPLICABLE') {
+      if (has(b, 'output_config')) return false;
+    } else {
+      var oc = b.output_config;
+      if (!C.isPlainObject(oc) || !exactKeys(oc, ['effort']) || oc.effort !== PROVIDER_EFFORT[p.effort]) return false;
+    }
+    if (isExactTypeObject(b.thinking, 'between_tools') && p.effort === 'NOT_APPLICABLE') return false;
+    return true;
+  }
+  // An independent copy of plain profile data (objects, arrays, primitives); never aliases its input.
+  function clonePlain(v) {
+    if (Array.isArray(v)) return v.map(clonePlain);
+    if (v !== null && typeof v === 'object') { var o = {}; Object.keys(v).forEach(function (k) { o[k] = clonePlain(v[k]); }); return o; }
+    return v;
+  }
+  // An independent, frozen copy of a valid profile.
+  function copyProfile(p) { return deepFreeze(clonePlain(p)); }
+  // §15.1 / §15.4 — body key order: model, max_tokens, the binding's fields in their stated order, messages.
+  function buildProfileRequestBody(p, prompt) {
+    var body = { model: p.model, max_tokens: p.maxOutputTokens };
+    Object.keys(p.providerBinding).forEach(function (k) { body[k] = clonePlain(p.providerBinding[k]); });
+    body.messages = [{ role: 'user', content: prompt }];
+    return body;
+  }
+
   var PRODUCER = Object.freeze({ producer: 'e02d.consolidation', producerVersion: '1.0.0' });
   var BOOTSTRAP_CONFIDENCE = 0; // §21: UNASSESSED — never a probability, never evidence against.
 
@@ -410,6 +493,16 @@
     VERDICT_CODES: VERDICT_CODES,
     REASON_CODES: REASON_CODES,
     LIMITS: LIMITS,
+    REASONING_MODES: REASONING_MODES,
+    EFFORT_LEVELS: EFFORT_LEVELS,
+    PROFILE_KEYS: PROFILE_KEYS,
+    STAGE_FAILURE_REASONS: STAGE_FAILURE_REASONS,
+    STAGES: STAGES,
+    DEFAULT_GENERATOR_PROFILE: DEFAULT_GENERATOR_PROFILE,
+    DEFAULT_VERIFIER_PROFILE: DEFAULT_VERIFIER_PROFILE,
+    isValidRequestProfile: isValidRequestProfile,
+    copyProfile: copyProfile,
+    buildProfileRequestBody: buildProfileRequestBody,
     PRODUCER: PRODUCER,
     BOOTSTRAP_CONFIDENCE: BOOTSTRAP_CONFIDENCE,
     passKey: passKey,

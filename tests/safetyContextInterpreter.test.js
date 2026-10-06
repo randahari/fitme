@@ -12,9 +12,9 @@ const STATED = 'RESTRICTION_STATED';
 const NOT_CLASSIFIED = 'NOT_RESTRICTION_OR_NOT_CLASSIFIED';
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 function notRestriction(id) {
   return { id: id, restrictionClassification: NOT_CLASSIFIED, restrictedActivityText: null, statedDurationText: null };
@@ -224,7 +224,7 @@ test('27. a duplicate returned id fails closed, regardless of whether the two en
 });
 
 test('28. a batch-level malformed response (not valid JSON) fails every id in that batch closed', () => {
-  const raw = { content: [{ text: 'not json at all' }] };
+  const raw = { content: [{ type: 'text', text: 'not json at all' }] };
   assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-1', 'mem-2'], {}), {});
 });
 

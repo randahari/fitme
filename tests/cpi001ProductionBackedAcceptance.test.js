@@ -55,7 +55,7 @@ function stubTurnUnderstanding(resultByTurnId) {
         // by any acceptance case exercising it.
         personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }, resultByTurnId[id] || {}));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -67,7 +67,7 @@ function stubPreferenceInterpreter(resultByTurnId) {
       const idMatch = body.messages[0].content.match(/<turn id="([^"]+)"/);
       const id = idMatch[1];
       const r = resultByTurnId[id] || { eligible: false, ineligibleReason: 'NO_EXPLICIT_PREFERENCE' };
-      return { content: [{ text: JSON.stringify({ results: [Object.assign({ id, preferenceClass: null, polarity: null, target: null, ineligibleReason: null }, r)] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [Object.assign({ id, preferenceClass: null, polarity: null, target: null, ineligibleReason: null }, r)] }) }] };
     }
   });
 }
@@ -78,7 +78,7 @@ function stubSafetyNoRestriction() {
   SafetyContextInterpreter.configure({
     callClaude: async (body) => {
       const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
     }
   });
 }
@@ -87,7 +87,7 @@ function stubSafetyRestrictionFound(restrictedActivityText) {
   SafetyContextInterpreter.configure({
     callClaude: async (body) => {
       const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: restrictedActivityText, statedDurationText: null }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], restrictionClassification: 'RESTRICTION_STATED', restrictedActivityText: restrictedActivityText, statedDurationText: null }] }) }] };
     }
   });
 }
@@ -96,7 +96,7 @@ function stubReadinessStateInterpreterClassifiesAll() {
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 }
@@ -105,7 +105,7 @@ function stubTrainingReadinessActionProposed() {
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED',
           action: 'שקול/י אימון קליל וקצר יותר היום.',
           actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,

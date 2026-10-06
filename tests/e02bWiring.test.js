@@ -21,11 +21,11 @@ test('W-1: index.html loads the interpreter exactly once, after modelResponseEnv
   assert.ok(iEnvelope >= 0 && iModule > iEnvelope && iGr > iModule);
 });
 
-test('W-2: sw.js precaches the interpreter; sw.js VERSION and app.js APP_VERSION are bumped in lockstep to 2.47.8', () => {
+test('W-2: sw.js precaches the interpreter; sw.js VERSION and app.js APP_VERSION are bumped in lockstep to 2.47.9', () => {
   const sw = read('sw.js');
   assert.notEqual(sw.indexOf("'/fitme/" + MODULE + "'"), -1);
-  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.8');
-  assert.equal(read('js/app.js').match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.8');
+  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.9');
+  assert.equal(read('js/app.js').match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.9');
 });
 
 test('W-3: js/app.js configures the interpreter with the real production callClaude closure, and never calls discover()', () => {

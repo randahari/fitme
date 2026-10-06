@@ -1,7 +1,7 @@
-# E.0.2d Consolidation — calibration harness (v1.1)
+# E.0.2d Consolidation — calibration harness (v1.2)
 
-Calibration infrastructure for the WP0 Phase E.0.2d v1.1 architecture
-(`docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md`, v1.1 §27, §31). It runs the **unmodified**
+Calibration infrastructure for the WP0 Phase E.0.2d v1.2 architecture
+(`docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md`, v1.2 §27, §27.1, §31, §31.4; MRS-001). It runs the **unmodified**
 production pass (`Consolidation.runPass`): Generator → deterministic pre-verification gate → conditional,
 batched, reject-only Verifier → post-verification authorization → execution. Only the injected model
 transport is replaced, by a recorder.
@@ -9,6 +9,9 @@ transport is replaced, by a recorder.
 The harness is **not** part of the default regression (`node --test tests/*.test.js` does not match
 `tests/evals/**`). Its offline self-test, `tests/e02dCalibrationHarness.test.js`, **is** part of the
 default regression and proves zero network access.
+
+> **Real-model calibration is PAUSED** until MRS-001 and v1.2 are implemented and deterministically
+> verified, and every paid run still needs its own explicit Product approval (§31.4).
 
 > **A real run is paid.** It runs only after Product/Architecture approves a budget statement for that
 > exact run. Synthetic data only. The credential is read from `ANTHROPIC_API_KEY`. It is never printed,
@@ -40,25 +43,35 @@ instruction. It is a Verifier request only if its content starts with the Verifi
 else throws `UNKNOWN_STAGE`, which the production pass handles as a failed stage. Responses are never
 shifted between stages, and each sample allows at most one call per stage.
 
-### Generator model experiments
+### Stage profiles (v1.2 §31.4)
 
-Use `E02D_GENERATOR_MODEL_OVERRIDE`. It is harness-level only and changes no production constant. Each
-call records `configuredModel`, `model` (effective) and `modelOverride`, and the request hash covers the
-effective body.
+Every run names the **complete** EXPLICIT-PROFILE request profile of each stage (§27.1): `model`,
+`reasoning` (`OFF` | `ON`), `effort` (`LOW` | `MEDIUM` | `HIGH` | `NOT_APPLICABLE`), `maxOutputTokens` (the
+total provider-output ceiling, reasoning included), `timeoutMs` and `providerBinding`. Defaults are the
+§27.1 default profiles. Overrides are JSON profile files given by `E02D_GENERATOR_PROFILE` and
+`E02D_VERIFIER_PROFILE` (or `generatorProfile` / `verifierProfile` options). They are validated by the
+production §27.1 rules and applied **only** through `Consolidation.configure()`; the harness never rewrites
+a request body. An invalid profile is refused (`PROFILE_INVALID`). The v1.1 overrides
+(`E02D_GENERATOR_MODEL_OVERRIDE`, `E02D_VERIFIER_MODEL`, `generatorModelOverride`, `verifierModel`) are
+removed and refused (`V11_OPTION_REMOVED`). A reasoning-ON profile is defined only in the approved
+configuration of the run that uses it.
 
 ## Sources and evidence
 
 Each call records the following:
 
-- `stage`, `seq` and models;
-- `max_tokens` and `requestHash` (SHA-256 of the canonical effective request);
+- `stage`, `seq`, and the stage's complete `profile` (model, reasoning, effort, total output ceiling, timeout, provider binding);
+- `model`, `max_tokens` and `requestHash` (SHA-256 of the canonical request exactly as sent);
 - `source`: `REAL` | `SYNTHETIC` | `REPLAY`;
-- the raw response, `stop_reason`, usage (`usageEstimated` for synthetic calls) and latency;
+- the raw response, `stop_reason`, usage (`usageEstimated` for synthetic calls; output tokens may include reasoning) and latency;
+- the MRS-001 structural outcome (`structure`: status and failure code);
+- the refusal outcome (`refusal`: refused, provider-supplied category and details — calibration evidence only, never `PassResult`);
+- `answerTextChars`, the extracted answer-text size in characters;
 - transport outcome.
 
 Each sample records the following:
 
-- status and `modelCalls`;
+- status, `modelCalls` and `stageFailure` (`{stage, reason}` or `null`);
 - the full `PassResult`;
 - the parsed Generator entries and the concepts the Generator saw;
 - the Verifier items, targets and parsed verdicts;
@@ -81,14 +94,14 @@ The proposal class taxonomy is:
 - `AUTHORIZED_WRITTEN`
 - `AUTHORIZED_WRITE_FAILED`
 
-Each artifact (`e02d-calibration-artifact/2`) has a `.manifest.json` that holds its SHA-256.
+Each artifact (`e02d-calibration-artifact/3`) has a `.manifest.json` that holds its SHA-256.
 
 ### Replay
 
 Replay is keyed by `caseId#sample#stage#seq`. If a recorded request hash differs from the current
 request, the sample becomes `REPLAY_DIVERGED` and is excluded from scoring. A changed prompt therefore
-cannot reuse old responses. **v1.0 artifacts are not v1.1 evidence**: replay refuses them with
-`REPLAY_NOT_V11_EVIDENCE`.
+cannot reuse old responses. **v1.1 and earlier artifacts are not v1.2 evidence** (v1.2 request bodies carry
+`thinking`, so their hashes differ): replay refuses them with `REPLAY_NOT_V12_EVIDENCE`.
 
 ## Commands
 
@@ -155,10 +168,11 @@ contains these fields:
 - **Tokens:** input and output tokens by stage (expected and maximum).
 - **Cost:**
   - estimated cost by stage and in total;
-  - maximum cost (every call at `max_tokens`);
+  - maximum cost (every call at its profile's total `maxOutputTokens` ceiling);
   - the maximum approved cost;
   - the price-table source and effective date.
-- **Latency:** per-stage timeouts, maximum per pass, and maximum for a sequential run.
+- **Profiles:** the complete Generator and Verifier profiles.
+- **Latency:** per-stage profile timeouts, maximum per pass, and maximum for a sequential run.
 - **Assumptions:** listed explicitly, with token counts marked as **estimates**.
 
 ## Human-review rubric
@@ -199,7 +213,7 @@ authority. They are never relabelled after seeing outputs.
 
 ## Scoring (`score.js`)
 
-`score.js` uses the canonical SPEC v1.1 §31.2 thresholds, all **[PROVISIONAL]**.
+`score.js` uses the canonical SPEC §31.2 thresholds (CAL-D7 as restated in v1.2), all **[PROVISIONAL]**.
 
 | Gate | Thresholds |
 |---|---|
@@ -209,7 +223,7 @@ authority. They are never relabelled after seeing outputs.
 | CAL-D4 | zero Safety-positive passes authorized (corpus truth) |
 | CAL-D5 | zero invented temporal statements; ≥ 90% temporally correct |
 | CAL-D6 | concept shadowing ≤ 5%. Automated measure: exact label match only, a **lower bound**. It can show a breach (`BELOW`) but never compliance. Zero exact matches does not prove zero semantic shadowing, which remains human Product/Architecture review. |
-| CAL-D7 | `INTERPRETER_FAILED` ≤ 5%; `VERIFIER_FAILED` ≤ 5% |
+| CAL-D7 *(v1.2)* | `INTERPRETER_FAILED` ≤ 5%; `VERIFIER_FAILED` ≤ 5%; zero `max_tokens` stops; max provider output usage ≤ 80% of each stage profile's **total** `maxOutputTokens` (which may include reasoning tokens); p99 latency within the profile `timeoutMs`. Reported per stage: failures by `stageFailure.reason`, refusal count and rate (separately), and extracted answer-text size (separately from output-token usage). |
 
 Three metrics are reported only as numerator, denominator, rate and raw cases, marked **PRODUCT DECISION
 REQUIRED** and never auto pass/fail, because the SPEC leaves their targets to Product:

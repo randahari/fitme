@@ -45,7 +45,7 @@ function stubSuppressiveFoodLogging(idsToSuppress) {
       const results = ids.map((id) => (idsToSuppress.indexOf(id) !== -1
         ? { id: id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'RESOLVED', domain: 'NUTRITION', topic: 'FOOD_LOGGING' }
         : { id: id, requestClassification: 'INELIGIBLE_OR_NOT_CLASSIFIED', controlIntent: null, scopeStatus: null, domain: null, topic: null }));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -154,7 +154,7 @@ test('EUR-E2E-6 (§30 item 8, isolated-to-fixture equivalent). A recognized-but-
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/<statement id="([^"]+)"/g) || []).map((m) => m.match(/id="([^"]+)"/)[1]);
       const results = ids.map((id) => ({ id: id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'SUPPRESS_ORDINARY_INITIATIVE', scopeStatus: 'UNRESOLVED', domain: null, topic: null }));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
   const result = await Orchestrator.run({ userId: 'eur-user-1', sessionGeneration: 1, runId: 'run-e', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });
@@ -170,7 +170,7 @@ test('EUR-E2E-7 (§30 item 3/4 non-suppressive positive request). "Please remind
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/<statement id="([^"]+)"/g) || []).map((m) => m.match(/id="([^"]+)"/)[1]);
       const results = ids.map((id) => ({ id: id, requestClassification: 'CLASSIFIED_EXPLICIT_REQUEST', controlIntent: 'NO_V1_ACTIONABLE_INTENT', scopeStatus: null, domain: null, topic: null }));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
   const result = await Orchestrator.run({ userId: 'eur-user-1', sessionGeneration: 1, runId: 'run-f', trigger: 'APP_READY', action: 'DECISION_PASS', now: Date.now() });

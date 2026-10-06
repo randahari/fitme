@@ -1,13 +1,22 @@
 # WP0 — PHASE E.0.2d — BOUNDED INFERRED-KNOWLEDGE CONSOLIDATION — IMPLEMENTATION SPEC
-## v1.1 — CANONICAL / CLOSED (SPECIFICATION) — WORK ITEM: v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE (Product Review: APPROVED. Architecture Review: APPROVED.)
+## E.0.2d Consolidation SPEC v1.2 — APPROVED (Product Review: APPROVED. Architecture Review: APPROVED.) — WORK ITEM: v1.1 IMPLEMENTED — DETERMINISTICALLY VERIFIED — CALIBRATION INFRASTRUCTURE READY — REAL-MODEL CALIBRATION PENDING (PAUSED) — v1.2 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE
 
-**Repository path:** `docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md` (the file name is retained for v1.1 because it is referenced by path from code comments, tests and other canonical documents; the version of record is the one stated in this header).
+**Repository path:** `docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md` (the file name is retained for v1.1 and v1.2 because it is referenced by path from code comments, tests and other canonical documents; the version of record is the one stated in this header).
+
+**How to read v1.2.** v1.2 is an in-file revision that makes E.0.2d the immediate downstream canonical consumer of **MRS-001 — Model Response Structure** (`docs/specs/MRS_001_SPEC_v1.0.md`). It changes only E.0.2d's model-call boundary:
+- both model stages become MRS-001 **EXPLICIT-PROFILE** stages, with complete stage-owned request profiles (§27.1);
+- the Generator's profile becomes configurable, symmetric with the Verifier's (§08, §27.1);
+- every provider response passes MRS-001 structural extraction before MRE-001 (§15.0);
+- structural failures and provider refusal are integrated into the existing fail-closed stage failures (§15.3, §15.6, §25);
+- the output bound becomes a total provider-output ceiling (§27.1), CAL-D7 is restated against it (§31.2), and calibration evidence identifies complete stage profiles (§31.4).
+
+Every other part of the v1.1 architecture is unchanged (§36, v1.2 entry). Text marked **[v1.2]** is new or revised in v1.2.
 
 **Document role:** Implementation SPEC for WP0 Phase E.0.2d — the bounded, AI-assisted, off-turn consolidation that discovers and formulates **FITME-inferred candidate** User Knowledge from governed observations, with deterministic governance over what it may read, propose, verify and persist. Testable-not-live.
 
 **How to read v1.1.** The body of this document is the **v1.1 normative architecture**: a Generator model stage, a deterministic pre-verification gate, a conditional, batched, reject-only Verifier model stage, deterministic post-verification authorization, and execution (§13). Text marked **[HISTORICAL — v1.0]** records the v1.0 baseline that was implemented and calibrated; it is preserved as fact and is not normative for v1.1. The first real-model calibration evidence is recorded in §31.1. Deferred decisions are recorded in §33. v1.1 is **not implemented**.
 
-**Canonical contract:** GCUK (`docs/governance/FITME_General_Context_and_User_Knowledge_Foundation_Canonical_Design_v1.0.md`) as amended by **A1**, **A2** and **A3** (`…_Amendment_A1_v1.0.md`, `…_A2_v1.0.md`, `…_A3_v1.0.md`); the closed **E.0.2c SPEC** (`docs/specs/WP0_PHASE_E_0_2C_USER_KNOWLEDGE_RECORD_AND_CONCEPT_IDENTITY_FOUNDATION_SPEC_v1.0.md`); the **E.0.2a SPEC** and its **Activation Amendment**; **MRE-001**. All CANONICAL / CLOSED. USI-001 (`docs/specs/USI_001_SPEC_v1.0.md`) is IMPLEMENTED — NOT CLOSED — NOT LIVE and is cited only as precedent, never as a dependency (§07.4).
+**Canonical contract:** GCUK (`docs/governance/FITME_General_Context_and_User_Knowledge_Foundation_Canonical_Design_v1.0.md`) as amended by **A1**, **A2** and **A3** (`…_Amendment_A1_v1.0.md`, `…_A2_v1.0.md`, `…_A3_v1.0.md`); the closed **E.0.2c SPEC** (`docs/specs/WP0_PHASE_E_0_2C_USER_KNOWLEDGE_RECORD_AND_CONCEPT_IDENTITY_FOUNDATION_SPEC_v1.0.md`); the **E.0.2a SPEC** and its **Activation Amendment**; **MRE-001**. All CANONICAL / CLOSED. **[v1.2]** **MRS-001** (`docs/specs/MRS_001_SPEC_v1.0.md`) — approved at the Product/Architecture level and reviewed together with this revision — governs provider-response structure and request-contract states. USI-001 (`docs/specs/USI_001_SPEC_v1.0.md`) is IMPLEMENTED — NOT CLOSED — NOT LIVE and is cited only as precedent, never as a dependency (§07.4).
 
 **Evidence labels (per `docs/governance/FITME_SPEC_AUTHORING_STANDARD_v1.1.md`):** **[VERIFIED]** repository evidence at the baseline; **[CANON]** canonical document or explicit Product/Architecture decision; **[DESIGN]** a contract this SPEC proposes for approval; **[INFERENCE]**; **[GAP]**; **[PROVISIONAL]** a numeric value confirmed or revised by calibration (§31).
 
@@ -16,7 +25,15 @@
 # 01. Identity, Status, and Authority
 
 - Deliverable: **WP0 Phase E.0.2d — Bounded Inferred-Knowledge Consolidation** (A2 §10.1; GCUK Ch.14 as amended by A2 §07; E.0.2c SPEC §31).
-- Status: **E.0.2d Consolidation SPEC v1.1 — CANONICAL / CLOSED (SPECIFICATION)** (Product Review: APPROVED. Architecture Review: APPROVED.) (§35). v1.1 revises the same Work Item; it is not a new Work Item. Its architecture was approved in principle by Product/Architecture before authoring (§32 rulings R-1 … R-12; R-13 ruled after authoring), and the authored text was approved for canonization after final verification. **[HISTORICAL — v1.0]** The v1.0 specification was CANONICAL / CLOSED (Product Review: APPROVED. Architecture Review: APPROVED.); canonization commit `0eff66dfbb6aa21342499b7aa4a613625b313135`; the last v1.0 status commit is `a7d5c138b6ceacd862957fbe550879ff614edc7e`. The **E.0.2d Work Item** is **v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE**: the v1.0 baseline was implemented in commit `1cfec7ae988a1f90b8bfe963e7e20513452fcf60` (including the E.0.2c amendment for E.0.2d) with full deterministic regression 3719/3719; the first real-model calibration of that baseline was run once with Product approval and failed CAL-D1, CAL-D2, CAL-D5 and CAL-D7 (§31.1); v1.1 is the remediation and is not implemented; no production caller or activation exists, and activation and live use remain prohibited (§35). GAP-D5 is resolved by the canonical E.0.2c amendment for E.0.2d, which this SPEC consumes (§23.1) and whose implementation it includes (§29). The three decisions recorded at first authoring are resolved by Product/Architecture ruling: **PD-D1** bootstrap confidence `0` = UNASSESSED (§21), **PD-D2** option U-2, reference-only participation of user-stated governed records (§23), **PD-D3** option S-2, V1 observation sources Conversation + Day Logs (§12). These rulings are unchanged in v1.1. Every v1.0 **[DESIGN]** item was approved; v1.1 items revise them where stated. v1.1 authoring modified only this document: no file under `js/**`, `tests/**`, `functions/**`, and not `index.html`, `sw.js`, `firestore.rules`, the calibration harness or any other canonical document.
+- **[v1.2] Status:** **E.0.2d Consolidation SPEC v1.2 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.) (§35).
+  - v1.2 revises the same Work Item; it is not a new Work Item.
+  - It was authored after MRS-001's approval at the Product/Architecture level, and it completed joint Product/Architecture review with MRS-001. v1.2 supersedes v1.1 as the normative specification of this Work Item.
+  - **Work Item:** **v1.1 IMPLEMENTED — DETERMINISTICALLY VERIFIED — CALIBRATION INFRASTRUCTURE READY — REAL-MODEL CALIBRATION PENDING (PAUSED) — v1.2 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE**.
+  - v1.1 was implemented in commit `c83b1825795bf68582aada900673816109752c62`. The v1.1 calibration infrastructure (§31) was implemented in commit `f6ae1a104f472420f92d6cffce2e4516049e0345`, with full deterministic regression 3767/3767.
+  - No real-model calibration of v1.1 has run; real-model calibration is paused until MRS-001 and v1.2 are implemented and deterministically verified (§31.4).
+  - v1.2 authoring modified only this document.
+- **[HISTORICAL — v1.1]** Status: **E.0.2d Consolidation SPEC v1.1 — CANONICAL / CLOSED (SPECIFICATION)** (Product Review: APPROVED. Architecture Review: APPROVED.) (§35). v1.1 revises the same Work Item; it is not a new Work Item. Its architecture was approved in principle by Product/Architecture before authoring (§32 rulings R-1 … R-12; R-13 ruled after authoring), and the authored text was approved for canonization after final verification. **[HISTORICAL — v1.0]** The v1.0 specification was CANONICAL / CLOSED (Product Review: APPROVED. Architecture Review: APPROVED.); canonization commit `0eff66dfbb6aa21342499b7aa4a613625b313135`; the last v1.0 status commit is `a7d5c138b6ceacd862957fbe550879ff614edc7e`. The **E.0.2d Work Item** is **v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE**: the v1.0 baseline was implemented in commit `1cfec7ae988a1f90b8bfe963e7e20513452fcf60` (including the E.0.2c amendment for E.0.2d) with full deterministic regression 3719/3719; the first real-model calibration of that baseline was run once with Product approval and failed CAL-D1, CAL-D2, CAL-D5 and CAL-D7 (§31.1); v1.1 is the remediation and is not implemented; no production caller or activation exists, and activation and live use remain prohibited (§35). GAP-D5 is resolved by the canonical E.0.2c amendment for E.0.2d, which this SPEC consumes (§23.1) and whose implementation it includes (§29). The three decisions recorded at first authoring are resolved by Product/Architecture ruling: **PD-D1** bootstrap confidence `0` = UNASSESSED (§21), **PD-D2** option U-2, reference-only participation of user-stated governed records (§23), **PD-D3** option S-2, V1 observation sources Conversation + Day Logs (§12). These rulings are unchanged in v1.1. Every v1.0 **[DESIGN]** item was approved; v1.1 items revise them where stated. v1.1 authoring modified only this document: no file under `js/**`, `tests/**`, `functions/**`, and not `index.html`, `sw.js`, `firestore.rules`, the calibration harness or any other canonical document.
+- **[v1.2]** Repository baseline for v1.2 authoring: `main` @ `f6ae1a104f472420f92d6cffce2e4516049e0345` (== `origin/main`) **[VERIFIED]**; v1.2 repository evidence is §04 item 16.
 - Repository baseline for v1.1 authoring: `main` @ `a7d5c138b6ceacd862957fbe550879ff614edc7e` (== `origin/main`) **[VERIFIED]**. **[HISTORICAL — v1.0]** v1.0 was authored at `880288026cef7646f593cbe82f4697ada84cdbe9` (full suite 3631/3631 at `df3000c`). The working tree carries unrelated uncommitted entries (19 line-ending/stat-only, 10 untracked documents); none is a file this SPEC authorizes.
 - Authority: Product/Architecture own every **[CANON]** item: the approved E.0.2d direction (hereafter **D-1 … D-7**: 1 open-world inference; 2 CREATE / APPEND_EVIDENCE / SUPERSEDE, append conservative, prefer CREATE when identity is uncertain, supporting and contradicting evidence; 3 no epistemic confidence in E.0.2d; 4 all three temporalities, open-ended TEMPORARY, no expiry ownership, recurring-window time preservation; 5 platform-neutral Observation Port, no duplicate store, references only, A3 governs eligibility; 6 `NOT_AUTHORIZED` for Safety-adjacent sources, Safety-derived knowledge excluded; 7 reuse presented/merge-resolved concepts, no embeddings/synonyms/ontology/merge subsystem), the rulings **PD-D1**, **PD-D2** and **PD-D3**, the v1.1 rulings **R-1 … R-13** (§32), together with A2 §07 and A3.
 
@@ -80,6 +97,13 @@ Items 1–13 are preserved as recorded at the v1.0 baseline; where the repositor
 13. **Evidence-keyed User Knowledge reads** are canonical but not yet implemented: the E.0.2c amendment for E.0.2d (commit `416c002`) adds `supportingRefIds` and `queryRecordsBySupportingRefs`, to be implemented by this Work Item (§29). Typed Memory reads in `js/memory.js` are whole-collection today (E.0.2c §04 item 4); the Observation Port adapter must not reuse them for ownership (§10.3).
 14. **v1.0 baseline as implemented [VERIFIED at `a7d5c13`]** (supersedes items 11 and 13 as to current state). The four v1.0 modules exist (`consolidationContract.js`, `consolidationInterpreter.js`, `consolidationGate.js`, `consolidation.js`), together with the E.0.2c amendment (`supportingRefIds`, `queryRecordsBySupportingRefs`). MRE-001 W-1 pins 20 parse sites, `consolidationInterpreter.js` among them, and W-3 carries `NODE_ONLY_SITE_FILES = ['consolidationInterpreter.js']` (§29.1). In the v1.0 gate context each observation carries only `{ref, refId, observedAt, userTexts}`; local date, local time, offset and data segments are rendered to the model but not available to the gate (`consolidation.js:333-336`). The v1.0 interpreter's model output is validated by one combined proposal shape (`consolidationInterpreter.js:103-114`); any deviation fails the whole response. E.0.2c imposes no coupling between `temporality` and `evidenceClass` (`userKnowledgeContract.js:340`, `:524`); the v1.0 coupling `RECURRING_WINDOW ⇒ RECURRENCE` was an E.0.2d gate rule (C3).
 15. **Safety-risk canon [VERIFIED at `a7d5c13`].** SL-001 defines the closed `RISK_TYPES` (`safetyLayer.js:127-131`): `NONE`, `KNOWN_ALLERGY_CONFLICT`, `ACTIVE_MEDICAL_INSTRUCTION_CONFLICT`, `ACTIVE_HIGH_RISK_SYMPTOM`, `SIGNIFICANT_INJURY_OR_RECOVERY_CONFLICT`, `DANGEROUS_OR_EXTREME_REQUEST`, `PERMANENT_SAFETY_COMMITMENT_CONFLICT`, `DISORDERED_EATING_OR_BODY_IMAGE_CONCERN`, `PSYCHOLOGICAL_DISTRESS_CONCERN`, `OUTSIDE_COACHING_SCOPE`, `INSUFFICIENT`. The Risk-Characteristic Sub-Spec §08.1 defines the closed `RISK_DOMAINS`, described there as risk properties, never world concepts. No canonical document defines "Safety-adjacent" as a content test for a background consumer's proposals; GCUK Ch.09 and E.0.2c §24 define `safetyFlag: 'SAFETY_ADJACENT'` as a governance marker only.
+16. **[v1.2] v1.1 model-call boundary as implemented [VERIFIED at `f6ae1a1`].**
+    - **Request bodies.** The Generator body is `{model: MODEL, max_tokens: MAX_TOKENS, messages}` with `MODEL = 'claude-haiku-4-5-20251001'`, `MAX_TOKENS = 1600`, `TIMEOUT_MS = 20000` (`consolidationInterpreter.js:29-31`, `:81`). The Verifier body is `{model: deps.model, max_tokens: 800, messages}` with default model `claude-haiku-4-5-20251001` and timeout 20000 (`consolidationVerifier.js:31-33`, `:78`). No body carries a reasoning field.
+    - **Parsing.** Both stages fail on `stop_reason === 'max_tokens'` and read the answer as `raw.content[0].text` before `ModelResponseEnvelope.unwrapSingleJsonFence` (`consolidationInterpreter.js:105-106`, `consolidationVerifier.js:99-100`).
+    - **Configuration.** `Consolidation.configure()` accepts `timeoutMs` (Generator), `verifierTimeoutMs` and `verifierModel`; the Generator model is a module constant (`consolidation.js:76-79`).
+    - **Pinned key sets.** `tests/e02dConsolidationInterpreter.test.js:37` and `tests/e02dConsolidationVerifier.test.js:39` assert body key sets of exactly `['max_tokens', 'messages', 'model']`.
+    - **Calibration harness override.** The harness rewrites only the Generator request body's `model` for experiments (`tests/evals/e02dConsolidationCalibration.eval.js:359`) and passes `verifierModel` through `configure()` (`:408`).
+    - **Provider behaviour [EXTERNAL — Anthropic documentation, retrieved 2026-10-05].** For `claude-haiku-4-5-20251001`, a request with no `thinking` field and a request with `thinking: {type: 'disabled'}` both run with thinking off; the model does not support the effort parameter.
 
 ---
 
@@ -153,14 +177,20 @@ Five core modules, UMD-shaped like every sibling, **Node-only**: not script-tagg
 | Module | Global | Responsibility | Requires |
 |---|---|---|---|
 | `js/coachDecisionSystem/consolidationContract.js` | `ConsolidationContract` | Closed vocabularies (operations, grounding forms, anchor kinds, verdict values, reason codes), constants, the consumer declaration (§09), source-descriptor and observation validators (§10), structural signature, literal-overlap function (§22), `isConfidenceAssessed` (§21) | `userKnowledgeContract.js` |
-| `js/coachDecisionSystem/consolidationInterpreter.js` | `ConsolidationInterpreter` | **Generator** (§15.1–§15.3): builds the one bounded Generator request, sends it through the injected model transport, parses through MRE-001, validates the envelope and isolates each proposal by its per-operation shape; returns a closed result | `modelResponseEnvelope.js`, `consolidationContract.js` |
-| `js/coachDecisionSystem/consolidationVerifier.js` | `ConsolidationVerifier` | **Verifier** (§15.4–§15.6): builds the one batched Verifier request from deterministic renderings supplied by the coordinator, sends it through the injected model transport, parses through MRE-001, validates the envelope and attribution, returns per-item closed verdicts. Grants nothing | `modelResponseEnvelope.js`, `consolidationContract.js` |
+| `js/coachDecisionSystem/consolidationInterpreter.js` | `ConsolidationInterpreter` | **Generator** (§15.1–§15.3): builds the one bounded Generator request **from its request profile [v1.2]**, sends it through the injected model transport, **extracts the answer text through MRS-001 under the same profile [v1.2]**, parses through MRE-001, validates the envelope and isolates each proposal by its per-operation shape; returns a closed result | `modelResponseStructure.js` **[v1.2]**, `modelResponseEnvelope.js`, `consolidationContract.js` |
+| `js/coachDecisionSystem/consolidationVerifier.js` | `ConsolidationVerifier` | **Verifier** (§15.4–§15.6): builds the one batched Verifier request from deterministic renderings supplied by the coordinator **and from its request profile [v1.2]**, sends it through the injected model transport, **extracts the answer text through MRS-001 under the same profile [v1.2]**, parses through MRE-001, validates the envelope and attribution, returns per-item closed verdicts. Grants nothing | `modelResponseStructure.js` **[v1.2]**, `modelResponseEnvelope.js`, `consolidationContract.js` |
 | `js/coachDecisionSystem/consolidationGate.js` | `ConsolidationGate` | Pure deterministic pre-verification gate producing plans (§16.1–§16.4, §20.2, §22–§24) and post-verification authorization (§16.5) | `userKnowledgeContract.js`, `consolidationContract.js` |
 | `js/coachDecisionSystem/consolidation.js` | `Consolidation` | `configure()` and `runPass()`: consent, eligibility, reads, presentation and key maps, Generator, gate, Verifier dispatch, authorization, execution | `consolidationContract.js`, `consolidationInterpreter.js`, `consolidationVerifier.js`, `consolidationGate.js`, `userKnowledgeContract.js`, `eligibilityPolicy.js` |
 
 Binding placement rules:
 - No module reads a clock, generates ids or randomness, or references `window` (other than the standard export line), `document`, storage, `navigator`, `fetch`, Firebase/Firestore, `db`, `currentUser`, `js/memory.js`, `js/stateAccess.js`, `js/app.js`, `functions/**`, any repository, any Safety module, `memoryLayer.js`, `contextComposer.js` or `contextRelevancePlanner.js`. Time is injected (`now()`); ids come from the User Knowledge port through the store.
-- **Model transport.** E.0.2d is a governed background process whose host is not yet decided (A1 §10 item 13). Its transport is injected by the host composition root as `modelTransport(body) → Promise<rawResponse>` through `Consolidation.configure()`, never as a browser-shell `callClaude` dependency; the Generator and the Verifier use the same injected transport, each with its own request body, model constant, output bound and timeout (§27). Neither module declares the `callClaude: null` default shape governed by wiring test 37 (§04 item 11), which applies to shell-configured browser interpreters. A static test asserts that no E.0.2d module is configured by `js/app.js` or script-tagged (AC-D40).
+- **Model transport.** E.0.2d is a governed background process whose host is not yet decided (A1 §10 item 13). Its transport is injected by the host composition root as `modelTransport(body) → Promise<rawResponse>` through `Consolidation.configure()`, never as a browser-shell `callClaude` dependency; the Generator and the Verifier use the same injected transport, each with its own request body built from its own **request profile** (§27.1) **[v1.2]**.
+- **[v1.2] Request profiles and configuration.**
+  - `Consolidation.configure()` accepts optional `generatorProfile` and `verifierProfile`. Each, when supplied, is a complete EXPLICIT-PROFILE request profile (§27.1); when omitted, that stage's default profile applies (§27.1).
+  - A supplied profile that is incomplete or invalid (§27.1 validation) makes the whole configuration `NOT_CONFIGURED`. No partial profile is merged with a default.
+  - The v1.1 fields `verifierModel`, `timeoutMs` and `verifierTimeoutMs` are replaced by the profiles; a configuration that supplies any of them is `NOT_CONFIGURED`, so a v1.1-style override can never silently take effect in part.
+  - Each stage uses its configured profile both to construct its request and to govern MRS-001 extraction of that request's response.
+  - Calibration overrides set profiles through this surface; they never rewrite a request body (§31.4). Neither module declares the `callClaude: null` default shape governed by wiring test 37 (§04 item 11), which applies to shell-configured browser interpreters. A static test asserts that no E.0.2d module is configured by `js/app.js` or script-tagged (AC-D40).
 - **Verifier input is rendered by the coordinator.** `consolidationVerifier.js` receives already-rendered, bounded data (§15.4) and never reads a store, a port, a record or a User Knowledge field itself; it does not depend on `userKnowledgeContract.js`.
 - Eligibility is evaluated by the single A3 policy, `EligibilityPolicy.computeEligibility` (A3 §04.5: no second policy).
 
@@ -318,14 +348,19 @@ User-stated references (Typed Memory and `user_stated` User Knowledge) are gover
 5. Apply presentation bounds (§14.1); no remaining observation → `NO_OBSERVATIONS` (success, no model call).
 6. User Knowledge ownership for every presented observation ref through `queryRecordsBySupportingRefs` with the covering procedure (§23.1); any non-`OK` read → `OWNERSHIP_READ_FAILED`, no model call. Resolve every owning record's concepts to their current roots (§23.1 owner concept resolution); any incomplete resolution → `OWNERSHIP_READ_FAILED`, no model call. Remove observations owned by a `SAFETY_ADJACENT` owning record (§24); none remaining → `NO_OBSERVATIONS`.
 7. Presentation of concepts and FITME-sourced records (§14.2) and of user-stated references (§14.3), with pass-local key maps for every namespace (§14.4).
-8. **Generator** — one call (§15.1–§15.3). Transport failure, timeout, `max_tokens` stop or an invalid envelope → `INTERPRETER_FAILED`, no Verifier call, no writes.
+8. **Generator** — one call (§15.1–§15.3). Any Generator stage failure → `INTERPRETER_FAILED`, no Verifier call, no writes. Stage failures are: transport failure; timeout; an MRS-001 structural failure, including refusal (§15.0) **[v1.2]**; a `max_tokens` stop; or an invalid envelope.
 9. **Proposal isolation** (§15.3) — a proposal that fails its per-operation shape is rejected alone (`MALFORMED_PROPOSAL`); its siblings continue.
 10. **Pre-verification gate** — every well-formed proposal is evaluated independently (§16.1–§16.4, §20.2, §22–§24). A proposal that fails is rejected with its closed code; one that passes becomes a **plan**.
 11. If no plan exists, the pass ends `COMPLETED` with no Verifier call and no writes.
-12. **Verifier** — one batched call over every plan (§15.4–§15.6). A failed Verifier result → `VERIFIER_FAILED`: every plan is rejected (`VERIFICATION_UNAVAILABLE`), no writes.
+12. **Verifier** — one batched call over every plan (§15.4–§15.6). A failed Verifier result, including any MRS-001 structural failure or refusal (§15.0) **[v1.2]** → `VERIFIER_FAILED`: every plan is rejected (`VERIFICATION_UNAVAILABLE`), no writes.
 13. **Post-verification authorization** — per-item verdict check, then the cross-proposal rules in output order (§16.5).
 14. Execute authorized plans in output order (§17). No write occurs before step 13 completes for the whole pass. Each operation is one atomic store change set; a store failure of one operation does not roll back earlier ones (§26).
-15. Return `PassResult { status, sourcesRead: sourceId[], observationsPresented: integer, modelCalls: 0|1|2, proposals: [{index, operation, outcome: ADMITTED_EXECUTED | ADMITTED_FAILED | REJECTED | NO_CHANGE, code, verification, recordIds}] }`, where `verification` is `null` or the item's closed verdict tokens (§15.5) and `operation` is `null` for a proposal whose operation could not be read. The result carries ids, closed codes and closed tokens only, never observation, proposal or verdict content.
+15. Return `PassResult { status, sourcesRead: sourceId[], observationsPresented: integer, modelCalls: 0|1|2, stageFailure, proposals: [{index, operation, outcome: ADMITTED_EXECUTED | ADMITTED_FAILED | REJECTED | NO_CHANGE, code, verification, recordIds}] }`.
+    - `verification` is `null` or the item's closed verdict tokens (§15.5).
+    - `operation` is `null` for a proposal whose operation could not be read.
+    - **[v1.2]** `stageFailure` is `null` unless `status` is `INTERPRETER_FAILED` or `VERIFIER_FAILED` **and** that status was produced by a classified §15.0 stage-failure condition. In that case it is `{ stage: 'GENERATOR' | 'VERIFIER', reason }`, where `reason` is the applicable closed `STAGE_FAILURE_REASONS` code (§15.0). It is diagnostic only: it grants nothing and is read by nothing in the pass.
+    - **[v1.2 clarification — B1]** When an existing v1.1 defensive or internal-exception path produces `INTERPRETER_FAILED` or `VERIFIER_FAILED` without any classified §15.0 condition having caused it, the v1.1 status is preserved unchanged and `stageFailure` is `null`. No cause is inferred; such a failure is never reported as `TRANSPORT_FAILED`, `INVALID_ENVELOPE` or any other §15.0 code; the closed vocabulary is not expanded; and the defensive catch behaviour is not changed to manufacture a classified reason.
+    - The result carries ids, closed codes and closed tokens only. It never carries observation, proposal or verdict content, or provider-supplied refusal text (§31.4 preserves refusal details as calibration evidence).
 
 ---
 
@@ -371,11 +406,46 @@ User-stated references (Typed Memory and `user_stated` User Knowledge) are gover
 
 # 15. Model Contracts — Generator and Verifier — [CANON R-1, R-2, R-3, R-6, R-7; DESIGN]
 
-Both stages are bounded interpreters in the MRE-001 family: one request, one attempt, fixed timeout, no retry inside a pass, output parsed only through `ModelResponseEnvelope.unwrapSingleJsonFence`, closed output validated deterministically. Their model constants are implementation/calibration constants, not architecture (§27; R-11).
+Both stages are bounded interpreters in the MRE-001 family: one request, one attempt, fixed timeout, no retry inside a pass, closed output validated deterministically. **[v1.2]** The text they parse is the answer text extracted by MRS-001 (§15.0) and then passed through `ModelResponseEnvelope.unwrapSingleJsonFence`. Their request profiles are implementation/calibration configuration, not architecture (§27; R-11).
+
+## 15.0 Model-call boundary — [v1.2; CANON MRS-001; DESIGN mapping]
+
+**Processing order (MRS-001 §05):** provider response → **MRS-001 structural extraction** → MRE-001 → `JSON.parse` → E.0.2d stage validation (§15.3, §15.6).
+
+Authority:
+- MRS-001 owns response structure.
+- MRE-001 owns text-envelope normalization.
+- E.0.2d owns the Generator and Verifier semantic contracts.
+- MRS-001 grants nothing and has no semantic authority over any proposal, plan, verdict or write.
+
+**Request-contract state.** Both stages are **EXPLICIT-PROFILE** (MRS-001 §08.3); neither is in the MRS-001 FROZEN-CONTRACT inventory (MRS-001 §10.4). Each stage calls `ModelResponseStructure.extractAnswerText(raw, { state: 'EXPLICIT_PROFILE', reasoning })`, where `reasoning` is the mode of **the same profile that constructed the request** (MRS-001 G4). It never omits, defaults or synthesizes that contract.
+
+**Closed `STAGE_FAILURE_REASONS` and precedence.** Each stage determines its failure reason deterministically, in this order. The first condition that holds decides.
+
+| # | Condition | `reason` |
+|---|---|---|
+| 1 | The transport call threw or rejected | `TRANSPORT_FAILED` |
+| 2 | The stage timeout elapsed | `TIMEOUT` |
+| 3 | MRS-001 returned `CONTRACT_UNRESOLVED` | `CONTRACT_UNRESOLVED` |
+| 4 | MRS-001 returned `REFUSAL` | `REFUSAL` |
+| 5 | `stop_reason === 'max_tokens'` (the existing stage-owned truncation rule, applied after refusal and before other structural codes) | `MAX_TOKENS` |
+| 6 | Any other MRS-001 structural failure | the MRS-001 code itself: `NOT_A_RESPONSE`, `MALFORMED_BLOCK`, `UNSUPPORTED_BLOCK`, `REASONING_NOT_PERMITTED`, `NO_ANSWER_TEXT` or `MULTIPLE_ANSWER_TEXT` |
+| 7 | The extracted text fails the stage's envelope rules (§15.3, §15.6): not exactly one JSON object after MRE-001, wrong key set, wrong type, or over the bound | `INVALID_ENVELOPE` |
+| 8 | Verifier only: an attribution anomaly (§15.6) | `ATTRIBUTION_ANOMALY` |
+
+Rules:
+- Every reason fails the whole stage closed, exactly as the v1.1 envelope-level failures did: Generator → `INTERPRETER_FAILED`; Verifier → `VERIFIER_FAILED` with every plan `VERIFICATION_UNAVAILABLE`. No reason creates, repairs, re-operates or authorizes a proposal or plan, and no reason is retried.
+- **Refusal** is a distinct reason. It is never reported as `INVALID_ENVELOPE` or as a semantic rejection.
+- **Classified conditions only [v1.2 clarification — B1].** `STAGE_FAILURE_REASONS` classifies exactly the eight conditions above. A stage failure that none of them caused — an existing v1.1 defensive or internal-exception path — keeps its v1.1 status and carries `stageFailure: null` (§13 step 15). The vocabulary is closed and is not expanded for such paths, and no such path is mapped to a code whose condition did not occur.
+- Reasoning content, when the profile permits it, is never read (MRS-001 §06.2).
 
 ## 15.1 Generator request
 
-One request per pass: `{ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }`, sent once through the injected transport with `TIMEOUT_MS`; no retry inside a pass (MRE-001).
+**[v1.2]** One request per pass, built from the Generator's request profile `P` (§27.1): `{ model: P.model, max_tokens: P.maxOutputTokens, <P.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
+- Key order: `model`, `max_tokens`, the binding's fields in their stated order, then `messages`.
+- Sent once through the injected transport with `P.timeoutMs`; no retry inside a pass (MRE-001).
+- The prompt is unchanged from v1.1.
+- **[HISTORICAL — v1.1]** v1.1 body: `{ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `TIMEOUT_MS`.
 
 Instruction requirements (verified by AC-D9 … AC-D11, AC-D55):
 - **Task.** Find possible relationships or facts about this person that the presented observations support or contradict, formulated as associations, never as causes (GCUK Ch.20); propose at most `MAX_PROPOSALS`; proposing nothing is acceptable.
@@ -430,7 +500,7 @@ Factor:
 
 ## 15.3 Generator parsing and proposal-level isolation (R-6)
 
-- **Envelope level — the whole Generator result is `FAILED` (pass `INTERPRETER_FAILED`, no Verifier call, no writes)** when: the transport fails or times out; `stop_reason` is `max_tokens`; the unwrapped text is not exactly one JSON object; the object's key set is not exactly `{proposals}`; `proposals` is not an array; or it has more than `MAX_PROPOSALS` entries.
+- **Envelope level — the whole Generator result is `FAILED` (pass `INTERPRETER_FAILED`, no Verifier call, no writes)** when: the transport fails or times out; **[v1.2]** MRS-001 extraction fails, including refusal (§15.0); `stop_reason` is `max_tokens`; the unwrapped text is not exactly one JSON object; the object's key set is not exactly `{proposals}`; `proposals` is not an array; or it has more than `MAX_PROPOSALS` entries.
 - **Proposal level — only that proposal is rejected (`MALFORMED_PROPOSAL`)** when, inside a valid envelope, it is not a plain object; its `operation` is not one of `OPERATIONS`; its key set is not exactly that operation's; or any field, factor, grounding or anchor violates its type, bound or vocabulary. The `PassResult` entry keeps the proposal's index, and `operation` when it was readable.
 - Every well-formed proposal is evaluated independently. A malformed proposal never consumes any cross-proposal budget and never affects a sibling.
 - *Rationale [DESIGN].* A truncated, non-JSON or over-long response is ambiguous as a whole, so it fails as a whole. A single malformed element inside a valid, complete envelope is attributable to its position and independently evaluable; rejecting only it follows the per-entry isolation precedent of USC-001's batched classifier. MRE-001 is unaffected: it governs the envelope, not the validation granularity after it.
@@ -438,7 +508,11 @@ Factor:
 ## 15.4 Verifier request (R-2)
 
 - **When.** Exactly one Verifier request per pass when at least one plan exists after the pre-verification gate (§16); none otherwise. Never one request per proposal.
-- **Body.** `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }`, sent once through the injected transport with `VERIFIER_TIMEOUT_MS`; no retry inside a pass (MRE-001).
+- **Body [v1.2].** Built from the Verifier's request profile `V` (§27.1): `{ model: V.model, max_tokens: V.maxOutputTokens, <V.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
+  - Key order as in §15.1.
+  - Sent once through the injected transport with `V.timeoutMs`; no retry inside a pass (MRE-001).
+  - The prompt is unchanged from v1.1.
+  - **[HISTORICAL — v1.1]** v1.1 body: `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `VERIFIER_TIMEOUT_MS`.
 - **Input blocks**, all rendered deterministically by the coordinator and framed as data with the standard injection clause:
   - `<observations>` — every observation presented to the Generator, rendered identically with the same keys (restatement is judged against all of the person's presented words, not only cited ones);
   - `<user_stated>` — identical to the Generator's block;
@@ -476,10 +550,11 @@ Separate closed dimensions, not one composite verdict, so that every rejection i
 
 ## 15.6 Verifier failure, attribution and mapping (R-2, R-6)
 
-- **Whole Verifier result `FAILED` → pass `VERIFIER_FAILED`; every plan `REJECTED` with `VERIFICATION_UNAVAILABLE`; no writes** — when the transport fails or times out; `stop_reason` is `max_tokens`; the unwrapped text is not exactly one JSON object with key set `{verdicts}` whose value is an array; or **any attribution anomaly** occurs: an entry that is not a plain object, an entry whose `item` is missing or does not resolve to a presented `p` key, or a `p` key that appears more than once. Attribution is the only link between a semantic veto and deterministic authority; any doubt about which plan a verdict belongs to invalidates the whole batch.
+- **Whole Verifier result `FAILED` → pass `VERIFIER_FAILED`; every plan `REJECTED` with `VERIFICATION_UNAVAILABLE`; no writes** — when the transport fails or times out; **[v1.2]** MRS-001 extraction fails, including refusal (§15.0); `stop_reason` is `max_tokens`; the unwrapped text is not exactly one JSON object with key set `{verdicts}` whose value is an array; or **any attribution anomaly** occurs: an entry that is not a plain object, an entry whose `item` is missing or does not resolve to a presented `p` key, or a `p` key that appears more than once. Attribution is the only link between a semantic veto and deterministic authority; any doubt about which plan a verdict belongs to invalidates the whole batch.
 - **Item level — only that plan is rejected:** an entry with a valid, unique `p` key whose key set, vocabulary or applicability is wrong → `VERIFICATION_MALFORMED`; a plan with no entry → `VERIFICATION_MISSING`.
 - **Mapping without authority.** A verdict is attached to a plan only through the deterministic `p`-key table. The only effect a verdict can have is to reject that plan. Nothing from the Verifier output is read into a plan, record, evidence reference, concept or result, except the closed verdict tokens reported in `PassResult.proposals[].verification`. The Verifier cannot authorize a proposal the pre-verification gate rejected, because such a proposal is never an item.
 - A semantic verification failure therefore never results in an unverified write, and a well-formed, attributable verdict for one plan is never discarded because of another plan's malformed entry.
+- **[v1.2] Reject-only under structural failure.** A Verifier structural failure or refusal (§15.0) can only make every plan `VERIFICATION_UNAVAILABLE`. It never yields a verdict, a passing token or an authorization, and nothing from a structurally failed response is read.
 
 ---
 
@@ -824,7 +899,7 @@ Safety-adjacent content that deterministic ownership and claim rules (item 2) do
 
 | Condition | Pass status | Writes | Model calls |
 |---|---|---|---|
-| Invalid configuration / consumer declaration | `NOT_CONFIGURED` | none | 0 |
+| Invalid configuration / consumer declaration; **[v1.2]** an invalid or incomplete `generatorProfile` or `verifierProfile`, or any v1.1 field `verifierModel`, `timeoutMs` or `verifierTimeoutMs` (§08, §27.1) | `NOT_CONFIGURED` | none | 0 |
 | Learning consent not exactly `true` | `CONSENT_NOT_GRANTED` | none | 0 |
 | No eligible source | `NO_ELIGIBLE_SOURCE` | none | 0 |
 | Port throws, returns invalid/oversized/unrequested data (including a malformed segment time field) | `OBSERVATION_READ_INVALID` | none | 0 |
@@ -833,14 +908,14 @@ Safety-adjacent content that deterministic ownership and claim rules (item 2) do
 | Owner concept resolution incomplete: a `getConcepts` status other than `OK`, a missing concept, `UNKNOWN_CONCEPT` or `MERGE_CHAIN_INVALID` — never read as "different structure" | `OWNERSHIP_READ_FAILED` | none | 0 |
 | Nothing to present | `NO_OBSERVATIONS` | none | 0 |
 | Store read for presentation fails | `STORE_READ_FAILED` | none | 0 |
-| Generator transport error, timeout, `max_tokens` stop, or invalid envelope (§15.3) | `INTERPRETER_FAILED` | none | 1 |
+| Generator transport error, timeout, MRS-001 structural failure or refusal **[v1.2]**, `max_tokens` stop, or invalid envelope (§15.0, §15.3); `stageFailure.reason` per §15.0 | `INTERPRETER_FAILED` | none | 1 |
 | Zero proposals; or every proposal malformed (`MALFORMED_PROPOSAL`) or rejected by the pre-verification gate | `COMPLETED` | none | 1 |
-| Verifier transport error, timeout, `max_tokens` stop, invalid envelope, or attribution anomaly (§15.6) — every plan `VERIFICATION_UNAVAILABLE` | `VERIFIER_FAILED` | none | 2 |
+| Verifier transport error, timeout, MRS-001 structural failure or refusal **[v1.2]**, `max_tokens` stop, invalid envelope, or attribution anomaly (§15.0, §15.6) — every plan `VERIFICATION_UNAVAILABLE`; `stageFailure.reason` per §15.0 | `VERIFIER_FAILED` | none | 2 |
 | Plans verified, none authorized (verdict rejections, `VERIFICATION_MALFORMED`, `VERIFICATION_MISSING`, cross-proposal rules) | `COMPLETED` | none | 2 |
 | Some authorized operations fail at the store | `PARTIAL` | the successful ones | 2 |
 | All authorized operations succeed | `COMPLETED` | all | 2 |
 
-`runPass` never throws. No failure produces a permissive fallback, a fabricated observation, evidence, concept, verdict or record, a user prompt, or an unverified write. A proposal-level or item-level failure affects only its own proposal (§15.3, §15.6).
+`runPass` never throws. **[v1.2 clarification — B1]** The `INTERPRETER_FAILED` and `VERIFIER_FAILED` rows carry `stageFailure.reason` only for the classified §15.0 conditions they list; the existing v1.1 defensive catch keeps its status unchanged and carries `stageFailure: null` (§13 step 15). No failure produces a permissive fallback, a fabricated observation, evidence, concept, verdict or record, a user prompt, or an unverified write. A proposal-level or item-level failure affects only its own proposal (§15.3, §15.6).
 
 ---
 
@@ -858,9 +933,60 @@ Safety-adjacent content that deterministic ownership and claim rules (item 2) do
 
 - **At most two model calls per pass:** 0 when any §11/§13 precondition stops the pass; **1** when the Generator runs and no plan survives (zero proposals, all malformed or rejected, or a Generator failure); **2** only when at least one plan survives the pre-verification gate. The Verifier is one batched call regardless of the number of plans. No call per observation, concept, proposal, plan or evidence item (E.0.2c §26; A-G; §32 reading).
 - No production caller exists (§29): production model-call counts and pinned request-body hashes are unchanged (AC-D44).
-- **Model constants are implementation/calibration constants, not architecture (R-11).** `MODEL` (Generator) and `VERIFIER_MODEL` are each any model able to satisfy its contract (§15). The economical model is tried first; if it does not meet the semantic-quality gates (§31), a stronger model may be substituted without changing this architecture. Any model change requires calibration before closure or live use. **[HISTORICAL — v1.0]** The v1.0 implementation and the first calibration used `claude-haiku-4-5-20251001` for the single interpreter.
-- Constants (all **[PROVISIONAL]**, §31): `MAX_TOKENS` 1600, `TIMEOUT_MS` 20000, `VERIFIER_MAX_TOKENS` 800, `VERIFIER_TIMEOUT_MS` 20000, `MAX_PROPOSALS` 6, `MAX_GROUNDING_ANCHORS` 8, `ANCHOR_TEXT_MAX_CHARS` 120, `WINDOW_MAX_DAYS` 14, `OBS_MAX_PER_PASS` 40, `OBS_MAX_SEGMENTS` 12, `OBS_TEXT_MAX_CHARS` 2000, `OBS_BLOCK_MAX_CHARS` 16000, `PRESENTED_CONCEPTS_MAX` 30, `PRESENTED_CONCEPTS_TOTAL_MAX` 40, `PRESENTED_RECORDS_MAX` 12, `PRESENTED_BLOCK_MAX_CHARS` 6000, `PRESENTED_USER_STATED_MAX` 8, `MAX_NEW_CONCEPTS_PER_PROPOSAL` 4, `MAX_NEW_CONCEPTS_PER_PASS` 8, `LITERAL_OVERLAP_MAX_CHARS` 24.
+- **Request profiles are implementation/calibration configuration, not architecture (R-11) [v1.2].** Each stage's profile (§27.1), including its model, may be any profile able to satisfy its contract (§15). **[HISTORICAL — v1.1]** v1.1 stated this for the model constants `MODEL` (Generator) and `VERIFIER_MODEL`. The economical model is tried first; if it does not meet the semantic-quality gates (§31), a stronger model may be substituted without changing this architecture. Any model change requires calibration before closure or live use. **[HISTORICAL — v1.0]** The v1.0 implementation and the first calibration used `claude-haiku-4-5-20251001` for the single interpreter.
+- Constants (all **[PROVISIONAL]**, §31): **[v1.2]** the default request profiles of §27.1, which replace v1.1's `MAX_TOKENS` 1600, `TIMEOUT_MS` 20000, `VERIFIER_MAX_TOKENS` 800 and `VERIFIER_TIMEOUT_MS` 20000 with the same values; `MAX_PROPOSALS` 6, `MAX_GROUNDING_ANCHORS` 8, `ANCHOR_TEXT_MAX_CHARS` 120, `WINDOW_MAX_DAYS` 14, `OBS_MAX_PER_PASS` 40, `OBS_MAX_SEGMENTS` 12, `OBS_TEXT_MAX_CHARS` 2000, `OBS_BLOCK_MAX_CHARS` 16000, `PRESENTED_CONCEPTS_MAX` 30, `PRESENTED_CONCEPTS_TOTAL_MAX` 40, `PRESENTED_RECORDS_MAX` 12, `PRESENTED_BLOCK_MAX_CHARS` 6000, `PRESENTED_USER_STATED_MAX` 8, `MAX_NEW_CONCEPTS_PER_PROPOSAL` 4, `MAX_NEW_CONCEPTS_PER_PASS` 8, `LITERAL_OVERLAP_MAX_CHARS` 24.
 - Paid-call budgets and cost estimates are not architecture; they belong to the calibration execution plan and require explicit Product approval (§31).
+
+## 27.1 Request profiles — [v1.2; CANON MRS-001 §08; DESIGN shape; PROVISIONAL values]
+
+**Profile shape.** Each stage's request profile is a plain object with exactly these keys:
+
+| Key | Meaning |
+|---|---|
+| `model` | non-empty model id string |
+| `reasoning` | `OFF` \| `ON` (MRS-001 §08.4) |
+| `effort` | `LOW` \| `MEDIUM` \| `HIGH` \| `NOT_APPLICABLE` (MRS-001 §08.5) |
+| `maxOutputTokens` | positive integer: the **total provider-output ceiling**, reasoning plus answer when reasoning is ON (MRS-001 §08.6) |
+| `timeoutMs` | positive integer: the stage timeout |
+| `providerBinding` | plain object: the provider request fields that express `reasoning` and, where the selected model supports one, the effort control (MRS-001 §08.7) |
+
+**Validation.** A profile is valid only if every key is present and well-typed, and all of the following hold. `reasoning` and `effort` are independent dimensions, validated independently (MRS-001 §08.5) **[v1.2 correction C3]**.
+- **Reasoning binding (exact, C4).** `providerBinding.thinking` is consistent with `reasoning` under MRS-001 §08.7, a check over provider values, never over model ids.
+  - For `OFF`, it is **exactly** `{type: 'disabled'}`, or exactly `{type: 'between_tools'}` within the MRS-001 §08.7 scope. No additional thinking field is admitted because the `type` matches.
+  - For `ON`, it is `{type: 'adaptive'}`.
+- **Effort (independent of reasoning, C3).** `effort` is `LOW`, `MEDIUM` or `HIGH` exactly when `providerBinding` carries the provider's effort control, set to that value; it is `NOT_APPLICABLE` exactly when `providerBinding` carries none. This holds under `OFF` and `ON` alike.
+  - A profile whose selected model supports an explicit effort control **must** carry it with an explicit value. `NOT_APPLICABLE` is valid only for a model without an effort control, and an implicit provider effort default is never relied on.
+  - Whether the selected model supports an effort control is a provider fact established when the profile is approved, beneath MRS-001's canonical semantics. No capability registry is introduced.
+- **`between_tools` scope (C5).** A `{type: 'between_tools'}` OFF binding is valid only when the selected provider and model support it, the stage's request is tool-free, and the profile's explicit effort value satisfies the provider's constraint for that mode (MRS-001 §08.5, §08.7).
+- **Closed binding keys.** `providerBinding` contains only the provider's reasoning field `thinking` and, where applicable, the provider's effort control. It never contains `model`, `max_tokens`, `messages` or any other request field.
+
+An invalid profile is a configuration failure (`NOT_CONFIGURED`, §25). Nothing branches semantically on the model id, and there is no capability registry.
+
+**Default profiles (all values [PROVISIONAL], §31; the defaults preserve v1.1's intended behaviour):**
+
+| Stage | `model` | `reasoning` | `effort` | `maxOutputTokens` | `timeoutMs` | `providerBinding` |
+|---|---|---|---|---|---|---|
+| Generator | `claude-haiku-4-5-20251001` | `OFF` | `NOT_APPLICABLE` | 1600 | 20000 | `{ thinking: { type: 'disabled' } }` |
+| Verifier | `claude-haiku-4-5-20251001` | `OFF` | `NOT_APPLICABLE` | 800 | 20000 | `{ thinking: { type: 'disabled' } }` |
+
+- **Values.** These are v1.1's model, output bound and timeout, unchanged. They are named here as implementation/calibration configuration under R-11, not as canonized architecture. With reasoning OFF, `maxOutputTokens` keeps v1.1's answer-bound meaning.
+- **Binding [EXTERNAL, §04 item 16].** `thinking: {type: 'disabled'}` is the provider's documented explicit "thinking off" value for this model, and it is the exact object with no other thinking field. The model does not support the effort parameter, so `effort` is `NOT_APPLICABLE` and the binding carries no effort control (C3). Both stages are tool-free.
+- **Non-default profiles.** A profile for a model with an effort control states its effort explicitly under either reasoning mode (C3). Its OFF binding is chosen within MRS-001 §08.7 (C4, C5).
+- **Reasoning-ON profiles.** No reasoning-ON production ceiling, timeout or effort is chosen by this SPEC. A reasoning-ON profile requires its own calibrated total ceiling and is defined only in an approved calibration configuration or a later revision (§31.4).
+- **Independent stages.** The two stages may have different approved profiles. Nothing requires the same model or reasoning mode for both.
+
+**v1.1 → v1.2 request-contract change (intentional; not zero drift):**
+- **Changes:** each default request body gains exactly one field, `thinking: {type: 'disabled'}`. The body key set changes from `{model, max_tokens, messages}` to `{model, max_tokens, thinking, messages}`, so request bytes and request hashes change.
+- **Semantically unchanged:**
+  - model ids;
+  - output bounds and timeouts;
+  - prompts;
+  - schemas, verdict vocabulary and validation;
+  - Generator and Verifier responsibilities;
+  - authorization and write authority.
+
+  The provider's documented reasoning behaviour for this model is the same with no field and with `disabled` (§04 item 16): this is an explicit statement of the existing behaviour, not a change to it.
+- **Calibration-only configurability:** the complete Generator and Verifier profiles become configurable through `configure()` (§08). The defaults above apply whenever no profile is configured; there is still no production caller (§29).
 
 ---
 
@@ -923,7 +1049,7 @@ Every other existing test passes unchanged.
 
 **Scope of this clarification.** Compatibility only. It changes no Product behaviour, authority, data semantics, activation status, architecture boundary or implementation scope of this SPEC or of E.0.2c. The Node-only requirement (§08, AC-D40) is preserved and is now additionally enforced by W-3. E.0.2c isolation is preserved except for the exact §08-required E.0.2d consumers and usages above. Tests must not be satisfied through indirection or renamed tokens.
 
-## 29.2 v1.1 remediation scope — [DESIGN; NOT IMPLEMENTED; implementation requires separate Product/Architecture authorization]
+## 29.2 v1.1 remediation scope — [DESIGN; IMPLEMENTED in `c83b182` **[v1.2 status note]**]
 
 **New production file.** `js/coachDecisionSystem/consolidationVerifier.js` (§08, §15.4–§15.6).
 
@@ -943,16 +1069,45 @@ No E.0.2c module, Safety module, `eligibilityPolicy.js`, `index.html`, `sw.js`, 
 
 **Implementation order [DESIGN].** Contract and keys → per-operation shapes and isolation → gate (derived APPEND, grounding, reference field) → Observation contract segment time → Generator instruction → Verifier module and authorization → coordinator integration → deterministic tests and full regression → calibration harness revision. Deterministic verification completes before any calibration run.
 
+## 29.3 v1.2 scope and MRS-001 atomicity — [v1.2; DESIGN; NOT IMPLEMENTED; implementation requires separate Product/Architecture authorization]
+
+**Atomic dependency [CANON].** v1.2 and MRS-001 are implemented **in one atomic change**. Neither of the following is a valid implementation checkpoint, in any commit, branch or deployment:
+- E.0.2d sends EXPLICIT-PROFILE requests while its responses bypass MRS-001;
+- MRS-001 is active across the 21 Coach Decision System parse sites while E.0.2d's Generator or Verifier lacks its EXPLICIT-PROFILE contract (MRS-001 §11.3, G1, G4).
+
+Implementation is authorized only after both canonical documents have been reviewed together.
+
+**Modified E.0.2d production files (v1.2's share; MRS-001 §18 lists its own).**
+- `consolidationContract.js`: the profile vocabulary references, profile validation (§27.1), the default profiles, and `STAGE_FAILURE_REASONS` (§15.0).
+- `consolidationInterpreter.js`: the request from the Generator profile (§15.1); extraction through MRS-001 under the same profile, and the §15.0 reason precedence. Its parse-site conversion is also part of MRS-001's scope.
+- `consolidationVerifier.js`: the same for the Verifier (§15.4, §15.6).
+- `consolidation.js`: `configure()` with `generatorProfile` and `verifierProfile`, with v1.1 fields rejected (§08); `PassResult.stageFailure` (§13).
+
+Prompts, schemas, the gate, authorization, execution and every E.0.2c module are unchanged.
+
+**Tests (to be authorized with implementation).**
+- E.0.2d tests revised for v1.2 behaviour: `tests/e02dConsolidationContract.test.js`, `e02dConsolidationInterpreter.test.js`, `e02dConsolidationVerifier.test.js`, `e02dConsolidationPass.test.js`, `e02dConsolidationStatic.test.js`.
+- The key-set assertions at `e02dConsolidationInterpreter.test.js:37` and `e02dConsolidationVerifier.test.js:39` change to the §27.1 v1.2 key set. This is an intentional request-contract amendment, not zero drift.
+- The MRS-001 §16.1 fixture migration applies to E.0.2d tests and fixtures.
+- If implementation finds that any other existing test must change, it stops and reports it for a ruling (§29.1 precedent).
+
+**Calibration harness (to be authorized with implementation).**
+- `tests/evals/e02dConsolidationCalibration.eval.js`: profile overrides through `configure()`, replacing the request-body `model` rewrite and `verifierModel`; profile identity and §31.4 evidence; the refusal class; reasoning-inclusive output accounting; answer-text size; profile-based budget ceilings.
+- `tests/evals/e02d/score.js`, `tests/evals/e02d/README.md` and `tests/e02dCalibrationHarness.test.js`: CAL-D7 v1.2 (§31.2) and the §31.4 evidence.
+- The corpora are unchanged.
+
+**Implementation order [DESIGN].** MRS-001 primitive → E.0.2d contract (profiles, reasons) → Generator and Verifier request and extraction → coordinator `configure()` and `PassResult` → MRS-001 activation at the 19 FROZEN-CONTRACT sites, with guards and fixture migration → deterministic tests and full regression → calibration harness revision. All of this lands in one atomic change; no intermediate state is a checkpoint.
+
 ---
 
 # 30. Test Plan and Acceptance Criteria
 
 All deterministic tests stub the transport; none calls a model. The calibration harness (§31) is opt-in and paid.
 
-The criteria below are the **v1.1** acceptance criteria. **[HISTORICAL — v1.0]** The v1.0 baseline satisfied the v1.0 versions of AC-D1 … AC-D53 (full regression 3719/3719 at `1cfec7a`); AC-D90 was not met (§31.1). Criteria marked *(v1.1)* are new or revised; unmarked criteria are carried over unchanged in substance.
+The criteria below are the **v1.1** acceptance criteria. **[HISTORICAL — v1.0]** The v1.0 baseline satisfied the v1.0 versions of AC-D1 … AC-D53 (full regression 3719/3719 at `1cfec7a`); AC-D90 was not met (§31.1). Criteria marked *(v1.1)* are new or revised; unmarked criteria are carried over unchanged in substance. **[v1.2]** Criteria marked *(v1.2)* are new or revised in v1.2. The v1.1 implementation (`c83b182`) satisfies the v1.1 criteria; the *(v1.2)* criteria are not yet implemented.
 
 **Configuration, consent, eligibility**
-- AC-D1: invalid configuration or consumer declaration → `NOT_CONFIGURED`, zero calls.
+- AC-D1 *(v1.2)*: invalid configuration or consumer declaration → `NOT_CONFIGURED`, zero calls. This includes every invalid or incomplete `generatorProfile` or `verifierProfile` (§27.1), and any configuration supplying `verifierModel`, `timeoutMs` or `verifierTimeoutMs`.
 - AC-D2: consent predicate not exactly `true` → `CONSENT_NOT_GRANTED`, zero port/store/model calls.
 - AC-D3: `protectedSource: true`, invalid descriptor, `SAFETY_ADJACENT` source, or scoped source without a valid grant (including expired) → excluded; with none eligible → `NO_ELIGIBLE_SOURCE`.
 - AC-D4: eligibility is computed only by `EligibilityPolicy.computeEligibility`; no consumer-id or source-id branch exists (static).
@@ -965,7 +1120,7 @@ The criteria below are the **v1.1** acceptance criteria. **[HISTORICAL — v1.0]
 - AC-D57 *(v1.1)*: segment-level `localDate`, `localTime` and `utcOffsetMinutes` are validated (malformed → `OBSERVATION_READ_INVALID`), rendered when non-null, and present in the gate context; the core never reads time from data labels (static + behavior).
 
 **Generator**
-- AC-D9 *(v1.1)*: model calls per pass are exactly 0, 1 or 2 as §27 states: 1 when no plan survives (including Generator failure, zero proposals, all malformed, all rejected); 2 only when at least one plan survives; never one call per proposal or plan; each through the injected transport, MRE envelope, no retry.
+- AC-D9 *(v1.1)*: model calls per pass are exactly 0, 1 or 2 as §27 states: 1 when no plan survives (including Generator failure, zero proposals, all malformed, all rejected); 2 only when at least one plan survives; never one call per proposal or plan; each through the injected transport, MRS-001 extraction *(v1.2)*, MRE envelope, no retry.
 - AC-D10 *(v1.1; R-13)*: neither the Generator nor the Verifier instruction contains an example of a coaching domain, activity, food, place, relationship, body part or life event, so the semantic learning architecture stays domain-agnostic. The canonical Safety-risk categories of §24.1 are permitted in both instructions as governance vocabulary, limited to the minimum needed to enforce the Safety authority boundary: no domain-specific Safety example, no exhaustive situation rule, and no closed-world ontology built from Safety terms.
 - AC-D11 *(v1.1)*: data blocks of both stages are framed as data with the injection clause; an invalid Generator envelope → `INTERPRETER_FAILED`, no Verifier call, no writes.
 - AC-D55 *(v1.1)*: per-operation shapes (§15.2): every operation × every key — missing key, extra key, a key of another operation, wrong type or vocabulary, nested factor/grounding/anchor violation — yields `MALFORMED_PROPOSAL` for that proposal only; valid siblings proceed and are evaluated identically to a response containing only them; a malformed proposal consumes no cross-proposal budget.
@@ -994,12 +1149,40 @@ The criteria below are the **v1.1** acceptance criteria. **[HISTORICAL — v1.0]
 
 **Verifier and authorization** *(v1.1)*
 - AC-D58: the Verifier input is rendered deterministically from plans and trusted state (§15.4): all presented observations with the Generator's keys, the user-stated block, trusted target renderings, one item per plan in output order; the Generator's raw response text never appears; no durable id appears.
-- AC-D59: Verifier output validation (§15.6): transport failure, timeout, `max_tokens`, invalid envelope, an entry that is not an object, a missing or unresolved `item`, or a duplicate `item` → `VERIFIER_FAILED`, every plan `VERIFICATION_UNAVAILABLE`, no writes; a wrong key set, vocabulary or applicability in an attributable entry → that plan `VERIFICATION_MALFORMED` only; a plan without an entry → `VERIFICATION_MISSING` only.
+- AC-D59 *(v1.2)*: Verifier output validation (§15.6): transport failure, timeout, any MRS-001 structural failure or refusal (§15.0), `max_tokens`, invalid envelope, an entry that is not an object, a missing or unresolved `item`, or a duplicate `item` → `VERIFIER_FAILED`, every plan `VERIFICATION_UNAVAILABLE`, no writes; a wrong key set, vocabulary or applicability in an attributable entry → that plan `VERIFICATION_MALFORMED` only; a plan without an entry → `VERIFICATION_MISSING` only.
 - AC-D60: authorization (§16.5 step 1): every dimension × every value × every operation; only the passing value of every applicable dimension authorizes; `UNCERTAIN` never passes; the reported code follows the fixed dimension order; all verdict tokens are reported.
 - AC-D61: cross-proposal rules (§16.5 step 2): at most one SUPERSEDE per target; an APPEND to a target any passing SUPERSEDE names is rejected in either order; the per-pass new-concept cap is applied after verification in output order.
 - AC-D62: the Verifier can never authorize a proposal rejected by the pre-verification gate (it is never an item), and can never change any plan field, target, evidence, concept or operation (behavior + static: no write path reads Verifier output except closed tokens).
 - AC-D63: no write occurs before authorization completes for the whole pass; a `VERIFIER_FAILED` pass writes nothing.
-- AC-D64: `PassResult` carries `modelCalls` and, per proposal, only closed codes and closed verdict tokens; no observation, proposal, verdict or model text.
+- AC-D64 *(v1.2)*: `PassResult` carries `modelCalls`, `stageFailure` and, per proposal, only closed codes and closed verdict tokens. `stageFailure` is `{stage, reason}` with the applicable closed `STAGE_FAILURE_REASONS` code exactly when `INTERPRETER_FAILED` or `VERIFIER_FAILED` was produced by a classified §15.0 condition, and `null` otherwise — including when a preserved v1.1 defensive or internal-exception path produces either status, whose v1.1 status is unchanged and whose cause is never inferred (§13 step 15, B1 clarification). It carries no observation, proposal, verdict or model text and no provider refusal text.
+
+**Model-call boundary** *(v1.2)*
+- AC-D67: request profiles (§27.1). With default configuration:
+  - the Generator body is exactly `{model: 'claude-haiku-4-5-20251001', max_tokens: 1600, thinking: {type: 'disabled'}, messages: [one user message]}`, with timeout 20000;
+  - the Verifier body is the same with `max_tokens: 800`;
+  - key order is as in §15.1.
+
+  With a configured profile, the body is built only from that profile and the timeout is the profile's. Prompts are byte-identical to v1.1.
+- AC-D68: profile validation (§27.1). Each of the following → `NOT_CONFIGURED`, zero calls:
+  - a missing, extra or ill-typed key;
+  - an out-of-vocabulary `reasoning` or `effort`;
+  - a binding inconsistent with `reasoning`, including an OFF thinking value that is not exactly `{type: 'disabled'}` or `{type: 'between_tools'}` (for example one with an added `display` field);
+  - `effort` and the binding's effort control in disagreement, under either reasoning mode: `LOW`/`MEDIUM`/`HIGH` without an effort control, `NOT_APPLICABLE` with one, or a control value differing from `effort`;
+  - a binding containing any field other than the reasoning field and the effort control;
+  - each v1.1 field.
+
+  No partial profile is merged with a default. No validation rule mentions a model id, and no rule derives `effort` from `reasoning` (static). An OFF profile with an explicit effort and a matching effort control is valid.
+- AC-D69: structural integration (§15.0). For each stage, each MRS-001 failure produces the stage failure with the exact `stageFailure.reason` and no writes:
+  - `CONTRACT_UNRESOLVED`, `REFUSAL`, `NOT_A_RESPONSE`, `MALFORMED_BLOCK` (including an untyped `{text}` block), `UNSUPPORTED_BLOCK`, `REASONING_NOT_PERMITTED`, `NO_ANSWER_TEXT` and `MULTIPLE_ANSWER_TEXT`;
+  - and likewise `TRANSPORT_FAILED`, `TIMEOUT`, `MAX_TOKENS`, `INVALID_ENVELOPE` and (Verifier) `ATTRIBUTION_ANOMALY`.
+
+  The precedence order of §15.0 holds, including refusal before `MAX_TOKENS` and `MAX_TOKENS` before other structural codes. A Verifier failure makes every plan `VERIFICATION_UNAVAILABLE`. No structural failure creates, repairs or authorizes a proposal or plan.
+- AC-D70: refusal is distinct. A refusal response, with empty or partial text, yields reason `REFUSAL`, never `INVALID_ENVELOPE` or a semantic rejection; no provider refusal text enters `PassResult`.
+- AC-D71: the profile governs extraction (MRS-001 G4). Each stage passes to MRS-001 exactly `{state: 'EXPLICIT_PROFILE', reasoning}` from the profile that built its request:
+  - under `OFF`, a reasoning block → `REASONING_NOT_PERMITTED`;
+  - under an `ON` test profile, reasoning blocks are accepted and never read, and the single answer text is parsed;
+  - neither stage calls MRS-001 without a contract (static + behavior).
+- AC-D72: zero drift for structurally valid single-text responses. For every v1.1 behavioural test, with fixtures migrated per MRS-001 §16.1, every pass status, proposal outcome, code, verdict token, write and `modelCalls` value is unchanged. The only behavioural differences are §27.1's request-body change and MRS-001 Z-7's declared tightening.
 - AC-D65: the Generator's raw `restatesUserStatement: false` / `safetyAdjacent: false` never substitute for a Verifier verdict, and Safety, restatement and direction verdicts are evaluated for APPEND plans — Safety against the target's claim and the materialized observations; direction over exactly the materialized observations; the refs written equal the observations verified, and an observation removed by freshness is neither rendered nor written.
 
 **Execution and persistence**
@@ -1012,15 +1195,15 @@ The criteria below are the **v1.1** acceptance criteria. **[HISTORICAL — v1.0]
 
 **Static and scope**
 - AC-D40 *(v1.1)*: no E.0.2d module, including `consolidationVerifier.js`, is script-tagged, listed in `sw.js`, referenced by `js/app.js`, or declares the `callClaude: null` dependency shape.
-- AC-D41 *(v1.1)*: module dependencies are exactly §08 (five modules); no forbidden reference of §08; no clock, randomness or id generation; timers only in the two model-stage modules (MRE-001 timeouts); `consolidationVerifier.js` does not depend on `userKnowledgeContract.js`.
+- AC-D41 *(v1.1; v1.2)*: module dependencies are exactly §08 (five modules, the two model stages also requiring `modelResponseStructure.js`); no forbidden reference of §08; no clock, randomness or id generation; timers only in the two model-stage modules (MRE-001 timeouts); `consolidationVerifier.js` does not depend on `userKnowledgeContract.js`.
 - AC-D66 *(v1.1)*: no rule, constant, instruction or exception names or targets a calibration case (static scan of the E.0.2d modules against the calibration corpus identifiers and texts; R-10).
 - AC-D42: E.0.2c production modules change only as the E.0.2c amendment for E.0.2d §13 specifies (no other operation, transition, authority rule, error code or invariant changes, amendment AC-SR7); `eligibilityPolicy.js`, `capabilityRegistry.js`, `contextComposer.js` and all Safety modules are byte-unchanged.
-- AC-D43 *(v1.1)*: existing-test modifications are limited to the six v1.0 edits of §29 (including §29.1) plus the v1.1 edits of §29.2 as authorized at implementation; production changes are limited to the five E.0.2d modules, and the E.0.2c production changes remain exactly those of the v1.0 baseline (§29).
+- AC-D43 *(v1.1; v1.2)*: existing-test modifications are limited to the six v1.0 edits of §29 (including §29.1), the v1.1 edits of §29.2, and the v1.2 edits of §29.3 and MRS-001 §18 as authorized at implementation; production changes are limited to the five E.0.2d modules, and the E.0.2c production changes remain exactly those of the v1.0 baseline (§29).
 - AC-D44: production model-call counts and pinned request-body hashes unchanged.
 - AC-D45: full deterministic regression passes.
 
 **Calibration**
-- AC-D90 *(v1.1)*: CAL-D1 … CAL-D8 and the CAL-D4 residual subset (§31) pass on the frozen v1.1 prompts at thresholds approved at review, decided on the held-out closure corpus, and are recorded in the Closure Record.
+- AC-D90 *(v1.1; v1.2)*: CAL-D1 … CAL-D8 and the CAL-D4 residual subset (§31) pass on the frozen prompts and frozen stage profiles (§31.4) at thresholds approved at review, decided on the held-out closure corpus, and are recorded in the Closure Record.
 
 ---
 
@@ -1054,7 +1237,7 @@ Each threshold is **[PROVISIONAL]** and is confirmed at closure review. **Zero-t
 | CAL-D4 Safety | Recall on Safety-positive cases (every category of §24.1); precision on Safety-negative ordinary coaching cases (flag and veto rate); **residual subset** (§24.3): Safety-adjacent material present but uncited, alongside a non-Safety proposal | **zero** Safety-positive plans authorized; a materially lower false-flag rate on negatives than the §31.1 baseline, at a target Product sets; residual subset reviewed and reported explicitly |
 | CAL-D5 Temporality and time | Correct temporality; grounding forms; Verifier `temporal` on mislabel and invented-routine traps | **zero** invented times, dayparts, routines or windows authorized; ≥ 90% correct temporality |
 | CAL-D6 Concept reuse | Reuse of presented concepts vs new concepts; shadowing rejections | shadowing rejection ≤ 5% of proposals |
-| CAL-D7 Format, latency, budget (both stages) | Envelope failures; `MALFORMED_PROPOSAL` and `VERIFICATION_MALFORMED` rates; p99 latency within each stage's timeout; max output ≤ 80% of each stage's token bound; zero `max_tokens` stops | Generator `INTERPRETER_FAILED` ≤ 5%; Verifier `VERIFIER_FAILED` ≤ 5% |
+| CAL-D7 Format, latency, budget (both stages) *(v1.2)* | Stage failures by `stageFailure.reason` (§15.0); `MALFORMED_PROPOSAL` and `VERIFICATION_MALFORMED` rates; p99 latency within each stage's profile `timeoutMs`; provider output-token usage per call measured against the profile's total `maxOutputTokens`, which **may include reasoning** tokens; deterministic extracted answer-text size (characters), reported separately from output-token usage; refusal count and rate per stage, reported separately | **zero** `max_tokens` stops; max provider output usage ≤ 80% of each stage's total `maxOutputTokens`; Generator `INTERPRETER_FAILED` ≤ 5%; Verifier `VERIFIER_FAILED` ≤ 5% |
 | CAL-D8 Verifier false veto | Rate at which the Verifier rejects plans that human review labels genuine, grounded, non-restating and non-Safety (by dimension) | Target set by Product at closure review |
 | Unsupported content (within CAL-D3/CAL-D5 review) | External-knowledge and recording-artifact traps (§17.1) | **zero** external norms, recommendations or general facts authorized |
 
@@ -1081,6 +1264,26 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 
 **No calibration is required before SPEC approval or before deterministic implementation.** Every gate measures model behaviour under a deterministic contract that is complete without it; no deterministic rule depends on a calibration outcome.
 
+## 31.4 Calibration configuration and evidence — [v1.2; DESIGN]
+
+- **Pause.** Real-model calibration remains paused until MRS-001 and v1.2 are implemented and deterministically verified (§29.3). Every paid run still requires explicit Product approval of that run (§31 Safeguards).
+- **Configurations name complete profiles.** Every calibration configuration identifies the complete request profile of each stage it exercises (§27.1), not only the model.
+  - Overrides are applied through `Consolidation.configure()` (§08); the harness never rewrites a request body.
+  - A reasoning-ON profile, including its total ceiling, timeout and effort, is defined in the approved configuration of the run that uses it and is validated by §27.1.
+- **Evidence per model call.** Each recorded call identifies:
+  - the stage;
+  - the model, reasoning mode, effort, total output ceiling, timeout, and the provider binding/configuration;
+  - the raw provider response;
+  - the stop reason;
+  - usage (with output tokens understood as possibly including reasoning);
+  - the refusal outcome and the provider-supplied category and details, where present (calibration evidence only, never `PassResult`);
+  - the MRS-001 structural extraction outcome;
+  - the extracted answer-text size in characters;
+  - the semantic stage result, including `stageFailure`.
+- **Held-out runs.** A held-out run freezes the stage profiles together with the prompt hashes (AC-D90). A profile change after a held-out run is treated like a prompt change (§31.3).
+- **Replay.** Recordings made under v1.1 request bodies do not match v1.2 request hashes and are not v1.2 evidence.
+- **Unchanged.** The corpus architecture (§31.3), gates other than CAL-D7, classification policy and sampling rules are unchanged. Run plans continue to set subsets, samples, budgets and stop conditions, each with Product approval.
+
 ---
 
 # 32. Pending Decisions, Repository Gaps, and Canonical Conflicts
@@ -1105,8 +1308,20 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 - **R-12 — E.0.2c §19/§26 reading:** see "Canonical reading confirmed (E.0.2c §19/§26)" below.
 - **R-13 — AC-D10 and Safety governance vocabulary** (Product ruling after v1.1 authoring): the canonical Safety-risk categories of §24.1 may appear in the Generator and Verifier instructions as governance vocabulary. They are not prohibited domain examples under AC-D10, because they define E.0.2d's Safety authority boundary rather than a closed vocabulary of world situations. Only the minimum governance vocabulary required to enforce that boundary is permitted; it must not be expanded into domain-specific examples, exhaustive situation rules or a closed-world ontology. AC-D10 continues to prove that the semantic learning architecture is domain-agnostic. The Safety architecture of §24 is unchanged (§15.1, §30 AC-D10).
 
-**Pending Product/Architecture decisions and dependencies (v1.1).**
-- Authorization of v1.1 implementation (§29.2).
+**v1.2 Product/Architecture rulings (MRS-001 adoption; decided before authoring) [v1.2].**
+- **R-14 — MRS-001 consumer:** both stages are EXPLICIT-PROFILE. Each profile governs both its request and the MRS-001 extraction of its response. Structural failures and refusal are integrated into the existing fail-closed stage failures, and refusal is distinct. MRS-001 has no semantic authority (§15.0).
+- **R-15 — Defaults preserve v1.1:** default profiles keep v1.1's model, output bounds and timeouts, with reasoning stated explicitly as `OFF`. The added `thinking` field is an intentional request-contract amendment, not zero drift (§27.1).
+- **R-16 — Configurability:** complete Generator and Verifier profiles are configurable through `configure()`, symmetric in principle. The stages may differ. Calibration overrides profiles, never request bodies (§08, §31.4).
+- **R-17 — Output ceiling and CAL-D7:** `maxOutputTokens` is the total provider-output ceiling, with no reasoning-ON production ceiling chosen without calibration evidence; CAL-D7 is restated accordingly (§27.1, §31.2).
+- **R-18 — Atomicity:** v1.2 and MRS-001 are implemented in one atomic change, authorized only after both documents are reviewed together (§29.3).
+- **B1 — `stageFailure` for unclassified failures (Product/Architecture ruling during the implementation preflight; Option A):** `stageFailure` identifies a reason only for failures produced by a classified §15.0 condition. A preserved v1.1 defensive or internal-exception path that produces `INTERPRETER_FAILED` or `VERIFIER_FAILED` keeps its v1.1 status and carries `stageFailure: null`. No new `STAGE_FAILURE_REASONS` code is added, no cause is inferred, and the defensive catch behaviour is unchanged. A canonical clarification of the diagnostic field, not a new failure behaviour (§13 step 15, §15.0, §25, AC-D64).
+
+**Pending Product/Architecture decisions and dependencies (v1.2).**
+- **[v1.2]** Product/Architecture review of v1.2 together with MRS-001 — **RESOLVED / APPROVED**.
+- **[v1.2]** Separate authorization and execution of the joint atomic implementation of v1.2 and MRS-001 (§29.3).
+
+**[HISTORICAL — v1.1] Pending Product/Architecture decisions and dependencies (v1.1)** — the items still open are carried forward:
+- Authorization of v1.1 implementation (§29.2). **[v1.2] Resolved:** implemented in `c83b182`.
 - The Safety-authority clarification of §24.2 (owner: Safety authority). Required before Work Item closure; not required before implementation.
 - Which durable calibration evidence from §31.1 enters the repository (the raw file stays outside the repository until then).
 - Calibration execution plans, budgets, held-out authorship, and the CAL-D4 precision and CAL-D8 targets (§31).
@@ -1129,7 +1344,7 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
 - GAP-D4: no `EVIDENCE_REF_KINDS` value for body history or recommendation feedback.
 - GAP-D5 — **RESOLVED.** Formerly: E.0.2c had no evidence-keyed query, so ownership could be checked only for presented records. Resolved by the canonical E.0.2c amendment for E.0.2d (`docs/specs/WP0_PHASE_E_0_2C_AMENDMENT_E_0_2D_v1.0.md`, canonization commit `416c00229ea8cbb4b07288eed0947c061734e841`): the `supportingRefIds` index and `queryRecordsBySupportingRefs`, consumed by §23.1 and rules U4–U6, implemented within this Work Item (§29). No activation dependency remains on GAP-D5.
 
-**Canonical conflicts.** None found, including in v1.1 authoring (see the E.0.2c §19/§26 reading above). Wiring test 37 (§04 item 11) is satisfied by the injected-transport design (§08), not by an exception.
+**Canonical conflicts.** None found, including in v1.1 authoring (see the E.0.2c §19/§26 reading above) and in v1.2 authoring. **[v1.2]** On R-11: the default profiles name a model as [PROVISIONAL] implementation/calibration configuration, as v1.1 named numeric constants; no model is canonized as architecture, and substitution remains a configuration change subject to calibration. MRS-001 is consumed without amendment. Wiring test 37 (§04 item 11) is satisfied by the injected-transport design (§08), not by an exception.
 
 ---
 
@@ -1171,15 +1386,20 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
 
 **Two distinct lifecycles.** This document's status (the *specification*) and the *E.0.2d Work Item's* status are separate. Specification closure freezes the approved design; it does not mean the Work Item is implemented, verified, calibrated, closed or live.
 
-- **Specification status: E.0.2d Consolidation SPEC v1.1 — CANONICAL / CLOSED (SPECIFICATION).** Product Review: APPROVED. Architecture Review: APPROVED. The v1.1 architecture was approved in principle before authoring (R-1 … R-12, §32), with R-13 ruled after authoring, and the authored text was approved for canonization after final verification. v1.1 supersedes v1.0 as the normative specification of this Work Item. **[HISTORICAL — v1.0]** The v1.0 specification was CANONICAL / CLOSED: Product/Architecture final approval of PD-D1, PD-D2 / U-2, PD-D3, the GAP-D5 resolution, deterministic ownership determination, deterministic merge-resolved U5, text-only U6, CAL-D1 as a semantic-only boundary, the E.0.2c amendment integration, the Observation Port architecture, and the implementation and deterministic-test scope; canonization commit `0eff66dfbb6aa21342499b7aa4a613625b313135`.
-- **Work Item status: v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE.**
+- **[v1.2] Specification status: E.0.2d Consolidation SPEC v1.2 — APPROVED.** Product Review: APPROVED. Architecture Review: APPROVED. Reviewed jointly with MRS-001. v1.2 supersedes v1.1 as the normative specification of this Work Item. v1.2 is not implemented.
+- **[HISTORICAL — v1.1] Specification status: E.0.2d Consolidation SPEC v1.1 — CANONICAL / CLOSED (SPECIFICATION).** Product Review: APPROVED. Architecture Review: APPROVED. The v1.1 architecture was approved in principle before authoring (R-1 … R-12, §32), with R-13 ruled after authoring, and the authored text was approved for canonization after final verification. v1.1 supersedes v1.0 as the normative specification of this Work Item. **[HISTORICAL — v1.0]** The v1.0 specification was CANONICAL / CLOSED: Product/Architecture final approval of PD-D1, PD-D2 / U-2, PD-D3, the GAP-D5 resolution, deterministic ownership determination, deterministic merge-resolved U5, text-only U6, CAL-D1 as a semantic-only boundary, the E.0.2c amendment integration, the Observation Port architecture, and the implementation and deterministic-test scope; canonization commit `0eff66dfbb6aa21342499b7aa4a613625b313135`.
+- **Work Item status [v1.2]: v1.1 IMPLEMENTED — DETERMINISTICALLY VERIFIED — CALIBRATION INFRASTRUCTURE READY — REAL-MODEL CALIBRATION PENDING (PAUSED) — v1.2 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE.**
+  - **v1.1:** implemented in commit `c83b1825795bf68582aada900673816109752c62`. Its calibration infrastructure was implemented in commit `f6ae1a104f472420f92d6cffce2e4516049e0345`, with full deterministic regression 3767/3767 and zero network attempts.
+  - **Calibration:** no real-model calibration of v1.1 has run. Calibration is paused until MRS-001 and v1.2 are implemented together and deterministically verified (§29.3, §31.4).
+  - **v1.2:** not implemented.
+  - **[HISTORICAL — v1.1]** The previous Work Item status line read: v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE.
   - **[HISTORICAL — v1.0]** Implementation commit `1cfec7ae988a1f90b8bfe963e7e20513452fcf60` (the v1.0 SPEC together with the E.0.2c amendment for E.0.2d); Product/Architecture implementation review approved; full deterministic regression 3719/3719.
   - The first real-model calibration of that baseline ran once with Product approval (49 calls) and failed CAL-D1, CAL-D2, CAL-D5 and CAL-D7 (§31.1).
-  - **v1.1 is not implemented.** No production caller, scheduler, shell wiring or activation exists. No further model/API call may be made without separate explicit Product approval.
-- v1.1 implementation, when authorized, is deterministic and testable-not-live, in the §29.2 order; deterministic verification completes before any calibration (§31).
+  - No production caller, scheduler, shell wiring or activation exists. No further model/API call may be made without separate explicit Product approval.
+- v1.2 implementation, when authorized, is deterministic, testable-not-live and atomic with MRS-001, in the §29.3 order; deterministic verification completes before any calibration (§31).
 - **Work Item CLOSED** requires all of the following:
-  - v1.1 canonized and implemented;
-  - AC-D1 … AC-D66 (including the amendment's AC-SR1 … AC-SR8) passing;
+  - v1.2 canonized and implemented together with MRS-001 **[v1.2; formerly "v1.1 canonized and implemented"]**;
+  - AC-D1 … AC-D72 (including the amendment's AC-SR1 … AC-SR8) passing **[v1.2: AC-D67 … AC-D72 added]**;
   - AC-D90: CAL-D1 … CAL-D8 and the CAL-D4 residual subset decided on the held-out closure corpus with Product approval and recorded in the Closure Record;
   - the Safety-authority clarification of §24.2 recorded;
   - the §24.3 residual decided on calibration evidence;
@@ -1234,3 +1454,26 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
     - No normative change to the Safety architecture or any other architecture.
 - **v1.1** (canonization) — Status metadata only. Product Review: APPROVED. Architecture Review: APPROVED. Specification status → E.0.2d Consolidation SPEC v1.1 — CANONICAL / CLOSED (SPECIFICATION); Work Item status → v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE (header, §01, §35); the completed review/canonization item removed from §32's pending list. No normative change. The canonization commit hash is not recorded here; it may be recorded by a later, separately authorized status-only commit (v1.0 precedent).
   - **Unchanged elsewhere.** No E.0.2c, GCUK, A1–A3, MRE-001 or Safety change. No code, test or harness change in this revision. Work Item status: IMPLEMENTED (v1.0 BASELINE) — DETERMINISTICALLY VERIFIED (v1.0 BASELINE) — CALIBRATION FAILED — v1.1 REMEDIATION SPEC IN AUTHORING — NOT CLOSED — NOT LIVE.
+- **v1.2** (MRS-001 consumer revision of the same Work Item; architecture decided by Product/Architecture before authoring, R-14 … R-18; text pending review together with MRS-001).
+  - **Trigger.** MRS-001 (Model Response Structure) defines the canonical structural boundary for provider responses and the request-contract states of Coach Decision System model stages. E.0.2d is its immediate downstream canonical consumer.
+  - **Normative changes.**
+    - Model-call boundary and processing order, with MRS-001 extraction before MRE-001 (§15.0).
+    - Both stages EXPLICIT-PROFILE; the profile governs both request and extraction (§15.0, §15.1, §15.4).
+    - Request profiles: shape, validation and default profiles preserving v1.1's model, output bounds and timeouts, with reasoning explicit as `OFF` (§27.1).
+    - `maxOutputTokens` as the total provider-output ceiling (§27.1).
+    - The Generator profile becomes configurable, and the Verifier's configurability becomes a complete profile. The v1.1 fields `verifierModel`, `timeoutMs` and `verifierTimeoutMs` are replaced (§08, §25).
+    - Closed `STAGE_FAILURE_REASONS` with a fixed precedence and a distinct `REFUSAL` (§15.0, §15.3, §15.6, §25).
+    - `PassResult.stageFailure` (§13).
+    - CAL-D7 restated against the total ceiling, with refusal and answer size reported separately (§31.2).
+    - Calibration configuration and evidence by complete profile (§31.4).
+    - Atomic implementation with MRS-001 (§29.3).
+    - AC-D1, AC-D9, AC-D41, AC-D43, AC-D59, AC-D64 and AC-D90 revised; AC-D67 … AC-D72 added (§30).
+  - **Intentional request-contract amendment.** Each default request body gains `thinking: {type: 'disabled'}`, so request bytes and hashes change. Semantic behaviour is unchanged (§27.1). It is not described as zero drift.
+  - **Status corrections.** The header, §01 and §35 record that v1.1 is implemented (`c83b182`) and that its calibration infrastructure is ready (`f6ae1a1`, 3767/3767); §29.2 is marked implemented. Real-model calibration is paused.
+  - **Unchanged.** The §13 pass and its semantic pipeline (except the inserted structural handling), the Generator/Verifier responsibility split, prompts, schemas, verdicts, APPEND semantics, operations, the Observation Port, keys, ownership, temporality, Safety, authorization gates, atomic execution, confidence bootstrap, source governance and User Knowledge authority boundaries. No E.0.2c, GCUK, A1–A3, MRE-001, MRS-001, CARF or Safety change. No code, test or harness change in this revision.
+- **v1.2** (provider-binding verification corrections; Product/Architecture ruling before approval) — Applied together with the same corrections in MRS-001.
+  - **C3:** `reasoning` and `effort` are independent. An explicit `LOW`/`MEDIUM`/`HIGH` is required wherever the selected model supports an effort control, under OFF or ON. `NOT_APPLICABLE` is only for models without one. The rule "OFF ⇒ `NOT_APPLICABLE`" is removed (§27.1, AC-D68).
+  - **C4:** OFF thinking bindings are exact objects, with no additional thinking fields (§27.1, AC-D68).
+  - **C5:** `between_tools` represents OFF only where the provider and model support it, the request is tool-free, and the provider's effort constraint is explicitly satisfied (§27.1).
+  - **Unchanged.** The default Generator and Verifier profiles are unchanged (Haiku 4.5, `OFF`, `NOT_APPLICABLE`, exactly `{type: 'disabled'}`, 1600/800, 20000 ms). No other change.
+- **v1.2** (implementation-preflight clarification B1; Product/Architecture ruling, Option A) — `PassResult.stageFailure` is `{stage, reason}` only for `INTERPRETER_FAILED` / `VERIFIER_FAILED` produced by a classified §15.0 condition, and `null` when a preserved v1.1 defensive or internal-exception path produces either status (§13 step 15, §15.0, §25, §32, AC-D64). No `STAGE_FAILURE_REASONS` code is added; no cause is inferred; the defensive catch behaviour and every status are unchanged. Diagnostic-field clarification only; no other normative change. MRS-001 is unchanged. No code, test or harness change in this revision.

@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Component = require('../js/coachDecisionSystem/trainingReadinessReasoningComponent.js');
 
-function fakeResponse(obj) { return { content: [{ text: JSON.stringify(obj) }] }; }
+function fakeResponse(obj) { return { content: [{ type: 'text', text: JSON.stringify(obj) }] }; }
 function configureStub(handler) { Component.configure({ callClaude: handler }); }
 test.afterEach(() => { Component.configure({ callClaude: null, timeoutMs: undefined }); });
 
@@ -117,7 +117,7 @@ test('14. a timeout fails closed to null', async () => {
 });
 
 test('15. malformed JSON fails closed to null', async () => {
-  configureStub(async () => ({ content: [{ text: 'not json' }] }));
+  configureStub(async () => ({ content: [{ type: 'text', text: 'not json' }] }));
   assert.equal(await Component.propose({}), null);
 });
 

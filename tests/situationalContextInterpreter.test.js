@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const Interpreter = require('../js/coachDecisionSystem/situationalContextInterpreter.js');
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
 
 function configureStub(handler) {
@@ -111,7 +111,7 @@ test('12. a duplicate returned id fails closed for that id, regardless of whethe
 });
 
 test('13. a batch-level malformed response (not valid JSON) fails every id in that batch closed', () => {
-  const raw = { content: [{ text: 'not json at all' }] };
+  const raw = { content: [{ type: 'text', text: 'not json at all' }] };
   assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-1', 'mem-2']), {});
 });
 
@@ -119,7 +119,7 @@ test('14. a batch-level malformed response (wrong top-level shape) fails every i
   const raw = fakeResponseFromRawText('{"notResults": []}');
   assert.deepEqual(Interpreter._internal.parseAndValidate(raw, ['mem-1']), {});
 });
-function fakeResponseFromRawText(text) { return { content: [{ text: text }] }; }
+function fakeResponseFromRawText(text) { return { content: [{ type: 'text', text: text }] }; }
 
 test('15. a malformed individual entry (missing verdict/id) is ignored without failing sibling entries', () => {
   const raw = fakeResponse([{ id: 'mem-1' }, { id: 'mem-2', verdict: 'CLASSIFIED_CURRENT_STATE' }]);

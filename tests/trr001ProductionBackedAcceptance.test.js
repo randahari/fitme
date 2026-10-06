@@ -65,7 +65,7 @@ function configureFixture(habitRecord, fetchUserStatedMemoryFn) {
 
 function stubRiskCharacteristicInterpreterNoSignal() {
   RiskCharacteristicInterpreter.configure({
-    callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] })
+    callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ tags: [] }) }] })
   });
 }
 
@@ -132,14 +132,14 @@ test('TRR-TEMPORAL-3. SAME-DAY, extended: a same-day WORKOUT_FREQUENCY Habit + a
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED',
           action: 'שקול/י אימון קליל וקצר יותר היום, או מנוחה, לאור שנת הלילה המוגבלת.',
           actionCategory: 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,

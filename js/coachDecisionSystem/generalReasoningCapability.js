@@ -55,6 +55,9 @@
   var ModelResponseEnvelope = (typeof module !== 'undefined' && module.exports)
     ? require('./modelResponseEnvelope.js')
     : window.ModelResponseEnvelope;
+  var ModelResponseStructure = (typeof module !== 'undefined' && module.exports)
+    ? require('./modelResponseStructure.js')
+    : window.ModelResponseStructure;
 
   var CapabilityRegistry = (typeof module !== 'undefined' && module.exports)
     ? require('./capabilityRegistry.js')
@@ -241,7 +244,7 @@
 
   function parseProposal(rawResponse) {
     try {
-      var text = (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) || '';
+      var text = ModelResponseStructure.extractAnswerText(rawResponse, { state: 'FROZEN_CONTRACT', entry: 'F-17' }).text || ''; // MRS-001 S17 — a structural failure takes today's empty-text path
       var parsed = JSON.parse(ModelResponseEnvelope.unwrapSingleJsonFence(text));
       return isPlainObject(parsed) ? parsed : null;
     } catch (e) {

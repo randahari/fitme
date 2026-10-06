@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const Interpreter = require('../js/coachDecisionSystem/activityPreferenceInterpreter.js');
 
 function fakeResponse(results) {
-  return { content: [{ text: JSON.stringify({ results: results }) }] };
+  return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
 }
 function configureStub(handler) {
   Interpreter.configure({ callClaude: handler, maxRecordsPerBatch: undefined });
@@ -59,7 +59,7 @@ test('7. unconfigured/thrown/timeout/malformed callClaude all fail closed to emp
   configureStub(() => { throw new Error('boom'); });
   assert.deepEqual(await Interpreter.classify([{ id: 'm1', text: 'I love Pilates' }]), []);
 
-  configureStub(async () => ({ content: [{ text: 'not json' }] }));
+  configureStub(async () => ({ content: [{ type: 'text', text: 'not json' }] }));
   assert.deepEqual(await Interpreter.classify([{ id: 'm1', text: 'I love Pilates' }]), []);
 });
 

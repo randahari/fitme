@@ -54,7 +54,7 @@ function stubTurnUnderstandingNoSignal() {
         negativeControlPresent: false, desireOnlyPresent: false,
         personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -63,7 +63,7 @@ function stubPreferenceInterpreterNotEligible() {
   ExplicitPreferenceStatementInterpreter.configure({
     callClaude: async (body) => {
       const idMatch = body.messages[0].content.match(/<turn id="([^"]+)"/);
-      return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], eligible: false, preferenceClass: null, polarity: null, target: null, ineligibleReason: 'NO_EXPLICIT_PREFERENCE' }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], eligible: false, preferenceClass: null, polarity: null, target: null, ineligibleReason: 'NO_EXPLICIT_PREFERENCE' }] }) }] };
     }
   });
 }
@@ -73,7 +73,7 @@ function stubSafetyContextInterpreterNoSignal() {
     callClaude: async (body) => {
       const idMatch = body.messages[0].content.match(/<statement id="([^"]+)"/);
       const id = idMatch[1];
-      return { content: [{ text: JSON.stringify({ results: [{ id: id, restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: id, restrictionClassification: 'NOT_RESTRICTION_OR_NOT_CLASSIFIED', restrictedActivityText: null, statedDurationText: null }] }) }] };
     }
   });
 }
@@ -91,10 +91,10 @@ function stubRiskCharacteristicInterpreter(opts) {
       if (content.indexOf('previously, explicitly') >= 0) {
         const idMatch = content.match(/<statement id="([^"]+)"/);
         const confirmed = opts.correctionConfirmed === true;
-        return { content: [{ text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
+        return { content: [{ type: 'text', text: JSON.stringify({ results: [{ id: idMatch[1], correctionConfirmed: confirmed }] }) }] };
       }
       const candidates = opts.newFactCandidates || [];
-      return { content: [{ text: JSON.stringify({ candidates: candidates }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ candidates: candidates }) }] };
     }
   });
 }
@@ -103,7 +103,7 @@ function stubReadinessStateInterpreterClassifiesAll() {
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 }

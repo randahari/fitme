@@ -1,4 +1,4 @@
-const VERSION = 'v2.47.8';
+const VERSION = 'v2.47.9';
 const CACHE = 'fitme-' + VERSION;
 
 // נכסי ה-shell הסטטיים — נטענים cache-first (stale-while-revalidate)
@@ -21,6 +21,8 @@ const SHELL = [
   '/fitme/js/coachDecisionSystem/expressionRenderingContext.js',
   // MRE-001: shared model-response envelope normalizer (dependency of every model-output-parsing module).
   '/fitme/js/coachDecisionSystem/modelResponseEnvelope.js',
+  // MRS-001: shared provider-response structural boundary (dependency of every model-output-parsing module).
+  '/fitme/js/coachDecisionSystem/modelResponseStructure.js',
   '/fitme/js/coachDecisionSystem/situationalContextInterpreter.js',
   '/fitme/js/coachDecisionSystem/explicitRequestInterpreter.js',
   '/fitme/js/coachDecisionSystem/safetyContextInterpreter.js',

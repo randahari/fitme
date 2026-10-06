@@ -58,7 +58,7 @@ function stubTurnUnderstanding(resultByTurnId) {
         negativeControlPresent: false, desireOnlyPresent: false,
         personalDisclosurePresent: false, personalDisclosureCategory: null, personalDisclosureText: null
       }, resultByTurnId[id] || {}));
-      return { content: [{ text: JSON.stringify({ results: results }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: results }) }] };
     }
   });
 }
@@ -67,7 +67,7 @@ function stubReadinessStateInterpreterClassifiesAll() {
   ReadinessStateInterpreter.configure({
     callClaude: async (body) => {
       const ids = (body.messages[0].content.match(/id="([^"]+)"/g) || []).map((m) => m.match(/"([^"]+)"/)[1]);
-      return { content: [{ text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ results: ids.map((id) => ({ id, verdict: 'CLASSIFIED_CURRENT_STATE' })) }) }] };
     }
   });
 }
@@ -76,7 +76,7 @@ function stubTrainingReadinessProposal(action, actionCategory) {
   TrainingReadinessReasoningComponent.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED', action: action,
           actionCategory: actionCategory || 'NON_ACTIVITY_COACHING_ACTION', activityReference: null,
           rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u'
@@ -100,7 +100,7 @@ function stubRiskCharacteristicInterpreter(tagsForActionText) {
       // only, not D.6.1's own relation-classification outcomes (see the dedicated
       // tests/wp0PhaseD6_1GovernedDurableConstraintRelationMatching.test.js for that coverage).
       if (content.indexOf('already-durable Safety-relevant fact on record') >= 0) {
-        return { content: [{ text: JSON.stringify({ relation: 'AMBIGUOUS' }) }] };
+        return { content: [{ type: 'text', text: JSON.stringify({ relation: 'AMBIGUOUS' }) }] };
       }
       // Anchored to a preceding newline — the prompt's own descriptive sentence also mentions the
       // literal substring "<proposed_action>" in prose (no matching close nearby), so a
@@ -109,13 +109,13 @@ function stubRiskCharacteristicInterpreter(tagsForActionText) {
       const match = content.match(/\n<proposed_action>([\s\S]*)<\/proposed_action>/);
       const actionText = match ? match[1] : '';
       const tags = (tagsForActionText && tagsForActionText[actionText]) || [];
-      return { content: [{ text: JSON.stringify({ tags: tags }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ tags: tags }) }] };
     }
   });
 }
 
 function stubRiskCharacteristicInterpreterNoSignal() {
-  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ text: JSON.stringify({ tags: [] }) }] }) });
+  RiskCharacteristicInterpreter.configure({ callClaude: async () => ({ content: [{ type: 'text', text: JSON.stringify({ tags: [] }) }] }) });
 }
 
 function stubExpressionRendererEchoes() {
@@ -387,7 +387,7 @@ test('confirmation: GeneralReasoningCapability.reason() correctly parses/validat
   GeneralReasoningCapability.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED', action: 'primary action', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u',
           safeAlternative: { action: 'alt action only, missing other required fields' } // malformed — missing rationale/evidenceBasis/expectedValue/uncertainty
         })
@@ -404,7 +404,7 @@ test('confirmation: GeneralReasoningCapability.reason() includes a well-shaped s
   GeneralReasoningCapability.configure({
     callClaude: async () => ({
       content: [{
-        text: JSON.stringify({
+        type: 'text', text: JSON.stringify({
           outcome: 'ACTION_PROPOSED', action: 'primary action', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u',
           safeAlternative: { action: 'a', rationale: 'r', evidenceBasis: 'e', expectedValue: 'v', uncertainty: 'u' }
         })

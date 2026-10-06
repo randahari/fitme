@@ -91,12 +91,12 @@ test('W-3: index.html script-tags modelResponseEnvelope.js exactly once, before 
   }
 });
 
-test('W-4: sw.js precaches the new module and sw.js VERSION / app.js APP_VERSION are bumped in lockstep to 2.47.8', () => {
+test('W-4: sw.js precaches the new module and sw.js VERSION / app.js APP_VERSION are bumped in lockstep to 2.47.9', () => {
   const sw = read('sw.js');
   const app = read('js/app.js');
   assert.notEqual(sw.indexOf("'/fitme/js/coachDecisionSystem/modelResponseEnvelope.js'"), -1);
-  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.8');
-  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.8');
+  assert.equal(sw.match(/const VERSION = 'v([\d.]+)'/)[1], '2.47.9');
+  assert.equal(app.match(/const APP_VERSION = '([\d.]+)'/)[1], '2.47.9');
 });
 
 test('W-5: modelResponseEnvelope.js is pure — no dependencies, globals read, clock, randomness, I/O, logging or JSON parsing', () => {

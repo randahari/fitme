@@ -1,5 +1,5 @@
 // WP0 Phase E.0.2d — calibration-harness self-test (P8)
-// (docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md v1.1 §27, §31; tests/evals/e02d/README.md).
+// (docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md v1.2 §27, §27.1, §31, §31.4; tests/evals/e02d/README.md).
 // Offline and deterministic: every case runs under a network trap and asserts zero network attempts.
 // No model call, no API key, no paid run.
 // Run with: node --test tests/e02dCalibrationHarness.test.js
@@ -14,6 +14,7 @@ const H = require('./evals/e02dConsolidationCalibration.eval.js');
 const { score, PRODUCT } = require('./evals/e02d/score.js');
 const Interpreter = require('../js/coachDecisionSystem/consolidationInterpreter.js');
 const Verifier = require('../js/coachDecisionSystem/consolidationVerifier.js');
+const CC = require('../js/coachDecisionSystem/consolidationContract.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'e02d-harness-'));
 const PRICES = { source: 'TEST FIXTURE ONLY — not a canonical price', effectiveDate: '1970-01-01', models: { 'claude-haiku-4-5-20251001': { inputPerMTok: 1, outputPerMTok: 5 } } };
@@ -62,7 +63,20 @@ test('dry-run scenarios exercise every pass path with the expected statuses, cla
   // artifact integrity: the manifest hash matches the written file
   const m = JSON.parse(fs.readFileSync(r.manifestFile, 'utf8'));
   assert.equal(m.sha256, H.sha256(fs.readFileSync(r.file, 'utf8')));
-  assert.equal(r.artifact.schema, 'e02d-calibration-artifact/2');
+  assert.equal(r.artifact.schema, 'e02d-calibration-artifact/3');
+  // v1.2 §31.4 — complete stage profiles, per-call structural/refusal evidence and stageFailure
+  assert.deepEqual(r.artifact.profiles, { generator: CC.DEFAULT_GENERATOR_PROFILE, verifier: CC.DEFAULT_VERIFIER_PROFILE });
+  assert.deepEqual(r.artifact.samples.find((x) => x.caseId === 'dr-verifier-failure').stageFailure, { stage: 'VERIFIER', reason: 'TRANSPORT_FAILED' });
+  r.artifact.samples.forEach((s) => {
+    assert.ok(s.stageFailure === null || CC.STAGE_FAILURE_REASONS.indexOf(s.stageFailure.reason) !== -1, s.caseId);
+    s.calls.forEach((c) => {
+      assert.deepEqual(c.profile, c.stage === 'GENERATOR' ? CC.DEFAULT_GENERATOR_PROFILE : CC.DEFAULT_VERIFIER_PROFILE);
+      if (c.transport !== 'OK') { assert.equal(c.structure, null, s.caseId); return; } // a failed transport returns no response
+      assert.ok(c.structure && typeof c.structure.status === 'string', s.caseId);
+      assert.equal(c.refusal.refused, false);
+      if (c.structure.status === 'OK') assert.equal(typeof c.answerTextChars, 'number');
+    });
+  });
   // accounting by stage, all synthetic
   const a = r.artifact.accounting;
   assert.equal(a.stages.GENERATOR.calls, 9);
@@ -160,10 +174,13 @@ test('replay reproduces identically; a changed request is REPLAY_DIVERGED; v1.0 
   assert.equal(s.status, 'REPLAY_DIVERGED');
   assert.equal(s.replayDiverged.reason, 'REQUEST_HASH_MISMATCH');
   assert.ok(score(div.artifact).samples.excluded.some((x) => x.caseId === 'dr-authorized-create'));
-  // a v1.0-shaped artifact is not v1.1 evidence
+  // a v1.0-shaped or v1.1 (schema 2) artifact is not v1.2 evidence (§31.4)
   const v10 = path.join(TMP, 'v10.json');
   fs.writeFileSync(v10, JSON.stringify({ harness: { version: '1.0.0' }, samples: [] }));
-  await assert.rejects(H.runCalibration({ corpus: 'dry-run-scenarios', samples: 1, replayPath: v10, write: false }), (e) => e.code === 'REPLAY_NOT_V11_EVIDENCE');
+  await assert.rejects(H.runCalibration({ corpus: 'dry-run-scenarios', samples: 1, replayPath: v10, write: false }), (e) => e.code === 'REPLAY_NOT_V12_EVIDENCE');
+  const v11 = path.join(TMP, 'v11.json');
+  fs.writeFileSync(v11, JSON.stringify({ schema: 'e02d-calibration-artifact/2', harness: { version: '2.0.0' }, samples: [] }));
+  await assert.rejects(H.runCalibration({ corpus: 'dry-run-scenarios', samples: 1, replayPath: v11, write: false }), (e) => e.code === 'REPLAY_NOT_V12_EVIDENCE');
 });
 
 test('held-out runs are refused unless the corpus is sealed and the prompts are frozen', async () => {
@@ -194,7 +211,7 @@ test('held-out runs are refused unless the corpus is sealed and the prompts are 
 
 test('the budget statement carries every required field and never assumes prices', async () => {
   const b = await H.budgetStatement({ corpus: 'development', samples: 3, prices: PRICES, paidApproval: { maxCostUsd: 5 } });
-  for (const k of ['generatorModel', 'verifierModel', 'corpus', 'mode', 'samples', 'maxGeneratorCalls', 'maxVerifierCalls', 'maxTotalCalls', 'expectedCalls', 'tokens', 'estimatedCost', 'maxCost', 'maxApprovedCost', 'latency', 'prices', 'assumptions']) assert.ok(b[k] !== undefined, k);
+  for (const k of ['generatorModel', 'verifierModel', 'generatorProfile', 'verifierProfile', 'corpus', 'mode', 'samples', 'maxGeneratorCalls', 'maxVerifierCalls', 'maxTotalCalls', 'expectedCalls', 'tokens', 'estimatedCost', 'maxCost', 'maxApprovedCost', 'latency', 'prices', 'assumptions']) assert.ok(b[k] !== undefined, k);
   const n = H.corpusFor('development').cases.length * 3;
   assert.equal(b.maxGeneratorCalls, n);
   assert.equal(b.maxVerifierCalls, n);
@@ -205,15 +222,23 @@ test('the budget statement carries every required field and never assumes prices
   assert.equal(noPrice.prices, 'PRICE_TABLE_REQUIRED');
   assert.equal(noPrice.maxCost, null);
   assert.equal(noPrice.maxGeneratorCalls, 0, 'probes script the Generator');
-  const override = await H.budgetStatement({ corpus: 'probes', mode: 'verifier-probes', samples: 1, generatorModelOverride: 'x-model' });
-  assert.equal(override.generatorModelOverride, 'x-model');
+  // v1.2 §31.4 — overrides are complete profiles; ceilings and timeouts come from them; v1.1 overrides are refused
+  const vp = Object.assign({}, CC.DEFAULT_VERIFIER_PROFILE, { model: 'x-model', maxOutputTokens: 400, timeoutMs: 5000 });
+  const override = await H.budgetStatement({ corpus: 'probes', mode: 'verifier-probes', samples: 1, verifierProfile: vp });
+  assert.equal(override.verifierModel, 'x-model');
+  assert.deepEqual(override.verifierProfile, vp);
+  assert.equal(override.tokens.verifier.outputMax, 400 * override.maxVerifierCalls);
+  assert.equal(override.latency.verifierTimeoutMs, 5000);
+  await assert.rejects(H.budgetStatement({ corpus: 'probes', mode: 'verifier-probes', samples: 1, generatorModelOverride: 'x-model' }), (e) => e.code === 'V11_OPTION_REMOVED');
+  await assert.rejects(H.budgetStatement({ corpus: 'probes', mode: 'verifier-probes', samples: 1, verifierModel: 'x-model' }), (e) => e.code === 'V11_OPTION_REMOVED');
+  await assert.rejects(H.budgetStatement({ corpus: 'probes', mode: 'verifier-probes', samples: 1, verifierProfile: { model: 'x-model' } }), (e) => e.code === 'PROFILE_INVALID');
 });
 
 test('a paid run is refused without approval, prices or within-budget approval; an approved run uses only the injected transport', async () => {
   await assert.rejects(H.runCalibration({ corpus: 'development', samples: 1, write: false }), (e) => e.code === 'PAID_RUN_NOT_APPROVED');
   await assert.rejects(H.runCalibration({ corpus: 'development', samples: 1, write: false, paidApproval: { maxCostUsd: 1 } }), (e) => e.code === 'PRICE_TABLE_REQUIRED');
   await assert.rejects(H.runCalibration({ corpus: 'development', samples: 1, write: false, paidApproval: { maxCostUsd: 1 }, prices: PRICES }), (e) => e.code === 'NO_REAL_TRANSPORT');
-  const fake = async () => ({ content: [{ text: '{"proposals":[]}' }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } });
+  const fake = async () => ({ content: [{ type: 'text', text: '{"proposals":[]}' }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } });
   await assert.rejects(H.runCalibration({ corpus: 'development', samples: 1, write: false, paidApproval: { maxCostUsd: 0.0001 }, prices: PRICES, realSend: fake }), (e) => e.code === 'BUDGET_EXCEEDS_APPROVAL');
   let sent = 0;
   const counting = async (b) => { sent++; return fake(b); };
@@ -235,11 +260,19 @@ test('score.js uses canonical thresholds, never labels, and never decides closur
   assert.equal(s.malformedProposalRate.numerator, 1);
   assert.ok(s.malformedProposalRate.rawCases[0].startsWith('dr-malformed-isolation'));
   assert.match(s.gates['CAL-D7'].verifierFailed.thresholdSource, /§31\.2/);
+  // CAL-D7 v1.2: per stage, failures by reason, total-ceiling usage, refusals and answer size reported separately
+  ['GENERATOR', 'VERIFIER'].forEach((st) => {
+    const d7 = s.gates['CAL-D7'].byStage[st];
+    ['stageFailuresByReason', 'maxTokensStops', 'maxOutputUsage', 'latencyP99', 'refusals', 'answerTextChars'].forEach((k) => assert.ok(d7[k] !== undefined, st + ' ' + k));
+    assert.equal(d7.refusals.reportedSeparately, true);
+    assert.equal(d7.answerTextChars.reportedSeparately, true);
+  });
   // with labels supplied, a labelled gate resolves to MEETS/BELOW
   const rows = {};
   r.artifact.reviewRows.filter((x) => x.class === 'AUTHORIZED_WRITTEN').forEach((x) => { rows[x.rowId] = { grounded: true }; });
   assert.equal(score(r.artifact, { rows }).gates['CAL-D3'].grounded.status, 'MEETS');
   assert.throws(() => score({ schema: 'v1' }), /SCORE_REFUSED/);
+  assert.throws(() => score({ schema: 'e02d-calibration-artifact/2' }), /SCORE_REFUSED/);
 });
 
 test('the budget statement is read-only with respect to Generator, Verifier and store runtime configuration', async () => {
@@ -248,25 +281,26 @@ test('the budget statement is read-only with respect to Generator, Verifier and 
   const { createInMemoryPort } = require('./fixtures/userKnowledgeInMemoryPort.js');
   const { createObservationPort, descriptors } = require('./fixtures/consolidationObservationPortTestDouble.js');
   const seen = [];
-  const sentinel = async (body) => { seen.push(body.model); return { content: [{ text: 'sentinel' }], stop_reason: 'end_turn' }; };
+  const sentinel = async (body) => { seen.push(body.model); return { content: [{ type: 'text', text: 'sentinel' }], stop_reason: 'end_turn' }; };
   const D = descriptors();
   const uk = createInMemoryPort();
   Store.configure({ port: uk.port, now: () => 1, writerAuthority: 'SERVER', isLearningConsentGranted: () => true, userId: 'sentinel-user', producer: 'e02d.consolidation', producerVersion: '1.0.0' });
   const cfg = Consolidation.configure({ store: Store, port: createObservationPort().port, modelTransport: sentinel, now: () => 1, isLearningConsentGranted: () => true, getConsentState: () => ({}),
-    userId: 'sentinel-user', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory, verifierModel: 'sentinel-verifier-model' });
+    userId: 'sentinel-user', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory,
+    verifierProfile: Object.assign({}, CC.DEFAULT_VERIFIER_PROFILE, { model: 'sentinel-verifier-model' }) });
   assert.equal(cfg.status, 'CONFIGURED');
   const snapshot = () => ({ gen: Interpreter.isConfigured(), ver: Verifier.isConfigured(), verModel: Verifier._internal.buildRequestBody({}).model,
     genModel: Interpreter._internal.buildRequestBody({ observations: [], concepts: [], records: [], userStated: [] }).model, storeConcepts: uk.hooks.peek('sentinel-user').concepts.length });
   const before = snapshot();
   assert.equal(before.verModel, 'sentinel-verifier-model');
-  // a different explicit model, and the default path, both leave caller state untouched
-  const b1 = await H.budgetStatement({ corpus: 'development', samples: 1, verifierModel: 'explicit-model' });
+  // a different explicit profile, and the default path, both leave caller state untouched
+  const b1 = await H.budgetStatement({ corpus: 'development', samples: 1, verifierProfile: Object.assign({}, CC.DEFAULT_VERIFIER_PROFILE, { model: 'explicit-model' }) });
   const b2 = await H.budgetStatement({ corpus: 'dry-run-scenarios', samples: 1 });
   assert.equal(b1.verifierModel, 'explicit-model');
-  assert.equal(b2.verifierModel, 'claude-haiku-4-5-20251001', 'default of an unconfigured Verifier, not the caller sentinel');
+  assert.equal(b2.verifierModel, 'claude-haiku-4-5-20251001', 'the default profile, not the caller sentinel');
   assert.deepEqual(snapshot(), before);
   // the caller's transports are still the ones in place
   await Verifier.verify({ observations: [], userStated: [], targets: [], items: [{ item: 'p1', operation: 'CREATE' }] });
   await Interpreter.interpret({ observations: [], concepts: [], records: [], userStated: [] });
-  assert.deepEqual(seen, ['sentinel-verifier-model', Interpreter.MODEL]);
+  assert.deepEqual(seen, ['sentinel-verifier-model', CC.DEFAULT_GENERATOR_PROFILE.model]);
 });

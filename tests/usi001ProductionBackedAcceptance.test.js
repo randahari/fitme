@@ -47,7 +47,7 @@ const UK_USER = 'usi-user';
 const CPI_MEMORY_ID = 'conv_pref_TEST_record';
 
 const sha = (o) => crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex');
-function text(obj) { return { content: [{ text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
+function text(obj) { return { content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }; }
 function idsIn(body, re) { return (body.messages[0].content.match(re) || []).map((m) => m.match(/"([^"]+)"/)[1]); }
 
 function closedEntry(id, overrides) {
