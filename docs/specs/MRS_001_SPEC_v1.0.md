@@ -1,5 +1,5 @@
 # MRS-001 SPEC v1.0 — Model Response Structure
-## Status: SPEC v1.0 — APPROVED (Product Review: APPROVED. Architecture Review: APPROVED.) — READY FOR JOINT ATOMIC IMPLEMENTATION WITH E.0.2d v1.2 (upon the final joint consistency check) — NOT IMPLEMENTED — NOT LIVE
+## Status: SPEC v1.0 — APPROVED (Product Review: APPROVED. Architecture Review: APPROVED.) — IMPLEMENTED (jointly with E.0.2d v1.2, commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2`) — DETERMINISTICALLY VERIFIED (full regression 3810/3810) — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED
 
 **Repository path:** `docs/specs/MRS_001_SPEC_v1.0.md`
 
@@ -14,11 +14,15 @@
 - Deliverable: **MRS-001 — Model Response Structure.**
 - Status: **SPEC v1.0 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.).
   - The approval includes the C1–C8 corrections.
-  - The SPEC is ready for joint atomic implementation with E.0.2d v1.2 (§11.3), upon the final joint consistency check.
-  - **NOT IMPLEMENTED. NOT LIVE.**
+  - **[HISTORICAL — pre-implementation]** The SPEC was ready for joint atomic implementation with E.0.2d v1.2 (§11.3), upon the final joint consistency check. The previous status read: NOT IMPLEMENTED. NOT LIVE.
+  - **Current lifecycle:** **IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED.**
+    - Implemented jointly with E.0.2d v1.2 in commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2`.
+    - Deterministically verified: full regression 3810/3810; S-M, S-F, S-E, S-P, S-T, S-W and G1–G6 green (§19); no model/API call.
+    - Deployed and active at the deployed browser sites: application version 2.47.9 is deployed, and the deployed browser application loads `modelResponseStructure.js` ahead of the converted browser site modules (§17 G5). This records deployment evidence only; it does not claim that every converted path has been exercised by a real user. The two E.0.2d sites (S20, S21) are Node-only and not live (E.0.2d §35).
+    - Not closed: final closure requires a separate Product/Architecture closure determination (§22).
   - Authoring and correcting this document modified no file other than this one and the E.0.2d SPEC's own v1.2 revision.
 - Authority **[CANON]**: the Product/Architecture decisions recorded for this Work Item: the canonical decomposition (new MRS-001; MRE-001 and CARF unchanged; E.0.2d in-file v1.2 as the immediate downstream consumer); response-side activation at all 21 Coach Decision System parse sites; the request-contract states FROZEN-CONTRACT and EXPLICIT-PROFILE; the target-state invariant; migration rules M1–M6; the 19-site FROZEN-CONTRACT inventory; the reasoning vocabulary; the output-budget semantics; zero-drift requirements Z-1…Z-8; mechanical guards G1–G6; the browser-shell exclusion; and the non-goals. Marking this SPEC READY is a Product/Architecture determination.
-- Implementation of this SPEC requires separate Product/Architecture authorization (§18).
+- Implementation of this SPEC requires separate Product/Architecture authorization (§18). **[Status note]** Granted and fulfilled: implemented in commit `018b056`.
 
 ---
 
@@ -45,7 +49,7 @@ Every canonical source this SPEC must remain consistent with. No section cites a
 | C-15 | WP0 Safety Risk Characteristic Sub-Spec | `docs/specs/WP0_SAFETY_RISK_CHARACTERISTIC_SUBSPEC_v1.0.md` | as recorded in the file | Owning contract (S12–S15; D.5, D.6, D.6.1) |
 | C-16 | WP0 Phase E.0.2b — Semantic Context Discovery | `docs/specs/WP0_PHASE_E_0_2B_SEMANTIC_CONTEXT_DISCOVERY_SPEC_v1.0.md` | CLOSED | Owning contract (S18); §175 and AC-7 pin the request key set |
 | C-17 | USI-001 | `docs/specs/USI_001_SPEC_v1.0.md` | IMPLEMENTED — NOT CLOSED | Owning contract (S19); §298, AC-2, AC-16 |
-| C-18 | WP0 Phase E.0.2d — Consolidation SPEC v1.1 | `docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md` | CANONICAL / CLOSED (SPECIFICATION) | Owning contract (S20, S21); immediate downstream consumer (§13.3) |
+| C-18 | WP0 Phase E.0.2d — Consolidation SPEC v1.2 (in-file revision; v1.1 was CANONICAL / CLOSED (SPECIFICATION) when this SPEC was authored) | `docs/specs/WP0_PHASE_E_0_2D_CONSOLIDATION_SPEC_v1.0.md` | **[status note]** APPROVED — IMPLEMENTED in `018b056` — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING — WORK ITEM NOT CLOSED — NOT LIVE | Owning contract (S20, S21); immediate downstream consumer (§13.3) |
 
 Owning contracts named by MRE-001 §05 without a canonical document in the repository — General Reasoning (`WP0_SPEC_v1.0.md`, missing; MRE-001 GAP-2) and Friends Alpha Item 6 (no SPEC; MRE-001 GAP-3) — are recorded in §10.3 and §21, not cited as sources.
 
@@ -482,7 +486,7 @@ Each listed line is the site's current answer-text read.
 | S20 | `consolidationInterpreter.js:106` (`parseResponse`) | EXPLICIT-PROFILE (E.0.2d v1.2) |
 | S21 | `consolidationVerifier.js:100` (`parseResponse`) | EXPLICIT-PROFILE (E.0.2d v1.2) |
 
-## 11.2 Turn Understanding internal object — [CANON boundary; ENGINEERING DECISION PENDING detail]
+## 11.2 Turn Understanding internal object — [CANON boundary; ED-1 RESOLVED in the implementation — §21]
 
 **Current wiring [VERIFIED]:**
 - `splitResponse` (`turnUnderstandingInterpreter.js:473-481`) reads the **provider response**.
@@ -702,7 +706,7 @@ The 41 test files include MRE-001's `mre001InterpreterEquivalence.test.js` and t
 
 ---
 
-# 18. Implementation Scope — [DESIGN; implementation requires separate authorization]
+# 18. Implementation Scope — [DESIGN; implementation requires separate authorization] **[status note: IMPLEMENTED in `018b056`]**
 
 Implemented in one atomic change together with E.0.2d v1.2 (§11.3). Listed here is MRS-001's share; E.0.2d v1.2 defines its own.
 
@@ -733,6 +737,18 @@ Implemented in one atomic change together with E.0.2d v1.2 (§11.3). Listed here
   - every prompt builder, validator, Safety rule, gate, intake gate and persistence path;
   - the browser-shell files (§14);
   - every canonical document other than this SPEC and E.0.2d v1.2.
+
+## 18.1 Implementation-discovered test-compatibility clarification — [CANON — Product/Architecture ruling during implementation]
+
+**Finding.** §18 and G5 (§17.1) require every site-owning module to declare the standard `modelResponseStructure.js` dependency. Two existing tests outside the §18 file list assert the exact dependency set of a site-owning interpreter, written before MRS-001 existed:
+- E.0.2b AC-32 (`tests/e02bSemanticContextDiscovery.test.js`): `semanticContextDiscoveryInterpreter.js` (S18);
+- USI-001 AC-40 (`tests/usi001Static.test.js`): `userStatedIntakeInterpreter.js` (S19).
+
+Those exact-dependency assertions became stale as a direct consequence of the required MRS-001 dependency. Implementation stopped and reported them for a ruling, following the E.0.2d §29.1 precedent.
+
+**Ruling.** Product/Architecture authorized updating exactly those two assertions so that each continues to enforce an exact dependency set, now including MRS-001: `./modelResponseEnvelope.js` and `./modelResponseStructure.js` (globals `ModelResponseEnvelope` and `ModelResponseStructure`). The AC-32 test title was updated to name the same canonical dependency set.
+
+**Scope.** Test compatibility with the approved architecture only. No acceptance criterion is weakened: both tests still assert an exact dependency set. No other assertion, expected value or test in those files changed (apart from the §16.1 fixture migration), and this clarification does not broaden §18's file-change authorization beyond these exact changes. Implemented in commit `018b056`.
 
 ---
 
@@ -799,12 +815,13 @@ No real-model calibration is an acceptance criterion of MRS-001. Real-model work
   - Zero drift applies to structurally valid current-provider responses (§16). The historical untyped fixtures are migrated, preserving their text and expected behaviour (§16.1).
   - The FITME-internal Turn Understanding object is downstream of the boundary and does not cross it (§11.2).
 
-**Engineering Decision Pending.**
+**Engineering Decision Pending.** None. **[Status note: ED-1 was resolved by the committed implementation.]**
 
-- **ED-1 — Turn Understanding S1 wiring.**
-  - Repository evidence (§11.2): S1 today receives both the provider response and the FITME-internal closed-segment object through one parameter, so an internal object crosses S1 as though it were a provider response.
-  - What is delegated to Engineering by §11.2: how to restructure that wiring so that extraction applies once to the provider response and no internal object is passed to `extractAnswerText`.
+- **ED-1 — Turn Understanding S1 wiring. RESOLVED in commit `018b056`.**
+  - Repository evidence (§11.2, at the §03 snapshot): S1 then received both the provider response and the FITME-internal closed-segment object through one parameter, so an internal object crossed S1 as though it were a provider response.
+  - What was delegated to Engineering by §11.2: how to restructure that wiring so that extraction applies once to the provider response and no internal object is passed to `extractAnswerText`.
   - The constraints: §11.2, Z-2, and OU-001's unchanged split, sentinel, one-way failure and truncation rules.
+  - **Resolution (as implemented).** `splitResponse` extracts the answer text once (S2, under F-1) and passes the closed segment on as text (`closedText`); the closed-segment validation runs over that text; `parseAndValidate` remains S1 (extraction under F-1) for direct callers. No FITME-internal object is passed to `extractAnswerText`. S1/S2 results for the sentinel-free, two-part and truncated forms are equal to the pre-MRS-001 baseline (§19 S-E). No canonical rule was added or changed.
 
 **Repository Gaps.**
 
@@ -820,10 +837,17 @@ No real-model calibration is an acceptance criterion of MRS-001. Real-model work
 
 # 22. Status and Closure
 
-- Status: **SPEC v1.0 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.) — ready for joint atomic implementation with E.0.2d v1.2 upon the final joint consistency check — **NOT IMPLEMENTED — NOT LIVE**.
-- E.0.2d v1.2, the immediate downstream consumer, is authored and has completed joint Product/Architecture review with this SPEC.
-- Next step: the joint atomic implementation of this SPEC and E.0.2d v1.2, under separate Product/Architecture implementation authorization (§11.3, §18).
-- Real-model calibration of E.0.2d remains paused until this SPEC and E.0.2d v1.2 are implemented and deterministically verified.
+- Status: **SPEC v1.0 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.) — **IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED**.
+  - **Implemented** jointly with E.0.2d v1.2 in one atomic change, commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2` (§11.3). The implementation authorization (§18) is fulfilled.
+  - **Deterministically verified:** full deterministic regression 3810/3810; acceptance criteria 1–6 of §19 met, including S-M, S-F, S-E, S-P, S-T, S-W and G1–G6; the 19 FROZEN-CONTRACT request bodies byte-identical (Z-4); no model/API call. Scope purity includes the §18.1 compatibility clarification.
+  - **Deployed and active at the deployed browser sites:** application version 2.47.9 is deployed, and the deployed browser application loads `modelResponseStructure.js` ahead of the converted browser site modules. This is deployment evidence; it is not a claim that every converted path has been exercised by a real user. MRS-001's deployment does not make E.0.2d live: its two sites (S20, S21) are Node-only with no production caller (E.0.2d §08, §35).
+  - **Not closed:** the deterministic acceptance criteria are satisfied, and real-model calibration is not an MRS-001 acceptance criterion (§19), but final closure requires a separate Product/Architecture closure determination. The Closure Record below stays empty until then.
+- **[HISTORICAL — pre-implementation]** The previous status read: ready for joint atomic implementation with E.0.2d v1.2 upon the final joint consistency check — NOT IMPLEMENTED — NOT LIVE.
+- E.0.2d v1.2, the immediate downstream consumer, completed joint Product/Architecture review with this SPEC and is implemented in the same commit.
+- Next step: the Product/Architecture closure determination of this SPEC. The follow-ups GAP-1 … GAP-3 (§21) and the MRE-001 §20 Safety fail-open defect (§12) remain open under their owners.
+- **[HISTORICAL — pre-implementation]** Next step was: the joint atomic implementation of this SPEC and E.0.2d v1.2, under separate Product/Architecture implementation authorization (§11.3, §18).
+- Real-model calibration of E.0.2d: this SPEC and E.0.2d v1.2 are now implemented and deterministically verified, which satisfies the E.0.2d §31.4 precondition. E.0.2d real-model calibration remains PAUSED pending explicit Product approval of a run (E.0.2d §31.4).
+- **Status history.** 2026-10-06 — status metadata only (implementation status reconciliation): implemented in `018b056`; deterministically verified 3810/3810; ED-1 resolved; §18.1 compatibility clarification recorded; deployed and active at the deployed browser sites; NOT CLOSED; C-18 status updated. No normative Product/Architecture semantic change.
 
 ## Closure Record
 
