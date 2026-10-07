@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "corpusId": "heldout-v1.1",
-  "status": "AWAITING_INDEPENDENT_CORPUS",
-  "note": "The held-out closure corpus is authored independently of the prompt author, delivered as a file OUTSIDE the repository, and frozen before any tuning against it (SPEC v1.1 §31.3). corpusSha256 is recorded here only from the delivered file; it is never fabricated. frozenPrompts is recorded only at prompt freeze. The harness refuses a held-out run unless both match.",
-  "corpusSha256": null,
-  "corpusRecordedAt": null,
+  "corpusId": "heldout-e02d-v1.2",
+  "status": "SEALED_AWAITING_PROMPT_FREEZE",
+  "note": "The held-out closure corpus is authored independently of the prompt author, delivered as a file OUTSIDE the repository, and frozen before any tuning against it (SPEC §31.3; §32 R-20). corpusSha256 is recorded here only from the delivered file; it is never fabricated. frozenPrompts is recorded only at prompt freeze. The harness refuses a held-out run unless both match.",
+  "corpusSha256": "ef0e30419398cc25bf6c819199e6710642f0a59ec817103780506729727ba751",
+  "corpusRecordedAt": "2026-10-07",
   "frozenPrompts": {
     "generatorInstructionSha256": null,
     "verifierInstructionSha256": null,

@@ -192,7 +192,7 @@ test('replay reproduces identically; a changed request is REPLAY_DIVERGED; v1.0 
 
 test('held-out runs are refused unless the corpus is sealed and the prompts are frozen', async () => {
   const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, 'evals', 'e02d', 'heldout.manifest.json'), 'utf8'));
-  assert.equal(shipped.corpusSha256, null, 'no fabricated hash');
+  assert.ok(shipped.corpusSha256 === null || (/^[0-9a-f]{64}$/.test(shipped.corpusSha256) && typeof shipped.corpusRecordedAt === 'string'), 'a hash is recorded only with its recording date, never fabricated');
   assert.equal(shipped.frozenPrompts.generatorInstructionSha256, null);
   const corpus = { id: 'heldout-fixture', cases: [{ id: 'h1', lang: 'en', gate: [], turns: [['t1', 'Synthetic.', 1]] }] };
   const corpusFile = path.join(TMP, 'heldout.json');
@@ -203,7 +203,8 @@ test('held-out runs are refused unless the corpus is sealed and the prompts are 
   const frozen = { generatorInstructionSha256: h.generator, verifierInstructionSha256: h.verifier };
   const refuse = (mp, hp, code) => assert.throws(() => H.loadHeldout(mp, hp), (e) => e.code === code, code);
   refuse(undefined, null, 'HELDOUT_NOT_SUPPLIED');
-  refuse(undefined, corpusFile, 'HELDOUT_MANIFEST_UNSEALED');
+  refuse(manifest({ corpusSha256: null }), corpusFile, 'HELDOUT_MANIFEST_UNSEALED');
+  if (shipped.corpusSha256) refuse(undefined, corpusFile, 'HELDOUT_HASH_MISMATCH'); // the sealed shipped manifest rejects any other file
   refuse(manifest({ corpusSha256: 'f'.repeat(64) }), corpusFile, 'HELDOUT_HASH_MISMATCH');
   refuse(manifest({ corpusSha256: good }), corpusFile, 'PROMPTS_NOT_FROZEN');
   refuse(manifest({ corpusSha256: good, frozenPrompts: { generatorInstructionSha256: h.generator, verifierInstructionSha256: 'a'.repeat(64) } }), corpusFile, 'PROMPT_HASH_MISMATCH');
