@@ -1317,6 +1317,34 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 - **R-17 — Output ceiling and CAL-D7:** `maxOutputTokens` is the total provider-output ceiling, with no reasoning-ON production ceiling chosen without calibration evidence; CAL-D7 is restated accordingly (§27.1, §31.2).
 - **R-18 — Atomicity:** v1.2 and MRS-001 are implemented in one atomic change, authorized only after both documents are reviewed together (§29.3).
 - **B1 — `stageFailure` for unclassified failures (Product/Architecture ruling during the implementation preflight; Option A):** `stageFailure` identifies a reason only for failures produced by a classified §15.0 condition. A preserved v1.1 defensive or internal-exception path that produces `INTERPRETER_FAILED` or `VERIFIER_FAILED` keeps its v1.1 status and carries `stageFailure: null`. No new `STAGE_FAILURE_REASONS` code is added, no cause is inferred, and the defensive catch behaviour is unchanged. A canonical clarification of the diagnostic field, not a new failure behaviour (§13 step 15, §15.0, §25, AC-D64).
+- **R-19 — Uncertainty principle for E.0.2d calibration (Product ruling after v1.2 implementation; calibration semantics only).** FITME prefers "I don't know yet" over an incorrect belief about the user.
+  - (a) **Uncertain faithfulness → fail closed.** When it is unclear whether a plan would be faithful — restatement (§22.4), unsupported content (§17.1), Safety adjacency (§24.1), temporal faithfulness (§20.3) or APPEND direction (§16.3) — the correct Verifier verdict is non-passing, and `UNCERTAIN` counts as correct.
+  - (b) **Uncertain truth → candidate only.** Uncertainty about whether a faithfully represented relationship is actually true is not a Verifier question. Such a plan may be written as a `candidate`, which is never usable User Knowledge until E.0.2e's assessment and promotion establish sufficient evidence (§21).
+  - (c) **Applied to the calibration probes.** The verifier probes for restatement (P1), unsupported content (P2), temporal faithfulness (P4) and APPEND direction (P5) take truth `VETO`. The Safety probe (P3) takes a provisional `VETO`; its final label requires Safety-authority confirmation (§24.2). The development-corpus Safety labels (P6) stay as authored, subject to the same confirmation.
+  - (d) No runtime behaviour, contract, acceptance criterion or architecture rule changes.
+- **R-20 — Pre-calibration decisions (Product ruling after v1.2 implementation; calibration configuration only).** Fixed before any paid run, and before any held-out output is seen.
+  - **CAL-D8 target (§31.2):**
+    - Verifier false veto ≤ 25% of plans that human review labels genuine, grounded, non-restating and non-Safety. `UNCERTAIN` vetoes count as false vetoes and are reported separately.
+    - Any single Verifier dimension with false veto > 35% goes to REVIEW for possible systematic blocking.
+    - Usefulness floor: at least 60% of positive held-out cases yield at least one authorized plan.
+    - Rationale (R-19): a false veto only delays learning, because nothing is written and a later pass may propose again (§26). A false admission is permanent, because content is immutable and evidence references are irreversible (§04 item 4, §20.6). Systematic vetoing must still not stop useful learning (§31.1).
+  - **CAL-D4 precision target (§31.2):** the Safety flag or veto rate on ordinary Safety-negative cases is at most 20% of plans (`UNCERTAIN` counts as a flag; borderline and residual cases are excluded from the denominator), against the §31.1 baseline of 25/52. This target is subject to Safety-authority confirmation. Zero tolerance for authorized Safety-positive plans is unchanged.
+  - **Thresholds:** the §31.2 provisional thresholds are confirmed unchanged. Zero-tolerance items remain zero.
+  - **Sampling:** 3 samples per case at the API default temperature (§31.3), as the technical default.
+  - **Reviewers:**
+    - A Product reviewer labels the applicable human-review rows, and a Safety-authority reviewer labels the Safety rows.
+    - Reviewers are identified before the paid runs and are independent of prompt authorship.
+    - Product/Architecture resolves REVIEW and reviewer-disagreement items, and records the decisions.
+  - **Evidence handling:**
+    - Raw calibration artifacts remain outside the repository, in a durable designated location; the storage mechanism and location are still to be identified.
+    - The repository records artifact hashes, score outputs, reviewer labels and canonical closure evidence.
+    - The §31.1 v1.0 artifact is not moved or altered until the durable location is identified.
+  - **Held-out authorship (§31.3):** the independent held-out author may be an isolated, fresh AI session, under strict isolation.
+    - It receives only the permitted SPEC semantic definitions (§17.1, §20, §22.4, §24.1), the coverage brief (`heldout.manifest.json`), the case schema, and the instructions needed to construct and label the corpus.
+    - It does not receive the Generator or Verifier prompts or instructions, the development, regression or verifier-probe corpora, calibration outputs, prompt-tuning history, or any information that would allow tailoring cases to known model failures.
+    - It has no later role in prompt tuning or evaluation decisions.
+    - The held-out corpus is sealed (its SHA-256 recorded) before any prompt tuning begins (§31.3).
+  - No runtime behaviour, contract, acceptance criterion or architecture rule changes.
 
 **Pending Product/Architecture decisions and dependencies (v1.2).**
 - **[v1.2]** Product/Architecture review of v1.2 together with MRS-001 — **RESOLVED / APPROVED**.
@@ -1371,6 +1399,7 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
 | `SOURCE` recurrence and window grounding forms for a source whose structural data represents recurrence (§20.2, GAP-D6) | Later revision of this SPEC with the first such authorized source |
 | Persisting recurring-window grounding for E.0.2e re-verification (§20.5) | E.0.2e / a later E.0.2c amendment if required |
 | Durable upstream ownership of recognized statement spans that were not captured (strengthening U4 beyond persisted records) | Later Work Item (A2 §08.2 precedent) |
+| **Inferred-knowledge uncertainty resolution — waiting for evidence vs asking the user (G-C).** Two distinct mechanisms: (1) accumulating natural evidence — E.0.2e assessment and promotion; (2) asking the user — optional and context-sensitive (FITME must not turn every uncertain candidate into a question for the user), requiring an explicitly governed clarification path: a clarification-need signal, a governed question-delivery path, and confirmation recording, which USI-001 §33 defers as "user confirmation (not correction) of inferred knowledge" (see also E.0.2c §15.4). Not assigned to E.0.2d and not implemented. No current Work Item owns it. The E.0.2e SPEC must also state how D1-MU-01 / B1 §10 relates to E.0.2c's deterministic promotion (P-5) | Product/Architecture (canonical gap) |
 
 ---
 
@@ -1487,3 +1516,9 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
   - Existing-test modifications include the MRS-001 §18.1 test-compatibility clarification (E.0.2b AC-32 and USI-001 AC-40 exact-dependency assertions, and the AC-32 title), authorized at implementation within AC-D43.
   - The two v1.1-authoring statements that read "not implemented" (How to read v1.1; §29 introduction) are now labelled as historical. Superseded status lines are kept as **[HISTORICAL — v1.2 pre-implementation]**.
   - Unchanged: the closure criteria (§35), the Closure Record (empty), every normative requirement, contract, acceptance criterion and architecture rule. Not closed; not live (MRS-001's deployment does not make E.0.2d live).
+- **v1.2** (Product rulings R-19 and R-20; canonical gap G-C) — Calibration semantics, calibration configuration and a deferred-item record only.
+  - R-19 (§32): the uncertainty principle and the probe ground-truth rulings P1–P6.
+  - R-20 (§32): the CAL-D8 and CAL-D4 targets, the §31.2 thresholds confirmed unchanged, sampling, reviewers, evidence handling and held-out authorship.
+  - G-C (§33): inferred-knowledge uncertainty resolution.
+  - P3's final label, the P6 development Safety labels and the CAL-D4 precision target await Safety-authority confirmation (§24.2).
+  - No runtime, contract, acceptance-criterion or architecture change. Calibration remains PAUSED pending Product approval of a run.
