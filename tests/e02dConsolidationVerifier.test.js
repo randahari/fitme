@@ -205,3 +205,23 @@ test('probe-driven semantics restate only the canonical §22.4 / §15.5 / §20.1
   assert.match(s, /UNCERTAIN when unsure/);
   assert.match(s, /UNCERTAIN is always allowed and is the right answer whenever you cannot decide/);
 });
+
+test('R-21 / R-22 and the five-key rule are stated in the Verifier instruction; fail-closed UNCERTAIN is kept', () => {
+  const s = V._internal.INSTRUCTION;
+  // R-22 (§22.4 clarification): "stated" means asserted meaning, not a reported occasion; paraphrase of an assertion stays RESTATED
+  assert.match(s, /Here "stated" means what the person asserted - a belief, generalization, self-description, explanation, preference or other assertion - not merely that the person reported an event or occasion; a paraphrase of an actual assertion is still RESTATED/);
+  // R-21: an ordering or association the cited observations directly show is neither unsupported nor unfaithful by itself; stronger meanings need evidence
+  assert.match(s, /An ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is not by itself unsupported; a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur is unsupported unless the evidence shows that stronger meaning/);
+  assert.match(s, /An ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is FAITHFUL; a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur is UNFAITHFUL unless the evidence shows that stronger meaning/);
+  // five keys, NOT_APPLICABLE exactly where the operation requires it
+  assert.match(s, /Every entry has all five dimension keys - restatement, unsupported, safety, temporal and direction: write NOT_APPLICABLE exactly for a dimension that does not apply, and never omit a key/);
+  assert.match(s, /UNCERTAIN is always allowed and is the right answer whenever you cannot decide/);
+});
+
+test('five-key rule is enforced by the strict parser: an entry omitting a key is VERIFICATION_MALFORMED for that item only', async () => {
+  const CC = require(path.join(ROOT, 'js/coachDecisionSystem/consolidationContract.js'));
+  const append = { item: 'p1', restatement: 'NOT_RESTATED', safety: 'NOT_SAFETY_ADJACENT', direction: 'CONSISTENT' };
+  const r = V._internal.parseResponse({ content: [{ type: 'text', text: JSON.stringify({ verdicts: [append] }) }], stop_reason: 'end_turn' }, { p1: 'APPEND_EVIDENCE' }, CC.DEFAULT_VERIFIER_PROFILE);
+  assert.equal(r.status, 'OK');
+  assert.deepEqual(r.verdicts.p1, { ok: false });
+});

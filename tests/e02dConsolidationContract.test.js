@@ -190,6 +190,10 @@ test('§15.5 / §16.5 (contract): verdict bodies, fixed applicability, fixed fai
   assert.equal(CC.isValidVerdictBody(V({ direction: 'CONSISTENT' }), 'CREATE'), false); // must be NOT_APPLICABLE
   assert.equal(CC.isValidVerdictBody(VA({ temporal: 'FAITHFUL' }), 'APPEND_EVIDENCE'), false);
   assert.equal(CC.isValidVerdictBody(V({ unsupported: 'NOT_APPLICABLE' }), 'CREATE'), false);
+  // five keys always: an omitted key is malformed, also where the dimension is NOT_APPLICABLE (APPEND unsupported/temporal)
+  ['unsupported', 'temporal'].forEach((k) => { const b = VA(); delete b[k]; assert.equal(CC.isValidVerdictBody(b, 'APPEND_EVIDENCE'), false, 'APPEND without ' + k); });
+  ['restatement', 'unsupported', 'safety', 'temporal', 'direction'].forEach((k) => { const b = V(); delete b[k]; assert.equal(CC.isValidVerdictBody(b, 'CREATE'), false, 'CREATE without ' + k); });
+  assert.equal(CC.isValidVerdictBody(VA({ safety: 'NOT_APPLICABLE' }), 'APPEND_EVIDENCE'), false, 'safety applies to APPEND');
   assert.equal(CC.isValidVerdictBody(V({ safety: 'MAYBE' }), 'CREATE'), false);
   assert.equal(CC.isValidVerdictBody(Object.assign(V(), { note: 'x' }), 'CREATE'), false);
   assert.equal(CC.isValidVerdictBody(V(), 'DELETE'), false);

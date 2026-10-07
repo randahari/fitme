@@ -379,3 +379,35 @@ test('synthetic observations sit on a realistic calendar; conversation turns kee
   }));
   assert.equal(H.caseBaseEpochMs({ turns: [] }), Date.UTC(2026, 4, 1));
 });
+
+test('verifier-probes v1.2: every pass-truth probe has complete truth; truths name only applicable dimensions; the oracle authorizes every pass-truth plan', async () => {
+  const P = H.corpusFor('probes');
+  assert.equal(P.id, 'verifier-probes-v1.2');
+  assert.deepEqual(H.validateCorpus(P), []);
+  const pass = P.cases.filter((c) => Object.values(c.truth).every((t) => t === 'PASS'));
+  assert.deepEqual(pass.map((c) => c.id).sort(), ['vp-dr-clean-contradicting-he', 'vp-dr-clean-supporting-en', 'vp-rs-clean-en', 'vp-sf-clean-soreness-en', 'vp-sf-clean-tired-he', 'vp-tm-clean-en', 'vp-us-clean-en']);
+  pass.forEach((c) => {
+    const op = c.plan[0].operation;
+    const applicable = CC.VERDICT_DIMENSIONS.filter((d) => CC.VERDICT_APPLICABILITY[op][d]);
+    assert.deepEqual(Object.keys(c.truth).sort(), applicable.slice().sort(), c.id);
+  });
+  assert.equal(P.cases.length - pass.length, 17, 'seventeen veto-truth probes');
+  // incomplete or inapplicable truths are refused
+  const base = P.cases.find((c) => c.id === 'vp-us-clean-en');
+  const incomplete = Object.assign({}, P, { cases: [Object.assign({}, base, { truth: { unsupported: 'PASS' } })] });
+  assert.ok(H.validateCorpus(incomplete).some((x) => /pass-truth incomplete/.test(x)));
+  const inapplicable = Object.assign({}, P, { cases: [Object.assign({}, base, { truth: Object.assign({}, base.truth, { direction: 'PASS' }) })] });
+  assert.ok(H.validateCorpus(inapplicable).some((x) => /not applicable to CREATE/.test(x)));
+  // every corrected probe passes the deterministic gate and reaches the Verifier; the oracle authorizes 100% of pass-truth plans
+  const oracle = await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'truth', write: false });
+  oracle.artifact.samples.forEach((s) => assert.equal(s.probe.reachedVerifier, true, s.caseId));
+  const g = score(oracle.artifact).gates['CAL-D8'];
+  assert.equal(g.probesPlanLevelPassTruth.samples, 7);
+  assert.equal(g.probesPlanLevelPassTruth.authorized.count, 7);
+  assert.equal(g.probesPlanLevelPassTruth.authorizedRate, 1);
+  // veto-truth probes keep their veto behaviour under the oracle
+  oracle.artifact.samples.filter((s) => Object.values(s.probe.truth).includes('VETO')).forEach((s) => assert.equal(s.proposals[0].class, 'VERIFIER_VETO', s.caseId));
+  // the corrected calendar wording: the end-of-week turns fall on Fridays of the synthetic calendar
+  const tired = oracle.artifact.samples.find((s) => s.caseId === 'vp-sf-clean-tired-he');
+  tired.calls.find((c) => c.stage === 'VERIFIER').request.observations.forEach((o) => assert.equal(new Date(o.observedAt).getUTCDay(), 5, o.observedAt));
+});

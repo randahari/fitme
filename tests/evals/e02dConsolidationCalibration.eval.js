@@ -207,6 +207,17 @@ function validateCorpus(corpus) {
       if (!Array.isArray(c.plan) || !c.plan.length) problems.push(at + ': plan');
       if (c.expectedVerdict !== undefined && !Object.keys(c.expectedVerdict).every((d) => c.truth[d] === 'BORDERLINE' && typeof c.expectedVerdict[d] === 'string')) problems.push(at + ': expectedVerdict only on BORDERLINE dimensions');
       if (!c.truth || !Object.keys(c.truth).length || !Object.keys(c.truth).every((d) => CC.VERDICT_DIMENSIONS.indexOf(d) !== -1 && TRUTH_VALUES.indexOf(c.truth[d]) !== -1)) problems.push(at + ': truth');
+      else if (Array.isArray(c.plan)) {
+        // A truth may name only dimensions that apply to the plan's operations, and a pass-truth probe must
+        // name every applicable one: a veto on any applicable dimension blocks the plan (v1.2 truth audit).
+        const ops = c.plan.map((t) => (t && t.literal ? t.literal.operation : t && t.operation)).filter((op) => CC.VERDICT_APPLICABILITY[op]);
+        const passTruth = Object.keys(c.truth).every((d) => c.truth[d] === 'PASS');
+        ops.forEach((op) => CC.VERDICT_DIMENSIONS.forEach((d) => {
+          const applies = CC.VERDICT_APPLICABILITY[op][d];
+          if (!applies && d in c.truth) problems.push(at + ': truth names ' + d + ', not applicable to ' + op);
+          if (applies && passTruth && !(d in c.truth)) problems.push(at + ': pass-truth incomplete, ' + d + ' missing for ' + op);
+        }));
+      }
     }
   });
   return problems;

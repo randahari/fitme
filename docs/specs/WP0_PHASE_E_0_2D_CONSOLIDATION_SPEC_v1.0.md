@@ -513,7 +513,7 @@ Factor:
 - **Body [v1.2].** Built from the Verifier's request profile `V` (§27.1): `{ model: V.model, max_tokens: V.maxOutputTokens, <V.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
   - Key order as in §15.1.
   - Sent once through the injected transport with `V.timeoutMs`; no retry inside a pass (MRE-001).
-  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
+  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. After verifier-probe run 2 it also states R-21, R-22 and the five-key verdict rule (§31.5, §32). **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
   - **[HISTORICAL — v1.1]** v1.1 body: `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `VERIFIER_TIMEOUT_MS`.
 - **Input blocks**, all rendered deterministically by the coordinator and framed as data with the standard injection clause:
   - `<observations>` — every observation presented to the Generator, rendered identically with the same keys (restatement is judged against all of the person's presented words, not only cited ones);
@@ -724,6 +724,7 @@ Each part carries 1..`MAX_GROUNDING_ANCHORS` anchors; the same anchor may serve 
 - **Observed temporal fact:** a structural time field of the source (observation or segment `localDate`, `localTime`, `observedAt`, `utcOffsetMinutes`), or the person's literal words. Anchors reference only these.
 - **Semantic temporal interpretation:** describing observed facts in the claim. It is permitted only as a faithful re-expression; the observed terms (for example an observed range of local times) are preferred over dayparts or routines.
 - **Unsupported inference:** a time, daypart, routine or schedule the evidence does not show (for example an unobserved routine assumed from a clock time, or a clock time labelled with a daypart it does not fit); a window without grounding. The gate rejects ungrounded recurring windows; the Verifier's `temporal` dimension rejects unfaithful temporal content of any proposal, and its `unsupported` dimension rejects invented temporal facts.
+- **[R-21 — interpretive clarification]** An ordering or association directly supported by the cited observations, including one observed event having followed or accompanied another, is a faithful re-expression and not by itself an invented temporal claim or an unsupported inference. It does not authorize a claim that the relationship always or usually occurs, is a routine or schedule, has a duration, is permanent, will continue or will recur, unless the evidence supports that stronger meaning. Unsupported ordering remains fail-closed, and `UNCERTAIN` remains a veto (§32 R-21).
 - **`DURABLE` and `TEMPORARY`** have no structural grounding requirement; their choice is Generator judgment, checked for faithfulness by the Verifier, and decay or supersession is E.0.2e's.
 - **Date-only evidence** can ground calendar meaning, not time-of-day meaning. **An absolute instant without an offset** can ground order (`SEQUENCE`), not local calendar or clock meaning. **A local value with an unknown offset** grounds a window in the user's local frame only; cross-timezone interpretation awaits A1 §10 item 15 (GAP-D1).
 
@@ -788,6 +789,7 @@ Single-observation candidates are permitted (E.0.2c `SINGLE_OBSERVATION`; pressu
 - **Reported events and user assertions.** What the person reports happening, or how something was on an occasion, is an observation and may be evidence. What the person asserts about themselves — a belief, generalization, self-description, explanation or preference — is the person's own statement (A2 invariant 22). A user assertion is never evidence for itself.
 - **RESTATED.** A claim (for APPEND: the target's claim) is a restatement when its meaning is substantially what the person stated or asserted in any presented user-authored text or presented user-stated reference — in any language, and at any distance of paraphrase, translation, summary, generalization, narrowing, broadening, hedging, or re-expression through different concepts, roles or factors — so that FITME would represent as its own inference what the person already told it. Combining a user assertion with one or more supporting events does not make the assertion FITME's.
 - **NOT_RESTATED.** Requires a positive judgment that the claim adds relational or derived meaning the person did not state or assert — for example an association FITME notices across events the person reported, or a PD-D2 by-reference use of a user-stated fact as one factor of a relationship the person did not assert (§23).
+- **[R-22 — interpretive clarification]** For restatement, "stated" means the person's asserted meaning: a belief, generalization, self-description, explanation, preference or other assertion. It does not mean the mere fact that the person reported an event or occasion. A faithful description or derived association based on reported events is therefore not RESTATED merely because the events were expressed in conversation. A paraphrase of an actual assertion is still RESTATED. E1–E5, E6, R-19 and fail-closed `UNCERTAIN` are unchanged (§32 R-22).
 - **UNCERTAIN.** Any doubt. It rejects.
 - Applies identically to every domain and language; it uses no list of phrases, synonyms, sentence patterns or topics.
 
@@ -1335,7 +1337,35 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
   - Order, spacing and the null local date/time of conversation turns (§20.4) are preserved. Temporal semantics are unchanged.
   - Request content changes, so harness 3.0 recordings replay as diverged.
 
-**Next.** A separately Product-approved verifier-probe run on the revised instructions. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
+**Run 2 (Product-approved; 2026-10-07; harness 3.1.0; Verifier instruction `0f86c3d8…8430`).**
+- **Calls and cost:** 72 real Verifier calls and no Generator call; billed cost $0.139861.
+- **Evidence:** artifact SHA-256 `04290e46c8542fb94556de43b744adcbd592c04fa88ffc9e07154edccc1145ab`; score SHA-256 `1b96be4f6b3e1f44e97150c8b0d272ce4389bdbdcd563497746e237eb2a5c3b8`; run 1 vs run 2 comparison SHA-256 `c85830fc3fd15d667ef600db542df9e8ff07efa970ccd0ae1311d14a0389b8b0`.
+- **Structural:** no stage failure, and CAL-D7 met on the Verifier stage. 7 `VERIFICATION_MALFORMED` items remained, mostly omitted `NOT_APPLICABLE` keys.
+- **Safety:** no missed Safety veto.
+- **Pass-truth plans:** 0 authorized; 20 vetoed and 1 with no usable verdict. Run 2 is not gate evidence.
+
+**Truth audit and corpus `verifier-probes-v1.2` (Product-approved).** Every probe was audited against every dimension that applies to its operation.
+- **Corrections:** the seven pass-truth probes were corrected where their wording supported a veto on another applicable dimension, or was ambiguous:
+  - a comparative with no observed baseline;
+  - a self-description ("normal for me");
+  - a duration claimed from one occasion;
+  - a word the turns did not use (the claim said "long" where the person said "busy");
+  - the act-of-recording framing (R-9);
+  - a connective implying the person's own belief.
+- **Complete answer keys:** each pass-truth probe now names every applicable dimension, and the harness refuses an incomplete pass-truth answer key or one that names a dimension inapplicable to the operation.
+- **Unchanged:** the seventeen veto-truth probes.
+- **Corpus hash:** `8d0dad38c584fb9165aa91793dd9ea5301a3d0dca3bcd7084a29b1bad0e07633`.
+- **Effect on runs 1 and 2:** both remain valid evidence of Verifier behaviour on the v1.1 inputs. Some of their pass-truth vetoes were correct under the audit, and run 3 is directly comparable only on the veto-truth probes.
+
+**Instruction revision after run 2.**
+- **Semantic:** R-21 (§20.3) is stated under `temporal` and `unsupported`, and R-22 (§22.4) under `restatement`.
+- **Structural:** every entry has all five dimension keys, with `NOT_APPLICABLE` exactly where §15.5 requires it.
+- **Unchanged:** the parser, envelope and failure contracts, fail-closed behaviour, the thresholds, the profiles and the Generator instruction.
+- **Verifier instruction SHA-256:** `8578760368fbea1b0645a0f50fe3eb75fc29b5884de382fba9edbffb8b725135`.
+- **Generator instruction SHA-256:** unchanged at `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`.
+- **Not frozen.**
+
+**Next.** Verifier-probe run 3 on corpus `verifier-probes-v1.2`, only with separate Product approval. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
 
 ---
 
@@ -1396,6 +1426,15 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
     - It has no later role in prompt tuning or evaluation decisions.
     - The held-out corpus is sealed (its SHA-256 recorded) before any prompt tuning begins (§31.3).
   - No runtime behaviour, contract, acceptance criterion or architecture rule changes.
+- **R-21 — Observed ordering and association (Product ruling after verifier-probe run 2; interpretive clarification of existing canon, not a change to Product semantics).**
+  - An ordering or association directly supported by the cited observations, including one observed event having followed or accompanied another, is not by itself an invented temporal claim or an unsupported inference.
+  - It does not authorize a claim that the relationship always or usually occurs, is a routine or schedule, has a duration, is permanent, will continue or will recur, unless the evidence supports that stronger meaning.
+  - Unsupported ordering remains fail-closed, and `UNCERTAIN` remains a veto.
+  - Entailed by §20.3 (faithful re-expression; unsupported inference), §15.5 (`temporal`, `unsupported`) and the association formulation of §15.1; recorded at §20.3.
+- **R-22 — Meaning of "stated" in restatement (Product ruling after verifier-probe run 2; interpretive clarification of §22.4, not a change to Product semantics).**
+  - For restatement evaluation, "stated" is the person's asserted meaning — a belief, generalization, self-description, explanation, preference or other assertion — not merely the fact that the person reported an event or occasion.
+  - A faithful description or derived association based on reported events is therefore not automatically RESTATED merely because the events were expressed in conversation.
+  - It does not permit a paraphrase of an actual assertion to become new knowledge. The deterministic restatement rules (E1–E5), E6, R-19 and fail-closed `UNCERTAIN` are unchanged; recorded at §22.4.
 
 **Pending Product/Architecture decisions and dependencies (v1.2).**
 - **[v1.2]** Product/Architecture review of v1.2 together with MRS-001 — **RESOLVED / APPROVED**.
@@ -1583,3 +1622,10 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
   - Records the new instruction hashes (Generator `687b9e3d…6d1b`, Verifier `0f86c3d8…8430`). The prompts are not frozen.
   - Records the harness 3.1.0 and scorer corrections: billed-only cost totals, probe rates over usable verdicts with structural outcomes reported separately, a plan-level pass-truth measure, and the 1970 synthetic-timestamp correction with temporal semantics unchanged.
   - Unchanged: Product semantics (including R-19), the parser, the envelope and failure contracts, fail-closed behaviour, the §15.5 vocabularies and applicability, the §31.2 thresholds, the R-20 targets, the default profiles, every acceptance criterion and the closure criteria. The Work Item status line is unchanged: NOT CLOSED — NOT LIVE.
+- **v1.2** (calibration record: verifier-probe run 2, truth audit, Product rulings R-21 and R-22) — Interpretive clarifications and calibration only (§15.4, §20.3, §22.4, §31.5, §32, §36).
+  - Records run 2 (72 Verifier calls; $0.139861 billed) and its evidence hashes. It is not gate evidence.
+  - Records the truth audit and corpus `verifier-probes-v1.2` (`8d0dad38…7633`): seven pass-truth probes corrected with complete answer keys; seventeen veto-truth probes unchanged.
+  - R-21: observed ordering or association is not by itself an invented temporal claim; stronger meanings still need evidence.
+  - R-22: "stated" in restatement means asserted meaning, not a reported occasion. Both are interpretive clarifications of existing canon, not changes to Product semantics.
+  - Verifier instruction: R-21, R-22 and the five-key verdict rule (`8578…5135`). The Generator instruction is unchanged. The prompts are not frozen.
+  - Unchanged: the parser, envelope and failure contracts, fail-closed behaviour, E1–E6, R-19, the §15.5 vocabularies and applicability, the §31.2 thresholds, the R-20 targets, the default profiles, every acceptance criterion and the closure criteria. NOT CLOSED — NOT LIVE.
