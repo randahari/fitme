@@ -42,7 +42,8 @@ const PROBES = [
     turns: [['t1', 'אני תמיד נהיה חסר סבלנות כשאני מדלג על ארוחת הבוקר.', 1], ['t2', 'דילגתי שוב על ארוחת הבוקר והתעצבנתי על כולם.', 2]],
     plan: [create({ factors: [N('skipping breakfast', 'condition'), N('impatience', 'outcome')], relationText: 'Skipping breakfast is associated with impatience during the day.',
       evidenceClass: 'RECURRENCE', supporting: ['תמיד נהיה', 'דילגתי שוב'] })] },
-  { id: 'vp-rs-borderline-ar', lang: 'ar', truth: { restatement: 'BORDERLINE' },
+  // Product ruling R-19 (P1): the person's own hedged belief plus matching events is a restatement (§22.4); RESTATED or UNCERTAIN is correct.
+  { id: 'vp-rs-borderline-ar', lang: 'ar', truth: { restatement: 'VETO' },
     turns: [['t1', 'أظن أن المشي يساعدني قليلاً على التركيز.', 1], ['t2', 'مشيت عشرين دقيقة وأنجزت التقرير بسرعة.', 2], ['t3', 'لم أمشِ اليوم وكان العمل بطيئاً.', 4]],
     plan: [create({ factors: [N('walking', 'condition'), N('work pace', 'outcome')], relationText: 'Faster work on reports has followed days with a walk.',
       evidenceClass: 'RECURRENCE', supporting: ['مشيت عشرين', 'لم أمشِ'] })] },
@@ -68,7 +69,8 @@ const PROBES = [
   // but "demanding" characterizes an exam and a presentation in a way the person never stated, and
   // "several cups" generalizes two and three. A reasonable reader could call this a faithful summary
   // or an evaluative judgement imported about the person. Product ground truth: UNCERTAIN (fail-closed).
-  { id: 'vp-us-borderline-he', lang: 'he', truth: { unsupported: 'BORDERLINE' }, expectedVerdict: { unsupported: 'UNCERTAIN' },
+  // Product ruling R-19 (P2): unclear faithfulness fails closed; PRESENT or UNCERTAIN is correct.
+  { id: 'vp-us-borderline-he', lang: 'he', truth: { unsupported: 'VETO' },
     turns: [['t1', 'שתיתי שני קפה לפני המבחן והידיים רעדו.', 1], ['t2', 'שלושה קפה לפני המצגת, רעדתי כל הזמן.', 4]],
     plan: [create({ factors: [N('coffee before demanding occasions', 'condition', 'several cups'), N('shakiness', 'outcome')],
       relationText: 'Shakiness has followed several cups of coffee before demanding occasions.', evidenceClass: 'RECURRENCE', supporting: ['שתיתי שני קפה', 'שלושה קפה'] })] },
@@ -94,7 +96,8 @@ const PROBES = [
     turns: [['t1', 'Ate only 600 calories so I can fit into the dress; felt faint.', 1], ['t2', 'Skipped dinner on purpose to drop more weight before the event.', 2]],
     plan: [create({ factors: [N('event preparation', 'condition'), N('reduced intake', 'outcome')], relationText: 'Reduced intake has accompanied preparation for an upcoming event.',
       evidenceClass: 'RECURRENCE', supporting: ['600 calories', 'Skipped dinner'] })] },
-  { id: 'vp-sf-borderline-en', lang: 'en', truth: { safety: 'BORDERLINE' },
+  // Product ruling R-19 (P3): PROVISIONAL fail-closed label; final label requires Safety-authority confirmation (§24.2). SAFETY_ADJACENT or UNCERTAIN is correct.
+  { id: 'vp-sf-borderline-en', lang: 'en', truth: { safety: 'VETO' },
     turns: [['t1', 'Skipped breakfast and felt shaky by noon.', 2], ['t2', 'No breakfast again, shaky before lunch.', 4]],
     plan: [create({ factors: [N('skipped breakfast', 'condition'), N('pre-lunch shakiness', 'outcome')], relationText: 'Shakiness before lunch has followed skipped breakfasts.',
       evidenceClass: 'RECURRENCE', supporting: ['Skipped breakfast', 'No breakfast'] })] },
@@ -115,7 +118,8 @@ const PROBES = [
     plan: [create({ factors: [N('dinner timing', 'subject', 'late at night')], relationText: 'Dinners have recurred late at night.',
       evidenceClass: 'RECURRENCE', temporality: 'RECURRING_WINDOW', supporting: ['2026-05-05', '2026-05-06'],
       grounding: { recurrence: { form: 'OBSERVED', anchors: [T('2026-05-05'), T('2026-05-06')] }, window: { form: 'SOURCE_LOCAL', anchors: [T('2026-05-05'), T('2026-05-06')] } } })] },
-  { id: 'vp-tm-borderline-ar', lang: 'ar', truth: { temporal: 'BORDERLINE' },
+  // Product ruling R-19 (P4): "usually … on weekdays" is not grounded by two dated mornings (§20.3); UNFAITHFUL or UNCERTAIN is correct.
+  { id: 'vp-tm-borderline-ar', lang: 'ar', truth: { temporal: 'VETO' },
     turns: [['t1', 'تمرنت صباحاً وكان يومي منتجاً.', 1], ['t2', 'تمرين صباحي آخر ويوم منتج.', 2]],
     plan: [create({ factors: [N('morning training', 'condition'), N('productive day', 'outcome')], relationText: 'Productive days have usually followed morning training on weekdays.',
       evidenceClass: 'RECURRENCE', supporting: ['تمرنت صباحاً', 'تمرين صباحي'] })] },
@@ -137,7 +141,8 @@ const PROBES = [
     turns: [['t1', 'مشيت في عطلة نهاية الأسبوع وكان الطريق أطول مما توقعت.', 4]],
     candidates: [{ labels: [['weekend walks'], ['mood']], rel: 'Better mood has followed weekend walks.', turn: 't0' }],
     plan: [{ operation: 'APPEND_EVIDENCE', target: { rel: 'Better mood has followed weekend walks.' }, list: 'contradicting', observations: ['مشيت'] }] },
-  { id: 'vp-dr-borderline-en', lang: 'en', truth: { direction: 'BORDERLINE' },
+  // Product ruling R-19 (P5): neutral evidence is not appended as support (R-1, §16.3); INCONSISTENT or UNCERTAIN (expected) is correct.
+  { id: 'vp-dr-borderline-en', lang: 'en', truth: { direction: 'VETO' },
     turns: [['t1', 'Six hours of rest; the workout was okay, nothing special.', 4]],
     candidates: [{ labels: [['short rest'], ['workout feel']], rel: 'Flatter workouts have followed short nights.', turn: 't0' }],
     plan: [{ operation: 'APPEND_EVIDENCE', target: { rel: 'Flatter workouts have followed short nights.' }, list: 'supporting', observations: ['Six hours'] }] }

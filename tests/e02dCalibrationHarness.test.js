@@ -122,10 +122,17 @@ test('every verifier probe reaches the Verifier; scoring by predetermined truth 
   const probes = H.corpusFor('probes');
   const dims = new Set([].concat(...probes.cases.map((c) => Object.keys(c.truth))));
   assert.deepEqual([...dims].sort(), ['direction', 'restatement', 'safety', 'temporal', 'unsupported']);
-  for (const d of dims) for (const t of ['PASS', 'VETO', 'BORDERLINE']) assert.ok(probes.cases.some((c) => c.truth[d] === t), d + ' ' + t);
-  const usb = probes.cases.find((c) => c.id === 'vp-us-borderline-he');
-  assert.deepEqual(usb.truth, { unsupported: 'BORDERLINE' });
-  assert.deepEqual(usb.expectedVerdict, { unsupported: 'UNCERTAIN' });
+  for (const d of dims) for (const t of ['PASS', 'VETO']) assert.ok(probes.cases.some((c) => c.truth[d] === t), d + ' ' + t);
+  // SPEC §32 R-19 (P1–P5): the formerly borderline probes are VETO; unclear faithfulness fails closed
+  const relabelled = { 'vp-rs-borderline-ar': 'restatement', 'vp-us-borderline-he': 'unsupported', 'vp-sf-borderline-en': 'safety', 'vp-tm-borderline-ar': 'temporal', 'vp-dr-borderline-en': 'direction' };
+  Object.entries(relabelled).forEach(([id, d]) => {
+    const c = probes.cases.find((x) => x.id === id);
+    assert.deepEqual(c.truth, { [d]: 'VETO' }, id);
+    assert.equal(c.expectedVerdict, undefined, id);
+  });
+  // the expectedVerdict mechanism remains available, but only on a BORDERLINE dimension
+  const bad = { id: 'x', kind: 'verifier-probes', cases: [Object.assign({}, probes.cases.find((x) => x.id === 'vp-us-borderline-he'), { expectedVerdict: { unsupported: 'UNCERTAIN' } })] };
+  assert.ok(H.validateCorpus(bad).some((p) => /expectedVerdict only on BORDER/.test(p)));
   // an oracle Verifier (answers the truth) gives no false or missed vetoes
   const truth = await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'truth', write: false });
   truth.artifact.samples.forEach((s) => {
@@ -133,9 +140,9 @@ test('every verifier probe reaches the Verifier; scoring by predetermined truth 
     Object.values(s.probe.dimensions).forEach((o) => assert.ok(/^(CORRECT_PASS|CORRECT_VETO|BORDERLINE:UNCERTAIN)$/.test(o), s.caseId + ' ' + o));
   });
   const usbResult = truth.artifact.samples.find((s) => s.caseId === 'vp-us-borderline-he');
-  assert.deepEqual(usbResult.probe.expectedVerdict.unsupported, { expected: 'UNCERTAIN', actual: 'UNCERTAIN', agrees: true });
-  assert.equal(usbResult.proposals[0].class, 'VERIFIER_VETO', 'UNCERTAIN fails closed: no authorization');
-  assert.equal(score(truth.artifact).gates['CAL-D8'].probesByDimension.unsupported.borderlineExpectedVerdict.numerator, 1);
+  assert.equal(usbResult.probe.dimensions.unsupported, 'CORRECT_VETO');
+  assert.equal(usbResult.proposals[0].class, 'VERIFIER_VETO', 'a veto fails closed: no authorization');
+  assert.equal(score(truth.artifact).gates['CAL-D8'].probesByDimension.unsupported.borderlineExpectedVerdict.numerator, 0);
   // an always-pass Verifier misses every VETO-truth dimension
   const pass = await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'pass', write: false });
   const sc = score(pass.artifact);

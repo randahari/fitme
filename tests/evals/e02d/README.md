@@ -206,7 +206,7 @@ question does not apply.
 | `directionCorrect` | For APPEND: does every observation bear on the target relation in the declared list? |
 | `notes` | Free text, including suspected semantic concept shadowing |
 
-A borderline probe may carry an `expectedVerdict` fixed by Product (for example `vp-us-borderline-he`: `unsupported` → `UNCERTAIN`, which fails closed). `score.js` reports agreement with it separately.
+A probe dimension labelled `BORDERLINE` may carry an `expectedVerdict` fixed by Product in advance (for example `UNCERTAIN`, which fails closed); `score.js` reports agreement with it separately. No current probe uses it: under SPEC §32 R-19, the formerly borderline probes are labelled `VETO`, with `UNCERTAIN` counted as a correct, fail-closed veto.
 
 Borderline probe truths are fixed **before** any run, by Product and, where needed, the Safety
 authority. They are never relabelled after seeing outputs.
@@ -277,13 +277,14 @@ and listed. Synthetic (dry-run) artifacts are labelled "not calibration evidence
 
 1. Free: run the self-test, all dry-runs, `E02D_PLAN_ONLY` budget statements and the price table, then
    seek Product approval of each paid step.
-2. Paid, approved: run the probes (`verifier-probes`) to calibrate the Verifier per dimension.
-3. Paid, approved: run end-to-end on development, then review the rows by hand and score them.
-4. Optional, paid, approved: run `generator-only` diagnostics, or Generator model experiments through
-   the override.
-5. Free: iterate on prompts against development and probes, replaying where the requests are unchanged.
-6. Free: run end-to-end on regression-16 (paid only if approved) to confirm interpretation behaviour.
-7. Freeze the prompts and record their hashes in the manifest.
-8. An independent author delivers the held-out corpus, and its hash is recorded.
+2. An independent author delivers the held-out corpus, and its hash is recorded **before any prompt
+   tuning begins** (SPEC §31.3; author isolation per SPEC §32 R-20).
+3. Paid, approved: run the probes (`verifier-probes`) to calibrate the Verifier per dimension.
+4. Paid, approved: run end-to-end on development, then review the rows by hand and score them.
+5. Optional, paid, approved: run `generator-only` diagnostics, or Generator model experiments through a
+   complete Generator profile (`E02D_GENERATOR_PROFILE`).
+6. Free: iterate on prompts against development and probes, replaying where the requests are unchanged.
+7. Free: run end-to-end on regression-16 (paid only if approved) to confirm interpretation behaviour.
+8. Freeze the prompts and record their hashes in the manifest.
 9. Paid, approved: run end-to-end on the held-out corpus once, then review it by hand.
 10. `score.js` produces the measures. Product/Architecture decides closure.
