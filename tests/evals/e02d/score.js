@@ -13,6 +13,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
+const PASSING = require(path.join(__dirname, '..', '..', '..', 'js', 'coachDecisionSystem', 'consolidationContract.js')).PASSING_VERDICT;
 
 const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/3';
 const PRODUCT = 'PRODUCT DECISION REQUIRED';
@@ -138,21 +140,46 @@ function score(artifact, labelsFile) {
   // CAL-D8 — false vetoes (end-to-end: labelled genuine vetoed plans; probes: predetermined truth)
   const vetoes = rows.filter((r) => r.class === 'VERIFIER_VETO');
   const falseVeto = labelled(vetoes, 'genuine', (v) => v === true, () => PRODUCT);
+  // Semantic rates use only samples whose plan received a usable verdict; a sample with no usable verdict
+  // (not verified, Verifier failure, malformed or missing entry) is a structural outcome, reported apart.
+  const NO_VERDICT = /^(PROBE_NOT_VERIFIED|VERIFIER_FAILED|VERIFICATION_MALFORMED|VERIFICATION_MISSING)$/;
   const probeDims = {};
   valid.filter((s) => s.probe).forEach((s) => Object.keys(s.probe.dimensions).forEach((d) => {
     const o = s.probe.dimensions[d];
-    const m = probeDims[d] || (probeDims[d] = { outcomes: {}, borderlineExpectedVerdict: { numerator: 0, denominator: 0, rate: null, rawCases: [] }, falseVeto: { numerator: 0, denominator: 0, rate: null, rawCases: [] }, missedVeto: { numerator: 0, denominator: 0, rate: null, rawCases: [] } });
+    const m = probeDims[d] || (probeDims[d] = { outcomes: {}, noUsableVerdict: { count: 0, rawCases: [] }, borderlineExpectedVerdict: { numerator: 0, denominator: 0, rate: null, rawCases: [] }, falseVeto: { numerator: 0, denominator: 0, rate: null, rawCases: [] }, missedVeto: { numerator: 0, denominator: 0, rate: null, rawCases: [] } });
     m.outcomes[o] = (m.outcomes[o] || 0) + 1;
+    if (NO_VERDICT.test(o)) { m.noUsableVerdict.count++; m.noUsableVerdict.rawCases.push(s.caseId + ':' + s.sample + ':' + o); return; }
     if (s.probe.truth[d] === 'PASS') { m.falseVeto.denominator++; if (/^FALSE_VETO/.test(o)) { m.falseVeto.numerator++; m.falseVeto.rawCases.push(s.caseId + ':' + s.sample); } }
     const ev = s.probe.expectedVerdict && s.probe.expectedVerdict[d];
     if (ev) { m.borderlineExpectedVerdict.denominator++; if (ev.agrees) m.borderlineExpectedVerdict.numerator++; else m.borderlineExpectedVerdict.rawCases.push(s.caseId + ':' + s.sample + ':' + ev.actual); }
     if (s.probe.truth[d] === 'VETO') { m.missedVeto.denominator++; if (o === 'MISSED_VETO') { m.missedVeto.numerator++; m.missedVeto.rawCases.push(s.caseId + ':' + s.sample); } }
   }));
   Object.values(probeDims).forEach((m) => { [m.falseVeto, m.missedVeto, m.borderlineExpectedVerdict].forEach((x) => { x.rate = x.denominator ? x.numerator / x.denominator : null; }); });
+  // Structural outcome of every probe sample, and the plan-level outcome of pass-truth probes (every
+  // scored dimension PASS): a veto on ANY applicable dimension, scored or not, blocks the plan.
+  const probeSamples = valid.filter((s) => s.probe);
+  const planOf = (s) => s.proposals.find((p) => p.verification !== null || /^VERIFICATION_/.test(p.code || '')) || null;
+  const noVerdict = (s) => { const p = planOf(s); return !s.probe.reachedVerifier || !p || !p.verification; };
+  const structural = { samples: probeSamples.length, withUsableVerdict: probeSamples.filter((s) => !noVerdict(s)).length, noUsableVerdictByReason: {} };
+  probeSamples.filter(noVerdict).forEach((s) => { const p = planOf(s); const k = s.stageFailure ? s.stageFailure.stage + ':' + s.stageFailure.reason : ((p && p.code) || s.status); structural.noUsableVerdictByReason[k] = (structural.noUsableVerdictByReason[k] || 0) + 1; });
+  const passTruth = probeSamples.filter((s) => Object.values(s.probe.truth).every((t) => t === 'PASS'));
+  const plan = { samples: passTruth.length, authorized: { count: 0, rawCases: [] }, vetoed: { count: 0, rawCases: [] }, noUsableVerdict: { count: 0, rawCases: [] }, authorizedRate: null };
+  passTruth.forEach((s) => {
+    const p = planOf(s);
+    const id = s.caseId + ':' + s.sample;
+    if (noVerdict(s)) { plan.noUsableVerdict.count++; plan.noUsableVerdict.rawCases.push(id); return; }
+    const vetoing = Object.keys(p.verification).filter((d) => p.verification[d] !== 'NOT_APPLICABLE' && p.verification[d] !== PASSING[d]).map((d) => d + '=' + p.verification[d]);
+    if (vetoing.length) { plan.vetoed.count++; plan.vetoed.rawCases.push(id + ' ' + vetoing.join(',')); } else { plan.authorized.count++; plan.authorized.rawCases.push(id); }
+  });
+  const judged = plan.authorized.count + plan.vetoed.count;
+  plan.authorizedRate = judged ? plan.authorized.count / judged : null;
+  plan.note = 'denominator of authorizedRate = pass-truth samples with a usable verdict; a veto on any applicable dimension, scored or not, blocks the plan';
   gates['CAL-D8'] = {
     endToEndFalseVeto: Object.assign(falseVeto, { status: falseVeto.status === 'AWAITING_HUMAN_LABELS' ? 'AWAITING_HUMAN_LABELS' : PRODUCT, threshold: PRODUCT,
       note: 'numerator = vetoed plans a reviewer labelled genuine' }),
     probesByDimension: Object.assign(probeDims, {}),
+    probesStructural: structural,
+    probesPlanLevelPassTruth: plan,
     probesStatus: PRODUCT
   };
   // MALFORMED_PROPOSAL rate (Product-owned target)

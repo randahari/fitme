@@ -312,3 +312,70 @@ test('the budget statement is read-only with respect to Generator, Verifier and 
   await Interpreter.interpret({ observations: [], concepts: [], records: [], userStated: [] });
   assert.deepEqual(seen, ['sentinel-verifier-model', CC.DEFAULT_GENERATOR_PROFILE.model]);
 });
+
+test('accounting bills REAL calls only; scripted and replayed entries are priced separately and never added to the billed total', async () => {
+  const d = await dry({ corpus: 'probes', mode: 'verifier-probes', prices: PRICES, write: false });
+  const a = d.artifact.accounting;
+  assert.equal(a.total.billedCalls, 0);
+  assert.equal(a.total.cost, 0, 'a dry run bills nothing');
+  assert.ok(a.total.notBilledEstimatedCost > 0, 'synthetic estimates are still reported, apart');
+  const verdict = { item: 'p1', restatement: 'NOT_RESTATED', unsupported: 'NONE', safety: 'NOT_SAFETY_ADJACENT', temporal: 'FAITHFUL', direction: 'NOT_APPLICABLE' };
+  let sent = 0;
+  const fake = async () => { sent++; return { content: [{ type: 'text', text: JSON.stringify({ verdicts: [verdict] }) }], stop_reason: 'end_turn', usage: { input_tokens: 1000, output_tokens: 100 } }; };
+  const r = await H.runCalibration({ corpus: 'probes', mode: 'verifier-probes', only: ['vp-us-clean-en'], samples: 2, write: false, paidApproval: { maxCostUsd: 100 }, prices: PRICES, realSend: fake });
+  const s = r.artifact.accounting.stages;
+  assert.equal(sent, 2);
+  assert.deepEqual(s.GENERATOR.bySource, { SYNTHETIC: 2 });
+  assert.equal(s.GENERATOR.billedCalls, 0);
+  assert.equal(s.GENERATOR.cost, 0, 'scripted Generator plans are not billed');
+  assert.ok(s.GENERATOR.notBilledEstimatedCost > 0);
+  assert.equal(s.VERIFIER.billedCalls, 2);
+  assert.ok(Math.abs(s.VERIFIER.cost - 2 * (1000 / 1e6 * 1 + 100 / 1e6 * 5)) < 1e-12);
+  assert.equal(r.artifact.accounting.total.cost, s.VERIFIER.cost, 'the billed total is the REAL calls only');
+  assert.equal(r.artifact.accounting.total.billedCalls, 2);
+});
+
+test('probe scoring excludes samples with no usable verdict from semantic rates and reports plan-level outcomes of pass-truth probes', async () => {
+  const passTruthIds = H.corpusFor('probes').cases.filter((c) => Object.values(c.truth).every((t) => t === 'PASS')).map((c) => c.id);
+  assert.ok(passTruthIds.length > 0);
+  // every verification fails: nothing is a false or missed veto, everything is structural
+  const failed = score((await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'fail', write: false })).artifact).gates['CAL-D8'];
+  Object.entries(failed.probesByDimension).forEach(([d, m]) => {
+    assert.equal(m.falseVeto.denominator, 0, d);
+    assert.equal(m.missedVeto.denominator, 0, d);
+    assert.ok(m.noUsableVerdict.count > 0, d);
+  });
+  assert.equal(failed.probesStructural.withUsableVerdict, 0);
+  assert.equal(failed.probesStructural.noUsableVerdictByReason['VERIFIER:TRANSPORT_FAILED'], failed.probesStructural.samples);
+  assert.equal(failed.probesPlanLevelPassTruth.noUsableVerdict.count, passTruthIds.length);
+  assert.equal(failed.probesPlanLevelPassTruth.authorizedRate, null);
+  // the oracle passes every pass-truth plan
+  const oracle = score((await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'truth', write: false })).artifact).gates['CAL-D8'];
+  assert.equal(oracle.probesStructural.withUsableVerdict, oracle.probesStructural.samples);
+  assert.equal(oracle.probesPlanLevelPassTruth.samples, passTruthIds.length);
+  assert.equal(oracle.probesPlanLevelPassTruth.authorized.count, passTruthIds.length);
+  assert.equal(oracle.probesPlanLevelPassTruth.authorizedRate, 1);
+  // a veto on an UNSCORED dimension still blocks the plan and is reported at plan level
+  const vetoAll = score((await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: { veto: { restatement: 'RESTATED' } }, write: false })).artifact).gates['CAL-D8'];
+  assert.equal(vetoAll.probesPlanLevelPassTruth.vetoed.count, passTruthIds.length);
+  assert.equal(vetoAll.probesPlanLevelPassTruth.authorizedRate, 0);
+  assert.ok(vetoAll.probesPlanLevelPassTruth.vetoed.rawCases.every((x) => /restatement=RESTATED/.test(x)));
+});
+
+test('synthetic observations sit on a realistic calendar; conversation turns keep null local date/time and agree with same-case day logs', async () => {
+  const r = await dry({ corpus: 'probes', mode: 'verifier-probes', write: false });
+  const all = [].concat(...r.artifact.samples.map((s) => s.calls.find((c) => c.stage === 'VERIFIER').request.observations));
+  const turns = all.filter((o) => o.observedAt !== null);
+  assert.ok(turns.length > 0 && all.some((o) => o.localDate !== null), 'both sources are rendered');
+  turns.forEach((o) => {
+    assert.ok(/^2026-/.test(o.observedAt), o.observedAt);
+    assert.equal(o.localDate, null, 'conversation turns carry no local date (§20.4)');
+    assert.equal(o.localTime, null, 'conversation turns carry no local time (§20.4)');
+  });
+  // in every case with day logs, offset d of any source falls on that case's day key for offset d
+  ['development', 'regression', 'probes'].forEach((name) => H.corpusFor(name).cases.filter((c) => c.days).forEach((c) => {
+    const base = H.caseBaseEpochMs(c);
+    c.days.forEach(([key, d]) => assert.equal(new Date(base + d * 86400000).toISOString().slice(0, 10), key, c.id));
+  }));
+  assert.equal(H.caseBaseEpochMs({ turns: [] }), Date.UTC(2026, 4, 1));
+});

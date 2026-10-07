@@ -169,3 +169,39 @@ test('v1.2 §27.1 (module level): an invalid profile leaves the stage unconfigur
   assert.equal((await CALL()).reason, 'REASONING_NOT_PERMITTED');
   S.configure({});
 });
+
+test('probe-driven output rule: exactly one raw JSON object, no fence, no rationale, no text around it', () => {
+  const s = V._internal.INSTRUCTION;
+  assert.match(s, /exactly one raw JSON object and nothing else/);
+  assert.match(s, /Do not wrap it in a code fence or any other Markdown/);
+  assert.match(s, /write no rationale, reasoning, explanation or note, and no other text, before or after it/);
+});
+
+test('probe-driven applicability: fixed by operation; APPEND answers restatement, safety and direction; NOT_APPLICABLE never for an applicable dimension', () => {
+  const CC = require(path.join(ROOT, 'js/coachDecisionSystem/consolidationContract.js'));
+  const s = V._internal.INSTRUCTION;
+  assert.match(s, /Applicability is fixed by the operation/);
+  assert.match(s, /CREATE and SUPERSEDE: answer restatement, unsupported, safety and temporal; direction is NOT_APPLICABLE/);
+  assert.match(s, /APPEND_EVIDENCE: answer restatement, safety and direction; unsupported and temporal are NOT_APPLICABLE/);
+  assert.match(s, /Never answer NOT_APPLICABLE for a dimension that applies/);
+  assert.match(s, /safety - this applies to every operation; for APPEND_EVIDENCE judge the target's claim and every observation the item lists/);
+  // the stated applicability is exactly the contract's
+  Object.entries(CC.VERDICT_APPLICABILITY).forEach(([op, dims]) => {
+    const line = s.split('\n').find((l) => l.startsWith('Applicability is fixed'));
+    const part = op === 'APPEND_EVIDENCE' ? line.slice(line.indexOf('APPEND_EVIDENCE:')) : line.slice(line.indexOf('CREATE and SUPERSEDE:'), line.indexOf('APPEND_EVIDENCE:'));
+    const answered = part.slice(0, part.indexOf(';'));
+    Object.entries(dims).forEach(([d, applies]) => assert.equal(answered.indexOf(d) !== -1, applies, op + ' ' + d));
+  });
+});
+
+test('probe-driven semantics restate only the canonical §22.4 / §15.5 / §20.1 meanings and keep fail-closed UNCERTAIN', () => {
+  const s = V._internal.INSTRUCTION;
+  assert.match(s, /is a reported event, not an assertion: a faithful description of reported events is not by itself a restatement/);
+  assert.match(s, /Combining the person's assertion with events they reported does not make it new/);
+  assert.match(s, /Judge only the relation text, values and new concept labels: the evidenceClass and temporality values are not content for this question/);
+  assert.match(s, /DURABLE - no known end; TEMPORARY - a bounded or passing period; RECURRING_WINDOW - a time window that recurs/);
+  assert.match(s, /DURABLE itself states no time, duration, routine or permanence/);
+  assert.match(s, /a recurrence the cited observations show is not by itself UNFAITHFUL/);
+  assert.match(s, /UNCERTAIN when unsure/);
+  assert.match(s, /UNCERTAIN is always allowed and is the right answer whenever you cannot decide/);
+});

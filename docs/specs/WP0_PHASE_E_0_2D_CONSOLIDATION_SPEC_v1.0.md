@@ -446,7 +446,7 @@ Rules:
 **[v1.2]** One request per pass, built from the Generator's request profile `P` (§27.1): `{ model: P.model, max_tokens: P.maxOutputTokens, <P.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
 - Key order: `model`, `max_tokens`, the binding's fields in their stated order, then `messages`.
 - Sent once through the injected transport with `P.timeoutMs`; no retry inside a pass (MRE-001).
-- The prompt is unchanged from v1.1.
+- **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for one structural output-discipline clarification made after verifier-probe run 1 (§31.5): one raw JSON object, with no code fence, rationale or other text. No semantic instruction of the Generator changed. **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
 - **[HISTORICAL — v1.1]** v1.1 body: `{ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `TIMEOUT_MS`.
 
 Instruction requirements (verified by AC-D9 … AC-D11, AC-D55):
@@ -513,7 +513,7 @@ Factor:
 - **Body [v1.2].** Built from the Verifier's request profile `V` (§27.1): `{ model: V.model, max_tokens: V.maxOutputTokens, <V.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
   - Key order as in §15.1.
   - Sent once through the injected transport with `V.timeoutMs`; no retry inside a pass (MRE-001).
-  - The prompt is unchanged from v1.1.
+  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
   - **[HISTORICAL — v1.1]** v1.1 body: `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `VERIFIER_TIMEOUT_MS`.
 - **Input blocks**, all rendered deterministically by the coordinator and framed as data with the standard injection clause:
   - `<observations>` — every observation presented to the Generator, rendered identically with the same keys (restatement is judged against all of the person's presented words, not only cited ones);
@@ -1286,6 +1286,57 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 - **Replay.** Recordings made under v1.1 request bodies do not match v1.2 request hashes and are not v1.2 evidence.
 - **Unchanged.** The corpus architecture (§31.3), gates other than CAL-D7, classification policy and sampling rules are unchanged. Run plans continue to set subsets, samples, budgets and stop conditions, each with Product approval.
 
+## 31.5 Verifier-probe run 1 and the probe-driven instruction revision — [v1.2; calibration record]
+
+**Run 1 (Product-approved; 2026-10-07).**
+- **Configuration:**
+  - mode `verifier-probes`, corpus `verifier-probes-v1.1` (24 cases, SHA-256 `a20748038466ec70a9dbb91f115d145277330bae5405c255dafc7b59b01fbc28`), 3 samples;
+  - the default Verifier profile (§27.1), harness 3.0.0, approved hard cap $1.00;
+  - Verifier instruction SHA-256 `25cead17aaeecc6c180c5ea1543bfad99432e9dc7548605b9b318eaa043aad10` and Generator instruction SHA-256 `be3c71e6a2a9c8eeca75d310a3e96a21448adb4c2df613a2b2bdfb019cc65a90` (the Generator was not called: probe plans are scripted).
+- **Calls and cost:** 72 real Verifier calls and no Generator call; billed cost $0.194869 (93,849 input and 20,204 output tokens).
+- **Evidence (outside the repository, at the Product-designated evidence root, R-20):** artifact SHA-256 `19b87215611cb5d403814982c00ff0853166f333b0624d8345454105ec102e94`; score output SHA-256 `11647eb671bb8f3d430ce67d738513387d1c5623c6bcba061defda555bbb92ac`.
+- **Outcome:** 41 `INVALID_ENVELOPE` stage failures, 6 `VERIFICATION_MALFORMED` items, 25 vetoes, 0 authorizations.
+  - Every envelope failure had one pattern: a fenced JSON answer followed by a prose rationale.
+  - Every malformed item was an APPEND_EVIDENCE verdict answering `NOT_APPLICABLE` for an applicable dimension (safety, sometimes restatement).
+  - The strict parser and the fail-closed, reject-only contract behaved as specified (§15.0, §15.6): nothing was written.
+- **Diagnostic recovery (evidence only, never gate evidence):** an offline recovery of the verdicts in the discarded responses (SHA-256 `72b83eac4eb5d76d2e1766858dc956ca8aca423cd27fc83234f097caf583c7f7`) showed no missed veto on any dimension. It also showed that every pass-truth probe would still have been vetoed:
+  - restatement on faithful descriptions of reported events;
+  - temporal and unsupported on `DURABLE` and on recurrence shown by the cited observations.
+- **Status of run 1:** it is not sufficient for any gate. Gate evidence comes only from later Product-approved runs on the revised instructions.
+
+**Probe-driven revision.** The two kinds of revision are kept separate.
+- **Structural output discipline:**
+  - Both stages now state that the answer is exactly one raw JSON object, with no code fence or other Markdown and no rationale, reasoning, explanation, note or other text before or after it.
+  - The Verifier also states the fixed applicability of §15.5: CREATE and SUPERSEDE answer restatement, unsupported, safety and temporal; APPEND_EVIDENCE answers restatement, safety and direction; `NOT_APPLICABLE` is never used for an applicable dimension. Safety applies to every operation.
+- **Semantic calibration (Verifier only; calibration tuning permitted on the probes, §31.3):** the Verifier instruction now restates existing canonical meanings.
+  - **§22.4:** a reported event is not an assertion. A faithful description of reported events is not by itself a restatement, and an association across reported occasions the person did not assert adds derived meaning. Combining an assertion with reported events still does not make it new.
+  - **§15.5:** `unsupported` judges only relation text, values and new concept labels. `evidenceClass` and `temporality` are not its content, and a recurrence the cited observations show is not by itself unsupported.
+  - **§20.1, §20.3, §20.4:** a temporality value is judged only against its meaning. `DURABLE` itself states no time, duration, routine or permanence. Repeated observation is the evidence class `RECURRENCE`, not a temporal statement. A null local date or time is unknown and is not a temporal statement.
+  - **R-19:** `UNCERTAIN` remains always allowed and fail-closed.
+- **Unchanged:**
+  - the canonical Product semantics, including R-19;
+  - the parser, the MRE-001 and MRS-001 envelope and structure contracts, and the §15.0 and §15.6 failure contract;
+  - fail-closed and reject-only behaviour;
+  - the §15.5 vocabularies and applicability;
+  - the §31.2 thresholds and the R-20 targets;
+  - the default stage profiles.
+- **Instruction hashes after the revision:**
+  - Generator `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`;
+  - Verifier `0f86c3d8b4ca313a5c494fcd43ef50172b2f6bd9733e7281aa36632134a58430`.
+- **Not frozen:** the instructions are **not frozen**. `frozenPrompts` in `tests/evals/e02d/heldout.manifest.json` remains null; freezing happens only at prompt freeze, before the single held-out run (§31.3).
+
+**Harness and scorer corrections (harness 3.1.0; calibration tooling only, no runtime or contract change).**
+- **Billed cost:** cost totals count real provider calls only. Scripted (`SYNTHETIC`) and replayed entries make no provider call; their priced token estimates are reported separately as `notBilledEstimatedCost`. Run 1's displayed total of $0.364846 included $0.169977 of non-billed estimates for the scripted Generator plans; the billed cost was $0.194869.
+- **Probe rates:**
+  - Probe false-veto and missed-veto rates exclude samples with no usable verdict. Those samples are reported as structural outcomes, by reason.
+  - A plan-level authorized/vetoed measure is reported for pass-truth probes, counting a veto on any applicable dimension, scored or not.
+- **Synthetic calendar:**
+  - Synthetic observation instants were offsets from the 1970 epoch, which contradicted the same case's 2026 day-log dates. They are now placed on a 2026 calendar aligned with each case's day-log dates.
+  - Order, spacing and the null local date/time of conversation turns (§20.4) are preserved. Temporal semantics are unchanged.
+  - Request content changes, so harness 3.0 recordings replay as diverged.
+
+**Next.** A separately Product-approved verifier-probe run on the revised instructions. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
+
 ---
 
 # 32. Pending Decisions, Repository Gaps, and Canonical Conflicts
@@ -1422,7 +1473,11 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
 - **Work Item status [v1.2]: IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING (PAUSED) — NOT CLOSED — NOT LIVE.**
   - **v1.2:** implemented jointly with MRS-001 in one atomic change, commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2` (§29.3). Full deterministic regression 3810/3810; the deterministic criteria AC-D1 … AC-D72 pass; zero model/API calls during implementation and verification.
   - **v1.1:** implemented in commit `c83b1825795bf68582aada900673816109752c62`. Its calibration infrastructure was implemented in commit `f6ae1a104f472420f92d6cffce2e4516049e0345`, with full deterministic regression 3767/3767 and zero network attempts.
-  - **Calibration:** no real-model calibration of v1.1 or v1.2 has run. The §31.4 precondition (MRS-001 and v1.2 implemented together and deterministically verified) is now satisfied. Real-model calibration remains PAUSED pending explicit Product approval of a run; AC-D90 remains unmet.
+  - **Calibration [v1.2 calibration record]:** real-model calibration of v1.2 has begun under per-run Product approval.
+    - Done so far: verifier-probe run 1 (2026-10-07; 72 Verifier calls) and the probe-driven instruction revision (§31.5).
+    - No end-to-end, regression or held-out run has occurred. The prompts are not frozen and AC-D90 remains unmet.
+    - Every further paid run requires explicit Product approval.
+    - **[HISTORICAL — before verifier-probe run 1]** This bullet read: no real-model calibration of v1.1 or v1.2 has run. The §31.4 precondition (MRS-001 and v1.2 implemented together and deterministically verified) is now satisfied. Real-model calibration remains PAUSED pending explicit Product approval of a run; AC-D90 remains unmet.
   - **Not live:** E.0.2d remains Node-only with no production caller (§08, §29). The deployment of MRS-001 (MRS-001 §22) does not make E.0.2d live.
   - **[HISTORICAL — v1.2 pre-implementation]** The previous Work Item status line read: v1.1 IMPLEMENTED — DETERMINISTICALLY VERIFIED — CALIBRATION INFRASTRUCTURE READY — REAL-MODEL CALIBRATION PENDING (PAUSED) — v1.2 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE. Its calibration bullet read: calibration is paused until MRS-001 and v1.2 are implemented together and deterministically verified (§29.3, §31.4); and it recorded v1.2 as not implemented.
   - **[HISTORICAL — v1.1]** The previous Work Item status line read: v1.0 BASELINE IMPLEMENTED / DETERMINISTICALLY VERIFIED / CALIBRATION FAILED — v1.1 REMEDIATION CANONICALIZED — v1.1 NOT IMPLEMENTED — NOT CLOSED — NOT LIVE.
@@ -1522,3 +1577,9 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
   - G-C (§33): inferred-knowledge uncertainty resolution.
   - P3's final label, the P6 development Safety labels and the CAL-D4 precision target await Safety-authority confirmation (§24.2).
   - No runtime, contract, acceptance-criterion or architecture change. Calibration remains PAUSED pending Product approval of a run.
+- **v1.2** (calibration record: verifier-probe run 1 and probe-driven revision; Product-approved) — Calibration record and instruction calibration only (§15.1, §15.4, §31.5, §35).
+  - Records verifier-probe run 1 (72 Verifier calls; $0.194869 billed) and its evidence hashes. It is not gate evidence.
+  - Revises the Verifier instruction in two separate parts: structural output discipline and applicability, and semantic calibration restating §22.4, §15.5 and §20.1/§20.3/§20.4. Revises the Generator instruction for output discipline only.
+  - Records the new instruction hashes (Generator `687b9e3d…6d1b`, Verifier `0f86c3d8…8430`). The prompts are not frozen.
+  - Records the harness 3.1.0 and scorer corrections: billed-only cost totals, probe rates over usable verdicts with structural outcomes reported separately, a plan-level pass-truth measure, and the 1970 synthetic-timestamp correction with temporal semantics unchanged.
+  - Unchanged: Product semantics (including R-19), the parser, the envelope and failure contracts, fail-closed behaviour, the §15.5 vocabularies and applicability, the §31.2 thresholds, the R-20 targets, the default profiles, every acceptance criterion and the closure criteria. The Work Item status line is unchanged: NOT CLOSED — NOT LIVE.

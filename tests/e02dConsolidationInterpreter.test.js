@@ -189,3 +189,10 @@ test('v1.2 §27.1 (module level): an invalid profile leaves the stage unconfigur
   assert.equal((await CALL()).reason, 'REASONING_NOT_PERMITTED');
   S.configure({});
 });
+
+test('probe-driven output rule: exactly one raw JSON object, no fence, no rationale, no text around it', () => {
+  const s = I._internal.INSTRUCTION;
+  assert.match(s, /exactly one raw JSON object and nothing else: \{"proposals":\[\.\.\.\]\}/);
+  assert.match(s, /Do not wrap it in a code fence or any other Markdown/);
+  assert.match(s, /write no rationale, reasoning, explanation or note, and no other text, before or after it/);
+});

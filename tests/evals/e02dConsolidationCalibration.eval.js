@@ -69,11 +69,24 @@ async function withIsolatedModules(fn) {
   }
 }
 
-const HARNESS_VERSION = '3.0.0';
+const HARNESS_VERSION = '3.1.0'; // 3.1: billed-only cost totals; realistic synthetic calendar (request content changes; v3.0 artifacts replay as diverged)
 const ARTIFACT_SCHEMA = 'e02d-calibration-artifact/3'; // v1.2: v1.1 (schema 2) recordings are not v1.2 evidence (§31.4)
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const DAY = 86400000;
-const WINDOW = { fromEpochMs: 0, toEpochMs: 14 * DAY };
+// Synthetic time base. Corpus day offsets are relative; they are placed on a realistic calendar so the
+// rendered conversation-turn instants are plausible and, in a case that also has day logs, agree with
+// those logs' local dates (day key = base + offset days). Only the absolute anchor changes: order,
+// spacing and the null local date/time of conversation turns (SPEC §20.4) are preserved.
+const DEFAULT_BASE_EPOCH_MS = Date.UTC(2026, 4, 1);
+const WINDOW_DAYS = 14;
+function caseBaseEpochMs(c) {
+  const d = (c.days || [])[0];
+  return d ? Date.parse(d[0] + 'T00:00:00Z') - d[1] * DAY : DEFAULT_BASE_EPOCH_MS;
+}
+function caseWindow(c) {
+  const base = caseBaseEpochMs(c);
+  return { fromEpochMs: base, toEpochMs: base + WINDOW_DAYS * DAY };
+}
 const MODES = ['end-to-end', 'verifier-probes', 'generator-only'];
 const LANGS = ['he', 'en', 'ar'];
 const TRUTH_VALUES = ['PASS', 'VETO', 'BORDERLINE'];
@@ -309,8 +322,9 @@ async function seedCase(c, M) {
   const obs = M.observationPort.createObservationPort();
   let clock = 9000000;
   const cfgStore = (writer, producer) => Store.configure({ port: uk.port, now: () => ++clock, writerAuthority: writer, isLearningConsentGranted: () => true, userId: 'cal', producer, producerVersion: '1.0.0' });
-  (c.turns || []).forEach(([id, text, d]) => obs.seed.turn(id, text, d * DAY));
-  (c.days || []).forEach(([key, d, meals]) => obs.seed.day(key, d * DAY, meals));
+  const base = caseBaseEpochMs(c);
+  (c.turns || []).forEach(([id, text, d]) => obs.seed.turn(id, text, base + d * DAY));
+  (c.days || []).forEach(([key, d, meals]) => obs.seed.day(key, base + d * DAY, meals));
   (c.typed || []).forEach((t) => obs.seed.typedMemory(t.id, { type: t.type, source: 'user_stated', status: 'active', payload: t.payload }));
   cfgStore('CLIENT', 'calibration.seed');
   for (const labels of c.concepts || []) await Store.createConcept({ labels });
@@ -419,7 +433,7 @@ async function runSample(c, sampleIdx, run) {
     userId: 'cal', observationSources: [D.conversation, D.dayLog], referenceSource: D.typedMemory,
     generatorProfile: run.generatorProfile, verifierProfile: run.verifierProfile };
   if (M.Consolidation.configure(cfg).status !== 'CONFIGURED') throw new HarnessRefusal('CONFIGURATION_FAILED');
-  const result = await M.Consolidation.runPass({ passId: 'cal-' + c.id + '-' + sampleIdx, window: WINDOW });
+  const result = await M.Consolidation.runPass({ passId: 'cal-' + c.id + '-' + sampleIdx, window: caseWindow(c) });
 
   // ── evidence assembly ──
   const gen = calls.find((x) => x.stage === 'GENERATOR') || null;
@@ -519,7 +533,12 @@ function accounting(samples, prices) {
   for (const stage of ['GENERATOR', 'VERIFIER']) {
     const calls = [].concat(...samples.map((s) => s.calls.filter((c) => c.stage === stage)));
     const lat = calls.map((c) => c.latencyMs).filter((x) => typeof x === 'number');
-    const costs = calls.map((c) => costOf(c.model, c.usage, prices));
+    // Billed cost counts REAL calls only; scripted (SYNTHETIC) and REPLAY entries make no provider call,
+    // so their priced token estimates are reported separately and never added to the billed total.
+    const priced = !!(prices && prices.models);
+    const sumOrNull = (xs) => (!priced || xs.some((x) => x === null) ? null : xs.reduce((a, b) => a + b, 0));
+    const billed = calls.filter((c) => c.source === 'REAL');
+    const notBilled = calls.filter((c) => c.source !== 'REAL');
     stages[stage] = {
       calls: calls.length,
       bySource: calls.reduce((m, c) => { m[c.source] = (m[c.source] || 0) + 1; return m; }, {}),
@@ -537,13 +556,16 @@ function accounting(samples, prices) {
       refusals: { count: calls.filter((c) => c.refusal && c.refusal.refused).length, rate: calls.length ? calls.filter((c) => c.refusal && c.refusal.refused).length / calls.length : null },
       structuralFailures: calls.reduce((m, c) => { if (c.structure && c.structure.failure) m[c.structure.failure] = (m[c.structure.failure] || 0) + 1; return m; }, {}),
       stageFailures: samples.reduce((m, s) => { const f = s.stageFailure; if (f && f.stage === stage) m[f.reason] = (m[f.reason] || 0) + 1; return m; }, {}),
-      cost: costs.some((x) => x === null) ? null : costs.reduce((a, b) => a + b, 0),
+      billedCalls: billed.length,
+      cost: sumOrNull(billed.map((c) => costOf(c.model, c.usage, prices))),
+      notBilledEstimatedCost: sumOrNull(notBilled.map((c) => costOf(c.model, c.usage, prices))),
       costBasis: calls.length && calls.every((c) => c.source === 'REAL') ? 'ACTUAL_USAGE' : 'NOT_BILLED_OR_ESTIMATED',
       latencyMs: { p50: pct(lat, 0.5), p99: pct(lat, 0.99), max: lat.length ? Math.max(...lat) : null }
     };
   }
   const e2e = samples.map((s) => s.calls.reduce((n, c) => n + (c.latencyMs || 0), 0));
-  const total = { calls: stages.GENERATOR.calls + stages.VERIFIER.calls, cost: stages.GENERATOR.cost === null || stages.VERIFIER.cost === null ? null : stages.GENERATOR.cost + stages.VERIFIER.cost };
+  const add = (k) => (stages.GENERATOR[k] === null || stages.VERIFIER[k] === null ? null : stages.GENERATOR[k] + stages.VERIFIER[k]);
+  const total = { calls: stages.GENERATOR.calls + stages.VERIFIER.calls, billedCalls: stages.GENERATOR.billedCalls + stages.VERIFIER.billedCalls, cost: add('cost'), notBilledEstimatedCost: add('notBilledEstimatedCost') };
   return { stages, total, endToEndLatencyMs: { p50: pct(e2e, 0.5), p99: pct(e2e, 0.99), max: e2e.length ? Math.max(...e2e) : null },
     modelCallsCheck: samples.every((s) => s.integrity.indexOf('MODEL_CALLS_MISMATCH') === -1) };
 }
@@ -739,5 +761,5 @@ if (require.main === module) {
 module.exports = {
   HARNESS_VERSION, ARTIFACT_SCHEMA, MODES, DRY_RUN_SCENARIOS, HarnessRefusal,
   canonicalJson, sha256, instructionHashes, stageOf, installNetworkTrap, validateCorpus, corpusFor, loadHeldout,
-  resolveProposal, runCalibration, budgetStatement, classify
+  resolveProposal, runCalibration, budgetStatement, classify, caseBaseEpochMs
 };
