@@ -248,3 +248,22 @@ test('R-21 repair (after run 3): the temporality value is judged separately by i
   // the superseded unscoped wording is gone
   assert.equal(/a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur/.test(s), false);
 });
+
+test('R-19 stated in the Verifier instruction: ambiguous faithfulness fails closed on the four non-Safety dimensions; uncertain truth is not a reason; Safety, applicability and output lines unchanged', () => {
+  const crypto = require('node:crypto');
+  const s = V._internal.INSTRUCTION;
+  const L = s.split('\n');
+  const h = (x) => crypto.createHash('sha256').update(x).digest('hex');
+  const line = L.find((l) => l.startsWith('UNCERTAIN is always allowed'));
+  assert.match(line, /^UNCERTAIN is always allowed and is the right answer whenever you cannot decide\. /);
+  // R-19(a): only where the observations allow more than one reasonable reading, never "any doubt"
+  assert.match(line, /when the observations allow more than one reasonable reading of whether the item faithfully represents them - for restatement, unsupported, temporal or direction - answer UNCERTAIN for that dimension rather than resolving the doubt in favour of the item/);
+  // R-19(b): uncertainty about truth is not a Verifier question (guards against blanket vetoing)
+  assert.match(line, /Whether a faithfully represented relationship is actually true is not one of these questions and is never by itself a reason to answer UNCERTAIN/);
+  assert.equal(/safety/i.test(line), false, 'the R-19 sentence does not touch Safety');
+  // unchanged lines (pinned)
+  assert.equal(h(L.find((l) => l.startsWith('safety - '))), '939706b00a21d359f14fa51df1038670f159724f79420230391e7a5d73350c80');
+  assert.equal(h(L.find((l) => l.startsWith('Applicability is fixed'))), '748824f9fbd240454f16e869c6f6cc7c7c367c8eed1bfb10fb8b4cd38a68c792');
+  assert.equal(h(L.find((l) => l.startsWith('Answer with exactly one raw JSON'))), 'b7e596abc8afefb687dcc54a61761f55e29f7d74bdc0cbec617345807f516bc3');
+  assert.equal(L.length, 10);
+});

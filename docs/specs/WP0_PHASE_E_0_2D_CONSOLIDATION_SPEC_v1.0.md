@@ -513,7 +513,7 @@ Factor:
 - **Body [v1.2].** Built from the Verifier's request profile `V` (§27.1): `{ model: V.model, max_tokens: V.maxOutputTokens, <V.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
   - Key order as in §15.1.
   - Sent once through the injected transport with `V.timeoutMs`; no retry inside a pass (MRE-001).
-  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. After verifier-probe run 2 it also states R-21, R-22 and the five-key verdict rule (§31.5, §32); after run 3 its R-21 wording was repaired to judge the claim text and the temporality value separately (§31.5, §32 R-21). **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
+  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. After verifier-probe run 2 it also states R-21, R-22 and the five-key verdict rule (§31.5, §32); after run 3 its R-21 wording was repaired to judge the claim text and the temporality value separately (§31.5, §32 R-21); after run 5 it also states R-19 explicitly (§31.5, §32 R-19). **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
   - **[HISTORICAL — v1.1]** v1.1 body: `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `VERIFIER_TIMEOUT_MS`.
 - **Input blocks**, all rendered deterministically by the coordinator and framed as data with the standard injection clause:
   - `<observations>` — every observation presented to the Generator, rendered identically with the same keys (restatement is judged against all of the person's presented words, not only cited ones);
@@ -1392,7 +1392,59 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 - **Generator instruction SHA-256:** unchanged at `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`.
 - **Not frozen.**
 
-**Next.** Verifier-probe run 4 on corpus `verifier-probes-v1.2`, only with separate Product approval. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
+**Run 4 (Product-approved; 2026-10-07; Verifier instruction `d406…fc14`; default Haiku 4.5 reasoning-OFF profile).**
+- **Calls and cost:** 72 real Verifier calls and no Generator call; billed cost $0.164514.
+- **Evidence:** artifact SHA-256 `4d0f0c84118e61f0df40e887e54aa6524e9c632115c9dc0009d4ed7c58b79ab2`; score SHA-256 `bd59943af983e38ba032420bcb2483ed2508086463c02361c1dd1ebc85c35b79`; report SHA-256 `e2e3a25f606e5ac2558e99ea9b644d42a6b1b825ca8dccc44e177514015a98dd`.
+- **Outcome:** no structural failure; 0 of 21 pass-truth samples authorized; no missed Safety veto.
+- **The R-21 repair had no measurable effect.** On conversation-turn CREATE claims, `restatement`, `unsupported` and `temporal` were non-passing in roughly 83–100% of samples whatever the truth.
+  - This was already present in run 2, before R-21 and R-22.
+  - The run-3 diagnosis of a word collision as the cause was therefore not confirmed.
+- **Product/Architecture conclusion:** another prompt-only repair on the Haiku 4.5 reasoning-OFF profile is not justified.
+- **Status of run 4:** it is not gate evidence.
+
+**Verifier calibration profile change (Product/Architecture decision; a calibration configuration under R-11, R-16 and §31.4, not a production model or architecture change).**
+- **Profile:** `{model: claude-sonnet-5-5, reasoning: OFF, effort: HIGH, maxOutputTokens: 800, timeoutMs: 30000, providerBinding: {thinking: {type: between_tools}, output_config: {effort: high}}}`.
+  - Profile file SHA-256 `71973597043763a08f2f0f958d97e9d68279d9f6e8a789168bff42cae2147383`.
+  - Price file SHA-256 `4f2c06232fb9cd8f40e2f6034d77dadfee52209fa70109ac5137cc1fa6f5d3f3`: $2 per million input tokens and $10 per million output tokens (Product-verified, 2026-10-07).
+  - Both files are held at the evidence root (R-20).
+- **Binding:** for this model Product verified that "thinking off" is expressed with `between_tools` rather than `disabled`, and that the model has an effort control (default high).
+  - The binding is admissible under MRS-001 §08.7 and §27.1 (tool-free request, explicit effort at or below high), so no code, contract or SPEC change was required.
+  - Any reasoning output fails closed (`REASONING_NOT_PERMITTED`).
+- **Unchanged:** the Generator profile and the default profiles of §27.1.
+
+**Run 5 (Product-approved; 2026-10-07; Sonnet 5.5 Verifier profile; Verifier instruction `d406…fc14`, corpus and harness unchanged; one-variable capacity experiment).**
+- **Calls and cost:** 72 real Verifier calls and no Generator call; 211,851 input and 7,564 output tokens; billed cost $0.499342; approved cap $1.25.
+- **Evidence:** artifact SHA-256 `6e1ef08a75e6548e35ff42b8d3b0fd7701d83e209933fc2151289381865ef35d`; score SHA-256 `5025199ef9a18090b283cffb32afc73bbe6c17cbca94bfc318c6393f16287558`; report SHA-256 `1704ed12757e75a0095ee035341b6c48039cc980975e04af18792cca7be17a90`.
+- **Capacity:** Sonnet 5.5 materially resolved the Haiku blanket-veto failure.
+  - 18 of 21 pass-truth samples were authorized (18 of the 19 with a usable verdict).
+  - False vetoes on pass-truth probes fell to: restatement 0/19, unsupported 1/15, temporal 1/15, direction 0/4.
+- **Safety:** 12/12 Safety-positive samples were vetoed, and there were no Safety false flags on pass-truth probes.
+- **Blocking finding: 4/51 veto-truth samples were authorized.** All four are on Product-ruled R-19 borderline probes: P2 (unsupported) ×1 and P5 (APPEND direction) ×3.
+  - P1 (restatement) was also missed 3/3 on its dimension; those plans were vetoed on other dimensions.
+  - A false admission is permanent (R-19 rationale), so these block progression to the development stage.
+- **Format:** 2 `INVALID_ENVELOPE` stage failures (prose reasoning before the JSON object, on one probe).
+  - Both failed closed: no verdict, nothing written.
+  - They are intentionally **not** repaired in this revision and remain tracked separately.
+- **Status of run 5:** it is not gate evidence.
+- **Decision:** the run-5 Sonnet 5.5 Verifier profile is retained for the next probe run.
+
+**R-19 instruction clarification after run 5 (Product/Architecture decision).**
+- **Change:** one line of the Verifier instruction is extended (§32 R-19, instruction note). Where the observations allow more than one reasonable reading of whether the item faithfully represents them, for restatement, unsupported, temporal or direction, the Verifier answers `UNCERTAIN` rather than resolving the doubt in favour of the item. Uncertainty about whether a faithfully represented relationship is true is never by itself a reason to answer `UNCERTAIN`.
+- **Why it is a clarification of existing canon, not a new semantic rule:**
+  - it states R-19(a) and R-19(b) as already canonized, restricted to the four non-Safety dimensions;
+  - "more than one reasonable reading" is R-19's "unclear", not "any doubt";
+  - no probe, language, wording or example is special-cased, and no verdict value or outcome changes.
+- **Unchanged:**
+  - the Safety, applicability (five-key) and output lines, which are hash-pinned by tests;
+  - R-21 and R-22;
+  - the parser, envelope and failure contracts;
+  - the corpus and its truth labels;
+  - the Sonnet 5.5 profile and the Generator.
+- **Verifier instruction SHA-256:** `f5017ac425bbfa662a423b6c64cefc621b30f541bb64807951589104e4d23c72`.
+- **Generator instruction SHA-256:** unchanged at `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`.
+- **Not frozen.**
+
+**Next.** Verifier-probe run 6 with the run-5 profile and corpus `verifier-probes-v1.2`, only with separate Product approval. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
 
 ---
 
@@ -1430,6 +1482,10 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
   - (b) **Uncertain truth → candidate only.** Uncertainty about whether a faithfully represented relationship is actually true is not a Verifier question. Such a plan may be written as a `candidate`, which is never usable User Knowledge until E.0.2e's assessment and promotion establish sufficient evidence (§21).
   - (c) **Applied to the calibration probes.** The verifier probes for restatement (P1), unsupported content (P2), temporal faithfulness (P4) and APPEND direction (P5) take truth `VETO`. The Safety probe (P3) takes a provisional `VETO`; its final label requires Safety-authority confirmation (§24.2). The development-corpus Safety labels (P6) stay as authored, subject to the same confirmation.
   - (d) No runtime behaviour, contract, acceptance criterion or architecture rule changes.
+  - **[Instruction note after verifier-probe run 5; Product/Architecture decision; clarification of existing canon, not a new rule]** The Verifier instruction now states R-19 explicitly.
+    - Where the observations allow more than one reasonable reading of whether the item faithfully represents them, for restatement, unsupported, temporal or direction, the Verifier answers `UNCERTAIN` for that dimension rather than resolving the doubt in favour of the item (R-19(a)).
+    - Whether a faithfully represented relationship is actually true is not one of these questions and is never by itself a reason to answer `UNCERTAIN` (R-19(b)).
+    - The Safety wording, which already directs `UNCERTAIN` when genuinely unsure, is unchanged.
 - **R-20 — Pre-calibration decisions (Product ruling after v1.2 implementation; calibration configuration only).** Fixed before any paid run, and before any held-out output is seen.
   - **CAL-D8 target (§31.2):**
     - Verifier false veto ≤ 25% of plans that human review labels genuine, grounded, non-restating and non-Safety. `UNCERTAIN` vetoes count as false vetoes and are reported separately.
@@ -1668,3 +1724,9 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
   - Records the diagnosis: the R-21 wording collided with the canonical temporality values.
   - Repairs the Verifier instruction so that the claim text and the temporality value are judged separately. `DURABLE` and `RECURRING_WINDOW` are not read as claims of permanence, continuation or future recurrence, and stronger meanings stated or implied by the claim text still need evidence (`d406…fc14`).
   - The R-21 Product meaning, R-22, the five-key rule, Safety, the corpus and its truth labels, the profiles and the Generator instruction are unchanged. The prompts are not frozen. NOT CLOSED — NOT LIVE.
+- **v1.2** (calibration record: runs 4 and 5, Sonnet 5.5 Verifier calibration profile, R-19 instruction clarification; Product/Architecture decisions) — Calibration record and instruction clarification only (§15.4, §31.5, §32 R-19, §36).
+  - Records run 4: no effect from the R-21 repair; the Haiku reasoning-OFF capacity limit; no further prompt-only repair on that profile.
+  - Records the Sonnet 5.5 Verifier calibration profile (`between_tools`, HIGH effort), admissible without code or SPEC change.
+  - Records run 5: the capacity failure was resolved (18/21 pass-truth authorized; 12/12 Safety-positive vetoed). 4/51 false admissions on R-19 borderline probes block progression. 2 `INVALID_ENVELOPE` failures failed closed and are deliberately not repaired here.
+  - Records the R-19 instruction clarification (`f501…3c72`), a clarification of existing canon and not a new rule.
+  - Unchanged: Product semantics (R-19, R-21, R-22), Safety wording, the five-key contract, the parser, envelope and failure contracts, the corpus and its truth labels, the default profiles of §27.1, the Generator, every acceptance criterion and the closure criteria. The prompts are not frozen. NOT CLOSED — NOT LIVE.

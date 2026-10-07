@@ -434,3 +434,15 @@ test('R-21 repair: DURABLE and RECURRING_WINDOW plans are authorized on passing 
   const t3 = await dry({ corpus: 'probes', mode: 'verifier-probes', only: ['vp-tm-clean-en'], dryRunVerifier: { veto: { temporal: 'UNCERTAIN' } }, write: false });
   assert.deepEqual([t3.artifact.samples[0].proposals[0].class, t3.artifact.samples[0].proposals[0].code], ['VERIFIER_VETO', 'TEMPORAL_UNCERTAIN']);
 });
+
+test('R-19: UNCERTAIN on restatement, unsupported or direction vetoes the borderline probes (correct, fail-closed); passing verdicts still authorize every pass-truth plan', async () => {
+  const cases = [['vp-rs-borderline-ar', 'restatement', 'RESTATEMENT_UNCERTAIN'], ['vp-us-borderline-he', 'unsupported', 'UNSUPPORTED_UNCERTAIN'], ['vp-dr-borderline-en', 'direction', 'DIRECTION_UNCERTAIN']];
+  for (const [id, d, code] of cases) {
+    const r = await dry({ corpus: 'probes', mode: 'verifier-probes', only: [id], dryRunVerifier: { veto: { [d]: 'UNCERTAIN' } }, write: false });
+    const s = r.artifact.samples[0];
+    assert.deepEqual([s.proposals[0].class, s.proposals[0].code], ['VERIFIER_VETO', code], id);
+    assert.equal(s.probe.dimensions[d], 'CORRECT_VETO_UNCERTAIN', id);
+  }
+  const ok = score((await dry({ corpus: 'probes', mode: 'verifier-probes', dryRunVerifier: 'truth', write: false })).artifact).gates['CAL-D8'];
+  assert.equal(ok.probesPlanLevelPassTruth.authorizedRate, 1, 'no blanket veto from the instruction path');
+});
