@@ -1,5 +1,5 @@
 # MRS-001 SPEC v1.0 — Model Response Structure
-## Status: SPEC v1.0 — APPROVED (Product Review: APPROVED. Architecture Review: APPROVED.) — IMPLEMENTED (jointly with E.0.2d v1.2, commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2`) — DETERMINISTICALLY VERIFIED (full regression 3810/3810) — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED
+## Status: CLOSED — IMPLEMENTED / DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES; Product/Architecture final closure approved (MRS-001 closure commit)
 
 **Repository path:** `docs/specs/MRS_001_SPEC_v1.0.md`
 
@@ -15,11 +15,12 @@
 - Status: **SPEC v1.0 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.).
   - The approval includes the C1–C8 corrections.
   - **[HISTORICAL — pre-implementation]** The SPEC was ready for joint atomic implementation with E.0.2d v1.2 (§11.3), upon the final joint consistency check. The previous status read: NOT IMPLEMENTED. NOT LIVE.
-  - **Current lifecycle:** **IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED.**
+  - **Current lifecycle:** **CLOSED — IMPLEMENTED / DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES; Product/Architecture final closure approved** (MRS-001 closure commit). See §22 and the Closure Record.
     - Implemented jointly with E.0.2d v1.2 in commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2`.
     - Deterministically verified: full regression 3810/3810; S-M, S-F, S-E, S-P, S-T, S-W and G1–G6 green (§19); no model/API call.
     - Deployed and active at the deployed browser sites: application version 2.47.9 is deployed, and the deployed browser application loads `modelResponseStructure.js` ahead of the converted browser site modules (§17 G5). This records deployment evidence only; it does not claim that every converted path has been exercised by a real user. The two E.0.2d sites (S20, S21) are Node-only and not live (E.0.2d §35).
-    - Not closed: final closure requires a separate Product/Architecture closure determination (§22).
+    - Closed: Product/Architecture final closure approved (§22).
+  - **[HISTORICAL — pre-closure]** The previous lifecycle read: IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED (final closure then required a separate Product/Architecture closure determination).
   - Authoring and correcting this document modified no file other than this one and the E.0.2d SPEC's own v1.2 revision.
 - Authority **[CANON]**: the Product/Architecture decisions recorded for this Work Item: the canonical decomposition (new MRS-001; MRE-001 and CARF unchanged; E.0.2d in-file v1.2 as the immediate downstream consumer); response-side activation at all 21 Coach Decision System parse sites; the request-contract states FROZEN-CONTRACT and EXPLICIT-PROFILE; the target-state invariant; migration rules M1–M6; the 19-site FROZEN-CONTRACT inventory; the reasoning vocabulary; the output-budget semantics; zero-drift requirements Z-1…Z-8; mechanical guards G1–G6; the browser-shell exclusion; and the non-goals. Marking this SPEC READY is a Product/Architecture determination.
 - Implementation of this SPEC requires separate Product/Architecture authorization (§18). **[Status note]** Granted and fulfilled: implemented in commit `018b056`.
@@ -750,6 +751,30 @@ Those exact-dependency assertions became stale as a direct consequence of the re
 
 **Scope.** Test compatibility with the approved architecture only. No acceptance criterion is weakened: both tests still assert an exact dependency set. No other assertion, expected value or test in those files changed (apart from the §16.1 fixture migration), and this clarification does not broaden §18's file-change authorization beyond these exact changes. Implemented in commit `018b056`.
 
+## 18.2 Implementation-discovered clarification — S9 per-path contract wiring (I-1) — [CANON — Product/Architecture ruling during the implementation preflight; confirmed at closure review]
+
+**Canonical requirement.** S9 (`safetyContextInterpreter.js`, `parseAndValidate`) is shared by two FROZEN-CONTRACT request paths, F-8 (`classifyBatch`) and F-9 (`classifyBatchWithStatus`). §11.1 requires each call to pass the entry of the request that produced its response, so every S9 response must be extracted under that path's own entry. No site may omit, default or synthesize its contract (§07.4).
+
+**Ruling (I-1).** Product/Architecture approved the following wiring in the implementation preflight and confirmed it as canonical at the closure review:
+- `_internal.parseAndValidate(raw, ids, map)` keeps its existing 3-argument signature and represents the F-8 path: it names `{ state: 'FROZEN_CONTRACT', entry: 'F-8' }` explicitly;
+- `classifyBatchWithStatus` reaches the same validation body under F-9: it names `{ state: 'FROZEN_CONTRACT', entry: 'F-9' }` explicitly;
+- the shared validation body is factored behind the two path-specific entry points as `parseAndValidateUnder(contract, raw, ids, map)`; the validation logic itself is unchanged.
+
+**Why the additional S9 diff is required.** Keeping the 3-argument signature (which existing callers and the unchanged MRE-001 equivalence pins rely on, §13.2) while giving each request path its own entry needs exactly:
+- the wrapper and helper function;
+- the one F-9 caller-line change in `classifyBatchWithStatus`;
+- one explanatory comment for this wiring, alongside the ordinary per-read MRS-001 comment.
+
+This is the minimum structure that implements the existing §11.1 per-path contract rule. It is not scope drift. §19 acceptance criterion 5 is unchanged; this record documents the authorized implementation interpretation under which S9 meets it.
+
+**Safety semantics unchanged (§12).** No Safety rule, validator, closed vocabulary, literal anchor or fail-closed status path changed. Deterministic evidence (commit `018b056`):
+- S-P and S-E (`tests/mrs001SiteEquivalence.test.js`): the positive, negative and literal-anchor controls for both S9/F-8 (`classify`) and S9/F-9 (`classifyWithStatus`) produce results equal to the pre-MRS-001 baseline, and every structural failure class takes each path's existing failure outcome;
+- G5 / I-1 (`tests/mrs001Wiring.test.js`): F-8 is named only in `parseAndValidate`, F-9 only in `classifyBatchWithStatus`, and F-10 only in `parseAndValidateCorrection`; the 3-argument signature is pinned;
+- G2: the F-8, F-9 and F-10 request bodies are byte-identical to the pre-MRS-001 capture;
+- MRE-001's S9 equivalence pins and the existing Safety interpreter suites are green; full regression 3810/3810.
+
+**Scope.** This ruling applies to S9 in `safetyContextInterpreter.js` only. It authorizes no broader module restructuring, and it broadens no authorization for any other MRS-001 site, file or request.
+
 ---
 
 # 19. Test Scope and Acceptance Criteria — [DESIGN]
@@ -837,18 +862,49 @@ No real-model calibration is an acceptance criterion of MRS-001. Real-model work
 
 # 22. Status and Closure
 
-- Status: **SPEC v1.0 — APPROVED** (Product Review: APPROVED. Architecture Review: APPROVED.) — **IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED**.
+- Status: **CLOSED — IMPLEMENTED / DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES; Product/Architecture final closure approved** (SPEC v1.0 — Product Review: APPROVED. Architecture Review: APPROVED.) (MRS-001 closure commit).
   - **Implemented** jointly with E.0.2d v1.2 in one atomic change, commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2` (§11.3). The implementation authorization (§18) is fulfilled.
-  - **Deterministically verified:** full deterministic regression 3810/3810; acceptance criteria 1–6 of §19 met, including S-M, S-F, S-E, S-P, S-T, S-W and G1–G6; the 19 FROZEN-CONTRACT request bodies byte-identical (Z-4); no model/API call. Scope purity includes the §18.1 compatibility clarification.
+  - **Deterministically verified:** full deterministic regression 3810/3810; acceptance criteria 1–6 of §19 met, including S-M, S-F, S-E, S-P, S-T, S-W and G1–G6; the 19 FROZEN-CONTRACT request bodies byte-identical (Z-4); no model/API call. Scope purity includes the §18.1 and §18.2 clarifications.
   - **Deployed and active at the deployed browser sites:** application version 2.47.9 is deployed, and the deployed browser application loads `modelResponseStructure.js` ahead of the converted browser site modules. This is deployment evidence; it is not a claim that every converted path has been exercised by a real user. MRS-001's deployment does not make E.0.2d live: its two sites (S20, S21) are Node-only with no production caller (E.0.2d §08, §35).
-  - **Not closed:** the deterministic acceptance criteria are satisfied, and real-model calibration is not an MRS-001 acceptance criterion (§19), but final closure requires a separate Product/Architecture closure determination. The Closure Record below stays empty until then.
+  - **Closed:** closure is a Product/Architecture lifecycle determination, made at the final closure review. Every §19 acceptance criterion is satisfied, and real-model calibration is not an MRS-001 acceptance criterion (§19).
+- **What CLOSED means — and does not mean [CANON].**
+  - MRS-001 is closed as a Work Item: its boundary, request-contract states and guards are implemented, verified and canonical.
+  - CLOSED does not mean all future migration work is complete. The target-state invariant (§06.1) is not yet reached: the FROZEN-CONTRACT inventory still holds 19 entries, and migration rules M1–M6 (§09), the deprecation responsibility (§09.1), the prohibitions of §06.4 and the guards G1–G6 (§17) remain standing canonical rules.
+  - CLOSED does not close GAP-1, GAP-2 or GAP-3 (§21), the MRE-001 §20 Safety fail-open defect (§12) or the MRE-001 §21 observability follow-up (§07.7). They remain open, non-blocking follow-ups (Closure Record).
+  - CLOSED does not make E.0.2d closed or live, and it does not authorize E.0.2d real-model calibration. E.0.2d remains IMPLEMENTED — DETERMINISTICALLY VERIFIED — REAL-MODEL CALIBRATION PENDING (PAUSED) — NOT CLOSED — NOT LIVE under its own lifecycle (E.0.2d §35); its calibration remains PAUSED pending explicit Product approval of a run (E.0.2d §31.4).
+- **[HISTORICAL — pre-closure]** The previous status read: IMPLEMENTED — DETERMINISTICALLY VERIFIED — DEPLOYED AND ACTIVE AT THE DEPLOYED BROWSER SITES — NOT CLOSED; final closure then required a separate Product/Architecture closure determination, and the Closure Record was empty until then.
 - **[HISTORICAL — pre-implementation]** The previous status read: ready for joint atomic implementation with E.0.2d v1.2 upon the final joint consistency check — NOT IMPLEMENTED — NOT LIVE.
 - E.0.2d v1.2, the immediate downstream consumer, completed joint Product/Architecture review with this SPEC and is implemented in the same commit.
-- Next step: the Product/Architecture closure determination of this SPEC. The follow-ups GAP-1 … GAP-3 (§21) and the MRE-001 §20 Safety fail-open defect (§12) remain open under their owners.
+- **[HISTORICAL — pre-closure]** Next step was: the Product/Architecture closure determination of this SPEC. Done: final closure approved.
 - **[HISTORICAL — pre-implementation]** Next step was: the joint atomic implementation of this SPEC and E.0.2d v1.2, under separate Product/Architecture implementation authorization (§11.3, §18).
-- Real-model calibration of E.0.2d: this SPEC and E.0.2d v1.2 are now implemented and deterministically verified, which satisfies the E.0.2d §31.4 precondition. E.0.2d real-model calibration remains PAUSED pending explicit Product approval of a run (E.0.2d §31.4).
-- **Status history.** 2026-10-06 — status metadata only (implementation status reconciliation): implemented in `018b056`; deterministically verified 3810/3810; ED-1 resolved; §18.1 compatibility clarification recorded; deployed and active at the deployed browser sites; NOT CLOSED; C-18 status updated. No normative Product/Architecture semantic change.
+- Real-model calibration of E.0.2d: this SPEC and E.0.2d v1.2 are implemented and deterministically verified, which satisfies the E.0.2d §31.4 precondition. E.0.2d real-model calibration remains PAUSED pending explicit Product approval of a run (E.0.2d §31.4).
+- **Status history.**
+  - 2026-10-06 — status metadata only (implementation status reconciliation, commit `a159938a931dff5c960091b0e549e5549da1eba0`): implemented in `018b056`; deterministically verified 3810/3810; ED-1 resolved; §18.1 compatibility clarification recorded; deployed and active at the deployed browser sites; NOT CLOSED; C-18 status updated. No normative Product/Architecture semantic change.
+  - 2026-10-06 — final closure (MRS-001 closure commit): §18.2 (I-1 S9 per-path contract wiring) recorded; Product/Architecture final closure approved; status CLOSED; Closure Record filled. No normative architecture requirement, contract or acceptance criterion changed.
 
 ## Closure Record
 
-*(Empty until closure.)*
+- **Decision:** Product/Architecture final closure approved after the final closure review and re-check: every §19 acceptance criterion is satisfied and no closure blocker remains. Recorded in the MRS-001 closure commit.
+- **Implementation:**
+  - §18 implemented atomically with E.0.2d v1.2 in commit `018b05644aa62ac2faf96bd47ff2b9c4a0a738f2` (§11.3).
+  - All 21 parse sites S1–S21 converted to MRS-001 extraction in that one change: the 19 FROZEN-CONTRACT entries name their own §10 entries, and S20/S21 pass their EXPLICIT-PROFILE reasoning mode (G5).
+  - The shared structural primitive `js/coachDecisionSystem/modelResponseStructure.js` is implemented, with the frozen inventory constant and the closed §07.5 failure vocabulary.
+  - Browser wiring: `index.html` loads `modelResponseStructure.js` ahead of every converted browser module; `sw.js` precaches it; `sw.js` `VERSION` and `js/app.js` `APP_VERSION` are 2.47.9.
+  - ED-1 resolved (§11.2, §21). The AC-32 / AC-40 test-compatibility clarification is recorded in §18.1, and the I-1 S9 per-path contract wiring in §18.2.
+  - Lifecycle reconciliation recorded in commit `a159938a931dff5c960091b0e549e5549da1eba0`.
+- **Deterministic evidence:**
+  - S-M, S-F, S-E, S-P, S-T and S-W green (`tests/mrs001ModelResponseStructure.test.js`, `tests/mrs001SiteEquivalence.test.js`, `tests/mrs001Wiring.test.js`; S-F by the fixture-migration equivalence check over the 45 migrated files).
+  - Z-1 … Z-8 demonstrated; G1 … G6 green (G4 through the E.0.2d v1.2 suites).
+  - The 19 FROZEN-CONTRACT request bodies are byte-identical to the pre-MRS-001 capture.
+  - The existing relevant pins are preserved: MRE-001 W-1 … W-5 and its equivalence pins, OU-001 AC-2/AC-24/AC-31, E.0.2b AC-7, and the USI-001 AC-2/AC-16 pins.
+  - Full deterministic regression 3810/3810.
+  - No model/API call was made or required for MRS-001 implementation, verification or closure.
+- **Real-model confirmation:** real-model calibration is not an MRS-001 acceptance criterion (§19), and no real-model run is required for this closure. E.0.2d real-model calibration remains governed by E.0.2d (§31.4) and remains PAUSED.
+- **Deployment:** application version 2.47.9 is deployed, and the deployed browser application loads MRS-001 ahead of the converted deployed browser sites. This deployment evidence is not a claim that every converted path has been exercised by a real user. E.0.2d remains NOT LIVE.
+- **Non-blocking follow-ups (open; not MRS-001 closure blockers):**
+  - GAP-1 — `WP0_SPEC_v1.0.md` (owner of S17 / F-17) is missing (§21). No owner is assigned by this SPEC (§10.3).
+  - GAP-2 — Friends Alpha Item 6 (second owner of S10 / F-10) has no SPEC (§21). No owner is assigned by this SPEC (§10.3).
+  - GAP-3 — browser-shell model-response and request-profile migration (§14, §21); owner: Product/Architecture.
+  - MRE-001 §20 Safety fail-open defect (§12) — remains open under its existing owner as recorded in MRE-001.
+  - MRE-001 §21 observability (§07.7) — remains open under its existing owner as recorded in MRE-001.
+  - Standing FROZEN-CONTRACT responsibilities: migration to EXPLICIT-PROFILE under M1–M6 (§09), toward the target-state invariant (§06.1); provider deprecation tracking by Model Runtime / Architecture maintenance (§09.1). Migrating F-10 or F-17 first requires its canonical ownership to be established (§10.3).
