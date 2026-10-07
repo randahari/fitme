@@ -513,7 +513,7 @@ Factor:
 - **Body [v1.2].** Built from the Verifier's request profile `V` (§27.1): `{ model: V.model, max_tokens: V.maxOutputTokens, <V.providerBinding fields>, messages: [{ role: 'user', content: prompt }] }`.
   - Key order as in §15.1.
   - Sent once through the injected transport with `V.timeoutMs`; no retry inside a pass (MRE-001).
-  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. After verifier-probe run 2 it also states R-21, R-22 and the five-key verdict rule (§31.5, §32). **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
+  - **[v1.2 calibration revision]** The prompt is unchanged from v1.1 except for the probe-driven revision of §31.5: a structural output-discipline and applicability clarification, and semantic calibration that restates the canonical meanings of §22.4, §15.5 and §20.1/§20.3/§20.4. After verifier-probe run 2 it also states R-21, R-22 and the five-key verdict rule (§31.5, §32); after run 3 its R-21 wording was repaired to judge the claim text and the temporality value separately (§31.5, §32 R-21). **[HISTORICAL — v1.2 as approved]** This line read: The prompt is unchanged from v1.1.
   - **[HISTORICAL — v1.1]** v1.1 body: `{ model: VERIFIER_MODEL, max_tokens: VERIFIER_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }` with `VERIFIER_TIMEOUT_MS`.
 - **Input blocks**, all rendered deterministically by the coordinator and framed as data with the standard injection clause:
   - `<observations>` — every observation presented to the Generator, rendered identically with the same keys (restatement is judged against all of the person's presented words, not only cited ones);
@@ -724,7 +724,7 @@ Each part carries 1..`MAX_GROUNDING_ANCHORS` anchors; the same anchor may serve 
 - **Observed temporal fact:** a structural time field of the source (observation or segment `localDate`, `localTime`, `observedAt`, `utcOffsetMinutes`), or the person's literal words. Anchors reference only these.
 - **Semantic temporal interpretation:** describing observed facts in the claim. It is permitted only as a faithful re-expression; the observed terms (for example an observed range of local times) are preferred over dayparts or routines.
 - **Unsupported inference:** a time, daypart, routine or schedule the evidence does not show (for example an unobserved routine assumed from a clock time, or a clock time labelled with a daypart it does not fit); a window without grounding. The gate rejects ungrounded recurring windows; the Verifier's `temporal` dimension rejects unfaithful temporal content of any proposal, and its `unsupported` dimension rejects invented temporal facts.
-- **[R-21 — interpretive clarification]** An ordering or association directly supported by the cited observations, including one observed event having followed or accompanied another, is a faithful re-expression and not by itself an invented temporal claim or an unsupported inference. It does not authorize a claim that the relationship always or usually occurs, is a routine or schedule, has a duration, is permanent, will continue or will recur, unless the evidence supports that stronger meaning. Unsupported ordering remains fail-closed, and `UNCERTAIN` remains a veto (§32 R-21).
+- **[R-21 — interpretive clarification]** An ordering or association directly supported by the cited observations, including one observed event having followed or accompanied another, is a faithful re-expression and not by itself an invented temporal claim or an unsupported inference. It does not authorize a claim that the relationship always or usually occurs, is a routine or schedule, has a duration, is permanent, will continue or will recur, unless the evidence supports that stronger meaning. Unsupported ordering remains fail-closed, and `UNCERTAIN` remains a veto. The stronger meanings are those the claim text itself (relation text, values, concept labels) says or implies; the temporality value is judged separately by its §20.1 meaning and is never read as such content (§32 R-21).
 - **`DURABLE` and `TEMPORARY`** have no structural grounding requirement; their choice is Generator judgment, checked for faithfulness by the Verifier, and decay or supersession is E.0.2e's.
 - **Date-only evidence** can ground calendar meaning, not time-of-day meaning. **An absolute instant without an offset** can ground order (`SEQUENCE`), not local calendar or clock meaning. **A local value with an unknown offset** grounds a window in the user's local frame only; cross-timezone interpretation awaits A1 §10 item 15 (GAP-D1).
 
@@ -1365,7 +1365,34 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
 - **Generator instruction SHA-256:** unchanged at `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`.
 - **Not frozen.**
 
-**Next.** Verifier-probe run 3 on corpus `verifier-probes-v1.2`, only with separate Product approval. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
+**Run 3 (Product-approved; 2026-10-07; corpus `verifier-probes-v1.2`; Verifier instruction `8578…5135`).**
+- **Calls and cost:** 72 real Verifier calls and no Generator call; billed cost $0.157636.
+- **Evidence:** artifact SHA-256 `5720c4a84ebb4aca8906edc30a17cd4c16cf7446f78c2631dda3d90434c32f3d`; score SHA-256 `9eb8007aeaa6360c970c0961d5ab37bfd73a73a891c0e58609ce84243686e086`; report SHA-256 `8fbab9da1ccd515ad62109714a8d96cda9586212ea79aa52f5c4c8e7d29eb568`.
+- **Structural:** no stage failure and no malformed item. The five-key rule took effect, and CAL-D7 was met on the Verifier stage.
+- **Safety:** no missed Safety veto.
+- **Pass-truth plans:** 0 of 21 authorized.
+- **Collapse on `unsupported` and `temporal`:** every CREATE sample received a non-passing verdict on both dimensions, whatever its truth.
+  - On the seventeen unchanged probes, the non-passing rate rose from 83% (run 2) to 100% for `unsupported`, and from 90% (run 2) to 100% for `temporal`.
+  - Diagnosis: the R-21 instruction wording listed stronger meanings ("is permanent, will continue or will recur") that collide with the canonical meanings of `DURABLE` and `RECURRING_WINDOW` (§20.1).
+- **Restatement:** over-veto on reported-occasion claims persisted, although R-22 took effect on day-log data.
+- **Status of run 3:** it is not gate evidence.
+
+**R-21 instruction repair after run 3 (Product/Architecture ruling, §32 R-21).**
+- **`unsupported`:** the stronger-meaning sentence now applies only to what the relation text, values or concept labels themselves say or imply.
+- **`temporal`:** it now judges two things separately: first the claim text (R-21), then the temporality value, by its §20.1 meaning only and never as words the claim asserts.
+  - `DURABLE` does not assert permanence, a routine, a duration or continuation, and is not unfaithful merely because nothing shows permanence.
+  - `RECURRING_WINDOW` is judged against its grounding anchors and is not by itself a prediction of future recurrence.
+- **Unchanged:**
+  - R-22 and the five-key rule;
+  - the Safety wording;
+  - the parser, envelope and failure contracts;
+  - the corpus `verifier-probes-v1.2` (hash unchanged) and every probe input and truth label;
+  - the profiles and the Generator instruction.
+- **Verifier instruction SHA-256:** `d40632c6548d1eb433576dca6ee193e9d57c70882c58e9dd34d875da11ddfc14`.
+- **Generator instruction SHA-256:** unchanged at `687b9e3dd1daa16492e2ee9121dedbbfefd49f141d407d1b6a86f9f11f876d1b`.
+- **Not frozen.**
+
+**Next.** Verifier-probe run 4 on corpus `verifier-probes-v1.2`, only with separate Product approval. Calibration is not complete, AC-D90 remains unmet, and the Work Item is not closed.
 
 ---
 
@@ -1431,6 +1458,13 @@ Ownership determination and owner concept resolution (§23.1), U4, U5 and U6, ke
   - It does not authorize a claim that the relationship always or usually occurs, is a routine or schedule, has a duration, is permanent, will continue or will recur, unless the evidence supports that stronger meaning.
   - Unsupported ordering remains fail-closed, and `UNCERTAIN` remains a veto.
   - Entailed by §20.3 (faithful re-expression; unsupported inference), §15.5 (`temporal`, `unsupported`) and the association formulation of §15.1; recorded at §20.3.
+  - **[Clarification after verifier-probe run 3; Product/Architecture ruling; repair of the instruction wording, not a change to Product semantics]** The Verifier judges two things separately.
+    - What the claim itself asserts through its relation text, values and concept labels.
+    - Whether the assigned temporality value is faithful under §20.1. A temporality value is never treated as additional natural-language content asserted by the claim:
+      - `DURABLE` does not itself assert permanence, an eternal relationship, a routine, a duration or a prediction of continuation, and it is not unfaithful merely because nothing shows permanence;
+      - `RECURRING_WINDOW` is judged by its §20.1 meaning and its grounding, not as an unsupported prediction of future recurrence.
+    - Observed ordering or association remains permitted. A stronger meaning that the claim text itself says or implies (always, usually, a routine or schedule, a bounded duration, permanence, future continuation or future recurrence) must be supported by the evidence.
+    - Unsupported sequence or association remains fail-closed, and `UNCERTAIN` remains a veto.
 - **R-22 — Meaning of "stated" in restatement (Product ruling after verifier-probe run 2; interpretive clarification of §22.4, not a change to Product semantics).**
   - For restatement evaluation, "stated" is the person's asserted meaning — a belief, generalization, self-description, explanation, preference or other assertion — not merely the fact that the person reported an event or occasion.
   - A faithful description or derived association based on reported events is therefore not automatically RESTATED merely because the events were expressed in conversation.
@@ -1629,3 +1663,8 @@ It therefore does not violate the architectural intent of E.0.2c §19/§26. No d
   - R-22: "stated" in restatement means asserted meaning, not a reported occasion. Both are interpretive clarifications of existing canon, not changes to Product semantics.
   - Verifier instruction: R-21, R-22 and the five-key verdict rule (`8578…5135`). The Generator instruction is unchanged. The prompts are not frozen.
   - Unchanged: the parser, envelope and failure contracts, fail-closed behaviour, E1–E6, R-19, the §15.5 vocabularies and applicability, the §31.2 thresholds, the R-20 targets, the default profiles, every acceptance criterion and the closure criteria. NOT CLOSED — NOT LIVE.
+- **v1.2** (calibration record: verifier-probe run 3 and the R-21 instruction repair; Product/Architecture ruling) — Instruction-wording repair and calibration record only (§15.4, §20.3, §31.5, §32 R-21, §36).
+  - Records run 3 (72 Verifier calls; $0.157636 billed) and its evidence hashes. It is not gate evidence.
+  - Records the diagnosis: the R-21 wording collided with the canonical temporality values.
+  - Repairs the Verifier instruction so that the claim text and the temporality value are judged separately. `DURABLE` and `RECURRING_WINDOW` are not read as claims of permanence, continuation or future recurrence, and stronger meanings stated or implied by the claim text still need evidence (`d406…fc14`).
+  - The R-21 Product meaning, R-22, the five-key rule, Safety, the corpus and its truth labels, the profiles and the Generator instruction are unchanged. The prompts are not frozen. NOT CLOSED — NOT LIVE.

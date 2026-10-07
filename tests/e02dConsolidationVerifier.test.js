@@ -199,8 +199,9 @@ test('probe-driven semantics restate only the canonical §22.4 / §15.5 / §20.1
   assert.match(s, /is a reported event, not an assertion: a faithful description of reported events is not by itself a restatement/);
   assert.match(s, /Combining the person's assertion with events they reported does not make it new/);
   assert.match(s, /Judge only the relation text, values and new concept labels: the evidenceClass and temporality values are not content for this question/);
-  assert.match(s, /DURABLE - no known end; TEMPORARY - a bounded or passing period; RECURRING_WINDOW - a time window that recurs/);
-  assert.match(s, /DURABLE itself states no time, duration, routine or permanence/);
+  // §20.1 meanings (worded as separate sentences since the R-21 repair after run 3)
+  assert.match(s, /DURABLE - no known end; it does not assert permanence, a routine, a duration or that the relationship will continue/);
+  assert.match(s, /TEMPORARY - a bounded or passing period\. RECURRING_WINDOW - a time window that recurs/);
   assert.match(s, /a recurrence the cited observations show is not by itself UNFAITHFUL/);
   assert.match(s, /UNCERTAIN when unsure/);
   assert.match(s, /UNCERTAIN is always allowed and is the right answer whenever you cannot decide/);
@@ -210,9 +211,10 @@ test('R-21 / R-22 and the five-key rule are stated in the Verifier instruction; 
   const s = V._internal.INSTRUCTION;
   // R-22 (§22.4 clarification): "stated" means asserted meaning, not a reported occasion; paraphrase of an assertion stays RESTATED
   assert.match(s, /Here "stated" means what the person asserted - a belief, generalization, self-description, explanation, preference or other assertion - not merely that the person reported an event or occasion; a paraphrase of an actual assertion is still RESTATED/);
-  // R-21: an ordering or association the cited observations directly show is neither unsupported nor unfaithful by itself; stronger meanings need evidence
-  assert.match(s, /An ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is not by itself unsupported; a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur is unsupported unless the evidence shows that stronger meaning/);
-  assert.match(s, /An ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is FAITHFUL; a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur is UNFAITHFUL unless the evidence shows that stronger meaning/);
+  // R-21: an ordering or association the cited observations directly show is neither unsupported nor unfaithful by itself;
+  // a stronger meaning stated or implied by the claim text itself needs evidence (repaired after run 3: scoped to the claim text)
+  assert.match(s, /An ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is not by itself unsupported. If the relation text, values or concept labels themselves say or imply a stronger meaning - always, usually, a routine or schedule, a bounded duration, permanence, future continuation or future recurrence - that meaning is unsupported unless the evidence shows it/);
+  assert.match(s, /First, the claim text: an ordering or association the cited observations directly show, such as one observed event having followed or accompanied another, is FAITHFUL; if the relation text, values or concept labels themselves say or imply always, usually, a routine or schedule, a bounded duration, permanence, future continuation or future recurrence, that meaning is UNFAITHFUL unless the evidence shows it/);
   // five keys, NOT_APPLICABLE exactly where the operation requires it
   assert.match(s, /Every entry has all five dimension keys - restatement, unsupported, safety, temporal and direction: write NOT_APPLICABLE exactly for a dimension that does not apply, and never omit a key/);
   assert.match(s, /UNCERTAIN is always allowed and is the right answer whenever you cannot decide/);
@@ -224,4 +226,25 @@ test('five-key rule is enforced by the strict parser: an entry omitting a key is
   const r = V._internal.parseResponse({ content: [{ type: 'text', text: JSON.stringify({ verdicts: [append] }) }], stop_reason: 'end_turn' }, { p1: 'APPEND_EVIDENCE' }, CC.DEFAULT_VERIFIER_PROFILE);
   assert.equal(r.status, 'OK');
   assert.deepEqual(r.verdicts.p1, { ok: false });
+});
+
+test('R-21 repair (after run 3): the temporality value is judged separately by its own §20.1 meaning, never as words the claim asserts', () => {
+  const s = V._internal.INSTRUCTION;
+  const temporal = s.split('\n').find((l) => l.startsWith('temporal - '));
+  const unsupported = s.split('\n').find((l) => l.startsWith('unsupported - '));
+  // two separate judgments
+  assert.match(temporal, /Judge two things separately. First, the claim text: .* Second, the temporality value, judged only by its own meaning and never read as words the claim asserts:/);
+  // DURABLE is not automatically permanence or future continuation
+  assert.match(temporal, /DURABLE - no known end; it does not assert permanence, a routine, a duration or that the relationship will continue, and it is not unfaithful merely because nothing shows permanence/);
+  // RECURRING_WINDOW is judged against its grounding, not as a prediction of future recurrence
+  assert.match(temporal, /RECURRING_WINDOW - a time window that recurs, judged against the item's grounding anchors; it is not by itself a prediction of future recurrence/);
+  assert.match(temporal, /TEMPORARY - a bounded or passing period/);
+  // unsupported never judges the temporality or evidence-class value
+  assert.match(unsupported, /the evidenceClass and temporality values are not content for this question/);
+  // collision guard: every sentence that makes a stronger meaning veto ("unless the evidence shows") is scoped to what the claim text itself says
+  const vetoing = s.split(/(?<=[.;])\s+/).filter((x) => /unless the evidence shows/.test(x));
+  assert.ok(vetoing.length >= 2);
+  vetoing.forEach((x) => assert.match(x, /relation text, values or concept labels themselves say or imply/, x));
+  // the superseded unscoped wording is gone
+  assert.equal(/a claim that it always or usually happens, is a routine or schedule, has a duration, is permanent, will continue or will recur/.test(s), false);
 });

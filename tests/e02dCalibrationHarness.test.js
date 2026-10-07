@@ -411,3 +411,26 @@ test('verifier-probes v1.2: every pass-truth probe has complete truth; truths na
   const tired = oracle.artifact.samples.find((s) => s.caseId === 'vp-sf-clean-tired-he');
   tired.calls.find((c) => c.stage === 'VERIFIER').request.observations.forEach((o) => assert.equal(new Date(o.observedAt).getUTCDay(), 5, o.observedAt));
 });
+
+test('R-21 repair: DURABLE and RECURRING_WINDOW plans are authorized on passing verdicts; a stronger claim vetoes; observed ordering stays authorizable', async () => {
+  const P = H.corpusFor('probes');
+  const pass = P.cases.filter((c) => Object.values(c.truth).every((x) => x === 'PASS') && c.plan[0].operation === 'CREATE');
+  const durable = pass.filter((c) => (c.plan[0].temporality || 'DURABLE') === 'DURABLE').map((c) => c.id);
+  const window = pass.filter((c) => c.plan[0].temporality === 'RECURRING_WINDOW').map((c) => c.id);
+  assert.ok(durable.length >= 4, 'DURABLE pass-truth probes exist');
+  assert.deepEqual(window, ['vp-tm-clean-en']);
+  // no deterministic layer rejects a plan for its temporality value: with passing verdicts every DURABLE and RECURRING_WINDOW plan is written
+  const ok = await dry({ corpus: 'probes', mode: 'verifier-probes', only: durable.concat(window), dryRunVerifier: 'truth', write: false });
+  ok.artifact.samples.forEach((s) => assert.equal(s.proposals[0].class, 'AUTHORIZED_WRITTEN', s.caseId));
+  // observed ordering ("has followed") is among the authorized DURABLE claims
+  assert.ok(ok.artifact.samples.some((s) => /has followed/.test(s.verifier.items[0].claim.relationText) && s.proposals[0].class === 'AUTHORIZED_WRITTEN'));
+  // a stronger meaning in the claim text ("usually ... on weekdays") judged UNFAITHFUL or PRESENT vetoes, attributably
+  const t1 = await dry({ corpus: 'probes', mode: 'verifier-probes', only: ['vp-tm-borderline-ar'], dryRunVerifier: { veto: { temporal: 'UNFAITHFUL' } }, write: false });
+  assert.equal(/usually/.test(t1.artifact.samples[0].verifier.items[0].claim.relationText), true);
+  assert.deepEqual([t1.artifact.samples[0].proposals[0].class, t1.artifact.samples[0].proposals[0].code], ['VERIFIER_VETO', 'TEMPORAL_UNFAITHFUL']);
+  const t2 = await dry({ corpus: 'probes', mode: 'verifier-probes', only: ['vp-tm-borderline-ar'], dryRunVerifier: { veto: { unsupported: 'PRESENT' } }, write: false });
+  assert.deepEqual([t2.artifact.samples[0].proposals[0].class, t2.artifact.samples[0].proposals[0].code], ['VERIFIER_VETO', 'UNSUPPORTED_CONTENT']);
+  // UNCERTAIN remains a veto
+  const t3 = await dry({ corpus: 'probes', mode: 'verifier-probes', only: ['vp-tm-clean-en'], dryRunVerifier: { veto: { temporal: 'UNCERTAIN' } }, write: false });
+  assert.deepEqual([t3.artifact.samples[0].proposals[0].class, t3.artifact.samples[0].proposals[0].code], ['VERIFIER_VETO', 'TEMPORAL_UNCERTAIN']);
+});
